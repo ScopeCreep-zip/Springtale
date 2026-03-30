@@ -1,0 +1,80 @@
+# ── Rust Build ─────────────────────────────────────────────────────
+/target/
+**/*.rs.bk
+*.pdb
+
+# ── IDE ────────────────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.iml
+
+# ── OS ─────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+._*
+
+# ── Claude Code (local-only, not shared) ──────────────────────────
+.claude/settings.local.json
+.claude/keybindings.json
+
+# ── Secrets (never commit — vault, env, keys) ─────────────────────
+.env
+.env.*
+**/vault.bin
+**/secrets/
+*.pem
+*.key
+*.p12
+cosign.key
+
+# ── Node / TypeScript SDK ─────────────────────────────────────────
+node_modules/
+sdk/**/dist/
+sdk/**/*.tsbuildinfo
+.pnpm-store/
+
+# ── Nix ────────────────────────────────────────────────────────────
+result
+result-*
+.direnv/
+
+# ── Springtale Runtime (user-specific, not committed) ─────────────
+springtale.toml
+data/
+*.sock
+
+# ── Docker ─────────────────────────────────────────────────────────
+docker-compose.override.yml
+
+# ── Database (local dev) ──────────────────────────────────────────
+*.db
+*.db-shm
+*.db-wal
+# Don't ignore migrations — those are committed
+!**/migrations/**
+
+# ── WASM build artifacts ──────────────────────────────────────────
+*.wasm
+!sdk/**/*.wasm
+
+# ── CI artifacts (generated, not committed) ───────────────────────
+sbom.cdx.json
+container-sbom.cdx.json
+*.sarif
+
+# ── Coverage / profiling ──────────────────────────────────────────
+*.profraw
+*.profdata
+lcov.info
+coverage/
+tarpaulin-report.html
+
+# ── Fuzzing corpus (can be large) ─────────────────────────────────
+fuzz/corpus/
+fuzz/artifacts/
+
+# ── Backup files from travel mode ─────────────────────────────────
+*.enc

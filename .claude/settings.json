@@ -1,0 +1,46 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(cargo *)",
+      "Bash(rustup *)",
+      "Bash(git status*)",
+      "Bash(git diff*)",
+      "Bash(git log*)",
+      "Bash(git branch*)",
+      "Bash(git add*)",
+      "Bash(git commit*)",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(mkdir *)",
+      "Bash(wasm-validate *)",
+      "Bash(gh *)",
+      "Bash(curl *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(find *)",
+      "Bash(echo *)",
+      "Bash(python3 *)",
+      "WebSearch",
+      "WebFetch",
+      "mcp__deepwiki__ask_question",
+      "mcp__deepwiki__read_wiki_contents",
+      "mcp__deepwiki__read_wiki_structure"
+    ],
+    "deny": [
+      "Bash(cargo publish*)",
+      "Bash(git push*)",
+      "Bash(git reset --hard*)",
+      "Bash(rm -rf *)",
+      "Read(.env)",
+      "Read(.env.*)",
+      "Read(**/secrets/**)",
+      "Read(**/vault.bin)"
+    ]
+  },
+  "env": {
+    "RUST_BACKTRACE": "1",
+    "CARGO_INCREMENTAL": "1"
+  }
+}

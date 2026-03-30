@@ -1,0 +1,12 @@
+[build]
+rustflags = [
+  "-D", "warnings",            # all warnings are errors
+  "-D", "clippy::unwrap_used", # no unwrap() in library code
+  "-D", "clippy::expect_used", # no expect() in library code (use thiserror)
+  "-D", "clippy::panic",       # no panic!() in library code
+]
+
+# Ban native-tls to enforce rustls across all transitive dependencies.
+# Any crate pulling native-tls will get this stub, which fails at compile time.
+[patch.crates-io]
+native-tls = { path = "vendor/native-tls-stub" }

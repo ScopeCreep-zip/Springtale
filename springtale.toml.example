@@ -1,0 +1,30 @@
+# Springtale Configuration
+#
+# Copy this file to springtale.toml and adjust as needed.
+# Environment variables override file values (SPRINGTALE_ prefix).
+# Example: SPRINGTALE_API_BIND=0.0.0.0:9090
+
+[store]
+# Path to the SQLite database file.
+# Default: ~/.local/share/springtale/springtale.db
+# path = "/home/user/.local/share/springtale/springtale.db"
+
+[crypto]
+# Path to the encrypted vault file (contains identity keypair).
+# Default: ~/.local/share/springtale/vault.bin
+# vault_path = "/home/user/.local/share/springtale/vault.bin"
+
+[transport]
+# Path to the Unix domain socket for local transport.
+# Default: ~/.local/share/springtale/springtale.sock
+# socket_path = "/home/user/.local/share/springtale/springtale.sock"
+
+[api]
+# Bind address for the management API.
+# Default: 127.0.0.1:8080
+# WARNING: binding to 0.0.0.0 exposes the API to the network.
+bind = "127.0.0.1:8080"
+
+# Maximum requests per second (rate limiting).
+# Default: 100
+rate_limit_per_sec = 100

@@ -1,0 +1,44 @@
+# Springtale — Docker Compose for local development and production
+#
+# Usage:
+#   docker compose up          # start springtaled
+#   docker compose down        # stop and remove
+#
+# Before first run:
+#   1. Create a vault: docker compose run --rm springtale init
+#   2. Set SPRINGTALE_PASSPHRASE in .env or environment
+#
+# Data persisted in ./data/ directory (vault.bin, springtale.db)
+
+services:
+  springtaled:
+    build: .
+    container_name: springtaled
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./data:/data
+      - ./springtale.toml:/etc/springtale/springtale.toml:ro
+    environment:
+      - SPRINGTALE_PASSPHRASE=${SPRINGTALE_PASSPHRASE}
+      # Double underscore (__) separates config nesting levels.
+      # Single underscore preserved in field names (vault_path, socket_path).
+      - SPRINGTALE_STORE__PATH=/data/springtale.db
+      - SPRINGTALE_CRYPTO__VAULT_PATH=/data/vault.bin
+      - SPRINGTALE_TRANSPORT__SOCKET_PATH=/data/springtale.sock
+      - SPRINGTALE_API__BIND=0.0.0.0:8080
+      - RUST_LOG=info
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    restart: unless-stopped

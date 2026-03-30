@@ -1,0 +1,2384 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Springtale — Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:        #0b0e13;
+    --bg1:       #111520;
+    --bg2:       #161c2b;
+    --bg3:       #1d2438;
+    --line:      #222a3f;
+    --line2:     #2e3a55;
+    --txt:       #c8d0e0;
+    --txt2:      #7a8aaa;
+    --txt3:      #4a5570;
+    --accent:    #3d7fff;
+    --accent2:   #1a4fa8;
+    --green:     #22c55e;
+    --green2:    #14532d;
+    --amber:     #f59e0b;
+    --amber2:    #78350f;
+    --red:       #ef4444;
+    --red2:      #7f1d1d;
+    --teal:      #14b8a6;
+    --teal2:     #134e4a;
+    --purple:    #a78bfa;
+    --purple2:   #3b0764;
+    --mono:      'IBM Plex Mono', monospace;
+    --sans:      'IBM Plex Sans', sans-serif;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+
+  body {
+    font-family: var(--sans);
+    background: var(--bg);
+    color: var(--txt);
+    line-height: 1.6;
+    font-size: 14px;
+    min-height: 100vh;
+  }
+
+  /* ── HEADER ── */
+  header {
+    border-bottom: 1px solid var(--line);
+    padding: 1.75rem 2rem 0;
+    position: sticky;
+    top: 0;
+    background: var(--bg);
+    z-index: 100;
+  }
+
+  .header-top {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-bottom: 1.25rem;
+  }
+
+  .header-eyebrow {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--txt3);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+  }
+
+  h1 {
+    font-family: var(--mono);
+    font-size: 1.5rem;
+    font-weight: 600;
+    color: #fff;
+    letter-spacing: -0.02em;
+  }
+
+  h1 span { color: var(--accent); }
+
+  .header-meta {
+    display: flex;
+    gap: 1.5rem;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--txt3);
+  }
+
+  .header-meta b { color: var(--green); font-weight: 400; }
+
+  /* ── TABS ── */
+  .tab-nav {
+    display: flex;
+    gap: 0;
+    overflow-x: auto;
+    scrollbar-width: none;
+    margin-top: 0;
+  }
+
+  .tab-nav::-webkit-scrollbar { display: none; }
+
+  .tab-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--txt3);
+    background: none;
+    border: none;
+    border-bottom: 2px solid transparent;
+    padding: 0.75rem 1.25rem;
+    cursor: pointer;
+    white-space: nowrap;
+    letter-spacing: 0.05em;
+    transition: color 0.15s, border-color 0.15s;
+    position: relative;
+    top: 1px;
+  }
+
+  .tab-btn:hover { color: var(--txt); }
+
+  .tab-btn.active {
+    color: var(--accent);
+    border-bottom-color: var(--accent);
+  }
+
+  /* ── PANELS ── */
+  .tab-panel {
+    display: none;
+    padding: 2rem;
+    animation: fadeUp 0.2s ease both;
+  }
+
+  .tab-panel.active { display: block; }
+
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── SHARED COMPONENTS ── */
+  .section-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent);
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 1.25rem;
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .section-label::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--line);
+  }
+
+  .card {
+    background: var(--bg1);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .pill {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    border: 1px solid;
+    white-space: nowrap;
+    display: inline-block;
+  }
+
+  .pill-blue   { color: #93c5fd; border-color: var(--accent2); background: rgba(61,127,255,0.08); }
+  .pill-green  { color: #6ee7b7; border-color: var(--green2);  background: rgba(34,197,94,0.08); }
+  .pill-amber  { color: #fcd34d; border-color: var(--amber2);  background: rgba(245,158,11,0.08); }
+  .pill-teal   { color: #5eead4; border-color: var(--teal2);   background: rgba(20,184,166,0.08); }
+  .pill-purple { color: #c4b5fd; border-color: var(--purple2); background: rgba(167,139,250,0.08); }
+  .pill-red    { color: #fca5a5; border-color: var(--red2);    background: rgba(239,68,68,0.08); }
+  .pill-gray   { color: var(--txt2); border-color: var(--line2); background: rgba(255,255,255,0.04); }
+
+  .legend {
+    display: flex;
+    gap: 1.25rem;
+    flex-wrap: wrap;
+    margin-top: 0.75rem;
+  }
+
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--txt3);
+  }
+
+  .legend-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* ── TAB 1: OVERVIEW ── */
+  .phase-strip {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 2rem;
+  }
+
+  .phase {
+    background: var(--bg1);
+    padding: 1.25rem;
+    transition: background 0.15s;
+  }
+
+  .phase:hover { background: var(--bg2); }
+
+  .phase-tag {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 4px;
+    display: inline-block;
+    margin-bottom: 0.75rem;
+  }
+
+  .phase-1a .phase-tag { background: var(--accent2); color: #93c5fd; }
+  .phase-1b .phase-tag { background: var(--green2); color: #6ee7b7; }
+  .phase-2a .phase-tag { background: var(--amber2); color: #fcd34d; }
+  .phase-2b .phase-tag { background: var(--teal2); color: #5eead4; }
+  .phase-3  .phase-tag { background: var(--purple2); color: var(--purple); }
+
+  .phase-title {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 0.5rem;
+  }
+
+  .phase-desc {
+    font-size: 12px;
+    color: var(--txt2);
+    line-height: 1.5;
+    margin-bottom: 1rem;
+  }
+
+  .phase-meta {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--txt3);
+    line-height: 2;
+  }
+
+  .phase-meta .kill { color: var(--red); }
+  .phase-meta .transport { color: var(--teal); }
+
+  /* pipeline flow */
+  .flow {
+    display: flex;
+    background: var(--bg1);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .flow-step {
+    flex: 1;
+    padding: 1.25rem 0.75rem;
+    text-align: center;
+    position: relative;
+    transition: background 0.15s;
+    cursor: default;
+  }
+
+  .flow-step:hover { background: var(--bg2); }
+
+  .flow-step + .flow-step::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 20%;
+    height: 60%;
+    width: 1px;
+    background: var(--line);
+  }
+
+  .flow-num  { font-family: var(--mono); font-size: 10px; color: var(--accent); margin-bottom: 0.3rem; }
+  .flow-name { font-family: var(--mono); font-size: 12px; font-weight: 600; color: #fff; margin-bottom: 0.2rem; }
+  .flow-sub  { font-family: var(--mono); font-size: 10px; color: var(--txt3); line-height: 1.4; }
+
+  /* ── TAB 2: CRATES ── */
+  .crates-grid {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .crate {
+    background: var(--bg1);
+    padding: 1.25rem;
+    cursor: pointer;
+    transition: background 0.15s;
+  }
+
+  .crate:hover { background: var(--bg2); }
+  .crate.open  { background: var(--bg3); }
+
+  .crate-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .crate-name {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 0.2rem;
+  }
+
+  .crate-summary {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--txt3);
+    line-height: 1.4;
+    margin-bottom: 0.6rem;
+  }
+
+  .crate-badge {
+    font-family: var(--mono);
+    font-size: 9px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    display: inline-block;
+    flex-shrink: 0;
+  }
+
+  .badge-forbid { background: rgba(239,68,68,0.15); color: #fca5a5; }
+  .badge-deny   { background: rgba(245,158,11,0.12); color: #fcd34d; }
+
+  .crate-expand {
+    display: none;
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--line);
+  }
+
+  .crate.open .crate-expand { display: block; }
+
+  .crate-expand-title {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.4rem;
+  }
+
+  .crate-file {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--txt2);
+    line-height: 1.8;
+    display: flex;
+    gap: 0.4rem;
+  }
+
+  .crate-file::before { content: '·'; color: var(--accent); flex-shrink: 0; }
+
+  .crate-file span { color: var(--txt3); }
+
+  .crate-chevron {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--txt3);
+    transition: transform 0.15s;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .crate.open .crate-chevron { transform: rotate(90deg); color: var(--accent); }
+
+  /* ── TAB 3: CONNECTORS ── */
+  .connector-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 2rem;
+  }
+
+  .connector-card {
+    background: var(--bg1);
+    padding: 1.25rem 0.75rem;
+    text-align: center;
+    transition: background 0.15s;
+  }
+
+  .connector-card:hover { background: var(--bg2); }
+
+  .connector-icon { font-size: 22px; margin-bottom: 0.5rem; display: block; }
+  .connector-name { font-family: var(--mono); font-size: 11px; font-weight: 600; color: #fff; margin-bottom: 0.4rem; }
+
+  .badge-kill { font-family: var(--mono); font-size: 9px; color: var(--red); background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.2); padding: 1px 6px; border-radius: 3px; display: inline-block; margin-bottom: 0.4rem; }
+  .badge-new  { font-family: var(--mono); font-size: 9px; color: var(--green); background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.2); padding: 1px 6px; border-radius: 3px; display: inline-block; margin-bottom: 0.4rem; }
+
+  .connector-detail {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--txt3);
+    line-height: 1.5;
+  }
+
+  /* connector detail card */
+  .connector-info-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .connector-info {
+    background: var(--bg1);
+    padding: 1.25rem;
+  }
+
+  .connector-info-name {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    color: #fff;
+    margin-bottom: 0.75rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .info-section {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    margin: 0.75rem 0 0.3rem;
+  }
+
+  .info-item {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--txt2);
+    line-height: 1.7;
+    display: flex;
+    gap: 0.5rem;
+    margin-bottom: 0.15rem;
+  }
+
+  .info-item::before { content: '·'; color: var(--txt3); flex-shrink: 0; font-weight: 600; }
+
+  /* ── TAB 4: SECURITY ── */
+  .threat-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  .threat-table th {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--txt3);
+    text-align: left;
+    padding: 0.6rem 1rem;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+  }
+
+  .threat-table td {
+    padding: 0.7rem 1rem;
+    border-bottom: 1px solid rgba(34,42,63,0.5);
+    vertical-align: top;
+    line-height: 1.55;
+  }
+
+  .threat-table tr:last-child td { border-bottom: none; }
+  .threat-table tr:hover td { background: var(--bg2); }
+
+  .threat-name { color: var(--txt); font-weight: 500; white-space: nowrap; }
+  .threat-fix  { color: var(--txt2); font-size: 11.5px; }
+
+  .sev {
+    font-family: var(--mono);
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+  }
+
+  .sev-critical { background: rgba(239,68,68,0.18); color: #fca5a5; }
+  .sev-high     { background: rgba(245,158,11,0.15); color: #fcd34d; }
+  .sev-medium   { background: rgba(167,139,250,0.15); color: #c4b5fd; }
+
+  /* signing flow */
+  .signing-flow {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 2rem;
+  }
+
+  .signing-step {
+    background: var(--bg1);
+    padding: 1.25rem;
+  }
+
+  .signing-actor {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 0.5rem;
+  }
+
+  .signing-action {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    color: #fff;
+    margin-bottom: 0.5rem;
+  }
+
+  .signing-detail {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--txt3);
+    line-height: 1.6;
+  }
+
+  /* ── TAB 5: APPS ── */
+  .apps-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 2rem;
+  }
+
+  .app-card { background: var(--bg1); padding: 1.5rem; }
+  .app-name { font-family: var(--mono); font-size: 15px; font-weight: 600; color: #fff; margin-bottom: 0.25rem; }
+  .app-desc { font-size: 12px; color: var(--txt2); margin-bottom: 1.25rem; line-height: 1.5; }
+
+  .file-tree { font-family: var(--mono); font-size: 11px; color: var(--txt3); line-height: 1.9; }
+  .file-tree .dir  { color: var(--accent); }
+  .file-tree .file { color: var(--txt2); }
+  .file-tree .note { color: var(--txt3); font-size: 10px; }
+
+  .api-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
+  .api-table th {
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--txt3);
+    text-align: left;
+    padding: 0.4rem 0.75rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .api-table td {
+    padding: 0.5rem 0.75rem;
+    border-bottom: 1px solid rgba(34,42,63,0.4);
+    vertical-align: top;
+  }
+
+  .api-table tr:hover td { background: var(--bg2); }
+
+  .method { font-weight: 600; }
+  .method-get    { color: var(--green); }
+  .method-post   { color: var(--accent); }
+  .method-put    { color: var(--amber); }
+  .method-delete { color: var(--red); }
+
+  .api-path { color: var(--txt2); }
+  .api-desc { color: var(--txt3); font-size: 10px; }
+
+  /* ── UTILITY: GRID LAYOUTS ── */
+  .grid-3, .grid-2, .grid-5 {
+    display: grid;
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+    margin-bottom: 2rem;
+  }
+  .grid-3 { grid-template-columns: repeat(3, 1fr); }
+  .grid-2 { grid-template-columns: repeat(2, 1fr); }
+  .grid-5 { grid-template-columns: repeat(5, 1fr); }
+
+  .grid-cell {
+    background: var(--bg1);
+    padding: 1.25rem;
+  }
+
+  .cell-label {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    margin-bottom: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+  }
+
+  .cell-label--green  { color: var(--green); }
+  .cell-label--amber  { color: var(--amber); }
+  .cell-label--red    { color: var(--red); }
+  .cell-label--purple { color: var(--purple); }
+  .cell-label--teal   { color: var(--teal); }
+  .cell-label--accent { color: var(--accent); }
+
+  .autonomy-cell {
+    background: var(--bg1);
+    padding: 1rem;
+    text-align: center;
+  }
+  .autonomy-cell--active {
+    background: var(--bg2);
+    border: 1px solid var(--accent);
+  }
+  .autonomy-level {
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 600;
+  }
+  .autonomy-name {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: #fff;
+    margin: 0.3rem 0;
+  }
+  .autonomy-desc {
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--txt3);
+    line-height: 1.5;
+  }
+
+  /* ── TAB 6: DEPS ── */
+  .dep-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+
+  .dep-table th {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--txt3);
+    text-align: left;
+    padding: 0.5rem 1rem;
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+    position: sticky;
+    top: 0;
+  }
+
+  .dep-table td {
+    padding: 0.55rem 1rem;
+    border-bottom: 1px solid rgba(34,42,63,0.5);
+    vertical-align: top;
+  }
+
+  .dep-table tr:hover td { background: var(--bg1); }
+  .dep-table tr:last-child td { border-bottom: none; }
+
+  .dep-name { color: var(--accent); font-weight: 400; }
+  .dep-ver  { color: var(--txt3); white-space: nowrap; }
+  .dep-use  { color: var(--txt2); line-height: 1.5; font-size: 11.5px; }
+
+  .dep-group {
+    font-size: 9px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--txt3);
+    background: var(--bg2);
+    padding: 0.4rem 1rem;
+    border-bottom: 1px solid var(--line);
+  }
+
+  /* ── TAB 7: CI / CONVENTIONS ── */
+  .gate-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.5rem;
+    margin-bottom: 2rem;
+  }
+
+  .gate {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--txt2);
+    background: var(--bg1);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 0.7rem 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    transition: border-color 0.15s, color 0.15s;
+  }
+
+  .gate:hover { border-color: var(--line2); color: var(--txt); }
+  .gate::before { content: '▶'; font-size: 9px; color: var(--accent); flex-shrink: 0; }
+
+  .convention-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .convention-side { background: var(--bg1); padding: 1.5rem; }
+
+  .convention-label {
+    font-family: var(--mono);
+    font-size: 12px;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .conv-good { color: var(--green); }
+  .conv-bad  { color: var(--red); }
+
+  .code-block {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--txt2);
+    line-height: 2;
+  }
+
+  .code-block .comment { color: var(--txt3); }
+  .code-block .kw      { color: var(--purple); }
+  .code-block .path    { color: var(--accent); }
+  .code-block .strike  { text-decoration: line-through; color: var(--red); opacity: 0.7; }
+
+  /* ── SCROLLBAR ── */
+  ::-webkit-scrollbar { width: 4px; height: 4px; }
+  ::-webkit-scrollbar-track { background: var(--bg); }
+  ::-webkit-scrollbar-thumb { background: var(--line2); border-radius: 2px; }
+
+  @media (max-width: 900px) {
+    .crates-grid       { grid-template-columns: repeat(2, 1fr); }
+    .connector-grid    { grid-template-columns: repeat(4, 1fr); }
+    .phase-strip       { grid-template-columns: 1fr; }
+    .apps-grid         { grid-template-columns: 1fr; }
+    .gate-grid         { grid-template-columns: 1fr; }
+    .convention-grid   { grid-template-columns: 1fr; }
+    .connector-info-grid { grid-template-columns: 1fr; }
+    .signing-flow      { grid-template-columns: 1fr; }
+    .flow              { flex-direction: column; }
+    .flow-step + .flow-step::before { display: none; }
+  }
+
+  @media (max-width: 600px) {
+    .crates-grid    { grid-template-columns: 1fr; }
+    .connector-grid { grid-template-columns: repeat(2, 1fr); }
+    header          { padding: 1.25rem 1rem 0; }
+    .tab-panel      { padding: 1.25rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="header-top">
+    <div>
+      <div class="header-eyebrow">scopecreep.zip · systems architecture · v2.0</div>
+      <h1>Spring<span>tale</span></h1>
+    </div>
+    <div class="header-meta">
+      <div>edition <b>rust 2024</b></div>
+      <div>target <b>1.85-stable</b></div>
+      <div>license <b>agpl-3.0</b></div>
+    </div>
+  </div>
+
+  <nav class="tab-nav">
+    <button class="tab-btn active" onclick="showTab('overview')">Overview</button>
+    <button class="tab-btn" onclick="showTab('crates')">Core Crates</button>
+    <button class="tab-btn" onclick="showTab('connectors')">Connectors</button>
+    <button class="tab-btn" onclick="showTab('security')">Security</button>
+    <button class="tab-btn" onclick="showTab('apps')">Applications</button>
+    <button class="tab-btn" onclick="showTab('ecosystem')">Ecosystem</button>
+    <button class="tab-btn" onclick="showTab('bots')">Bot Framework</button>
+    <button class="tab-btn" onclick="showTab('deps')">Dependencies</button>
+    <button class="tab-btn" onclick="showTab('appsec')">AppSec</button>
+    <button class="tab-btn" onclick="showTab('ci')">CI &amp; Conventions</button>
+  </nav>
+</header>
+
+<!-- ══════════════════════════════════════════
+     TAB 1 — OVERVIEW
+══════════════════════════════════════════ -->
+<div id="tab-overview" class="tab-panel active">
+
+  <div class="section-label">phase roadmap</div>
+  <div class="phase-strip">
+    <div class="phase phase-1a">
+      <div class="phase-tag">Phase 1a — Active</div>
+      <div class="phase-title">Framework + Connectors</div>
+      <div class="phase-desc">Typed, signed, sandboxed connector framework. 7 first-party connectors. MCP bridge. SQLite storage. TOML rules.</div>
+      <div class="phase-meta">
+        <div class="kill">⊗ kills nosytlabs.com</div>
+        <div class="transport">→ LocalTransport · NoopAdapter</div>
+        <div>springtaled · CLI · Docker</div>
+      </div>
+    </div>
+    <div class="phase phase-1b">
+      <div class="phase-tag">Phase 1b — Next</div>
+      <div class="phase-title">Bot Foundations</div>
+      <div class="phase-desc">Classical bot runtime. Deterministic command routing. First chat connector (Telegram). No AI needed — same patterns as IRC/Discord bots since the 1990s.</div>
+      <div class="phase-meta">
+        <div style="color: var(--green);">bridge to OpenClaw kill</div>
+        <div class="transport">→ /search · /help · /remind</div>
+        <div>springtale-bot · connector-telegram</div>
+      </div>
+    </div>
+    <div class="phase phase-2a">
+      <div class="phase-tag">Phase 2a — Planned</div>
+      <div class="phase-title">OpenClaw Parity</div>
+      <div class="phase-desc">Full chat coverage (7 connectors). User plugs in their own AI as fallback parser. NL→Rule. Sentinel. Sub-agents. Voice.</div>
+      <div class="phase-meta">
+        <div class="kill">⊗ kills openclaw.ai (310K★)</div>
+        <div class="transport">→ HttpTransport · bring your own AI</div>
+        <div>People switch safely. Free.</div>
+      </div>
+    </div>
+    <div class="phase phase-2b">
+      <div class="phase-tag">Phase 2b — Planned</div>
+      <div class="phase-title">Desktop + Mobile</div>
+      <div class="phase-desc">Tauri 2 shell (5 platforms). Visual rule builder. Canvas/A2UI. Web dashboard. Mobile AI: pair with home server, on-device model, or API key.</div>
+      <div class="phase-meta">
+        <div class="transport">→ Tauri 2 native</div>
+        <div>macOS · Win · Linux · iOS · Android</div>
+      </div>
+    </div>
+    <div class="phase phase-3">
+      <div class="phase-tag">Phase 3 — Future</div>
+      <div class="phase-title">Veilid Mesh</div>
+      <div class="phase-desc">P2P encrypted AI chat via Rekindle. No server. No phone number. Zero metadata. Bots as community members.</div>
+      <div class="phase-meta">
+        <div style="color: var(--purple);">→ VeilidTransport</div>
+        <div>connector-rekindle · DHT registry</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label">event pipeline (works with NoopAdapter — AI is optional)</div>
+  <div class="flow" style="margin-bottom: 2rem;">
+    <div class="flow-step">
+      <div class="flow-num">01</div>
+      <div class="flow-name">Trigger</div>
+      <div class="flow-sub">Cron · Webhook<br>FileWatch · P2P<br>ConnectorEvent</div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num">02</div>
+      <div class="flow-name">Rule Match</div>
+      <div class="flow-sub">RuleEngine loads<br>TOML rules · match<br>trigger type</div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num">03</div>
+      <div class="flow-name">Evaluate</div>
+      <div class="flow-sub">ConditionEvaluator<br>pure function<br>no AI · no network</div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num">04</div>
+      <div class="flow-name">Sentinel</div>
+      <div class="flow-sub">Behavioral check<br>toxic combo gate<br>autonomy level</div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num">05</div>
+      <div class="flow-name">Execute</div>
+      <div class="flow-sub">Connector sandbox<br>capability check<br>fuel metered</div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num">06</div>
+      <div class="flow-name">Transform</div>
+      <div class="flow-sub">Extract · Format<br>Filter · Template<br>no AI needed</div>
+    </div>
+    <div class="flow-step">
+      <div class="flow-num">07</div>
+      <div class="flow-name">Output</div>
+      <div class="flow-sub">Event log write<br>chain next action<br>notify · emit</div>
+    </div>
+  </div>
+  <div class="legend">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div>deterministic at every stage</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div>retry re-enters at configurable stage</div>
+    <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>exhausted retries → dead letter queue</div>
+  </div>
+
+  <div class="section-label" style="margin-top: 2rem;">system layers</div>
+  <div class="card" style="margin-bottom: 1rem;">
+    <div style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem;">
+      <div style="font-family: var(--mono); font-size: 11px; color: var(--txt3); text-transform: uppercase; letter-spacing: 0.1em;">Frontend (trusted rendering only)</div>
+      <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+        <span class="pill pill-blue">SolidJS</span>
+        <span class="pill pill-blue">TypeScript 5.7</span>
+        <span class="pill pill-blue">Tailwind 4</span>
+        <span class="pill pill-gray">Tauri 2 IPC</span>
+        <span class="pill pill-purple">iOS (Swift)</span>
+        <span class="pill pill-purple">Android (Kotlin)</span>
+        <span class="pill pill-gray">no secrets · no crypto · no logic</span>
+      </div>
+    </div>
+    <div style="padding: 0.5rem 1.25rem; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; background: var(--bg);">
+      <div style="font-family: var(--mono); font-size: 10px; color: var(--line2); text-transform: uppercase; letter-spacing: 0.1em;">Tauri 2 IPC Bridge</div>
+      <div style="font-family: var(--mono); font-size: 10px; display: flex; gap: 1.5rem;">
+        <span style="color: var(--green);">↓ Commands: Frontend → Rust</span>
+        <span style="color: var(--accent);">↑ Events: Rust → Frontend</span>
+      </div>
+    </div>
+    <div style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--line);">
+      <div style="font-family: var(--mono); font-size: 10px; color: var(--txt3); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.75rem;">Core library crates (no Tauri dependency · independently testable) — <span style="color: var(--accent);">see Core Crates tab</span></div>
+      <div style="display: flex; flex-wrap: wrap; gap: 0.4rem;">
+        <span class="pill pill-teal">springtale-core</span>
+        <span class="pill pill-teal">springtale-crypto</span>
+        <span class="pill pill-teal">springtale-transport</span>
+        <span class="pill pill-teal">springtale-connector</span>
+        <span class="pill pill-teal">springtale-scheduler</span>
+        <span class="pill pill-teal">springtale-store</span>
+        <span class="pill pill-teal">springtale-ai</span>
+        <span class="pill pill-teal">springtale-mcp</span>
+        <span class="pill pill-teal">springtale-bot</span>
+        <span class="pill pill-red">springtale-sentinel</span>
+      </div>
+    </div>
+    <div style="padding: 0.75rem 1.25rem; border-bottom: 1px solid var(--line); background: var(--bg); display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.5rem;">
+      <div style="font-family: var(--mono); font-size: 10px; color: var(--txt3); text-transform: uppercase; letter-spacing: 0.1em;">AI Adapter (optional)</div>
+      <div style="display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center;">
+        <span class="pill pill-green">NoopAdapter (default)</span>
+        <span class="pill pill-teal">OllamaAdapter</span>
+        <span class="pill pill-blue">OpenAiCompatAdapter</span>
+        <span class="pill pill-purple">AnthropicAdapter</span>
+        <span class="pill pill-gray">Voice STT/TTS</span>
+      </div>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line);">
+      <div style="background: var(--bg1); padding: 1rem 1.25rem;">
+        <div style="font-family: var(--mono); font-size: 10px; color: var(--green); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.3rem;">Phase 1 — Active</div>
+        <div style="font-family: var(--mono); font-size: 13px; font-weight: 600; color: #fff;">LocalTransport</div>
+        <div style="font-family: var(--mono); font-size: 10px; color: var(--txt3);">tokio Unix sockets · same machine</div>
+      </div>
+      <div style="background: var(--bg1); padding: 1rem 1.25rem;">
+        <div style="font-family: var(--mono); font-size: 10px; color: var(--amber); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.3rem;">Phase 2a — Planned</div>
+        <div style="font-family: var(--mono); font-size: 13px; font-weight: 600; color: #fff;">HttpTransport</div>
+        <div style="font-family: var(--mono); font-size: 10px; color: var(--txt3);">axum + reqwest · mTLS · LAN/VPN</div>
+      </div>
+      <div style="background: var(--bg1); padding: 1rem 1.25rem;">
+        <div style="font-family: var(--mono); font-size: 10px; color: var(--purple); text-transform: uppercase; letter-spacing: 0.1em; margin-bottom: 0.3rem;">Phase 3 — Stub Ready</div>
+        <div style="font-family: var(--mono); font-size: 13px; font-weight: 600; color: #fff;">VeilidTransport</div>
+        <div style="font-family: var(--mono); font-size: 10px; color: var(--txt3); line-height: 1.6;">rekindle-protocol · DHT · P2P<br>
+        <span style="color: var(--purple);">three-path delivery:</span><br>
+        1. SMPL write (durable, offline catchup)<br>
+        2. gossip via app_message (fast)<br>
+        3. watch+inspect (consistency)<br>
+        <span style="color: var(--txt3);">VICE NAT traversal · private routes</span></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════
+     TAB 2 — CORE CRATES
+══════════════════════════════════════════ -->
+<div id="tab-crates" class="tab-panel">
+
+  <div class="section-label">click any crate to expand modules</div>
+  <div class="crates-grid">
+
+    <div class="crate" onclick="toggleCrate(this)">
+      <div class="crate-header">
+        <div>
+          <div class="crate-name">springtale-core</div>
+          <div class="crate-summary">Rule engine · Pipeline<br>Transform · No AI required</div>
+          <span class="crate-badge badge-forbid">#![forbid(unsafe_code)]</span>
+        </div>
+        <div class="crate-chevron">▶</div>
+      </div>
+      <div class="crate-expand">
+        <div class="crate-expand-title">pipeline engine</div>
+        <div class="crate-file">pipeline/compose.rs <span>— compose_pipeline(), retry graph, fuel budget</span></div>
+        <div class="crate-file">pipeline/stage.rs <span>— Stage trait (async native)</span></div>
+        <div class="crate-file">pipeline/context.rs <span>— PipelineContext&lt;I,O&gt; + Attachment multimedia</span></div>
+        <div class="crate-expand-title" style="margin-top: 0.6rem;">rule engine (works without AI)</div>
+        <div class="crate-file">rule/engine.rs <span>— RuleEngine: load TOML, match triggers, dispatch actions</span></div>
+        <div class="crate-file">rule/evaluate.rs <span>— ConditionEvaluator: Condition × Payload → bool (pure function)</span></div>
+        <div class="crate-file">rule/template.rs <span>— RuleTemplate: pre-built IFTTT-style recipes</span></div>
+        <div class="crate-file">rule/parse.rs <span>— TOML rule file parser + garde validation</span></div>
+        <div class="crate-file">rule/trigger.rs <span>— Trigger enum: Cron | Webhook | FileWatch | ConnectorEvent | P2P</span></div>
+        <div class="crate-file">rule/condition.rs <span>— And/Or/Not/FieldEquals/Regex/TimeInRange (max depth 8)</span></div>
+        <div class="crate-file">rule/action.rs <span>— RunConnector | Chain | Transform | Delay | AiComplete (optional)</span></div>
+        <div class="crate-expand-title" style="margin-top: 0.6rem;">data transforms (non-AI)</div>
+        <div class="crate-file">transform/extract.rs <span>— JSONPath / field extraction from trigger payloads</span></div>
+        <div class="crate-file">transform/format.rs <span>— String formatting, ${var} template resolution</span></div>
+        <div class="crate-file">transform/filter.rs <span>— Filter/map/reduce on collections</span></div>
+        <div class="crate-file">router/dispatch.rs <span>— routes triggers to RuleEngine for matching + dispatch</span></div>
+      </div>
+    </div>
+
+    <div class="crate" onclick="toggleCrate(this)">
+      <div class="crate-header">
+        <div>
+          <div class="crate-name">springtale-crypto</div>
+          <div class="crate-summary">Ed25519 identity<br>Vault · Signing</div>
+          <span class="crate-badge badge-deny">#![deny(unsafe_code)]</span>
+        </div>
+        <div class="crate-chevron">▶</div>
+      </div>
+      <div class="crate-expand">
+        <div class="crate-expand-title">modules</div>
+        <div class="crate-file">identity/keypair.rs <span>— AgentKeypair wrapping ed25519-dalek SigningKey</span></div>
+        <div class="crate-file">identity/node_id.rs <span>— NodeId newtype over [u8;32], Display as hex</span></div>
+        <div class="crate-file">identity/derivation.rs <span>— HKDF-SHA256 pseudonym derivation</span></div>
+        <div class="crate-file">vault/store.rs <span>— encrypted KV store, never returns raw bytes</span></div>
+        <div class="crate-file">vault/kdf.rs <span>— Argon2id passphrase → vault key</span></div>
+        <div class="crate-file">vault/cipher.rs <span>— XChaCha20-Poly1305 AEAD encrypt/decrypt</span></div>
+        <div class="crate-file">signature/sign.rs <span>— sign arbitrary bytes with Ed25519</span></div>
+        <div class="crate-file">signature/verify.rs <span>— verify manifest signatures, canonical JSON</span></div>
+        <div class="crate-file">token/capability_token.rs <span>— signed capability grant tokens</span></div>
+        <div class="crate-file">secret/api_key.rs <span>— ApiKey newtype over Secret&lt;String&gt;</span></div>
+      </div>
+    </div>
+
+    <div class="crate" onclick="toggleCrate(this)">
+      <div class="crate-header">
+        <div>
+          <div class="crate-name">springtale-transport</div>
+          <div class="crate-summary">Transport trait<br>Phase 1→2→3 impls</div>
+          <span class="crate-badge badge-forbid">#![forbid(unsafe_code)]</span>
+        </div>
+        <div class="crate-chevron">▶</div>
+      </div>
+      <div class="crate-expand">
+        <div class="crate-expand-title">modules</div>
+        <div class="crate-file">transport/trait_.rs <span>— Transport trait (send/recv/node_id/name)</span></div>
+        <div class="crate-file">message.rs <span>— Message: id, payload bytes, signature</span></div>
+        <div class="crate-file">local/unix_socket.rs <span>— Phase 1: tokio UnixListener</span></div>
+        <div class="crate-file">http/server.rs <span>— Phase 2a: axum inbound</span></div>
+        <div class="crate-file">http/client.rs <span>— Phase 2a: reqwest outbound + mTLS</span></div>
+        <div class="crate-file">http/auth.rs <span>— Phase 2a: HMAC-SHA256 signed requests</span></div>
+        <div class="crate-file">veilid/stub.rs <span>— Phase 3: unimplemented!() → rekindle-protocol</span></div>
+        <div class="crate-expand-title" style="margin-top: 0.6rem;">key design</div>
+        <div class="crate-file">Arc&lt;dyn Transport&gt; <span>— no crate imports a concrete impl directly</span></div>
+        <div class="crate-file">feature flags <span>— transport-local | transport-http | transport-veilid</span></div>
+      </div>
+    </div>
+
+    <div class="crate" onclick="toggleCrate(this)">
+      <div class="crate-header">
+        <div>
+          <div class="crate-name">springtale-connector</div>
+          <div class="crate-summary">Connector runtime<br>Native + WASM sandbox</div>
+          <span class="crate-badge badge-deny">#![deny(unsafe_code)]</span>
+        </div>
+        <div class="crate-chevron">▶</div>
+      </div>
+      <div class="crate-expand">
+        <div class="crate-expand-title">two trust levels (like browser extensions vs web pages)</div>
+        <div class="crate-file">NativeConnector <span>— first-party Rust, in-process, capability-checked at runtime</span></div>
+        <div class="crate-file">WasmConnector <span>— community code, Wasmtime sandbox, fuel metering, memory limits</span></div>
+        <div class="crate-expand-title" style="margin-top: 0.6rem;">modules</div>
+        <div class="crate-file">connector/trait_.rs <span>— Connector trait: triggers(), actions(), execute(), on_event()</span></div>
+        <div class="crate-file">manifest/types.rs <span>— ConnectorManifest, Capability enum, DataDisclosure</span></div>
+        <div class="crate-file">manifest/verify.rs <span>— Ed25519 signature verification, schema hash check</span></div>
+        <div class="crate-file">native/runtime.rs <span>— load first-party Rust connectors</span></div>
+        <div class="crate-file">native/capability.rs <span>— runtime capability check before every execute()</span></div>
+        <div class="crate-file">wasm/runtime.rs <span>— Wasmtime Engine (shared) + per-connector Store</span></div>
+        <div class="crate-file">wasm/limits.rs <span>— fuel: 10M, memory: 64MB, timeout: 30s</span></div>
+        <div class="crate-file">wasm/host_api.rs <span>— WASI host functions (capability-gated)</span></div>
+        <div class="crate-file">registry/loader.rs <span>— parse → verify → approve → instantiate → register</span></div>
+        <div class="crate-expand-title" style="margin-top: 0.6rem;">capability enforcement</div>
+        <div class="crate-file">check_capability() <span>— runs BEFORE every execute(), both native and WASM</span></div>
+        <div class="crate-file">NetworkOutbound <span>— exact host match, no wildcards</span></div>
+        <div class="crate-file">ShellExec <span>— requires signed CapabilityGrant from user</span></div>
+      </div>
+    </div>
+
+    <div class="crate" onclick="toggleCrate(this)">
+      <div class="crate-header">
+        <div>
+          <div class="crate-name">springtale-scheduler</div>
+          <div class="crate-summary">Cron · Watchers<br>Queue · Retry</div>
+          <span class="crate-badge badge-forbid">#![forbid(unsafe_code)]</span>
+        </div>
+        <div class="crate-chevron">▶</div>
+      </div>
+      <div class="crate-expand">
+        <div class="crate-expand-title">modules</div>
+        <div class="crate-file">cron/executor.rs <span>— tokio cron job runner from cron expression</span></div>
+        <div class="crate-file">watcher/fs_watcher.rs <span>— notify crate filesystem event watcher</span></div>
+        <div class="crate-file">queue/producer.rs <span>— enqueue jobs via StorageBackend trait</span></div>
+        <div class="crate-file">queue/consumer.rs <span>— blocking pop, concurrency limit</span></div>
+        <div class="crate-file">queue/priority.rs <span>— Critical|High|Normal|Low priority levels</span></div>
+        <div class="crate-file">retry/backoff.rs <span>— exponential backoff with jitter</span></div>
+        <div class="crate-file">state/trigger_state.rs <span>— last_fired, next_fire, error_count per trigger</span></div>
+      </div>
+    </div>
+
+    <div class="crate" onclick="toggleCrate(this)">
+      <div class="crate-header">
+        <div>
+          <div class="crate-name">springtale-store</div>
+          <div class="crate-summary">PostgreSQL + sqlx<br>Migrations · Queries</div>
+          <span class="crate-badge badge-forbid">#![forbid(unsafe_code)]</span>
+        </div>
+        <div class="crate-chevron">▶</div>
+      </div>
+      <div class="crate-expand">
+        <div class="crate-expand-title">modules</div>
+        <div class="crate-file">backend/trait_.rs <span>— StorageBackend trait (SQLite default, PostgreSQL optional)</span></div>
+        <div class="crate-file">schema/connectors.rs <span>— connectors table types</span></div>
+        <div class="crate-file">schema/events.rs <span>— events table, TTL expiry column</span></div>
+        <div class="crate-file">schema/rules.rs <span>— rules table types</span></div>
+        <div class="crate-file">schema/jobs.rs <span>— scheduler jobs table</span></div>
+        <div class="crate-file">migrations/001_init.sql <span>— embedded via sqlx::migrate!()</span></div>
+        <div class="crate-file">queries/connectors.rs <span>— compile-time verified CRUD SQL</span></div>
+        <div class="crate-file">queries/events.rs <span>— event log queries</span></div>
+        <div class="crate-file">queries/rules.rs <span>— rule management queries</span></div>
+        <div class="crate-expand-title" style="margin-top: 0.6rem;">principles</div>
+        <div class="crate-file">sensitive payload columns <span>— encrypted at app layer before write</span></div>
+        <div class="crate-file">all timestamps <span>— UTC, stored as TIMESTAMPTZ</span></div>
+      </div>
+    </div>
+
+    <div class="crate" onclick="toggleCrate(this)">
+      <div class="crate-header">
+        <div>
+          <div class="crate-name">springtale-ai</div>
+          <div class="crate-summary">Bring your own AI<br>Noop default · socket trait</div>
+          <span class="crate-badge badge-forbid">#![forbid(unsafe_code)]</span>
+        </div>
+        <div class="crate-chevron">▶</div>
+      </div>
+      <div class="crate-expand">
+        <div class="crate-expand-title">the plugin socket (we don't provide AI — user brings theirs)</div>
+        <div class="crate-file">adapter/trait_.rs <span>— AiAdapter trait: the socket user plugs AI into</span></div>
+        <div class="crate-file">noop/adapter.rs <span>— NoopAdapter: Err(AiDisabled) — the default, zero deps</span></div>
+        <div class="crate-file">ollama/adapter.rs <span>— thin client to user's local Ollama</span></div>
+        <div class="crate-file">openai/adapter.rs <span>— thin client to user's OpenAI-compat endpoint</span></div>
+        <div class="crate-file">anthropic/adapter.rs <span>— thin client to user's Anthropic endpoint</span></div>
+        <div class="crate-file">parser/rule_gen.rs <span>— NL → Rule: user's AI parses intent into TOML rule</span></div>
+        <div class="crate-file">request.rs <span>— AiRequest: closed enum, Secret&lt;T&gt; can't serialize into it</span></div>
+        <div class="crate-expand-title" style="margin-top: 0.6rem;">malwarevangelist-bot pattern: LLM/agent is detachable</div>
+        <div class="crate-file">NoopAdapter default <span>— bot works without any AI. unplug adapter, nothing breaks.</span></div>
+      </div>
+    </div>
+
+    <div class="crate" onclick="toggleCrate(this)">
+      <div class="crate-header">
+        <div>
+          <div class="crate-name">springtale-mcp</div>
+          <div class="crate-summary">MCP protocol adapter<br>rmcp · stdio / SSE</div>
+          <span class="crate-badge badge-forbid">#![forbid(unsafe_code)]</span>
+        </div>
+        <div class="crate-chevron">▶</div>
+      </div>
+      <div class="crate-expand">
+        <div class="crate-expand-title">modules</div>
+        <div class="crate-file">server/builder.rs <span>— build rmcp McpServer from Connector impl</span></div>
+        <div class="crate-file">adapter/connector.rs <span>— any Connector → MCP tool list (auto-generated)</span></div>
+        <div class="crate-file">transport/stdio.rs <span>— StdioServerTransport for CLI use</span></div>
+        <div class="crate-file">transport/sse.rs <span>— SSE transport for remote / browser AI tools</span></div>
+        <div class="crate-expand-title" style="margin-top: 0.6rem;">security: inherited from connector sandbox</div>
+        <div class="crate-file">No custom security modules <span>— connector sandbox IS the security layer</span></div>
+        <div class="crate-file">Follows CoSAI MCP threat model <span>— tool poisoning, rug pull, shadowing all handled by existing sandbox</span></div>
+        <div class="crate-file">MCP is a thin bridge <span>— not a separate trust boundary</span></div>
+      </div>
+    </div>
+
+    <div class="crate" onclick="toggleCrate(this)">
+      <div class="crate-header">
+        <div>
+          <div class="crate-name">springtale-bot</div>
+          <div class="crate-summary">Classical bot runtime<br>Phase 1b · command router</div>
+          <span class="crate-badge badge-forbid">#![forbid(unsafe_code)]</span>
+        </div>
+        <div class="crate-chevron">▶</div>
+      </div>
+      <div class="crate-expand">
+        <div class="crate-expand-title">phase 1b — classical bot core (no AI needed)</div>
+        <div class="crate-file">runtime/event_loop.rs <span>— main loop: receive from all connectors, dispatch</span></div>
+        <div class="crate-file">runtime/headless.rs <span>— no Tauri, no GUI, runs as daemon</span></div>
+        <div class="crate-file">router/prefix.rs <span>— /search · /help · /remind · /status</span></div>
+        <div class="crate-file">router/pattern.rs <span>— regex triggers, keyword detection</span></div>
+        <div class="crate-file">router/alias.rs <span>— user-defined command aliases</span></div>
+        <div class="crate-file">router/fallback.rs <span>— no match → unknown cmd (1b) or AI (2a)</span></div>
+        <div class="crate-file">handler/builtin.rs <span>— /help · /status · /rules · /connectors</span></div>
+        <div class="crate-file">handler/connector.rs <span>— route command to named connector action</span></div>
+        <div class="crate-file">state/session.rs <span>— per-user, per-channel session (SQLite)</span></div>
+        <div class="crate-file">state/persona.rs <span>— bot name, tone, response templates</span></div>
+        <div class="crate-file">memory/persistent.rs <span>— SQLite-backed (not Markdown files)</span></div>
+        <div class="crate-file">identity/bot_id.rs <span>— Ed25519 keypair + HKDF pseudonym</span></div>
+        <div class="crate-expand-title" style="margin-top: 0.6rem;">phase 2a additions</div>
+        <div class="crate-file">orchestrator/recursive.rs <span>— Clicky-derived subagent spawning</span></div>
+        <div class="crate-file">bridge/atproto.rs <span>— ATProto (malwarevangelist-derived)</span></div>
+        <div class="crate-file">bridge/rekindle.rs <span>— Phase 3: community member (§31)</span></div>
+      </div>
+    </div>
+
+    <!-- springtale-sentinel -->
+    <div class="crate-card" onclick="this.classList.toggle('open')">
+      <div class="crate-card-header">
+        <div>
+          <div class="crate-name" style="color: var(--red);">springtale-sentinel</div>
+          <div class="crate-summary">Runtime monitor<br>Phase 2a · hard constraints</div>
+          <span class="crate-badge badge-deny">#![deny(unsafe_code)]</span>
+        </div>
+        <div class="crate-chevron">▶</div>
+      </div>
+      <div class="crate-expand">
+        <div class="crate-expand-title">layer 1 — hard constraints (zero false positives)</div>
+        <div class="crate-file">rate_limiter.rs <span>— actions/minute per connector (default: 60)</span></div>
+        <div class="crate-file">circuit_breaker.rs <span>— 3 failures → stage disabled, auto-reset after cooldown</span></div>
+        <div class="crate-file">dead_man.rs <span>— N actions/min without user → all pipelines pause</span></div>
+        <div class="crate-file">toxic_pairs.rs <span>— KeychainRead+NetworkOut(other host) = blocked at install</span></div>
+        <div class="crate-file">impact.rs <span>— read-only / reversible / destructive classification</span></div>
+        <div class="crate-file">audit/trail.rs <span>— append-only audit log (SQLite)</span></div>
+        <div class="crate-file">audit/export.rs <span>— export for CLI review</span></div>
+        <div class="crate-expand-title" style="margin-top: 0.6rem;">deferred (not Phase 2a)</div>
+        <div class="crate-file">statistical baselines <span>— requires defining "normal" per bot, varies by use case</span></div>
+        <div class="crate-file">trajectory analysis <span>— research-grade, deferred. Layer 1 alone beats OpenClaw's zero monitoring.</span></div>
+      </div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════
+     TAB 3 — CONNECTORS
+══════════════════════════════════════════ -->
+<div id="tab-connectors" class="tab-panel">
+
+  <div class="section-label">first-party connectors (rust · native · no wasm overhead)</div>
+  <div class="connector-grid" style="margin-bottom: 2rem;">
+    <div class="connector-card">
+      <span class="connector-icon">📡</span>
+      <div class="connector-name">connector-kick</div>
+      <div><span class="badge-kill">⊗ KickMCP</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">OAuth2 PKCE<br>WebSocket chat<br>stream events</div>
+    </div>
+    <div class="connector-card">
+      <span class="connector-icon">🔍</span>
+      <div class="connector-name">connector-presearch</div>
+      <div><span class="badge-kill">⊗ presearch-mcp</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">privacy search<br>TTL result cache<br>multi-language</div>
+    </div>
+    <div class="connector-card">
+      <span class="connector-icon">🦋</span>
+      <div class="connector-name">connector-bluesky</div>
+      <div><span class="badge-new">new</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">ATProto sessions<br>Jetstream firehose<br>post / reply</div>
+    </div>
+    <div class="connector-card">
+      <span class="connector-icon">🐙</span>
+      <div class="connector-name">connector-github</div>
+      <div><span class="badge-new">new</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">REST + GraphQL<br>webhook HMAC<br>issues / PRs</div>
+    </div>
+    <div class="connector-card">
+      <span class="connector-icon">📁</span>
+      <div class="connector-name">connector-filesystem</div>
+      <div><span class="badge-new">new</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">notify watcher<br>path allow-list<br>read / write</div>
+    </div>
+    <div class="connector-card">
+      <span class="connector-icon">⚡</span>
+      <div class="connector-name">connector-shell</div>
+      <div><span class="badge-new">new</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">command allow-list<br>timeout enforced<br>ShellExec cap req.</div>
+    </div>
+    <div class="connector-card">
+      <span class="connector-icon">🌐</span>
+      <div class="connector-name">connector-http</div>
+      <div><span class="badge-new">new</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">reqwest rustls-tls<br>webhook ingest<br>typed responses</div>
+    </div>
+  </div>
+
+  <div class="section-label">connector detail breakdown</div>
+  <div class="connector-info-grid">
+
+    <div class="connector-info">
+      <div class="connector-info-name">📡 connector-kick <span class="badge-kill">⊗ replaces KickMCP</span></div>
+      <div class="info-section">src layout</div>
+      <div class="info-item">config.rs — KickConfig with Secret&lt;String&gt; client_secret</div>
+      <div class="info-item">auth/oauth.rs — OAuth2 PKCE flow, no implicit grant</div>
+      <div class="info-item">auth/token.rs — token storage, refresh, expiry detection</div>
+      <div class="info-item">client/api.rs — typed Kick API client over reqwest</div>
+      <div class="info-item">triggers/chat_message.rs — WebSocket chat event handler</div>
+      <div class="info-item">triggers/stream_live.rs — stream go-live event</div>
+      <div class="info-item">actions/chat_send.rs — send chat message (rate-limited)</div>
+      <div class="info-item">actions/channel_get.rs — fetch channel metadata</div>
+      <div class="info-section">capabilities declared in manifest</div>
+      <div class="info-item">network:outbound:api.kick.com</div>
+      <div class="info-item">network:outbound:kick.com (WebSocket)</div>
+      <div class="info-item">keychain:read:kick_oauth_token</div>
+    </div>
+
+    <div class="connector-info">
+      <div class="connector-info-name">🦋 connector-bluesky <span class="badge-new">new</span></div>
+      <div class="info-section">src layout</div>
+      <div class="info-item">config.rs — BlueskyConfig: handle + app password (Secret)</div>
+      <div class="info-item">atproto/session.rs — ATP session management, token refresh</div>
+      <div class="info-item">atproto/lexicon.rs — app.bsky.* lexicon typed structs</div>
+      <div class="info-item">firehose/jetstream.rs — Jetstream WebSocket consumer</div>
+      <div class="info-item">triggers/mention.rs — fires on @mention events</div>
+      <div class="info-item">triggers/follow.rs — fires on new follower</div>
+      <div class="info-item">actions/post.rs — create post with optional embed</div>
+      <div class="info-item">actions/reply.rs — threaded reply with parent ref</div>
+      <div class="info-section">source</div>
+      <div class="info-item">extends malwarevangelist-bot ATProto patterns</div>
+      <div class="info-item">Jetstream firehose already proven in production</div>
+    </div>
+
+    <div class="connector-info">
+      <div class="connector-info-name">🐙 connector-github <span class="badge-new">new</span></div>
+      <div class="info-section">src layout</div>
+      <div class="info-item">config.rs — GithubConfig: PAT as Secret&lt;String&gt;</div>
+      <div class="info-item">client/api.rs — GitHub REST v3 + GraphQL typed client</div>
+      <div class="info-item">webhook/verify.rs — HMAC-SHA256 signature verification</div>
+      <div class="info-item">triggers/push.rs — repository push event</div>
+      <div class="info-item">triggers/pull_request.rs — PR opened/merged/closed</div>
+      <div class="info-item">triggers/issue.rs — issue opened/labeled/closed</div>
+      <div class="info-item">actions/create_issue.rs — open issue with labels</div>
+      <div class="info-item">actions/comment.rs — comment on PR or issue</div>
+      <div class="info-section">security</div>
+      <div class="info-item">all inbound webhooks verified via HMAC before processing</div>
+    </div>
+
+    <div class="connector-info">
+      <div class="connector-info-name">⚡ connector-shell <span class="badge-new">new · high privilege</span></div>
+      <div class="info-section">src layout</div>
+      <div class="info-item">config.rs — ShellConfig: allowed_commands Vec&lt;String&gt;</div>
+      <div class="info-item">sandbox/policy.rs — command allow-list enforcement</div>
+      <div class="info-item">actions/exec.rs — run allowed command, capture stdout/stderr</div>
+      <div class="info-item">actions/exec_privileged.rs — requires ShellExec capability</div>
+      <div class="info-section">capability requirements</div>
+      <div class="info-item">Capability::ShellExec — triggers approval modal in Tauri</div>
+      <div class="info-item">user must explicitly approve before connector loads</div>
+      <div class="info-item">command allow-list checked at runtime, not at install</div>
+      <div class="info-section">invariants</div>
+      <div class="info-item">no shell=true, no dynamic command construction</div>
+      <div class="info-item">timeout enforced on every exec — no runaway processes</div>
+    </div>
+
+  </div>
+
+  <div class="legend" style="margin-top: 1rem;">
+    <div class="legend-item"><div class="legend-dot" style="background:var(--txt3)"></div>community connectors: TypeScript → wasm32-wasip2 → Wasmtime sandbox — same Connector interface, capability-gated</div>
+  </div>
+
+  <div class="section-label" style="margin-top: 2rem;">chat connectors — phase 1b (telegram) + phase 2a (remaining) — sandboxed, not full-access</div>
+  <div class="connector-grid" style="grid-template-columns: repeat(6, 1fr); margin-bottom: 2rem;">
+    <div class="connector-card" style="border: 1px solid var(--green);">
+      <span class="connector-icon">💬</span>
+      <div class="connector-name">connector-telegram</div>
+      <div><span class="badge-new" style="background: var(--green2); color: #6ee7b7;">Phase 1b</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">first chat connector<br>Bot API typed<br>command routing</div>
+    </div>
+    <div class="connector-card">
+      <span class="connector-icon">🎮</span>
+      <div class="connector-name">connector-discord</div>
+      <div><span class="badge-kill">⊗ discord.js (npm)</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">gateway WS<br>slash commands<br>voice channels</div>
+    </div>
+    <div class="connector-card">
+      <span class="connector-icon">🔒</span>
+      <div class="connector-name">connector-signal</div>
+      <div><span class="badge-kill">⊗ signal-cli (Java)</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">signal-cli bridge<br>E2E encrypted<br>disappearing msgs</div>
+    </div>
+    <div class="connector-card">
+      <span class="connector-icon">📱</span>
+      <div class="connector-name">connector-whatsapp</div>
+      <div><span class="badge-kill">⊗ Baileys (npm)</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">Baileys-equiv<br>sandboxed<br>QR pairing</div>
+    </div>
+    <div class="connector-card">
+      <span class="connector-icon">🌐</span>
+      <div class="connector-name">connector-matrix</div>
+      <div><span class="badge-new">new</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">Matrix SDK<br>federated rooms<br>E2E encryption</div>
+    </div>
+    <div class="connector-card">
+      <span class="connector-icon">📺</span>
+      <div class="connector-name">connector-irc</div>
+      <div><span class="badge-new">new</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">raw TCP + TLS<br>lightweight<br>classic protocol</div>
+    </div>
+  </div>
+
+  <div class="section-label">phase 3 distributed connector registry (postgresql → veilid dht)</div>
+  <div class="signing-flow" style="margin-bottom: 1rem;">
+    <div class="signing-step">
+      <div class="signing-actor">Phase 1-2: PostgreSQL</div>
+      <div class="signing-action">Centralized registry</div>
+      <div class="signing-detail">SQLite stores connector manifests (default). PostgreSQL optional for multi-user server mode. Works for single-machine and LAN deployments.</div>
+    </div>
+    <div class="signing-step">
+      <div class="signing-actor">Migration</div>
+      <div class="signing-action">RegistryBackend trait</div>
+      <div class="signing-detail">PgRegistryBackend wraps existing queries. DhtRegistryBackend wraps Veilid DHT. runtime::boot selects based on transport. One-time: springtale-cli registry migrate --to-dht</div>
+    </div>
+    <div class="signing-step">
+      <div class="signing-actor">Phase 3: Veilid DHT</div>
+      <div class="signing-action">Distributed registry</div>
+      <div class="signing-detail">SMPL record (o_cnt: 0, 255 subkeys). Each author writes signed manifest to own subkey. Readers verify Ed25519 before load. watch_dht_values for update notification.</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════
+     TAB 4 — SECURITY
+══════════════════════════════════════════ -->
+<div id="tab-security" class="tab-panel">
+
+  <div class="section-label">manifest signing flow</div>
+  <div class="signing-flow" style="margin-bottom: 2rem;">
+    <div class="signing-step">
+      <div class="signing-actor">Connector author</div>
+      <div class="signing-action">Sign manifest with Ed25519 private key</div>
+      <div class="signing-detail">Canonical JSON of manifest fields (excluding signature field itself) is signed. Author pubkey included in manifest.</div>
+    </div>
+    <div class="signing-step">
+      <div class="signing-actor">Registry</div>
+      <div class="signing-action">Store manifest + signature + pubkey</div>
+      <div class="signing-detail">Registry maintains key→author map. TrustStore records known author pubkeys and trust levels. Phase 3: stored on Veilid DHT.</div>
+    </div>
+    <div class="signing-step">
+      <div class="signing-actor">User runtime</div>
+      <div class="signing-action">Verify → approve → sandbox</div>
+      <div class="signing-detail">verify_signature() called before any load. Capabilities shown to user for approval. ShellExec triggers blocking modal. Connector loads into Wasmtime sandbox.</div>
+    </div>
+  </div>
+
+  <div class="section-label">threat model</div>
+  <div class="card" style="margin-bottom: 2rem;">
+    <table class="threat-table">
+      <thead>
+        <tr>
+          <th>threat</th>
+          <th>severity</th>
+          <th>mitigation</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="threat-name">Malicious community connector</td>
+          <td><span class="sev sev-critical">Critical</span></td>
+          <td class="threat-fix">Wasmtime Component Model sandbox. Fuel metering (10M instructions/call). 64 MiB memory cap. Capability allow-list checked at runtime by host. Ed25519 manifest sig verified before load. Guest cannot self-elevate.</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Supply chain compromise (npm)</td>
+          <td><span class="sev sev-critical">Critical</span></td>
+          <td class="threat-fix">Rust for all trusted code. TypeScript only in sandboxed guest WASM. cargo-deny for license + advisory policy. Pinned Cargo.lock committed. No npm packages in host runtime.</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Secret leakage via logs</td>
+          <td><span class="sev sev-high">High</span></td>
+          <td class="threat-fix">secrecy::Secret&lt;T&gt; cannot impl Debug or Display. tracing subscriber redacts Secret values at subscriber level. All .expose_secret() call sites annotated with // SECURITY: comment.</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Secret leakage via heap dump</td>
+          <td><span class="sev sev-high">High</span></td>
+          <td class="threat-fix">zeroize::Zeroize on all key material. Memory zeroed on drop. No Secret&lt;T&gt; clone without explicit .expose_secret(). Zeroizing&lt;T&gt; wrapper on all SigningKey instances.</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Connector privilege escalation</td>
+          <td><span class="sev sev-high">High</span></td>
+          <td class="threat-fix">Capability grants are host-enforced at runtime. Guest WASM cannot call host functions not in its granted set. ShellExec requires blocking approval modal before connector loads — cannot be bypassed.</td>
+        </tr>
+        <tr>
+          <td class="threat-name">MITM on transport</td>
+          <td><span class="sev sev-high">High</span></td>
+          <td class="threat-fix">rustls-tls exclusively — no native-tls or OpenSSL path. native-tls banned via Cargo.toml [patch]. TLS certificate validation never disabled in any code path. mTLS in Phase 2a HttpTransport.</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Unsigned / tampered connector</td>
+          <td><span class="sev sev-high">High</span></td>
+          <td class="threat-fix">Ed25519 signature verified against author pubkey before any load attempt. Registry maintains pubkey→author map. No unsigned connectors can load — hard error, not a warning.</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Credential exfiltration via connector</td>
+          <td><span class="sev sev-high">High</span></td>
+          <td class="threat-fix">NetworkOutbound capability must list exact hostnames. No wildcards permitted in capability declarations. Sandbox WASI networking layer blocks connections to any host not in the granted set.</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Connector CPU / memory DoS</td>
+          <td><span class="sev sev-medium">Medium</span></td>
+          <td class="threat-fix">Wasmtime fuel metering: 10M instructions per invocation. 64 MiB memory limit enforced by ResourceLimiter. Exceeding either limit traps the WASM instance — connector moves to Faulted state.</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Prompt injection via AI adapter</td>
+          <td><span class="sev sev-medium">Medium</span></td>
+          <td class="threat-fix">AiRequest is a closed enum — AI backend never receives raw connector output or user secrets. Structured typed requests only cross the AI boundary. NoopAdapter (default) eliminates this attack surface entirely.</td>
+        </tr>
+        <tr>
+          <td class="threat-name">DHT registry poisoning (Phase 3)</td>
+          <td><span class="sev sev-high">High</span></td>
+          <td class="threat-fix">Ed25519 manifest signatures verified before any connector load, regardless of registry backend. Author pubkeys pinned in TrustStore. Malicious DHT writes are rejected at signature verification — same check as PostgreSQL-backed registry. SMPL subkey ownership ensures only the author can write to their slot.</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Recursive pipeline resource exhaustion</td>
+          <td><span class="sev sev-medium">Medium</span></td>
+          <td class="threat-fix">Child pipelines inherit fractional fuel budget (parent_fuel / 4). Max recursive depth configurable (default: 4 levels). Children inherit read-only parent context snapshots — no mutable shared state. Total fuel consumption bounded by root pipeline budget regardless of recursion depth.</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Rogue bot in Rekindle community (Phase 3)</td>
+          <td><span class="sev sev-medium">Medium</span></td>
+          <td class="threat-fix">Rekindle §31 APAS model: bots are members with same CRDT merge rules. Permission enforcement is client-side — every honest reader validates the writer's role before accepting governance entries. A rogue bot's writes are ignored by all honest clients. Governance can ban the bot's pseudonym.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-label">secret handling rules</div>
+  <div class="card">
+    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--line);">
+      <div class="grid-cell">
+        <div class="cell-label cell-label--accent">Secret&lt;T&gt; rules</div>
+        <div class="info-item">All Secret&lt;T&gt; values created at config parse time only</div>
+        <div class="info-item">Never unwrapped except at the precise call site that requires it</div>
+        <div class="info-item">Every .expose_secret() annotated with // SECURITY: reason</div>
+        <div class="info-item">No Secret&lt;T&gt; in structs deriving Debug without redacted display</div>
+        <div class="info-item">zeroize::Zeroizing wrapper on all SigningKey instances</div>
+      </div>
+      <div class="grid-cell">
+        <div class="cell-label cell-label--accent">Network / TLS rules</div>
+        <div class="info-item">reqwest compiled with rustls-tls feature, not native-tls</div>
+        <div class="info-item">native-tls banned in deny.toml — transitive pulls blocked</div>
+        <div class="info-item">No OpenSSL anywhere in the dependency tree</div>
+        <div class="info-item">TLS certificate validation never disabled in any code path</div>
+        <div class="info-item">All webhook ingest: HMAC-SHA256 verified before processing</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════
+     TAB 5 — APPLICATIONS
+══════════════════════════════════════════ -->
+<div id="tab-apps" class="tab-panel">
+
+  <div class="section-label">applications</div>
+  <div class="apps-grid" style="margin-bottom: 2rem;">
+
+    <div class="app-card">
+      <div class="app-name">springtaled</div>
+      <div class="app-desc">Self-hostable headless daemon. Docker-first deployment. Manages connector lifecycle, rule evaluation, scheduler, and the management HTTP API via axum.</div>
+      <div class="file-tree">
+        <div><span class="dir">apps/springtaled/src/</span></div>
+        <div>&nbsp;&nbsp;<span class="file">main.rs</span> <span class="note">— tokio::main · reads config · boots runtime</span></div>
+        <div>&nbsp;&nbsp;<span class="dir">config/</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">file.rs</span> <span class="note">— TOML via figment · Secret&lt;T&gt; fields</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">env.rs</span> <span class="note">— env var overrides (12-factor)</span></div>
+        <div>&nbsp;&nbsp;<span class="dir">runtime/</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">boot.rs</span> <span class="note">— vault→store→connectors→scheduler→api</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">shutdown.rs</span> <span class="note">— drain queues · flush · close vault</span></div>
+        <div>&nbsp;&nbsp;<span class="dir">api/</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">health.rs</span> <span class="note">— liveness + readiness probes</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">connectors.rs</span> <span class="note">— connector CRUD routes</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">rules.rs</span> <span class="note">— rule management routes</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">events.rs</span> <span class="note">— event log (paginated)</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="dir">middleware/</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">auth.rs</span> <span class="note">— HMAC bearer (no JWT)</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">tracing.rs</span> <span class="note">— request spans</span></div>
+        <div>&nbsp;&nbsp;<span class="file">signals.rs</span> <span class="note">— SIGTERM / SIGINT graceful shutdown</span></div>
+      </div>
+    </div>
+
+    <div class="app-card">
+      <div class="app-name">springtale-cli</div>
+      <div class="app-desc">Local CLI runner. clap 4 derive subcommands. Table output via tabled or JSON with --json flag. Talks to springtaled over HTTP, or runs embedded runtime in dev mode.</div>
+      <div class="file-tree">
+        <div><span class="dir">apps/springtale-cli/src/</span></div>
+        <div>&nbsp;&nbsp;<span class="file">main.rs</span> <span class="note">— clap 4 derive · command router</span></div>
+        <div>&nbsp;&nbsp;<span class="dir">commands/</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">connector.rs</span> <span class="note">— install · list · remove · enable · disable</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">rule.rs</span> <span class="note">— add · list · toggle · run</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">events.rs</span> <span class="note">— tail · filter · export</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">vault.rs</span> <span class="note">— set · delete (never read to stdout)</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">mcp.rs</span> <span class="note">— serve stdio MCP for AI tool integration</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">doctor.rs</span> <span class="note">— health check all subsystems</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">server.rs</span> <span class="note">— start springtaled inline (dev mode)</span></div>
+        <br>
+        <div style="color: var(--txt3); font-size: 10px;">example commands:</div>
+        <div><span class="note">agent connector install ./kick.toml</span></div>
+        <div><span class="note">agent rule add --trigger cron --schedule "0 9 * * *"</span></div>
+        <div><span class="note">agent mcp serve &nbsp;&nbsp;&nbsp;# connectors as MCP tools</span></div>
+        <div><span class="note">agent doctor &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# check all subsystems</span></div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="section-label">springtaled management api (axum)</div>
+  <div class="card">
+    <table class="api-table">
+      <thead>
+        <tr><th>method</th><th>path</th><th>description</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><span class="method method-get">GET</span></td><td class="api-path">/health</td><td class="api-desc">liveness probe</td></tr>
+        <tr><td><span class="method method-get">GET</span></td><td class="api-path">/ready</td><td class="api-desc">readiness probe — all subsystems healthy</td></tr>
+        <tr><td><span class="method method-get">GET</span></td><td class="api-path">/connectors</td><td class="api-desc">list all connectors with status</td></tr>
+        <tr><td><span class="method method-post">POST</span></td><td class="api-path">/connectors/install</td><td class="api-desc">install connector from signed manifest</td></tr>
+        <tr><td><span class="method method-delete">DELETE</span></td><td class="api-path">/connectors/{name}</td><td class="api-desc">remove connector + revoke grants</td></tr>
+        <tr><td><span class="method method-post">POST</span></td><td class="api-path">/connectors/{name}/enable</td><td class="api-desc">enable connector</td></tr>
+        <tr><td><span class="method method-post">POST</span></td><td class="api-path">/connectors/{name}/disable</td><td class="api-desc">disable connector without removing</td></tr>
+        <tr><td><span class="method method-get">GET</span></td><td class="api-path">/rules</td><td class="api-desc">list all rules</td></tr>
+        <tr><td><span class="method method-post">POST</span></td><td class="api-path">/rules</td><td class="api-desc">create rule from typed body</td></tr>
+        <tr><td><span class="method method-put">PUT</span></td><td class="api-path">/rules/{id}</td><td class="api-desc">update rule</td></tr>
+        <tr><td><span class="method method-delete">DELETE</span></td><td class="api-path">/rules/{id}</td><td class="api-desc">delete rule</td></tr>
+        <tr><td><span class="method method-post">POST</span></td><td class="api-path">/rules/{id}/run</td><td class="api-desc">manual rule trigger</td></tr>
+        <tr><td><span class="method method-get">GET</span></td><td class="api-path">/events</td><td class="api-desc">event log — paginated, filterable</td></tr>
+        <tr><td><span class="method method-post">POST</span></td><td class="api-path">/webhook/{connector}/{trigger}</td><td class="api-desc">inbound webhook endpoint (HMAC verified)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════
+     TAB — ECOSYSTEM
+══════════════════════════════════════════ -->
+<div id="tab-ecosystem" class="tab-panel">
+
+  <div class="section-label">ecosystem projects — what we build on and contribute back to</div>
+  <div class="connector-info-grid" style="margin-bottom: 2rem;">
+
+    <div class="connector-info">
+      <div class="connector-info-name">🔥 Rekindle <span class="pill pill-purple" style="font-size: 8px; vertical-align: middle;">scopecreep-zip</span></div>
+      <div class="info-section">what it is</div>
+      <div class="info-item">Veilid-native decentralized gaming chat (P2P messages working)</div>
+      <div class="info-item">Community mesh (governance CRDT, channels) in active development</div>
+      <div class="info-item">v3.0 architecture: flat SMPL governance, no coordinator, no owner</div>
+      <div class="info-section">what springtale inherits</div>
+      <div class="info-item">rekindle-protocol crate → Phase 3 VeilidTransport</div>
+      <div class="info-item">Four-layer Tauri stack (SolidJS → IPC → Commands → Rust Crates)</div>
+      <div class="info-item">Konductor Nix flake dev shell (shared toolchain)</div>
+      <div class="info-item">Ed25519 identity + HKDF pseudonym derivation</div>
+      <div class="info-item">Bot = headless member node (§31 APAS pattern)</div>
+      <div class="info-section">what springtale contributes back</div>
+      <div class="info-item">Connector framework for Rekindle bots (bridge external services)</div>
+      <div class="info-item">MCP adapter: community data → AI tool definitions</div>
+    </div>
+
+    <div class="connector-info">
+      <div class="connector-info-name">🤖 malwarevangelist-bot <span class="pill pill-blue" style="font-size: 8px; vertical-align: middle;">radicalkjax</span></div>
+      <div class="info-section">what it is</div>
+      <div class="info-item">ATProto bot for Bluesky automation</div>
+      <div class="info-item">feature/opencode-api branch: headless AI agent integration</div>
+      <div class="info-section">what springtale inherits</div>
+      <div class="info-item">ATProto session management → connector-bluesky auth module</div>
+      <div class="info-item">Jetstream WebSocket firehose (production-proven)</div>
+      <div class="info-item">Bot lifecycle: startup, reconnection, graceful shutdown</div>
+      <div class="info-item">OpenCode API patterns for headless agent orchestration</div>
+    </div>
+
+    <div class="connector-info">
+      <div class="connector-info-name">🖱️ Clicky <span class="pill pill-green" style="font-size: 8px; vertical-align: middle;">goldenapplestudios</span></div>
+      <div class="info-section">what it is</div>
+      <div class="info-item">Claude subagent pentesting workflow</div>
+      <div class="info-item">Recursive bot framework: Skills + Scripts + Subagent spawning</div>
+      <div class="info-section">what springtale inherits</div>
+      <div class="info-item">Recursive pipeline pattern → springtale-core compose_pipeline()</div>
+      <div class="info-item">Skills-as-modules → connector manifest capability model</div>
+      <div class="info-item">Subagent orchestration → springtale-bot multi-bot coordinator</div>
+      <div class="info-item">Fuel budget inheritance: children get fraction of parent fuel</div>
+    </div>
+
+    <div class="connector-info">
+      <div class="connector-info-name">⚙️ Konductor <span class="pill pill-teal" style="font-size: 8px; vertical-align: middle;">braincraftio / usrbinkat</span></div>
+      <div class="info-section">what it is</div>
+      <div class="info-item">Nix flake framework for reproducible dev environments</div>
+      <div class="info-item">Shared upstream: both Rekindle and Springtale derive from it</div>
+      <div class="info-section">role in ecosystem</div>
+      <div class="info-item">Single source of truth for Rust toolchain versions</div>
+      <div class="info-item">Ensures identical tooling: cargo-nextest, cargo-deny, sqlx-cli, wabt</div>
+      <div class="info-item">Contributors get the same shell: direnv allow and go</div>
+      <div class="info-item">Kat's additional repos available for infra patterns</div>
+    </div>
+
+  </div>
+
+  <div class="section-label">competitive target — why springtale wins</div>
+  <div class="card" style="margin-bottom: 2rem;">
+    <table class="threat-table">
+      <thead>
+        <tr>
+          <th>concern</th>
+          <th>openclaw (310K★)</th>
+          <th>springtale</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="threat-name">Language safety</td>
+          <td class="threat-fix">JavaScript (Node.js)</td>
+          <td class="threat-fix" style="color: var(--green);">Rust — memory safe, compile-time guarantees</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Connector isolation</td>
+          <td class="threat-fix">None — skills run with full machine access</td>
+          <td class="threat-fix" style="color: var(--green);">Wasmtime sandbox, 10M fuel, 64 MiB cap</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Manifest integrity</td>
+          <td class="threat-fix">No signing, no verification</td>
+          <td class="threat-fix" style="color: var(--green);">Ed25519 signed manifests, capability allow-list</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Supply chain</td>
+          <td class="threat-fix">npm (Cisco found exfiltration in skills)</td>
+          <td class="threat-fix" style="color: var(--green);">Rust crates + cargo-deny + cargo-audit</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Secret handling</td>
+          <td class="threat-fix">Env vars, plaintext config files</td>
+          <td class="threat-fix" style="color: var(--green);">Secret&lt;T&gt; types, zeroize on drop, vault encryption</td>
+        </tr>
+        <tr>
+          <td class="threat-name">TLS</td>
+          <td class="threat-fix">Node.js default (OpenSSL)</td>
+          <td class="threat-fix" style="color: var(--green);">rustls-tls exclusively, native-tls banned</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Storage</td>
+          <td class="threat-fix">Markdown files + JSONL on disk</td>
+          <td class="threat-fix" style="color: var(--green);">SQLite (local-first), app-layer encryption, typed queries</td>
+        </tr>
+        <tr>
+          <td class="threat-name">AI dependency</td>
+          <td class="threat-fix">Core to operation (requires API key)</td>
+          <td class="threat-fix" style="color: var(--green);">Plugin — NoopAdapter default, works without AI</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Transport</td>
+          <td class="threat-fix">Centralized platforms only</td>
+          <td class="threat-fix" style="color: var(--green);">Swappable: Local → HTTP → Veilid P2P</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Privacy</td>
+          <td class="threat-fix">Platform-dependent, IP visible</td>
+          <td class="threat-fix" style="color: var(--green);">Phase 3: Veilid private routes, HKDF pseudonyms</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Cost</td>
+          <td class="threat-fix">API keys required (~$30-150/mo)</td>
+          <td class="threat-fix" style="color: var(--green);">Free with local models, API optional</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Heartbeat / proactive</td>
+          <td class="threat-fix">HEARTBEAT.md — AI reads Markdown with full access</td>
+          <td class="threat-fix" style="color: var(--green);">Typed rules, sandboxed checks, capability-enforced</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Browser automation</td>
+          <td class="threat-fix">Unrestricted headless Chrome access</td>
+          <td class="threat-fix" style="color: var(--green);">connector-browser: domain allow-list, sandboxed</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Voice I/O</td>
+          <td class="threat-fix">STT + TTS via external APIs</td>
+          <td class="threat-fix" style="color: var(--green);">Whisper STT + ElevenLabs/Piper TTS modules</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Multi-model</td>
+          <td class="threat-fix">Claude, GPT, Gemini, Kimi, OpenRouter</td>
+          <td class="threat-fix" style="color: var(--green);">Same coverage via OpenAiCompatAdapter + Anthropic + Ollama</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Mobile apps</td>
+          <td class="threat-fix">iOS + Android companion apps</td>
+          <td class="threat-fix" style="color: var(--green);">Tauri 2 builds iOS + Android from same codebase. One app, five platforms.</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Canvas / A2UI</td>
+          <td class="threat-fix">Browser-tab Canvas with agent push</td>
+          <td class="threat-fix" style="color: var(--green);">Native Tauri Canvas window. Same security boundary as main app.</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Web dashboard</td>
+          <td class="threat-fix">Gateway UI on :18789 (binds 0.0.0.0)</td>
+          <td class="threat-fix" style="color: var(--green);">springtale-dashboard SPA. Binds 127.0.0.1, HMAC auth required.</td>
+        </tr>
+        <tr>
+          <td class="threat-name">Multimedia I/O</td>
+          <td class="threat-fix">Images, audio, docs in/out</td>
+          <td class="threat-fix" style="color: var(--green);">Typed Attachment pipeline. Vision + STT routing. Native rich media on supported channels.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="section-label">additional ecosystem projects</div>
+  <div class="grid-3" style="margin-bottom: 0;">
+    <div class="grid-cell">
+      <div style="font-family: var(--mono); font-size: 12px; font-weight: 600; color: #fff; margin-bottom: 0.3rem;">📡 SpiritStream</div>
+      <div style="font-family: var(--mono); font-size: 10px; color: var(--txt3); line-height: 1.6;">Guerrilla live streaming app.<br>Tauri + React desktop pattern.<br>Multi-platform build pipeline.<br><span style="color: var(--accent);">scopecreep-zip org</span></div>
+    </div>
+    <div class="grid-cell">
+      <div style="font-family: var(--mono); font-size: 12px; font-weight: 600; color: #fff; margin-bottom: 0.3rem;">🐧 Kalilix</div>
+      <div style="font-family: var(--mono); font-size: 10px; color: var(--txt3); line-height: 1.6;">Linux distro + security tooling.<br>Container-first deployment.<br>Security-conscious defaults.<br><span style="color: var(--accent);">usrbinkat</span></div>
+    </div>
+    <div class="grid-cell">
+      <div style="font-family: var(--mono); font-size: 12px; font-weight: 600; color: #fff; margin-bottom: 0.3rem;">🔐 Athena</div>
+      <div style="font-family: var(--mono); font-size: 10px; color: var(--txt3); line-height: 1.6;">AI deobfuscation tool.<br>Security analysis patterns.<br>Malware author puzzles → solutions.<br><span style="color: var(--accent);">radicalkjax</span></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════
+     TAB — BOT FRAMEWORK
+══════════════════════════════════════════ -->
+<div id="tab-bots" class="tab-panel">
+
+  <div class="section-label">design philosophy — classical bot architecture, bring your own AI</div>
+  <div class="card" style="margin-bottom: 2rem;">
+    <div style="padding: 1.25rem;">
+      <div style="font-family: var(--mono); font-size: 12px; color: var(--txt); line-height: 1.8;">
+        The bot IS the product. Users talk to it through chat platforms.
+        <span style="color: var(--green);">Command routing is deterministic — same patterns as IRC/Discord/Telegram bots for decades.</span>
+        <br><br>
+        Springtale does not provide AI. Users <span style="color: var(--accent);">bring their own</span> — Ollama on their machine, an OpenAI key, a Claude key, a local llama.cpp server. We provide the socket (<code>AiAdapter</code> trait). The LLM/agent is detachable (malwarevangelist-bot pattern).
+        <br><br>
+        <span style="color: var(--amber);">OpenClaw:</span> user says "search tokyo weather" → LLM decides to call search tool → API call → LLM formats result. <span style="color: var(--red);">Three calls, latency, cost, dependency.</span>
+        <br>
+        <span style="color: var(--green);">Springtale:</span> user says /search tokyo weather → command router matches → calls connector-presearch → template formats result. <span style="color: var(--green);">One call, instant, free, works forever.</span>
+        <br><br>
+        When the AI bubble pops: unplug the adapter. You keep every command, every scheduled task, every automation, every connector. <span style="color: var(--green);">Nothing breaks.</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label">springtale-bot crate (phase 1b — classical bot runtime)</div>
+  <div class="apps-grid" style="margin-bottom: 2rem;">
+    <div class="app-card">
+      <div class="app-name">springtale-bot</div>
+      <div class="app-desc">Classical bot runtime. Deterministic command routing. State management. Handler dispatch. Rules run inside the bot event loop. AI is a Phase 2a addition as fallback parser.</div>
+      <div class="file-tree">
+        <div><span class="dir">crates/springtale-bot/src/</span></div>
+        <div>&nbsp;&nbsp;<span class="dir">runtime/</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">event_loop.rs</span> <span class="note">— main loop: receive from all connectors</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">headless.rs</span> <span class="note">— no Tauri, no GUI, daemon-ready</span></div>
+        <div>&nbsp;&nbsp;<span class="dir">router/</span> <span class="note" style="color: var(--green);">← classical, no AI</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">prefix.rs</span> <span class="note">— /search · /help · /remind · /status</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">pattern.rs</span> <span class="note">— regex triggers, keyword detection</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">alias.rs</span> <span class="note">— user-defined command aliases</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">fallback.rs</span> <span class="note">— "unknown cmd" (1b) or AI (2a)</span></div>
+        <div>&nbsp;&nbsp;<span class="dir">handler/</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">builtin.rs</span> <span class="note">— /help · /status · /rules · /connectors</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">connector.rs</span> <span class="note">— route to named connector action</span></div>
+        <div>&nbsp;&nbsp;<span class="dir">state/</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">session.rs</span> <span class="note">— per-user, per-channel session tracking</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">persona.rs</span> <span class="note">— bot persona config (name, tone, templates)</span></div>
+        <div>&nbsp;&nbsp;<span class="dir">memory/</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">persistent.rs</span> <span class="note">— SQLite-backed (not Markdown files)</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">context.rs</span> <span class="note">— conversation context window</span></div>
+        <div>&nbsp;&nbsp;<span class="dir">orchestrator/</span> <span class="note" style="color: var(--txt3);">← Phase 2a</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">recursive.rs</span> <span class="note">— Clicky-derived subagent spawning</span></div>
+        <div>&nbsp;&nbsp;<span class="dir">bridge/</span> <span class="note" style="color: var(--txt3);">← Phase 2a+</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">rekindle.rs</span> <span class="note">— Phase 3: community member bridge</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;<span class="file">atproto.rs</span> <span class="note">— Phase 2a: ATProto (malwarevangelist)</span></div>
+      </div>
+    </div>
+
+    <div class="app-card">
+      <div class="app-name">Recursive Pipeline (Phase 2a)</div>
+      <div class="app-desc">Derived from Clicky's subagent pattern. Pipeline stages spawn child pipelines with fractional fuel budgets. Deterministic resource bounds at every level.</div>
+      <div class="file-tree">
+        <div><span style="color: var(--green);">RootPipeline — Non-AI example</span> <span class="note">(fuel: 10M)</span></div>
+        <div>&nbsp;&nbsp;├ Stage 1: <span class="file">Trigger (kick.stream_live)</span></div>
+        <div>&nbsp;&nbsp;├ Stage 2: <span class="file">Condition (category == gaming)</span></div>
+        <div>&nbsp;&nbsp;├ Stage 3: <span class="file">Transform (extract title, URL)</span></div>
+        <div>&nbsp;&nbsp;└ Stage 4: <span class="file">Dispatch (parallel children)</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;├ <span style="color: var(--amber);">ChildA</span> <span class="note">(fuel: 2.5M)</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│ └ <span class="file">connector-discord: send_message</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└ <span style="color: var(--amber);">ChildB</span> <span class="note">(fuel: 2.5M)</span></div>
+        <div>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;└ <span class="file">connector-bluesky: create_post</span></div>
+        <br>
+        <div style="color: var(--txt3); font-size: 10px;">No AI in this pipeline. Deterministic. Free.</div>
+        <div><span class="note">AI is an optional stage — skipped with NoopAdapter.</span></div>
+        <div><span class="note">Max recursive depth: 4 · children inherit read-only context</span></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label">chat connectors — phase 1b (telegram) + phase 2a (remaining)</div>
+  <div class="connector-grid" style="grid-template-columns: repeat(3, 1fr); margin-bottom: 2rem;">
+    <div class="connector-card" style="border: 1px solid var(--green);">
+      <span class="connector-icon">💬</span>
+      <div class="connector-name">connector-telegram</div>
+      <div><span class="badge-new" style="background: var(--green2); color: #6ee7b7;">Phase 1b</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">first chat connector<br>Bot API typed<br>command routing</div>
+    </div>
+    <div class="connector-card">
+      <span class="connector-icon">🎮</span>
+      <div class="connector-name">connector-discord</div>
+      <div><span class="badge-new">Phase 2a</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">gateway WS<br>slash commands<br>voice channels</div>
+    </div>
+    <div class="connector-card">
+      <span class="connector-icon">🔒</span>
+      <div class="connector-name">connector-signal</div>
+      <div><span class="badge-new">Phase 2a</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">signal-cli bridge<br>E2E encrypted<br>disappearing msgs</div>
+    </div>
+    <div class="connector-card">
+      <span class="connector-icon">📱</span>
+      <div class="connector-name">connector-whatsapp</div>
+      <div><span class="badge-new">Phase 2a</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">Baileys-equiv<br>sandboxed<br>QR pairing</div>
+    </div>
+    <div class="connector-card">
+      <span class="connector-icon">🌐</span>
+      <div class="connector-name">connector-matrix</div>
+      <div><span class="badge-new">Phase 2a</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">Matrix SDK<br>federated rooms<br>E2E encryption</div>
+    </div>
+    <div class="connector-card">
+      <span class="connector-icon">📺</span>
+      <div class="connector-name">connector-irc</div>
+      <div><span class="badge-new">Phase 2a</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">raw TCP + TLS<br>lightweight<br>classic protocol</div>
+    </div>
+    <div class="connector-card">
+      <span class="connector-icon">💼</span>
+      <div class="connector-name">connector-slack</div>
+      <div><span class="badge-new">Phase 2a</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">Socket mode<br>slash commands<br>blocks · threads</div>
+    </div>
+    <div class="connector-card">
+      <span class="connector-icon">🖥️</span>
+      <div class="connector-name">connector-browser</div>
+      <div><span class="badge-new">Phase 2b</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">headless Chromium<br>domain allow-list<br>form fill · scrape</div>
+    </div>
+    <div class="connector-card">
+      <span class="connector-icon">🟣</span>
+      <div class="connector-name">connector-nostr</div>
+      <div><span class="badge-new">Phase 2a</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">NIP-01 relay<br>event signing<br>encrypted DMs</div>
+    </div>
+    <div class="connector-card" style="border: 1px solid var(--purple);">
+      <span class="connector-icon">🔮</span>
+      <div class="connector-name" style="color: var(--purple);">connector-rekindle</div>
+      <div><span class="badge-new" style="background: var(--purple2); color: var(--purple);">Phase 3</span></div>
+      <div class="connector-detail" style="margin-top: 0.4rem;">P2P AI chat<br>E2E encrypted DMs<br>community bot</div>
+    </div>
+  </div>
+
+  <div class="section-label">phase 3 — connector-rekindle: P2P AI chat interface</div>
+  <div class="card" style="margin-bottom: 1rem;">
+    <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1px; background: var(--line);">
+      <div class="grid-cell">
+        <div class="cell-label cell-label--purple">DM Mode (Chiralagram §27)</div>
+        <div class="info-item">User opens E2E encrypted DM with bot</div>
+        <div class="info-item">2-party SMPL record, ECDH key derivation</div>
+        <div class="info-item">User types → bot routes through pipeline + AI</div>
+        <div class="info-item">Bot responds to its subkey → user sees response</div>
+        <div class="info-item">QR code pairing for first connection</div>
+        <div class="info-item" style="color: var(--green); margin-top: 0.5rem;">This IS the primary AI chat interface.</div>
+      </div>
+      <div class="grid-cell">
+        <div class="cell-label cell-label--purple">Community Mode (§31 Bot)</div>
+        <div class="info-item">join(invite) — same flow as human member join</div>
+        <div class="info-item">on_message(channel, handler) — watch subkeys</div>
+        <div class="info-item">send(channel, content) — write to bot subkey</div>
+        <div class="info-item">on_governance_change(handler) — channel/roles</div>
+        <div class="info-item">on_member_change(handler) — join/leave events</div>
+        <div class="info-item" style="color: var(--txt3); margin-top: 0.5rem;">Both modes run simultaneously.</div>
+      </div>
+      <div class="grid-cell">
+        <div class="cell-label cell-label--green">vs. Telegram (OpenClaw)</div>
+        <div class="info-item">E2E encrypted (ECDH) — Telegram sees plaintext</div>
+        <div class="info-item">No phone number — pseudonym only</div>
+        <div class="info-item">No server — works on LAN or Veilid mesh</div>
+        <div class="info-item">No metadata — private routes hide IPs</div>
+        <div class="info-item">Data stays local — no Telegram servers</div>
+        <div class="info-item">Bot = cryptographic identity — not a username</div>
+      </div>
+    </div>
+  </div>
+  <div class="card">
+    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--line);">
+      <div class="grid-cell">
+        <div class="cell-label cell-label--purple">connector-rekindle modules</div>
+        <div class="info-item">dm.rs — SMPL record create/accept, ECDH, encrypt/decrypt</div>
+        <div class="info-item">channel.rs — community channel participation (§31)</div>
+        <div class="info-item">presence.rs — MemberPresence writes (online, current task)</div>
+        <div class="info-item">triggers.rs — DmReceived, ChannelMention, GovernanceChange</div>
+        <div class="info-item">actions.rs — SendDm, SendChannelMessage, UpdatePresence</div>
+        <div class="info-item">pairing.rs — QR code / deep link bot discovery</div>
+      </div>
+      <div class="grid-cell">
+        <div class="cell-label cell-label--purple">ATProtoBotBridge API</div>
+        <div class="info-item">on_mention(handler) — fires on @mention events</div>
+        <div class="info-item">on_follow(handler) — fires on new follower</div>
+        <div class="info-item">post(content) — create post with optional embed</div>
+        <div class="info-item">reply(parent, content) — threaded reply with parent ref</div>
+        <div class="info-item">Derived from malwarevangelist-bot ATProto patterns</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════
+     TAB 6 — DEPENDENCIES
+══════════════════════════════════════════ -->
+<div id="tab-deps" class="tab-panel">
+
+  <div class="section-label">workspace dependencies (Cargo.toml)</div>
+  <div class="card">
+    <table class="dep-table">
+      <thead>
+        <tr><th>crate</th><th>version</th><th>purpose</th></tr>
+      </thead>
+      <tbody>
+        <tr><td colspan="3" class="dep-group">async runtime</td></tr>
+        <tr><td class="dep-name">tokio</td><td class="dep-ver">1 · full</td><td class="dep-use">async runtime — the 2026 standard, nothing replaces it</td></tr>
+
+        <tr><td colspan="3" class="dep-group">observability</td></tr>
+        <tr><td class="dep-name">tracing</td><td class="dep-ver">0.1</td><td class="dep-use">structured logging — no println! anywhere in the codebase</td></tr>
+        <tr><td class="dep-name">tracing-subscriber</td><td class="dep-ver">0.3 · env-filter · json</td><td class="dep-use">log subscriber with Secret&lt;T&gt; redaction filter</td></tr>
+
+        <tr><td colspan="3" class="dep-group">error handling</td></tr>
+        <tr><td class="dep-name">anyhow</td><td class="dep-ver">1</td><td class="dep-use">application-level error handling in app crates (springtaled, springtale-cli)</td></tr>
+        <tr><td class="dep-name">thiserror</td><td class="dep-ver">2</td><td class="dep-use">typed error enums in all library crates</td></tr>
+
+        <tr><td colspan="3" class="dep-group">serialization + validation</td></tr>
+        <tr><td class="dep-name">serde + serde_json</td><td class="dep-ver">1</td><td class="dep-use">derive on all data types — universal</td></tr>
+        <tr><td class="dep-name">schemars</td><td class="dep-ver">1.0</td><td class="dep-use">derive JsonSchema → MCP tool input_schema without duplication</td></tr>
+        <tr><td class="dep-name">garde</td><td class="dep-ver">0.22 · full</td><td class="dep-use">2026-standard derive-based validation, replaces validator crate</td></tr>
+
+        <tr><td colspan="3" class="dep-group">security primitives</td></tr>
+        <tr><td class="dep-name">secrecy</td><td class="dep-ver">0.10 · serde</td><td class="dep-use">Secret&lt;T&gt; — prevents Debug/Display/Clone on sensitive values</td></tr>
+        <tr><td class="dep-name">zeroize</td><td class="dep-ver">1 · derive</td><td class="dep-use">zeroes memory on drop — all key material, no exceptions</td></tr>
+        <tr><td class="dep-name">ed25519-dalek</td><td class="dep-ver">2 · rand_core · serde</td><td class="dep-use">Ed25519 keypair generation, manifest signing, verification</td></tr>
+        <tr><td class="dep-name">chacha20poly1305</td><td class="dep-ver">0.10</td><td class="dep-use">XChaCha20-Poly1305 AEAD — vault encryption</td></tr>
+        <tr><td class="dep-name">argon2</td><td class="dep-ver">0.5</td><td class="dep-use">Argon2id KDF — passphrase → vault key derivation</td></tr>
+        <tr><td class="dep-name">rand</td><td class="dep-ver">0.9 · getrandom</td><td class="dep-use">CSPRNG — key generation, nonce generation</td></tr>
+        <tr><td class="dep-name">sha2 + hmac + base64ct</td><td class="dep-ver">0.10 / 0.12 / 1</td><td class="dep-use">webhook signature verification, safe base64 encoding</td></tr>
+
+        <tr><td colspan="3" class="dep-group">identifiers + time</td></tr>
+        <tr><td class="dep-name">uuid</td><td class="dep-ver">1 · v4 · serde</td><td class="dep-use">trace IDs, entity IDs throughout — v4 random</td></tr>
+        <tr><td class="dep-name">chrono</td><td class="dep-ver">0.4 · serde</td><td class="dep-use">timestamps — UTC always, stored as TIMESTAMPTZ in PostgreSQL</td></tr>
+        <tr><td class="dep-name">cron</td><td class="dep-ver">0.13</td><td class="dep-use">cron expression parsing for scheduler triggers</td></tr>
+
+        <tr><td colspan="3" class="dep-group">storage (local-first)</td></tr>
+        <tr><td class="dep-name">rusqlite</td><td class="dep-ver">0.32 · bundled · vtab</td><td class="dep-use">default storage — rules, events, jobs, connectors, bot memory, FTS5 search. Zero external deps.</td></tr>
+        <tr><td class="dep-name">sqlx</td><td class="dep-ver">≥0.8.3 · postgres</td><td class="dep-use">optional (--features postgres) — multi-user server deployments only. Not required for Phase 1.</td></tr>
+
+        <tr><td colspan="3" class="dep-group">http server + client</td></tr>
+        <tr><td class="dep-name">axum</td><td class="dep-ver">0.8 · macros · ws</td><td class="dep-use">management HTTP API — tokio-native, type-safe extractors</td></tr>
+        <tr><td class="dep-name">axum-extra</td><td class="dep-ver">0.9 · typed-header</td><td class="dep-use">typed headers for auth middleware</td></tr>
+        <tr><td class="dep-name">tower + tower-http</td><td class="dep-ver">0.5 / 0.6</td><td class="dep-use">middleware: CORS, tracing spans, auth, response compression</td></tr>
+        <tr><td class="dep-name">reqwest</td><td class="dep-ver">0.13 · rustls-tls (aws-lc-rs)</td><td class="dep-use">outbound HTTP — pure Rust TLS, no OpenSSL dependency anywhere</td></tr>
+
+        <tr><td colspan="3" class="dep-group">wasm sandbox</td></tr>
+        <tr><td class="dep-name">wasmtime</td><td class="dep-ver">≥41.0.4 · cranelift · component-model · async</td><td class="dep-use">WASM Component Model sandbox for community connectors</td></tr>
+        <tr><td class="dep-name">wasmtime-wasi</td><td class="dep-ver">≥41.0.4 · component-model</td><td class="dep-use">WASI host implementation with capability filtering</td></tr>
+
+        <tr><td colspan="3" class="dep-group">mcp protocol</td></tr>
+        <tr><td class="dep-name">rmcp</td><td class="dep-ver">0.2 · server · transport-io</td><td class="dep-use">MCP protocol — Rust-native, replaces TypeScript SDK sidecar entirely</td></tr>
+
+        <tr><td colspan="3" class="dep-group">queue + config</td></tr>
+        <tr><td class="dep-name">figment</td><td class="dep-ver">0.10</td><td class="dep-use">layered config: TOML file + env overrides + Secret&lt;T&gt; support</td></tr>
+        <tr><td class="dep-name">notify</td><td class="dep-ver">7</td><td class="dep-use">cross-platform filesystem event watcher for FsTrigger</td></tr>
+
+        <tr><td colspan="3" class="dep-group">cli</td></tr>
+        <tr><td class="dep-name">clap</td><td class="dep-ver">4 · derive</td><td class="dep-use">CLI argument parsing for springtale-cli — derive macro</td></tr>
+
+        <tr><td colspan="3" class="dep-group">concurrency</td></tr>
+        <tr><td class="dep-name">dashmap</td><td class="dep-ver">6</td><td class="dep-use">concurrent HashMap — sentinel rate limiters, session caches</td></tr>
+
+        <tr><td colspan="3" class="dep-group">testing</td></tr>
+        <tr><td class="dep-name">tokio-test</td><td class="dep-ver">0.4</td><td class="dep-use">async test utilities — #[tokio::test] macro support</td></tr>
+        <tr><td class="dep-name">mockall</td><td class="dep-ver">0.13</td><td class="dep-use">mock trait implementations for unit tests</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════
+     TAB — APPSEC VERIFICATION
+══════════════════════════════════════════ -->
+<div id="tab-appsec" class="tab-panel">
+
+  <div class="section-label">security & privacy overview · full compliance mappings in SECURITY.md</div>
+
+  <div class="grid-3">
+    <div class="grid-cell">
+      <div class="cell-label cell-label--green">SAST (Static Analysis)</div>
+      <div class="info-item">cargo clippy — Rust lint security checks, warnings-as-errors</div>
+      <div class="info-item">semgrep — OWASP Top 10 rules + custom Secret&lt;T&gt; rules</div>
+      <div class="info-item">cargo-geiger — count unsafe blocks in dependency tree</div>
+    </div>
+    <div class="grid-cell">
+      <div class="cell-label cell-label--amber">SCA (Composition Analysis)</div>
+      <div class="info-item">cargo deny — license policy + RustSec advisories + bans</div>
+      <div class="info-item">cargo audit — RustSec advisory DB, fail-on-known-vuln</div>
+      <div class="info-item">cargo vet — supply chain audit trail, every dep reviewed</div>
+      <div class="info-item">trivy — container CVEs, Rust binary CVEs, misconfig</div>
+    </div>
+    <div class="grid-cell">
+      <div class="cell-label cell-label--red">Runtime Protection</div>
+      <div class="info-item">WASM sandbox — fuel metering, memory limits, capability gates</div>
+      <div class="info-item">sentinel — rate limiter, circuit breaker, dead-man switch</div>
+      <div class="info-item">Secret&lt;T&gt; — type system prevents accidental exposure</div>
+      <div class="info-item">MCP security via connector sandbox, not custom modules</div>
+    </div>
+  </div>
+
+  <div class="section-label">why springtale passes where openclaw fails</div>
+  <div class="grid-2">
+    <div class="grid-cell">
+      <div class="cell-label cell-label--red">OpenClaw vulnerabilities (documented)</div>
+      <div class="info-item">CVE-2026-25253 — one-click RCE via WebSocket hijack</div>
+      <div class="info-item">ClawHavoc — 824+ malicious ClawHub skills (Atomic Stealer)</div>
+      <div class="info-item">Cisco — data exfiltration through third-party skills</div>
+      <div class="info-item">Zenity — indirect prompt injection → rogue integration → C2</div>
+      <div class="info-item">Palo Alto — persistent memory poisoning across sessions</div>
+      <div class="info-item">135K+ instances exposed on 0.0.0.0 (SecurityScorecard)</div>
+      <div class="info-item">RedLine/Lumma/AMOS targeting ~/.openclaw/ plaintext creds</div>
+    </div>
+    <div class="grid-cell">
+      <div class="cell-label cell-label--green">Springtale — architecturally impossible</div>
+      <div class="info-item">No WebSocket — REST API + HMAC tokens + 127.0.0.1 default</div>
+      <div class="info-item">WASM sandbox + Ed25519 signing — no unsigned code runs</div>
+      <div class="info-item">Capability grants — connector declares exact hosts, no wildcards</div>
+      <div class="info-item">AiRequest closed enum — AI never gets raw connector output</div>
+      <div class="info-item">Encrypted vault — no plaintext creds anywhere on disk</div>
+      <div class="info-item">Classical bot architecture — deterministic, not LLM-routed</div>
+      <div class="info-item">Bring your own AI — no dependency on any AI provider</div>
+    </div>
+  </div>
+
+  <div class="section-label">least agency — autonomy levels (default L1: suggest only)</div>
+  <div class="grid-5">
+    <div class="autonomy-cell">
+      <div class="autonomy-level" style="color: var(--green);">L0</div>
+      <div class="autonomy-name">Observe</div>
+      <div class="autonomy-desc">Read-only<br>No actions<br>User: Operator</div>
+    </div>
+    <div class="autonomy-cell autonomy-cell--active">
+      <div class="autonomy-level" style="color: var(--accent);">L1 ← default</div>
+      <div class="autonomy-name">Suggest</div>
+      <div class="autonomy-desc">Propose actions<br>Queue for approval<br>User: Approver</div>
+    </div>
+    <div class="autonomy-cell">
+      <div class="autonomy-level" style="color: var(--amber);">L2</div>
+      <div class="autonomy-name">Act-with-Approval</div>
+      <div class="autonomy-desc">Plan → approve → exec<br>Scope-bounded<br>User: Collaborator</div>
+    </div>
+    <div class="autonomy-cell">
+      <div class="autonomy-level" style="color: var(--red);">L3</div>
+      <div class="autonomy-name">Act-Autonomously</div>
+      <div class="autonomy-desc">Sentinel monitors<br>Async review<br>User: Consultant</div>
+    </div>
+    <div class="autonomy-cell">
+      <div class="autonomy-level" style="color: var(--purple);">L4</div>
+      <div class="autonomy-name">Self-Direct</div>
+      <div class="autonomy-desc">Proactive (heartbeat)<br>Max monitoring<br>User: Observer</div>
+    </div>
+  </div>
+  <div style="font-family: var(--mono); font-size: 11px; color: var(--red); text-align: center; margin-bottom: 2rem;">
+    destructive actions (delete, send, pay) are ALWAYS L1 regardless of agent autonomy level — enforced in pipeline engine
+  </div>
+
+  <div class="section-label">sentinel — layer 1 hard constraints (phase 2a, zero false positives)</div>
+  <div class="grid-3">
+    <div class="grid-cell">
+      <div class="cell-label cell-label--green">Rate Limiting + Circuit Breakers</div>
+      <div class="info-item">Actions/minute per connector (default: 60)</div>
+      <div class="info-item">3 consecutive failures → stage disabled</div>
+      <div class="info-item">Auto-reset after configurable cooldown</div>
+    </div>
+    <div class="grid-cell">
+      <div class="cell-label cell-label--amber">Safety Gates</div>
+      <div class="info-item">Toxic capability pairs blocked at install time</div>
+      <div class="info-item">Destructive actions always require user approval</div>
+      <div class="info-item">Dead-man switch: N actions/min without user → pause</div>
+    </div>
+    <div class="grid-cell">
+      <div class="cell-label cell-label--accent">Audit Trail</div>
+      <div class="info-item">Every action logged to append-only SQLite</div>
+      <div class="info-item">Exportable via springtale-cli</div>
+      <div class="info-item">Layers 2-3 (baselines, trajectories) deferred — Layer 1 alone beats OpenClaw's zero monitoring</div>
+    </div>
+  </div>
+
+  <div class="section-label">privacy by design + data sovereignty CLI</div>
+  <div class="grid-2" style="margin-bottom: 0;">
+    <div class="grid-cell">
+      <div class="cell-label cell-label--teal">Privacy Defaults</div>
+      <div class="info-item">Local-first — SQLite, single file, zero cloud dependency</div>
+      <div class="info-item">127.0.0.1 binding — never 0.0.0.0 by default</div>
+      <div class="info-item">NoopAdapter default — no data sent to AI unless user plugs in</div>
+      <div class="info-item">L1 autonomy default — suggest only, no autonomous action</div>
+      <div class="info-item">Secret&lt;T&gt; + zeroize — credentials zeroed on drop</div>
+      <div class="info-item">Phase 3: Veilid private routes — no IP leakage</div>
+    </div>
+    <div class="grid-cell">
+      <div class="cell-label cell-label--accent">Data Sovereignty CLI</div>
+      <div class="info-item">data inventory — what's collected, per connector, with purpose</div>
+      <div class="info-item">data export --format json — full data export</div>
+      <div class="info-item">data purge --connector &lt;n&gt; — per-connector deletion</div>
+      <div class="info-item">data purge --all — delete everything</div>
+      <div class="info-item">data retention set --source external --ttl 7d</div>
+      <div class="info-item">memory snapshot / rollback / audit — provenance controls</div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ══════════════════════════════════════════
+     TAB 7 — CI & CONVENTIONS
+══════════════════════════════════════════ -->
+<div id="tab-ci" class="tab-panel">
+
+  <div class="section-label">ci quality gates · no pr merges without all passing</div>
+  <div class="gate-grid" style="margin-bottom: 2.5rem;">
+    <div class="gate">cargo fmt --check</div>
+    <div class="gate">cargo clippy --workspace --all-targets -- -D warnings</div>
+    <div class="gate">cargo nextest run --workspace</div>
+    <div class="gate">cargo test --doc</div>
+    <div class="gate">sqlx migrate run && cargo sqlx prepare --check</div>
+    <div class="gate">cargo deny check</div>
+    <div class="gate">cargo audit</div>
+    <div class="gate">pnpm -C sdk/connector-sdk-ts run check</div>
+    <div class="gate">pnpm -C sdk/connector-sdk-ts run test</div>
+    <div class="gate">docker compose build --no-cache</div>
+  </div>
+
+  <div class="section-label">module conventions — modules over inline items</div>
+  <div class="convention-grid" style="margin-bottom: 2.5rem;">
+    <div class="convention-side">
+      <div class="convention-label conv-good">✓ correct</div>
+      <div class="code-block">
+        <div class="comment">// every module is a named directory</div>
+        <div>crates/springtale-core/src/</div>
+        <div>&nbsp;&nbsp;<span class="path">pipeline/</span><span class="comment">mod.rs · stage.rs · context.rs</span></div>
+        <div>&nbsp;&nbsp;<span class="path">rule/</span><span class="comment">mod.rs · trigger.rs · condition.rs</span></div>
+        <div>&nbsp;&nbsp;<span class="path">router/</span><span class="comment">mod.rs · dispatch.rs</span></div>
+        <br>
+        <div class="comment">// functions live in named modules</div>
+        <div><span class="kw">pub mod</span> pipeline;</div>
+        <div><span class="kw">pub use</span> pipeline::stage::Stage;</div>
+        <br>
+        <div class="comment">// typed errors in their own module</div>
+        <div><span class="kw">mod</span> error;</div>
+        <div><span class="kw">pub use</span> error::PipelineError;</div>
+        <br>
+        <div class="comment">// SolidJS: styles in styles/ directory</div>
+        <div><span class="kw">import</span> styles <span class="kw">from</span> './ConnectorCard.module.css'</div>
+      </div>
+    </div>
+    <div class="convention-side">
+      <div class="convention-label conv-bad">✗ never</div>
+      <div class="code-block">
+        <div class="comment">// no free-floating impl at crate root</div>
+        <div class="comment">// src/lib.rs:</div>
+        <div class="strike">impl Pipeline { fn run() { ... } }</div>
+        <br>
+        <div class="comment">// no inline type aliases in fn signatures</div>
+        <div class="strike">fn foo(x: Vec&lt;(String, u32, bool)&gt;) {}</div>
+        <br>
+        <div class="comment">// no panic! or unwrap() outside tests</div>
+        <div class="strike">let val = config.get("key").unwrap();</div>
+        <br>
+        <div class="comment">// no inline styles in SolidJS</div>
+        <div class="strike">&lt;div style="color: red; margin: 8px"&gt;</div>
+        <br>
+        <div class="comment">// no raw tauri.invoke strings</div>
+        <div class="strike">await invoke("get_connectors")</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section-label">dev environment (nix flake · konductor-based)</div>
+  <div class="card">
+    <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 1px; background: var(--line);">
+      <div class="grid-cell">
+        <div class="cell-label cell-label--accent">Rust toolchain</div>
+        <div class="info-item">rustup — Rust stable 1.85+ via rustup</div>
+        <div class="info-item">cargo-nextest — faster parallel test runner</div>
+        <div class="info-item">cargo-watch — cargo watch -x test in dev</div>
+        <div class="info-item">cargo-deny — license + security advisory policy</div>
+        <div class="info-item">sqlx-cli — sqlx migrate run + prepare check</div>
+        <div class="info-item">mold linker — fast incremental builds on Linux</div>
+      </div>
+      <div class="grid-cell">
+        <div class="cell-label cell-label--accent">services + SDK</div>
+        <div class="info-item">postgresql_16 — local dev database</div>
+        <div class="info-item">redis — local job queue for springtale-scheduler</div>
+        <div class="info-item">nodejs_22 + pnpm — connector-sdk-ts only</div>
+        <div class="info-item">wabt — wasm-validate for connector WASM output</div>
+        <div class="info-item">direnv — auto-activates flake on cd</div>
+        <div class="info-item">extends Konductor frontend devshell (Rekindle pattern)</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  function showTab(id) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + id).classList.add('active');
+    event.currentTarget.classList.add('active');
+  }
+
+  function toggleCrate(el) {
+    el.classList.toggle('open');
+  }
+</script>
+
+</body>
+</html>

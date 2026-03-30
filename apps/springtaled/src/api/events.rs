@@ -1,0 +1,53 @@
+use axum::extract::{Query, State};
+use axum::response::IntoResponse;
+use axum::Json;
+
+use springtale_store::backend::trait_::StorageBackend;
+use springtale_store::schema::events::EventFilter;
+
+use super::state::AppState;
+
+/// Query parameters for event listing.
+#[derive(serde::Deserialize)]
+pub struct EventsQuery {
+    #[serde(default = "default_limit")]
+    pub limit: u32,
+    #[serde(default)]
+    pub offset: u32,
+    #[serde(default)]
+    pub connector: Option<String>,
+}
+
+fn default_limit() -> u32 {
+    50
+}
+
+/// GET /events — paginated event log.
+///
+/// Returns recent events (trigger type, connector, timestamp, action taken).
+/// Event payloads are NOT stored (ephemeral in PipelineContext per privacy model).
+pub async fn list(
+    State(state): State<AppState>,
+    Query(params): Query<EventsQuery>,
+) -> impl IntoResponse {
+    let filter = EventFilter {
+        connector_name: params.connector.clone(),
+        limit: Some(params.limit),
+        offset: if params.offset > 0 { Some(params.offset) } else { None },
+        ..Default::default()
+    };
+
+    let events = state.store.list_events(&filter).await;
+
+    match events {
+        Ok(events) => Json(serde_json::json!({
+            "events": events,
+            "limit": params.limit,
+            "offset": params.offset,
+        })),
+        Err(_) => Json(serde_json::json!({
+            "events": [],
+            "error": "failed to fetch events",
+        })),
+    }
+}

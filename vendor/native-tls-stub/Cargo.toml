@@ -1,0 +1,9 @@
+[package]
+name = "native-tls"
+version = "0.2.12"
+edition = "2021"
+description = "Stub crate that prevents native-tls from being used. Springtale uses rustls exclusively."
+
+[lib]
+name = "native_tls"
+path = "src/lib.rs"

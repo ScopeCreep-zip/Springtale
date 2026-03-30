@@ -1,0 +1,85 @@
+use crate::capability::grant::CapabilityChecker;
+use crate::connector::trait_::{ActionResult, Connector, EventHandler};
+use crate::error::ConnectorError;
+use crate::manifest::types::{ActionDecl, ConnectorManifest, TriggerDecl};
+
+/// Host wrapper for a native (in-process) connector.
+///
+/// Wraps a `Box<dyn Connector>` with capability checking. The capability
+/// check runs BEFORE every `execute()` — the inner connector cannot skip it.
+///
+/// Native connectors are first-party Rust crates. They run in-process
+/// (no WASM sandbox) but are still subject to declared capability checks.
+pub struct NativeConnectorHost {
+    inner: Box<dyn Connector>,
+    connector_name: String,
+}
+
+impl NativeConnectorHost {
+    /// Create a new native connector host.
+    ///
+    /// Validates the manifest structure before accepting the connector.
+    pub fn new(connector: Box<dyn Connector>) -> Result<Self, ConnectorError> {
+        let manifest = connector.manifest();
+        crate::manifest::verify::verify_manifest(manifest)?;
+
+        let name = manifest.name.clone();
+
+        Ok(Self {
+            inner: connector,
+            connector_name: name,
+        })
+    }
+
+    /// Get the connector name.
+    pub fn name(&self) -> &str {
+        &self.connector_name
+    }
+
+    /// Execute an action with capability checking.
+    ///
+    /// The `checker` verifies the connector has the required capabilities
+    /// before forwarding to the inner connector.
+    pub async fn execute_checked(
+        &self,
+        action: &str,
+        input: serde_json::Value,
+        checker: &CapabilityChecker,
+    ) -> Result<ActionResult, ConnectorError> {
+        // Capability check BEFORE every execute — connector cannot skip it.
+        // Uses per-action inference when possible, falls back to checking all
+        // declared capabilities.
+        super::capability::check_action_capabilities(
+            checker,
+            self.inner.manifest(),
+            action,
+            &input,
+        )?;
+
+        self.inner.execute(action, input).await
+    }
+
+    /// Delegate trigger registration to the inner connector.
+    pub async fn on_event(
+        &self,
+        trigger: &str,
+        handler: EventHandler,
+    ) -> Result<(), ConnectorError> {
+        self.inner.on_event(trigger, handler).await
+    }
+
+    /// Get trigger declarations.
+    pub fn triggers(&self) -> &[TriggerDecl] {
+        self.inner.triggers()
+    }
+
+    /// Get action declarations.
+    pub fn actions(&self) -> &[ActionDecl] {
+        self.inner.actions()
+    }
+
+    /// Get the manifest.
+    pub fn manifest(&self) -> &ConnectorManifest {
+        self.inner.manifest()
+    }
+}

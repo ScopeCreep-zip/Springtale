@@ -1,0 +1,23 @@
+[package]
+name = "springtale-store"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Local-first SQLite storage backend, schema management, and query layer."
+
+[dependencies]
+rusqlite = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+chrono = { workspace = true }
+toml = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+springtale-core = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

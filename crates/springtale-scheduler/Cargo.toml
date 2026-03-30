@@ -1,0 +1,25 @@
+[package]
+name = "springtale-scheduler"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Cron scheduling, file watching, job queue, and retry logic."
+
+[dependencies]
+tokio = { workspace = true }
+cron = { workspace = true }
+chrono = { workspace = true }
+notify = { workspace = true }
+notify-debouncer-full = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+uuid = { workspace = true }
+rand = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+springtale-core = { workspace = true }
+springtale-store = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

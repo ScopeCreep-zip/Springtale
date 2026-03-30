@@ -1,0 +1,143 @@
+[workspace]
+resolver = "2"
+members = [
+  "crates/springtale-core",
+  "crates/springtale-crypto",
+  "crates/springtale-transport",
+  "crates/springtale-connector",
+  "crates/springtale-scheduler",
+  "crates/springtale-store",
+  "crates/springtale-ai",
+  "crates/springtale-mcp",
+  # Phase 1b
+  # "crates/springtale-bot",
+  # Phase 2a
+  # "crates/springtale-sentinel",
+  # Phase 1a connectors
+  "connectors/connector-kick",
+  "connectors/connector-presearch",
+  "connectors/connector-bluesky",
+  "connectors/connector-github",
+  "connectors/connector-filesystem",
+  "connectors/connector-shell",
+  "connectors/connector-http",
+  # Phase 1b connectors
+  # "connectors/connector-telegram",
+  # Apps
+  "apps/springtaled",
+  "apps/springtale-cli",
+]
+
+[workspace.package]
+edition = "2024"
+license = "MIT"
+repository = "https://github.com/ScopeCreep-zip/Springtale"
+
+[workspace.dependencies]
+
+# ── Async Runtime ──────────────────────────────────────────────────────────────
+tokio            = { version = "1",    features = ["full"] }
+tokio-util       = { version = "0.7",  features = ["codec"] }
+async-trait      = "0.1"
+
+# ── Observability ──────────────────────────────────────────────────────────────
+tracing          = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+
+# ── Error Handling ─────────────────────────────────────────────────────────────
+anyhow           = "1"
+thiserror        = "2"
+
+# ── Serialization ──────────────────────────────────────────────────────────────
+serde            = { version = "1", features = ["derive"] }
+serde_json       = "1"
+toml             = "0.8"
+schemars         = { version = "1", features = ["derive", "uuid1", "chrono04"] }
+
+# ── Validation ─────────────────────────────────────────────────────────────────
+garde            = { version = "0.22", features = ["derive", "full"] }
+
+# ── Security / Secrets ─────────────────────────────────────────────────────────
+secrecy          = { version = "0.10", features = ["serde"] }
+zeroize          = { version = "1",    features = ["derive"] }
+
+# ── Cryptography ───────────────────────────────────────────────────────────────
+ed25519-dalek    = { version = "2",    features = ["rand_core", "serde"] }
+chacha20poly1305 = { version = "0.10", features = ["rand_core", "getrandom"] }
+argon2           = "0.5"
+rand             = { version = "0.8",  features = ["getrandom", "std_rng"] }
+sha2             = "0.10"
+hmac             = "0.12"
+
+# ── Identifiers ────────────────────────────────────────────────────────────────
+uuid             = { version = "1",    features = ["v4", "serde"] }
+
+# ── HTTP Server ────────────────────────────────────────────────────────────────
+axum             = { version = "0.8",  features = ["macros", "multipart"] }
+tower            = { version = "0.5", features = ["limit", "buffer"] }
+tower-http       = { version = "0.6",  features = ["cors", "trace", "auth", "limit", "timeout"] }
+
+# ── HTTP Client ────────────────────────────────────────────────────────────────
+reqwest          = { version = "0.13", default-features = false, features = ["json", "rustls", "stream"] }
+
+# ── Database (local-first) ─────────────────────────────────────────────────────
+rusqlite         = { version = "0.39", features = ["bundled", "vtab"] }
+
+# ── Database (server mode, optional) ──────────────────────────────────────────
+sqlx             = { version = "0.8",  features = ["postgres", "uuid", "chrono", "json", "migrate", "runtime-tokio"] }
+
+# ── WASM Sandbox ───────────────────────────────────────────────────────────────
+wasmtime         = { version = "43",   features = ["cranelift", "component-model", "parallel-compilation"] }
+wasmtime-wasi    = { version = "43",   features = ["p2"] }
+
+# ── MCP Protocol ───────────────────────────────────────────────────────────────
+rmcp             = { version = "1",    features = ["server", "transport-io", "macros"] }
+jsonschema       = { version = "0.45", default-features = false }
+
+# ── Filesystem Watching ────────────────────────────────────────────────────────
+notify           = { version = "8",    features = ["macos_fsevent"] }
+notify-debouncer-full = { version = "0.7", features = ["macos_fsevent"] }
+
+# ── Scheduling ─────────────────────────────────────────────────────────────────
+cron             = "0.13"
+chrono           = { version = "0.4",  features = ["serde"] }
+
+# ── CLI ────────────────────────────────────────────────────────────────────────
+clap             = { version = "4",    features = ["derive", "env"] }
+indicatif        = "0.17"
+tabled           = "0.17"
+rpassword        = "5"
+
+# ── Futures ─────────────────────────────────────────────────────────────────────
+futures-core      = "0.3"
+futures-util      = { version = "0.3", features = ["sink"] }
+
+# ── Regex ──────────────────────────────────────────────────────────────────────
+regex            = "1"
+
+# ── Config ─────────────────────────────────────────────────────────────────────
+figment          = { version = "0.10", features = ["toml", "env"] }
+
+# ── Concurrency ────────────────────────────────────────────────────────────────
+dashmap          = "6"
+
+# ── Encoding ───────────────────────────────────────────────────────────────────
+hex              = "0.4"
+base64           = "0.22"
+bytes            = "1"
+
+# ── RSA (Kick webhook verification) ──────────────────────────────────────────
+rsa              = { version = "0.9", features = ["sha2"] }
+
+# ── Testing ────────────────────────────────────────────────────────────────────
+tempfile         = "3"
+
+# ── Internal Crates ────────────────────────────────────────────────────────────
+springtale-core       = { path = "crates/springtale-core" }
+springtale-crypto     = { path = "crates/springtale-crypto" }
+springtale-transport  = { path = "crates/springtale-transport" }
+springtale-connector  = { path = "crates/springtale-connector" }
+springtale-scheduler  = { path = "crates/springtale-scheduler" }
+springtale-store      = { path = "crates/springtale-store" }
+springtale-ai         = { path = "crates/springtale-ai" }
+springtale-mcp        = { path = "crates/springtale-mcp" }

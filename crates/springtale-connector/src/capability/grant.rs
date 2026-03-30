@@ -1,0 +1,296 @@
+use std::collections::HashSet;
+
+use crate::error::ConnectorError;
+use crate::manifest::types::Capability;
+
+/// A granted capability for a specific connector.
+#[derive(Debug, Clone)]
+pub struct CapabilityGrant {
+    /// The connector this grant applies to.
+    pub connector_name: String,
+
+    /// Capabilities that have been approved.
+    pub approved: HashSet<String>,
+
+    /// Capabilities that are pending user approval.
+    pub pending_approval: Vec<Capability>,
+
+    /// Capabilities that were denied.
+    pub denied: Vec<Capability>,
+}
+
+/// User's policy for capability approval.
+#[derive(Debug, Clone, Default)]
+pub enum CapabilityPolicy {
+    /// Auto-approve all capabilities (not recommended).
+    AllowAll,
+
+    /// Auto-deny all capabilities (maximum restriction).
+    DenyAll,
+
+    /// Approve only these specific capabilities. Everything else denied.
+    AllowList(HashSet<String>),
+
+    /// Prompt user for each new capability (default).
+    #[default]
+    Interactive,
+}
+
+/// Runtime capability checker.
+///
+/// Created when a connector is installed. Called BEFORE every `execute()`.
+/// The connector cannot bypass this — it sits in the dispatch layer.
+pub struct CapabilityChecker {
+    grants: std::collections::HashMap<String, CapabilityGrant>,
+}
+
+impl CapabilityChecker {
+    pub fn new() -> Self {
+        Self {
+            grants: std::collections::HashMap::new(),
+        }
+    }
+
+    /// Register a connector's approved capabilities.
+    pub fn register(
+        &mut self,
+        connector_name: &str,
+        declared: &[Capability],
+        policy: &CapabilityPolicy,
+    ) -> Result<CapabilityGrant, ConnectorError> {
+        let mut approved = HashSet::new();
+        let mut pending = Vec::new();
+        let mut denied = Vec::new();
+
+        for cap in declared {
+            let cap_str = cap.to_string();
+            match policy {
+                CapabilityPolicy::AllowAll => {
+                    approved.insert(cap_str);
+                }
+                CapabilityPolicy::DenyAll => {
+                    denied.push(cap.clone());
+                }
+                CapabilityPolicy::AllowList(allowed) => {
+                    if allowed.contains(&cap_str) {
+                        approved.insert(cap_str);
+                    } else {
+                        denied.push(cap.clone());
+                    }
+                }
+                CapabilityPolicy::Interactive => {
+                    // ShellExec always requires explicit approval
+                    if matches!(cap, Capability::ShellExec) {
+                        pending.push(cap.clone());
+                    } else {
+                        // Non-dangerous capabilities auto-approved in interactive mode
+                        approved.insert(cap_str);
+                    }
+                }
+            }
+        }
+
+        let grant = CapabilityGrant {
+            connector_name: connector_name.to_owned(),
+            approved,
+            pending_approval: pending,
+            denied,
+        };
+
+        self.grants.insert(connector_name.to_owned(), grant.clone());
+        Ok(grant)
+    }
+
+    /// Approve a pending capability (called after user confirms).
+    pub fn approve(&mut self, connector_name: &str, capability: &Capability) -> bool {
+        if let Some(grant) = self.grants.get_mut(connector_name) {
+            let cap_str = capability.to_string();
+            grant.pending_approval.retain(|c| c.to_string() != cap_str);
+            grant.approved.insert(cap_str);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Check if a connector has a specific capability at runtime.
+    ///
+    /// This is called BEFORE every `execute()` in the dispatch layer.
+    pub fn check(&self, connector_name: &str, required: &Capability) -> Result<(), ConnectorError> {
+        let grant = self
+            .grants
+            .get(connector_name)
+            .ok_or_else(|| ConnectorError::NotFound(connector_name.to_owned()))?;
+
+        let cap_str = required.to_string();
+
+        if grant.approved.contains(&cap_str) {
+            Ok(())
+        } else if grant
+            .pending_approval
+            .iter()
+            .any(|c| c.to_string() == cap_str)
+        {
+            Err(ConnectorError::RequiresApproval(cap_str))
+        } else {
+            Err(ConnectorError::CapabilityDenied(cap_str))
+        }
+    }
+}
+
+impl Default for CapabilityChecker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_allow_all_policy() {
+        let mut checker = CapabilityChecker::new();
+        let caps = vec![
+            Capability::NetworkOutbound {
+                host: "api.kick.com".into(),
+            },
+            Capability::ShellExec,
+        ];
+
+        let grant = checker
+            .register("connector-test", &caps, &CapabilityPolicy::AllowAll)
+            .unwrap();
+
+        assert_eq!(grant.approved.len(), 2);
+        assert!(grant.pending_approval.is_empty());
+        assert!(grant.denied.is_empty());
+    }
+
+    #[test]
+    fn test_deny_all_policy() {
+        let mut checker = CapabilityChecker::new();
+        let caps = vec![Capability::NetworkOutbound {
+            host: "api.kick.com".into(),
+        }];
+
+        let grant = checker
+            .register("connector-test", &caps, &CapabilityPolicy::DenyAll)
+            .unwrap();
+
+        assert!(grant.approved.is_empty());
+        assert_eq!(grant.denied.len(), 1);
+    }
+
+    #[test]
+    fn test_interactive_auto_approves_network() {
+        let mut checker = CapabilityChecker::new();
+        let caps = vec![Capability::NetworkOutbound {
+            host: "api.kick.com".into(),
+        }];
+
+        let grant = checker
+            .register("connector-test", &caps, &CapabilityPolicy::Interactive)
+            .unwrap();
+
+        assert_eq!(grant.approved.len(), 1);
+        assert!(grant.pending_approval.is_empty());
+    }
+
+    #[test]
+    fn test_interactive_holds_shell_exec() {
+        let mut checker = CapabilityChecker::new();
+        let caps = vec![Capability::ShellExec];
+
+        let grant = checker
+            .register("connector-test", &caps, &CapabilityPolicy::Interactive)
+            .unwrap();
+
+        assert!(grant.approved.is_empty());
+        assert_eq!(grant.pending_approval.len(), 1);
+    }
+
+    #[test]
+    fn test_check_approved_passes() {
+        let mut checker = CapabilityChecker::new();
+        let caps = vec![Capability::NetworkOutbound {
+            host: "api.kick.com".into(),
+        }];
+        checker
+            .register("connector-test", &caps, &CapabilityPolicy::AllowAll)
+            .unwrap();
+
+        let result = checker.check(
+            "connector-test",
+            &Capability::NetworkOutbound {
+                host: "api.kick.com".into(),
+            },
+        );
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_check_denied_fails() {
+        let mut checker = CapabilityChecker::new();
+        let caps = vec![Capability::NetworkOutbound {
+            host: "api.kick.com".into(),
+        }];
+        checker
+            .register("connector-test", &caps, &CapabilityPolicy::DenyAll)
+            .unwrap();
+
+        let result = checker.check(
+            "connector-test",
+            &Capability::NetworkOutbound {
+                host: "api.kick.com".into(),
+            },
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_check_undeclared_capability_fails() {
+        let mut checker = CapabilityChecker::new();
+        let caps = vec![Capability::NetworkOutbound {
+            host: "api.kick.com".into(),
+        }];
+        checker
+            .register("connector-test", &caps, &CapabilityPolicy::AllowAll)
+            .unwrap();
+
+        // Requesting a capability that was never declared
+        let result = checker.check(
+            "connector-test",
+            &Capability::NetworkOutbound {
+                host: "evil.com".into(),
+            },
+        );
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_approve_pending_capability() {
+        let mut checker = CapabilityChecker::new();
+        let caps = vec![Capability::ShellExec];
+        checker
+            .register("connector-test", &caps, &CapabilityPolicy::Interactive)
+            .unwrap();
+
+        // ShellExec is pending
+        assert!(
+            checker
+                .check("connector-test", &Capability::ShellExec)
+                .is_err()
+        );
+
+        // User approves
+        assert!(checker.approve("connector-test", &Capability::ShellExec));
+
+        // Now it passes
+        assert!(
+            checker
+                .check("connector-test", &Capability::ShellExec)
+                .is_ok()
+        );
+    }
+}

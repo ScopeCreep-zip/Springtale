@@ -1,0 +1,49 @@
+# cargo-deny configuration
+# https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+targets = []
+all-features = true
+
+[advisories]
+vulnerability = "deny"
+unmaintained = "warn"
+yanked = "deny"
+notice = "warn"
+ignore = []
+
+[licenses]
+unlicensed = "deny"
+copyleft = "deny"
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+  "Zlib",
+  "BSL-1.0",
+  "OpenSSL",
+]
+exceptions = []
+
+[bans]
+multiple-versions = "warn"
+wildcards = "allow"
+highlight = "all"
+deny = [
+  # No OpenSSL — rustls exclusively
+  { name = "native-tls", wrappers = [] },
+  { name = "openssl-sys", wrappers = [] },
+  { name = "openssl", wrappers = [] },
+]
+skip = []
+skip-tree = []
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "warn"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+allow-git = []
