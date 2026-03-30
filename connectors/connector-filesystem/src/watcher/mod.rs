@@ -122,15 +122,9 @@ impl FsConnectorWatcher {
     ///
     /// The path must be within the configured `watch_paths` allow-list.
     /// Symlinks are resolved before comparison.
-    pub fn watch(
-        &mut self,
-        path: &Path,
-        config: &FilesystemConfig,
-    ) -> Result<(), FilesystemError> {
+    pub fn watch(&mut self, path: &Path, config: &FilesystemConfig) -> Result<(), FilesystemError> {
         if !config.is_watch_allowed(path) {
-            return Err(FilesystemError::PathNotAllowed(
-                path.display().to_string(),
-            ));
+            return Err(FilesystemError::PathNotAllowed(path.display().to_string()));
         }
 
         self.debouncer
@@ -184,16 +178,15 @@ mod tests {
         let received = Arc::new(Mutex::new(Vec::<(String, serde_json::Value)>::new()));
         let received_clone = received.clone();
 
-        let callbacks: Arc<Mutex<Vec<(String, TriggerCallback)>>> =
-            Arc::new(Mutex::new(vec![(
-                "file_created".to_owned(),
-                Box::new(move |trigger: &str, payload: serde_json::Value| {
-                    // Use try_lock since we're in a sync callback
-                    if let Ok(mut v) = received_clone.try_lock() {
-                        v.push((trigger.to_owned(), payload));
-                    }
-                }),
-            )]));
+        let callbacks: Arc<Mutex<Vec<(String, TriggerCallback)>>> = Arc::new(Mutex::new(vec![(
+            "file_created".to_owned(),
+            Box::new(move |trigger: &str, payload: serde_json::Value| {
+                // Use try_lock since we're in a sync callback
+                if let Ok(mut v) = received_clone.try_lock() {
+                    v.push((trigger.to_owned(), payload));
+                }
+            }),
+        )]));
 
         let mut watcher = FsConnectorWatcher::new(&config, callbacks).unwrap();
         watcher.watch(&dir, &config).unwrap();
@@ -230,8 +223,7 @@ mod tests {
             debounce_ms: 100,
         };
 
-        let callbacks: Arc<Mutex<Vec<(String, TriggerCallback)>>> =
-            Arc::new(Mutex::new(vec![]));
+        let callbacks: Arc<Mutex<Vec<(String, TriggerCallback)>>> = Arc::new(Mutex::new(vec![]));
         let mut watcher = FsConnectorWatcher::new(&config, callbacks).unwrap();
 
         // Should succeed for allowed path
@@ -240,7 +232,10 @@ mod tests {
         // Should fail for forbidden path
         let result = watcher.watch(&forbidden, &config);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), FilesystemError::PathNotAllowed(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            FilesystemError::PathNotAllowed(_)
+        ));
 
         fs::remove_dir_all(&allowed).ok();
         fs::remove_dir_all(&forbidden).ok();
@@ -252,8 +247,7 @@ mod tests {
         fs::create_dir_all(&dir).ok();
 
         let config = test_config(&dir);
-        let callbacks: Arc<Mutex<Vec<(String, TriggerCallback)>>> =
-            Arc::new(Mutex::new(vec![]));
+        let callbacks: Arc<Mutex<Vec<(String, TriggerCallback)>>> = Arc::new(Mutex::new(vec![]));
         let mut watcher = FsConnectorWatcher::new(&config, callbacks).unwrap();
 
         watcher.watch(&dir, &config).unwrap();

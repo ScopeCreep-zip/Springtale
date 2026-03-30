@@ -1,7 +1,7 @@
 use base64::Engine;
 use rsa::pkcs1v15::VerifyingKey;
 use rsa::signature::Verifier;
-use rsa::{pkcs8::DecodePublicKey, RsaPublicKey};
+use rsa::{RsaPublicKey, pkcs8::DecodePublicKey};
 use sha2::Sha256;
 
 use crate::error::KickError;
@@ -85,8 +85,14 @@ mod tests {
 
     #[test]
     fn test_event_type_to_trigger() {
-        assert_eq!(event_type_to_trigger("chat.message.sent"), Some("chat_message"));
-        assert_eq!(event_type_to_trigger("channel.followed"), Some("channel_followed"));
+        assert_eq!(
+            event_type_to_trigger("chat.message.sent"),
+            Some("chat_message")
+        );
+        assert_eq!(
+            event_type_to_trigger("channel.followed"),
+            Some("channel_followed")
+        );
         // livestream requires payload inspection, returns None here
         assert_eq!(event_type_to_trigger("livestream.status.updated"), None);
         assert_eq!(event_type_to_trigger("unknown.event"), None);

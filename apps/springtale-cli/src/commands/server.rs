@@ -20,7 +20,10 @@ pub async fn run() -> Result<()> {
         .with_context(|| format!("failed to start {}", springtaled_path.display()))?;
 
     // Wait for the child process
-    let status = child.wait().await.context("failed to wait for springtaled")?;
+    let status = child
+        .wait()
+        .await
+        .context("failed to wait for springtaled")?;
 
     if status.success() {
         println!("springtaled exited cleanly");

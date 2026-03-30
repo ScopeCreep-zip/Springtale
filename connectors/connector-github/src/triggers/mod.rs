@@ -15,7 +15,12 @@ use springtale_connector::manifest::types::TriggerDecl;
 /// 2. Extracting flat fields from the nested payload
 /// 3. Dispatching the transformed payload to registered trigger handlers
 pub fn trigger_declarations() -> Vec<TriggerDecl> {
-    vec![push(), pull_request_opened(), issue_opened(), issue_comment()]
+    vec![
+        push(),
+        pull_request_opened(),
+        issue_opened(),
+        issue_comment(),
+    ]
 }
 
 fn push() -> TriggerDecl {
@@ -111,7 +116,11 @@ mod tests {
     #[test]
     fn test_all_triggers_have_schemas() {
         for trigger in trigger_declarations() {
-            assert!(trigger.schema.is_some(), "trigger {} missing schema", trigger.name);
+            assert!(
+                trigger.schema.is_some(),
+                "trigger {} missing schema",
+                trigger.name
+            );
         }
     }
 }

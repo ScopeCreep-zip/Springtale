@@ -25,8 +25,7 @@ pub fn verify_signature(
         .strip_prefix("sha256=")
         .ok_or(GithubError::WebhookSignatureInvalid)?;
 
-    let expected_sig = hex::decode(hex_sig)
-        .map_err(|_| GithubError::WebhookSignatureInvalid)?;
+    let expected_sig = hex::decode(hex_sig).map_err(|_| GithubError::WebhookSignatureInvalid)?;
 
     // SECURITY: expose needed for HMAC key computation
     let mut mac = HmacSha256::new_from_slice(secret.expose_secret().as_bytes())
@@ -68,7 +67,10 @@ mod tests {
 
         let result = verify_signature(&secret, payload, header);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), GithubError::WebhookSignatureInvalid));
+        assert!(matches!(
+            result.unwrap_err(),
+            GithubError::WebhookSignatureInvalid
+        ));
     }
 
     #[test]

@@ -32,21 +32,23 @@ mod tests {
     #[test]
     fn test_dispatch_returns_matches() {
         let mut engine = RuleEngine::new();
-        engine.add_rule(Rule {
-            id: RuleId::new(),
-            name: "test".into(),
-            description: String::new(),
-            status: RuleStatus::Enabled,
-            version: RuleVersion(1),
-            trigger: Trigger::ConnectorEvent {
-                connector: "connector-kick".into(),
-                event: "stream_live".into(),
-            },
-            conditions: vec![],
-            actions: vec![Action::SendMessage {
-                text: "live!".into(),
-            }],
-        }).unwrap();
+        engine
+            .add_rule(Rule {
+                id: RuleId::new(),
+                name: "test".into(),
+                description: String::new(),
+                status: RuleStatus::Enabled,
+                version: RuleVersion(1),
+                trigger: Trigger::ConnectorEvent {
+                    connector: "connector-kick".into(),
+                    event: "stream_live".into(),
+                },
+                conditions: vec![],
+                actions: vec![Action::SendMessage {
+                    text: "live!".into(),
+                }],
+            })
+            .unwrap();
 
         let event = TriggerEvent {
             trigger_type: "ConnectorEvent".into(),

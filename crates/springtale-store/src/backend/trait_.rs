@@ -2,6 +2,7 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
 use crate::error::StoreError;
+use crate::schema::bot::{MemoryRow, SessionRow, UserPrefsRow};
 use crate::schema::connectors::ConnectorRow;
 use crate::schema::events::{EventEntry, EventFilter};
 use crate::schema::jobs::{JobId, JobRow};
@@ -69,4 +70,71 @@ pub trait StorageBackend: Send + Sync + 'static {
 
     /// Mark a job as failed with an error message.
     async fn fail_job(&self, id: &JobId, error: &str) -> Result<(), StoreError>;
+
+    // ── Bot Sessions ──────────────────────────────────────────
+
+    /// Upsert a bot session (insert or update on conflict).
+    async fn upsert_session(&self, session: &SessionRow) -> Result<(), StoreError>;
+
+    /// Get a bot session by (user_id, channel_id).
+    async fn get_session(
+        &self,
+        user_id: &str,
+        channel_id: &str,
+    ) -> Result<Option<SessionRow>, StoreError>;
+
+    /// Delete a bot session.
+    async fn delete_session(&self, user_id: &str, channel_id: &str) -> Result<(), StoreError>;
+
+    // ── User Preferences ──────────────────────────────────────
+
+    /// Upsert user preferences.
+    async fn upsert_user_prefs(&self, prefs: &UserPrefsRow) -> Result<(), StoreError>;
+
+    /// Get user preferences by user_id.
+    async fn get_user_prefs(&self, user_id: &str) -> Result<Option<UserPrefsRow>, StoreError>;
+
+    // ── Bot Memory ────────────────────────────────────────────
+
+    /// Store an encrypted memory entry.
+    async fn insert_memory(&self, entry: &MemoryRow) -> Result<(), StoreError>;
+
+    /// Get recent memory entries for a (user_id, channel_id),
+    /// ordered by created_at DESC.
+    async fn get_memory(
+        &self,
+        user_id: &str,
+        channel_id: &str,
+        limit: usize,
+    ) -> Result<Vec<MemoryRow>, StoreError>;
+
+    /// Delete all memory entries for a (user_id, channel_id).
+    /// Returns the number of entries deleted.
+    async fn delete_memory(&self, user_id: &str, channel_id: &str) -> Result<u64, StoreError>;
+
+    /// Delete the oldest entries beyond `max_entries` for a
+    /// (user_id, channel_id). Used by compaction.
+    /// Returns the number of entries deleted.
+    async fn compact_memory(
+        &self,
+        user_id: &str,
+        channel_id: &str,
+        max_entries: usize,
+    ) -> Result<u64, StoreError>;
+
+    // ── Bot Aliases ───────────────────────────────────────────
+
+    /// Upsert a command alias.
+    async fn upsert_alias(
+        &self,
+        alias: &str,
+        target: &str,
+        created_by: &str,
+    ) -> Result<(), StoreError>;
+
+    /// List all command aliases as (alias, target) pairs.
+    async fn list_aliases(&self) -> Result<Vec<(String, String)>, StoreError>;
+
+    /// Delete a command alias.
+    async fn delete_alias(&self, alias: &str) -> Result<(), StoreError>;
 }

@@ -33,18 +33,15 @@ pub async fn run() -> Result<()> {
         }
 
         let keypair = Keypair::generate().context("failed to generate identity")?;
-        let mut vault = Vault::create(&vault_path, passphrase.as_bytes())
-            .context("failed to create vault")?;
+        let mut vault =
+            Vault::create(&vault_path, passphrase.as_bytes()).context("failed to create vault")?;
         // SECURITY: expose needed to persist identity key material
         vault
             .set("identity", keypair.expose_secret_bytes().to_vec())
             .context("failed to store identity")?;
         vault.save().context("failed to save vault")?;
 
-        println!(
-            "  Created vault at {}",
-            vault_path.display()
-        );
+        println!("  Created vault at {}", vault_path.display());
         println!(
             "  Generated identity: {}",
             hex::encode(keypair.node_id().as_bytes())
@@ -56,8 +53,7 @@ pub async fn run() -> Result<()> {
     if db_path.exists() {
         println!("  Database already exists at {}", db_path.display());
     } else {
-        let _store = SqliteBackend::open(&db_path)
-            .context("failed to create database")?;
+        let _store = SqliteBackend::open(&db_path).context("failed to create database")?;
         println!("  Created database at {}", db_path.display());
     }
 
@@ -87,12 +83,10 @@ bind = "127.0.0.1:8080"
             socket_path = data_dir.join("springtale.sock").display(),
         );
 
-        std::fs::write(&config_path, default_config)
-            .context("failed to write springtale.toml")?;
+        std::fs::write(&config_path, default_config).context("failed to write springtale.toml")?;
         println!("  Created {}", config_path.display());
     }
 
     println!("\nSpringtale initialized. Run `springtale server start` to begin.");
     Ok(())
 }
-

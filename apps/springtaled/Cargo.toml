@@ -31,7 +31,10 @@ springtale-connector = { workspace = true }
 springtale-scheduler = { workspace = true }
 springtale-store = { workspace = true }
 springtale-ai = { workspace = true }
+springtale-bot = { workspace = true }
 springtale-mcp = { workspace = true }
+connector-telegram = { workspace = true }
+secrecy = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

@@ -11,6 +11,7 @@ pub mod schema;
 pub use backend::SqliteBackend;
 pub use backend::StorageBackend;
 pub use error::StoreError;
+pub use schema::bot::{MemoryRow, SessionRow, UserPrefsRow};
 pub use schema::connectors::ConnectorRow;
 pub use schema::events::{EventEntry, EventFilter};
 pub use schema::jobs::{JobId, JobRow};

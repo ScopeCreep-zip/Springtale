@@ -29,7 +29,10 @@ impl std::fmt::Debug for GithubConfig {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GithubConfig")
             .field("token", &"[REDACTED]")
-            .field("webhook_secret", &self.webhook_secret.as_ref().map(|_| "[REDACTED]"))
+            .field(
+                "webhook_secret",
+                &self.webhook_secret.as_ref().map(|_| "[REDACTED]"),
+            )
             .field("api_base", &self.api_base)
             .finish()
     }

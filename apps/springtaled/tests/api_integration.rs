@@ -5,13 +5,13 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 
+use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use axum::Router;
-use tokio::sync::{mpsc, Mutex, RwLock};
+use tokio::sync::{Mutex, RwLock, mpsc};
 use tower::ServiceExt;
 
 use springtale_connector::capability::grant::CapabilityPolicy;
@@ -31,7 +31,9 @@ use springtale_crypto::token::derive_api_token_hash;
 /// the daemon to appear as still booting.
 fn build_test_app(ready: bool) -> (Router, String) {
     let store = Arc::new(SqliteBackend::open_in_memory().unwrap());
-    let registry = Arc::new(RwLock::new(ConnectorRegistry::new(CapabilityPolicy::AllowAll)));
+    let registry = Arc::new(RwLock::new(ConnectorRegistry::new(
+        CapabilityPolicy::AllowAll,
+    )));
     let engine = Arc::new(RwLock::new(RuleEngine::new()));
 
     let passphrase = b"test-passphrase";
@@ -40,9 +42,7 @@ fn build_test_app(ready: bool) -> (Router, String) {
 
     let (trigger_tx, _trigger_rx) = mpsc::channel(256);
     let cron = Arc::new(Mutex::new(CronExecutor::new(trigger_tx.clone())));
-    let fs_watcher = Arc::new(Mutex::new(
-        FsWatcher::new(trigger_tx.clone()).unwrap(),
-    ));
+    let fs_watcher = Arc::new(Mutex::new(FsWatcher::new(trigger_tx.clone()).unwrap()));
 
     let ready_flag = Arc::new(AtomicBool::new(ready));
 
@@ -69,8 +69,7 @@ async fn send(router: Router, request: Request<Body>) -> (StatusCode, serde_json
     let body = axum::body::to_bytes(response.into_body(), usize::MAX)
         .await
         .unwrap();
-    let json: serde_json::Value =
-        serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null);
+    let json: serde_json::Value = serde_json::from_slice(&body).unwrap_or(serde_json::Value::Null);
     (status, json)
 }
 

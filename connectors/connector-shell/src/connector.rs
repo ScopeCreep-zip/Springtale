@@ -62,11 +62,7 @@ impl Connector for ShellConnector {
         }
     }
 
-    async fn on_event(
-        &self,
-        trigger: &str,
-        _handler: EventHandler,
-    ) -> Result<(), ConnectorError> {
+    async fn on_event(&self, trigger: &str, _handler: EventHandler) -> Result<(), ConnectorError> {
         // Shell connector has no triggers
         Err(ConnectorError::ExecutionFailed(format!(
             "shell connector has no triggers, cannot register handler for: {trigger}"
@@ -84,17 +80,18 @@ fn build_manifest(actions: &[ActionDecl]) -> ConnectorManifest {
         name: "connector-shell".to_owned(),
         version: env!("CARGO_PKG_VERSION").to_owned(),
         author: "Springtale".to_owned(),
-        description: "Shell command connector — execute allow-listed commands with configurable timeouts.".to_owned(),
+        description:
+            "Shell command connector — execute allow-listed commands with configurable timeouts."
+                .to_owned(),
         capabilities: vec![Capability::ShellExec],
         triggers: vec![],
         actions: actions.to_vec(),
-        data_disclosure: vec![
-            DataDisclosure {
-                data_type: "command output".to_owned(),
-                purpose: "capturing stdout/stderr from executed commands for automation rules".to_owned(),
-                destination: "local only".to_owned(),
-            },
-        ],
+        data_disclosure: vec![DataDisclosure {
+            data_type: "command output".to_owned(),
+            purpose: "capturing stdout/stderr from executed commands for automation rules"
+                .to_owned(),
+            destination: "local only".to_owned(),
+        }],
         wasm_hash: None,
         signature: None,
     }
@@ -165,7 +162,9 @@ mod tests {
     #[tokio::test]
     async fn test_execute_unknown_action() {
         let connector = test_connector();
-        let result = connector.execute("nonexistent", serde_json::json!({})).await;
+        let result = connector
+            .execute("nonexistent", serde_json::json!({}))
+            .await;
         assert!(result.is_err());
     }
 

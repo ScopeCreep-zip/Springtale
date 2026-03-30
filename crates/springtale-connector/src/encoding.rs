@@ -3,8 +3,8 @@
 //! Provides percent-encoding and base64url encoding so that individual
 //! connector crates do not duplicate these helpers.
 
-use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
+use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 
 /// Percent-encode a string for use in URL parameters.
 ///

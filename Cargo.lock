@@ -751,6 +751,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "connector-telegram"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "reqwest",
+ "secrecy",
+ "serde",
+ "serde_json",
+ "springtale-connector",
+ "subtle",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "console"
 version = "0.15.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3751,6 +3767,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "springtale-bot"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "chrono",
+ "rand 0.8.5",
+ "regex",
+ "serde",
+ "serde_json",
+ "springtale-ai",
+ "springtale-connector",
+ "springtale-core",
+ "springtale-crypto",
+ "springtale-store",
+ "springtale-transport",
+ "thiserror 2.0.18",
+ "tokio",
+ "tracing",
+ "uuid",
+]
+
+[[package]]
 name = "springtale-cli"
 version = "0.1.0"
 dependencies = [
@@ -3917,16 +3955,19 @@ dependencies = [
  "anyhow",
  "axum",
  "chrono",
+ "connector-telegram",
  "figment",
  "garde",
  "hex",
  "hmac",
  "http-body-util",
  "rpassword",
+ "secrecy",
  "serde",
  "serde_json",
  "sha2",
  "springtale-ai",
+ "springtale-bot",
  "springtale-connector",
  "springtale-core",
  "springtale-crypto",

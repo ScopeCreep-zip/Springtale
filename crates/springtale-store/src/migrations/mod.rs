@@ -5,8 +5,11 @@ use crate::error::StoreError;
 /// Embedded SQL for schema version 1.
 const MIGRATION_001: &str = include_str!("001_init.sql");
 
+/// Embedded SQL for schema version 2.
+const MIGRATION_002: &str = include_str!("002_bot.sql");
+
 /// All migrations in order.
-const MIGRATIONS: &[(i64, &str)] = &[(1, MIGRATION_001)];
+const MIGRATIONS: &[(i64, &str)] = &[(1, MIGRATION_001), (2, MIGRATION_002)];
 
 /// Run all pending migrations on the given connection.
 ///
@@ -91,6 +94,24 @@ mod tests {
         let version: i64 = conn
             .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 1);
+        assert_eq!(version, 2);
+    }
+
+    #[test]
+    fn test_migration_002_creates_bot_tables() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+
+        // Verify all Phase 1b tables exist
+        for table in &["bot_sessions", "user_prefs", "bot_memory", "bot_aliases"] {
+            let count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                    [table],
+                    |row| row.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 1, "table {table} should exist");
+        }
     }
 }

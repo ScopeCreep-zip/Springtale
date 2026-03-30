@@ -48,8 +48,9 @@ pub async fn run(action: RuleAction, store: &SqliteBackend, json: bool) -> Resul
             }
         }
         RuleAction::Add { file } => {
-            let contents = std::fs::read_to_string(&file)
-                .map_err(|e| anyhow::anyhow!("failed to read rule file at {}: {e}", file.display()))?;
+            let contents = std::fs::read_to_string(&file).map_err(|e| {
+                anyhow::anyhow!("failed to read rule file at {}: {e}", file.display())
+            })?;
 
             let rule: Rule = match file.extension().and_then(|ext| ext.to_str()) {
                 Some("toml") => toml::from_str(&contents)
@@ -59,10 +60,9 @@ pub async fn run(action: RuleAction, store: &SqliteBackend, json: bool) -> Resul
                 _ => {
                     // Try TOML first, then JSON
                     toml::from_str(&contents).or_else(|_| {
-                        serde_json::from_str(&contents)
-                            .map_err(|e| anyhow::anyhow!(
-                                "failed to parse rule file (tried TOML and JSON): {e}"
-                            ))
+                        serde_json::from_str(&contents).map_err(|e| {
+                            anyhow::anyhow!("failed to parse rule file (tried TOML and JSON): {e}")
+                        })
                     })?
                 }
             };
@@ -71,8 +71,8 @@ pub async fn run(action: RuleAction, store: &SqliteBackend, json: bool) -> Resul
             println!("Added rule: {} (id: {rule_id})", rule.name);
         }
         RuleAction::Run { id } => {
-            let uuid = uuid::Uuid::parse_str(&id)
-                .map_err(|e| anyhow::anyhow!("invalid rule ID: {e}"))?;
+            let uuid =
+                uuid::Uuid::parse_str(&id).map_err(|e| anyhow::anyhow!("invalid rule ID: {e}"))?;
             let rule_id = RuleId(uuid);
 
             // Load all rules and find the target
@@ -102,8 +102,8 @@ pub async fn run(action: RuleAction, store: &SqliteBackend, json: bool) -> Resul
             }
         }
         RuleAction::Toggle { id } => {
-            let uuid = uuid::Uuid::parse_str(&id)
-                .map_err(|e| anyhow::anyhow!("invalid rule ID: {e}"))?;
+            let uuid =
+                uuid::Uuid::parse_str(&id).map_err(|e| anyhow::anyhow!("invalid rule ID: {e}"))?;
             let rule_id = RuleId(uuid);
             // Toggle: read current state and flip
             let rules = store.list_rules().await?;

@@ -63,7 +63,10 @@ mod tests {
         let config = test_config();
         let result = validate_command(&config, "rm", &["-rf".to_owned(), "/".to_owned()]);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), ShellError::CommandNotAllowed(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            ShellError::CommandNotAllowed(_)
+        ));
     }
 
     #[test]
@@ -103,11 +106,6 @@ mod tests {
     #[test]
     fn test_safe_args_pass() {
         let config = test_config();
-        assert!(validate_command(
-            &config,
-            "ls",
-            &["-la".to_owned(), "/tmp".to_owned()]
-        )
-        .is_ok());
+        assert!(validate_command(&config, "ls", &["-la".to_owned(), "/tmp".to_owned()]).is_ok());
     }
 }

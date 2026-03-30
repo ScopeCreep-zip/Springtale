@@ -34,9 +34,7 @@ impl PresearchClient {
         let inner = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
-            .map_err(|e| {
-                PresearchError::QueryFailed(format!("failed to build client: {e}"))
-            })?;
+            .map_err(|e| PresearchError::QueryFailed(format!("failed to build client: {e}")))?;
 
         Ok(Self {
             inner,
@@ -73,9 +71,8 @@ impl PresearchClient {
             )));
         }
 
-        serde_json::from_str(&body).map_err(|e| {
-            PresearchError::QueryFailed(format!("failed to parse response: {e}"))
-        })
+        serde_json::from_str(&body)
+            .map_err(|e| PresearchError::QueryFailed(format!("failed to parse response: {e}")))
     }
 
     /// Fetch the content of a URL (internal implementation).
@@ -193,7 +190,8 @@ mod tests {
         let config = PresearchConfig {
             api_key: SecretBox::new(Box::new("test_key".to_owned())),
             api_base: "https://presearch.com".to_owned(),
-            cache_ttl_secs: 300, allowed_scrape_hosts: vec![],
+            cache_ttl_secs: 300,
+            allowed_scrape_hosts: vec![],
         };
         let client = PresearchClient::new(&config);
         assert!(client.is_ok());

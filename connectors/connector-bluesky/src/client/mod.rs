@@ -261,7 +261,8 @@ impl BlueskyApi for AtProtoClient {
             "createdAt": now,
         });
 
-        self.create_record(&jwt, &did, "app.bsky.feed.post", record).await
+        self.create_record(&jwt, &did, "app.bsky.feed.post", record)
+            .await
     }
 
     async fn reply(
@@ -287,7 +288,8 @@ impl BlueskyApi for AtProtoClient {
             }
         });
 
-        self.create_record(&jwt, &did, "app.bsky.feed.post", record).await
+        self.create_record(&jwt, &did, "app.bsky.feed.post", record)
+            .await
     }
 
     async fn like(
@@ -306,7 +308,8 @@ impl BlueskyApi for AtProtoClient {
             "createdAt": now,
         });
 
-        self.create_record(&jwt, &did, "app.bsky.feed.like", record).await
+        self.create_record(&jwt, &did, "app.bsky.feed.like", record)
+            .await
     }
 
     async fn repost(
@@ -325,7 +328,8 @@ impl BlueskyApi for AtProtoClient {
             "createdAt": now,
         });
 
-        self.create_record(&jwt, &did, "app.bsky.feed.repost", record).await
+        self.create_record(&jwt, &did, "app.bsky.feed.repost", record)
+            .await
     }
 }
 

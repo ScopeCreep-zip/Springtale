@@ -59,10 +59,7 @@ pub async fn execute(
         .ok_or_else(|| HttpError::InvalidInput("missing 'url' parameter".to_owned()))?;
 
     let headers = parse_headers(input);
-    let body = input
-        .get("body")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let body = input.get("body").and_then(|v| v.as_str()).unwrap_or("");
 
     let response = client.post(url, &headers, body).await?;
 
@@ -94,8 +91,8 @@ fn parse_headers(input: &serde_json::Value) -> HashMap<String, String> {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::client::{HttpClient, HttpResponse};
     use crate::client::test_helpers::MockHttpClient;
+    use crate::client::{HttpClient, HttpResponse};
 
     fn real_test_client() -> HttpClient {
         let config = crate::config::HttpConfig {

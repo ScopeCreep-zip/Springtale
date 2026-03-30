@@ -50,11 +50,7 @@ impl GithubConnector {
     /// Called by the management API when a GitHub webhook is received
     /// and signature-verified. The trigger name is derived from the
     /// `X-GitHub-Event` header.
-    pub async fn dispatch_webhook(
-        &self,
-        trigger_name: &str,
-        payload: serde_json::Value,
-    ) {
+    pub async fn dispatch_webhook(&self, trigger_name: &str, payload: serde_json::Value) {
         let handlers = self.handlers.lock().await;
         for (registered, handler) in handlers.iter() {
             if registered == trigger_name {
@@ -95,12 +91,13 @@ impl Connector for GithubConnector {
         }
     }
 
-    async fn on_event(
-        &self,
-        trigger: &str,
-        handler: EventHandler,
-    ) -> Result<(), ConnectorError> {
-        let valid_triggers = ["push", "pull_request_opened", "issue_opened", "issue_comment"];
+    async fn on_event(&self, trigger: &str, handler: EventHandler) -> Result<(), ConnectorError> {
+        let valid_triggers = [
+            "push",
+            "pull_request_opened",
+            "issue_opened",
+            "issue_comment",
+        ];
         if !valid_triggers.contains(&trigger) {
             return Err(ConnectorError::ExecutionFailed(format!(
                 "unknown trigger: {trigger}"
@@ -172,9 +169,10 @@ mod tests {
     #[test]
     fn test_manifest_network_capability() {
         let connector = test_connector();
-        let has_github = connector.manifest().capabilities.iter().any(|c| {
-            matches!(c, Capability::NetworkOutbound { host } if host == "api.github.com")
-        });
+        let has_github =
+            connector.manifest().capabilities.iter().any(
+                |c| matches!(c, Capability::NetworkOutbound { host } if host == "api.github.com"),
+            );
         assert!(has_github);
     }
 
@@ -188,7 +186,11 @@ mod tests {
     fn test_three_actions() {
         let connector = test_connector();
         assert_eq!(connector.actions().len(), 3);
-        let names: Vec<&str> = connector.actions().iter().map(|a| a.name.as_str()).collect();
+        let names: Vec<&str> = connector
+            .actions()
+            .iter()
+            .map(|a| a.name.as_str())
+            .collect();
         assert!(names.contains(&"create_issue"));
         assert!(names.contains(&"post_comment"));
         assert!(names.contains(&"get_diff"));

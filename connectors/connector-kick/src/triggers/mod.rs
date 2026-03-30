@@ -128,7 +128,11 @@ mod tests {
     #[test]
     fn test_all_triggers_have_schemas() {
         for trigger in trigger_declarations() {
-            assert!(trigger.schema.is_some(), "trigger {} missing schema", trigger.name);
+            assert!(
+                trigger.schema.is_some(),
+                "trigger {} missing schema",
+                trigger.name
+            );
         }
     }
 
@@ -137,7 +141,10 @@ mod tests {
         let trigger = chat_message();
         let schema = trigger.schema.unwrap();
         let sender_type = schema["properties"]["sender"]["type"].as_str().unwrap();
-        assert_eq!(sender_type, "object", "sender must be a User object, not a string");
+        assert_eq!(
+            sender_type, "object",
+            "sender must be a User object, not a string"
+        );
     }
 
     #[test]

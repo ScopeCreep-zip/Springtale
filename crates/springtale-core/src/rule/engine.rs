@@ -223,7 +223,9 @@ mod tests {
     #[test]
     fn test_engine_matches_connector_event() {
         let mut engine = RuleEngine::new();
-        engine.add_rule(make_rule("test", "connector-kick", "stream_live")).unwrap();
+        engine
+            .add_rule(make_rule("test", "connector-kick", "stream_live"))
+            .unwrap();
 
         let event = TriggerEvent {
             trigger_type: "ConnectorEvent".into(),
@@ -240,7 +242,9 @@ mod tests {
     #[test]
     fn test_engine_no_match_wrong_event() {
         let mut engine = RuleEngine::new();
-        engine.add_rule(make_rule("test", "connector-kick", "stream_live")).unwrap();
+        engine
+            .add_rule(make_rule("test", "connector-kick", "stream_live"))
+            .unwrap();
 
         let event = TriggerEvent {
             trigger_type: "ConnectorEvent".into(),
@@ -328,7 +332,10 @@ mod tests {
         }];
 
         let result = engine.add_rule(rule);
-        assert!(result.is_err(), "should reject invalid regex at add_rule time");
+        assert!(
+            result.is_err(),
+            "should reject invalid regex at add_rule time"
+        );
         let err = result.err().map(|e| e.to_string()).unwrap_or_default();
         assert!(err.contains("invalid regex"), "error: {err}");
     }

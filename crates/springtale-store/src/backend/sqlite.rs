@@ -7,6 +7,7 @@ use tokio::sync::Mutex;
 
 use crate::error::StoreError;
 use crate::migrations;
+use crate::schema::bot::{MemoryRow, SessionRow, UserPrefsRow};
 use crate::schema::connectors::ConnectorRow;
 use crate::schema::events::{EventEntry, EventFilter};
 use crate::schema::jobs::{JobId, JobRow};
@@ -481,6 +482,312 @@ impl super::trait_::StorageBackend for SqliteBackend {
         }
         Ok(())
     }
+
+    // ── Bot Sessions ──────────────────────────────────────────
+
+    async fn upsert_session(&self, session: &SessionRow) -> Result<(), StoreError> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "INSERT INTO bot_sessions (user_id, channel_id, last_bot_message, pending_command, state_data, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(user_id, channel_id) DO UPDATE SET
+                last_bot_message = excluded.last_bot_message,
+                pending_command = excluded.pending_command,
+                state_data = excluded.state_data,
+                updated_at = excluded.updated_at",
+            params![
+                session.user_id,
+                session.channel_id,
+                session.last_bot_message,
+                session.pending_command,
+                session.state_data,
+                session.created_at.to_rfc3339(),
+                session.updated_at.to_rfc3339(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    async fn get_session(
+        &self,
+        user_id: &str,
+        channel_id: &str,
+    ) -> Result<Option<SessionRow>, StoreError> {
+        let conn = self.conn.lock().await;
+        let result = conn.query_row(
+            "SELECT user_id, channel_id, last_bot_message, pending_command, state_data, created_at, updated_at
+             FROM bot_sessions WHERE user_id = ?1 AND channel_id = ?2",
+            params![user_id, channel_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                ))
+            },
+        );
+
+        match result {
+            Ok((uid, cid, last_msg, pending, state, created, updated)) => {
+                let created_at = chrono::DateTime::parse_from_rfc3339(&created)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .map_err(|e| StoreError::Serialization(e.to_string()))?;
+                let updated_at = chrono::DateTime::parse_from_rfc3339(&updated)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .map_err(|e| StoreError::Serialization(e.to_string()))?;
+                Ok(Some(SessionRow {
+                    user_id: uid,
+                    channel_id: cid,
+                    last_bot_message: last_msg,
+                    pending_command: pending,
+                    state_data: state,
+                    created_at,
+                    updated_at,
+                }))
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    async fn delete_session(&self, user_id: &str, channel_id: &str) -> Result<(), StoreError> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "DELETE FROM bot_sessions WHERE user_id = ?1 AND channel_id = ?2",
+            params![user_id, channel_id],
+        )?;
+        Ok(())
+    }
+
+    // ── User Preferences ──────────────────────────────────────
+
+    async fn upsert_user_prefs(&self, prefs: &UserPrefsRow) -> Result<(), StoreError> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "INSERT INTO user_prefs (user_id, timezone, language, notifications_enabled, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(user_id) DO UPDATE SET
+                timezone = excluded.timezone,
+                language = excluded.language,
+                notifications_enabled = excluded.notifications_enabled,
+                updated_at = excluded.updated_at",
+            params![
+                prefs.user_id,
+                prefs.timezone,
+                prefs.language,
+                prefs.notifications_enabled,
+                prefs.updated_at.to_rfc3339(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    async fn get_user_prefs(&self, user_id: &str) -> Result<Option<UserPrefsRow>, StoreError> {
+        let conn = self.conn.lock().await;
+        let result = conn.query_row(
+            "SELECT user_id, timezone, language, notifications_enabled, updated_at
+             FROM user_prefs WHERE user_id = ?1",
+            params![user_id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, bool>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            },
+        );
+
+        match result {
+            Ok((uid, tz, lang, notif, updated)) => {
+                let updated_at = chrono::DateTime::parse_from_rfc3339(&updated)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .map_err(|e| StoreError::Serialization(e.to_string()))?;
+                Ok(Some(UserPrefsRow {
+                    user_id: uid,
+                    timezone: tz,
+                    language: lang,
+                    notifications_enabled: notif,
+                    updated_at,
+                }))
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    // ── Bot Memory ────────────────────────────────────────────
+
+    async fn insert_memory(&self, entry: &MemoryRow) -> Result<(), StoreError> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "INSERT INTO bot_memory (id, user_id, channel_id, category, schema_version, author, source,
+             content_encrypted, nonce, content_hash, parent_id, trust_score, created_at, expires_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
+            params![
+                entry.id,
+                entry.user_id,
+                entry.channel_id,
+                entry.category,
+                entry.schema_version,
+                entry.author,
+                entry.source,
+                entry.content_encrypted,
+                entry.nonce,
+                entry.content_hash,
+                entry.parent_id,
+                entry.trust_score,
+                entry.created_at.to_rfc3339(),
+                entry.expires_at.as_ref().map(|t| t.to_rfc3339()),
+            ],
+        )?;
+        Ok(())
+    }
+
+    async fn get_memory(
+        &self,
+        user_id: &str,
+        channel_id: &str,
+        limit: usize,
+    ) -> Result<Vec<MemoryRow>, StoreError> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare(
+            "SELECT id, user_id, channel_id, category, schema_version, author, source,
+                    content_encrypted, nonce, content_hash, parent_id, trust_score,
+                    created_at, expires_at
+             FROM bot_memory
+             WHERE user_id = ?1 AND channel_id = ?2
+             ORDER BY created_at DESC
+             LIMIT ?3",
+        )?;
+
+        let rows = stmt
+            .query_map(params![user_id, channel_id, limit as i64], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, i64>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, Vec<u8>>(7)?,
+                    row.get::<_, Vec<u8>>(8)?,
+                    row.get::<_, Option<String>>(9)?,
+                    row.get::<_, Option<String>>(10)?,
+                    row.get::<_, f64>(11)?,
+                    row.get::<_, String>(12)?,
+                    row.get::<_, Option<String>>(13)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut entries = Vec::with_capacity(rows.len());
+        for r in rows {
+            let created_at = chrono::DateTime::parse_from_rfc3339(&r.12)
+                .map(|dt| dt.with_timezone(&Utc))
+                .map_err(|e| StoreError::Serialization(e.to_string()))?;
+            let expires_at =
+                r.13.as_ref()
+                    .map(|s| {
+                        chrono::DateTime::parse_from_rfc3339(s)
+                            .map(|dt| dt.with_timezone(&Utc))
+                            .map_err(|e| StoreError::Serialization(e.to_string()))
+                    })
+                    .transpose()?;
+
+            entries.push(MemoryRow {
+                id: r.0,
+                user_id: r.1,
+                channel_id: r.2,
+                category: r.3,
+                schema_version: r.4,
+                author: r.5,
+                source: r.6,
+                content_encrypted: r.7,
+                nonce: r.8,
+                content_hash: r.9,
+                parent_id: r.10,
+                trust_score: r.11,
+                created_at,
+                expires_at,
+            });
+        }
+        Ok(entries)
+    }
+
+    async fn delete_memory(&self, user_id: &str, channel_id: &str) -> Result<u64, StoreError> {
+        let conn = self.conn.lock().await;
+        let deleted = conn.execute(
+            "DELETE FROM bot_memory WHERE user_id = ?1 AND channel_id = ?2",
+            params![user_id, channel_id],
+        )?;
+        Ok(deleted as u64)
+    }
+
+    async fn compact_memory(
+        &self,
+        user_id: &str,
+        channel_id: &str,
+        max_entries: usize,
+    ) -> Result<u64, StoreError> {
+        let conn = self.conn.lock().await;
+        // Delete the oldest entries beyond max_entries.
+        // Keep the newest max_entries rows by deleting those NOT IN the top N.
+        let deleted = conn.execute(
+            "DELETE FROM bot_memory
+             WHERE user_id = ?1 AND channel_id = ?2
+               AND id NOT IN (
+                   SELECT id FROM bot_memory
+                   WHERE user_id = ?1 AND channel_id = ?2
+                   ORDER BY created_at DESC, id DESC
+                   LIMIT ?3
+               )",
+            params![user_id, channel_id, max_entries as i64],
+        )?;
+        Ok(deleted as u64)
+    }
+
+    // ── Bot Aliases ───────────────────────────────────────────
+
+    async fn upsert_alias(
+        &self,
+        alias: &str,
+        target: &str,
+        created_by: &str,
+    ) -> Result<(), StoreError> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "INSERT INTO bot_aliases (alias, target, created_by, created_at)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(alias) DO UPDATE SET
+                target = excluded.target,
+                created_by = excluded.created_by,
+                created_at = excluded.created_at",
+            params![alias, target, created_by, Utc::now().to_rfc3339()],
+        )?;
+        Ok(())
+    }
+
+    async fn list_aliases(&self) -> Result<Vec<(String, String)>, StoreError> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare("SELECT alias, target FROM bot_aliases ORDER BY alias")?;
+        let rows = stmt
+            .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))?
+            .collect::<Result<Vec<(String, String)>, _>>()?;
+        Ok(rows)
+    }
+
+    async fn delete_alias(&self, alias: &str) -> Result<(), StoreError> {
+        let conn = self.conn.lock().await;
+        conn.execute("DELETE FROM bot_aliases WHERE alias = ?1", params![alias])?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -722,5 +1029,261 @@ mod tests {
         let store = SqliteBackend::open_in_memory().unwrap();
         let result = store.dequeue_job().await.unwrap();
         assert!(result.is_none());
+    }
+
+    // ── Bot Sessions ──────────────────────────────────────────
+
+    fn test_session(user: &str, channel: &str) -> crate::schema::bot::SessionRow {
+        crate::schema::bot::SessionRow {
+            user_id: user.into(),
+            channel_id: channel.into(),
+            last_bot_message: None,
+            pending_command: None,
+            state_data: "{}".into(),
+            created_at: Utc::now(),
+            updated_at: Utc::now(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_upsert_and_get_session() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        let session = test_session("user1", "chan1");
+        store.upsert_session(&session).await.unwrap();
+
+        let loaded = store.get_session("user1", "chan1").await.unwrap();
+        assert!(loaded.is_some());
+        let loaded = loaded.unwrap();
+        assert_eq!(loaded.user_id, "user1");
+        assert_eq!(loaded.channel_id, "chan1");
+    }
+
+    #[tokio::test]
+    async fn test_session_upsert_updates_existing() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        let mut session = test_session("user1", "chan1");
+        store.upsert_session(&session).await.unwrap();
+
+        session.pending_command = Some("search".into());
+        session.updated_at = Utc::now();
+        store.upsert_session(&session).await.unwrap();
+
+        let loaded = store.get_session("user1", "chan1").await.unwrap().unwrap();
+        assert_eq!(loaded.pending_command.as_deref(), Some("search"));
+    }
+
+    #[tokio::test]
+    async fn test_get_session_not_found() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        let result = store.get_session("nobody", "nowhere").await.unwrap();
+        assert!(result.is_none());
+    }
+
+    #[tokio::test]
+    async fn test_delete_session() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        store
+            .upsert_session(&test_session("u1", "c1"))
+            .await
+            .unwrap();
+        store.delete_session("u1", "c1").await.unwrap();
+        assert!(store.get_session("u1", "c1").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_session_isolation() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        let mut s1 = test_session("user1", "chan1");
+        s1.pending_command = Some("cmd1".into());
+        let mut s2 = test_session("user2", "chan1");
+        s2.pending_command = Some("cmd2".into());
+
+        store.upsert_session(&s1).await.unwrap();
+        store.upsert_session(&s2).await.unwrap();
+
+        let loaded1 = store.get_session("user1", "chan1").await.unwrap().unwrap();
+        let loaded2 = store.get_session("user2", "chan1").await.unwrap().unwrap();
+        assert_eq!(loaded1.pending_command.as_deref(), Some("cmd1"));
+        assert_eq!(loaded2.pending_command.as_deref(), Some("cmd2"));
+    }
+
+    // ── User Preferences ──────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_upsert_and_get_user_prefs() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        let prefs = crate::schema::bot::UserPrefsRow {
+            user_id: "user1".into(),
+            timezone: "America/New_York".into(),
+            language: "en".into(),
+            notifications_enabled: false,
+            updated_at: Utc::now(),
+        };
+        store.upsert_user_prefs(&prefs).await.unwrap();
+
+        let loaded = store.get_user_prefs("user1").await.unwrap().unwrap();
+        assert_eq!(loaded.timezone, "America/New_York");
+        assert!(!loaded.notifications_enabled);
+    }
+
+    #[tokio::test]
+    async fn test_user_prefs_not_found() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        assert!(store.get_user_prefs("nobody").await.unwrap().is_none());
+    }
+
+    #[tokio::test]
+    async fn test_user_prefs_upsert_updates() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        let prefs = crate::schema::bot::UserPrefsRow {
+            user_id: "u1".into(),
+            timezone: "UTC".into(),
+            language: "en".into(),
+            notifications_enabled: false,
+            updated_at: Utc::now(),
+        };
+        store.upsert_user_prefs(&prefs).await.unwrap();
+
+        let updated = crate::schema::bot::UserPrefsRow {
+            timezone: "Europe/London".into(),
+            notifications_enabled: true,
+            updated_at: Utc::now(),
+            ..prefs
+        };
+        store.upsert_user_prefs(&updated).await.unwrap();
+
+        let loaded = store.get_user_prefs("u1").await.unwrap().unwrap();
+        assert_eq!(loaded.timezone, "Europe/London");
+        assert!(loaded.notifications_enabled);
+    }
+
+    // ── Bot Memory ────────────────────────────────────────────
+
+    fn test_memory(user: &str, channel: &str, content: &[u8]) -> crate::schema::bot::MemoryRow {
+        crate::schema::bot::MemoryRow {
+            id: uuid::Uuid::new_v4().to_string(),
+            user_id: user.into(),
+            channel_id: channel.into(),
+            category: "conversation".into(),
+            schema_version: 1,
+            author: "user".into(),
+            source: "user_input".into(),
+            content_encrypted: content.to_vec(),
+            nonce: vec![0u8; 24],
+            content_hash: None,
+            parent_id: None,
+            trust_score: 1.0,
+            created_at: Utc::now(),
+            expires_at: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_insert_and_get_memory() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        let entry = test_memory("u1", "c1", b"encrypted_data");
+        store.insert_memory(&entry).await.unwrap();
+
+        let entries = store.get_memory("u1", "c1", 10).await.unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].content_encrypted, b"encrypted_data");
+        assert_eq!(entries[0].author, "user");
+        assert!((entries[0].trust_score - 1.0).abs() < f64::EPSILON);
+    }
+
+    #[tokio::test]
+    async fn test_get_memory_respects_limit() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        for i in 0..5 {
+            let mut entry = test_memory("u1", "c1", format!("msg{i}").as_bytes());
+            entry.created_at = Utc::now() + chrono::Duration::seconds(i);
+            store.insert_memory(&entry).await.unwrap();
+        }
+
+        let entries = store.get_memory("u1", "c1", 3).await.unwrap();
+        assert_eq!(entries.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_delete_memory() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        store
+            .insert_memory(&test_memory("u1", "c1", b"a"))
+            .await
+            .unwrap();
+        store
+            .insert_memory(&test_memory("u1", "c1", b"b"))
+            .await
+            .unwrap();
+
+        let deleted = store.delete_memory("u1", "c1").await.unwrap();
+        assert_eq!(deleted, 2);
+        assert!(store.get_memory("u1", "c1", 10).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_compact_memory() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        for i in 0..10 {
+            let mut entry = test_memory("u1", "c1", format!("msg{i}").as_bytes());
+            entry.created_at = Utc::now() + chrono::Duration::seconds(i);
+            store.insert_memory(&entry).await.unwrap();
+        }
+
+        let deleted = store.compact_memory("u1", "c1", 3).await.unwrap();
+        assert_eq!(deleted, 7);
+
+        let remaining = store.get_memory("u1", "c1", 100).await.unwrap();
+        assert_eq!(remaining.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn test_memory_isolation_across_users() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        store
+            .insert_memory(&test_memory("u1", "c1", b"user1_data"))
+            .await
+            .unwrap();
+        store
+            .insert_memory(&test_memory("u2", "c1", b"user2_data"))
+            .await
+            .unwrap();
+
+        let u1_entries = store.get_memory("u1", "c1", 10).await.unwrap();
+        assert_eq!(u1_entries.len(), 1);
+        assert_eq!(u1_entries[0].content_encrypted, b"user1_data");
+    }
+
+    // ── Bot Aliases ───────────────────────────────────────────
+
+    #[tokio::test]
+    async fn test_upsert_and_list_aliases() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        store.upsert_alias("s", "search", "user1").await.unwrap();
+        store.upsert_alias("g", "github", "user1").await.unwrap();
+
+        let aliases = store.list_aliases().await.unwrap();
+        assert_eq!(aliases.len(), 2);
+        assert_eq!(aliases[0], ("g".into(), "github".into()));
+        assert_eq!(aliases[1], ("s".into(), "search".into()));
+    }
+
+    #[tokio::test]
+    async fn test_upsert_alias_updates_existing() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        store.upsert_alias("s", "search", "user1").await.unwrap();
+        store.upsert_alias("s", "status", "user2").await.unwrap();
+
+        let aliases = store.list_aliases().await.unwrap();
+        assert_eq!(aliases.len(), 1);
+        assert_eq!(aliases[0], ("s".into(), "status".into()));
+    }
+
+    #[tokio::test]
+    async fn test_delete_alias() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        store.upsert_alias("s", "search", "user1").await.unwrap();
+        store.delete_alias("s").await.unwrap();
+        assert!(store.list_aliases().await.unwrap().is_empty());
     }
 }

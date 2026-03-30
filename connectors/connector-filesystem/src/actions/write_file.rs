@@ -178,7 +178,10 @@ mod tests {
 
         let result = execute(&config, &input);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), FilesystemError::PathNotAllowed(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            FilesystemError::PathNotAllowed(_)
+        ));
 
         fs::remove_dir_all(&allowed).ok();
         fs::remove_dir_all(&forbidden).ok();
@@ -196,6 +199,9 @@ mod tests {
         let input = serde_json::json!({ "path": "/tmp/test.txt" });
         let result = execute(&config, &input);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), FilesystemError::InvalidInput(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            FilesystemError::InvalidInput(_)
+        ));
     }
 }

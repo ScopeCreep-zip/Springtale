@@ -10,7 +10,7 @@ members = [
   "crates/springtale-ai",
   "crates/springtale-mcp",
   # Phase 1b
-  # "crates/springtale-bot",
+  "crates/springtale-bot",
   # Phase 2a
   # "crates/springtale-sentinel",
   # Phase 1a connectors
@@ -22,7 +22,7 @@ members = [
   "connectors/connector-shell",
   "connectors/connector-http",
   # Phase 1b connectors
-  # "connectors/connector-telegram",
+  "connectors/connector-telegram",
   # Apps
   "apps/springtaled",
   "apps/springtale-cli",
@@ -141,4 +141,6 @@ springtale-connector  = { path = "crates/springtale-connector" }
 springtale-scheduler  = { path = "crates/springtale-scheduler" }
 springtale-store      = { path = "crates/springtale-store" }
 springtale-ai         = { path = "crates/springtale-ai" }
+springtale-bot        = { path = "crates/springtale-bot" }
 springtale-mcp        = { path = "crates/springtale-mcp" }
+connector-telegram    = { path = "connectors/connector-telegram" }

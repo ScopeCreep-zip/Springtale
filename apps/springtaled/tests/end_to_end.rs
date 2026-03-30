@@ -75,9 +75,7 @@ async fn test_cron_scheduling_and_cancellation() {
     let mut executor = CronExecutor::new(tx);
 
     // Valid expression (every minute) should succeed
-    executor
-        .schedule("every-minute", "0 * * * * *")
-        .unwrap();
+    executor.schedule("every-minute", "0 * * * * *").unwrap();
     assert_eq!(executor.list(), vec!["every-minute"]);
 
     // Per-second expression should be rejected by minimum interval check

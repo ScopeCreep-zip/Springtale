@@ -1,7 +1,7 @@
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::Json;
 
 use springtale_store::backend::trait_::StorageBackend;
 
@@ -31,9 +31,7 @@ pub async fn remove(
 ) -> Result<impl IntoResponse, StatusCode> {
     super::validate_path_param(&name)?;
     let mut registry = state.registry.write().await;
-    registry
-        .remove(&name)
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+    registry.remove(&name).map_err(|_| StatusCode::NOT_FOUND)?;
 
     Ok((StatusCode::OK, Json(serde_json::json!({ "removed": name }))))
 }
@@ -45,9 +43,7 @@ pub async fn enable(
 ) -> Result<impl IntoResponse, StatusCode> {
     super::validate_path_param(&name)?;
     let mut registry = state.registry.write().await;
-    registry
-        .enable(&name)
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+    registry.enable(&name).map_err(|_| StatusCode::NOT_FOUND)?;
 
     Ok((StatusCode::OK, Json(serde_json::json!({ "enabled": name }))))
 }
@@ -59,11 +55,12 @@ pub async fn disable(
 ) -> Result<impl IntoResponse, StatusCode> {
     super::validate_path_param(&name)?;
     let mut registry = state.registry.write().await;
-    registry
-        .disable(&name)
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+    registry.disable(&name).map_err(|_| StatusCode::NOT_FOUND)?;
 
-    Ok((StatusCode::OK, Json(serde_json::json!({ "disabled": name }))))
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "disabled": name })),
+    ))
 }
 
 /// POST /connectors/install — install a connector from manifest JSON.
@@ -77,11 +74,10 @@ pub async fn install(
     Json(manifest): Json<springtale_connector::ConnectorManifest>,
 ) -> Result<impl IntoResponse, StatusCode> {
     // Validate manifest structure (name, version, no wildcard hosts)
-    springtale_connector::manifest::verify::verify_manifest(&manifest)
-        .map_err(|e| {
-            tracing::warn!(error = %e, "manifest validation failed");
-            StatusCode::BAD_REQUEST
-        })?;
+    springtale_connector::manifest::verify::verify_manifest(&manifest).map_err(|e| {
+        tracing::warn!(error = %e, "manifest validation failed");
+        StatusCode::BAD_REQUEST
+    })?;
 
     // If manifest has a signature, log that verification is deferred to Phase 2
     // (requires author public key registry which doesn't exist yet)
@@ -92,8 +88,8 @@ pub async fn install(
         );
     }
 
-    let manifest_json = serde_json::to_string(&manifest)
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    let manifest_json =
+        serde_json::to_string(&manifest).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
     let row = springtale_store::schema::connectors::ConnectorRow {
         name: manifest.name.clone(),

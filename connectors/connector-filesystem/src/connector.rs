@@ -83,23 +83,22 @@ impl Connector for FilesystemConnector {
         input: serde_json::Value,
     ) -> Result<ActionResult, ConnectorError> {
         match action {
-            "read_file" => actions::read_file::execute(&self.config, &input)
-                .map_err(ConnectorError::from),
-            "write_file" => actions::write_file::execute(&self.config, &input)
-                .map_err(ConnectorError::from),
-            "list_dir" => actions::list_dir::execute(&self.config, &input)
-                .map_err(ConnectorError::from),
+            "read_file" => {
+                actions::read_file::execute(&self.config, &input).map_err(ConnectorError::from)
+            }
+            "write_file" => {
+                actions::write_file::execute(&self.config, &input).map_err(ConnectorError::from)
+            }
+            "list_dir" => {
+                actions::list_dir::execute(&self.config, &input).map_err(ConnectorError::from)
+            }
             unknown => Err(ConnectorError::ExecutionFailed(format!(
                 "unknown action: {unknown}"
             ))),
         }
     }
 
-    async fn on_event(
-        &self,
-        trigger: &str,
-        handler: EventHandler,
-    ) -> Result<(), ConnectorError> {
+    async fn on_event(&self, trigger: &str, handler: EventHandler) -> Result<(), ConnectorError> {
         // Validate trigger name
         let valid_triggers = ["file_created", "file_modified", "file_deleted"];
         if !valid_triggers.contains(&trigger) {
@@ -125,7 +124,10 @@ impl Connector for FilesystemConnector {
             .await
             .map_err(ConnectorError::from)?;
 
-        tracing::info!(trigger = trigger, "registered event handler for filesystem trigger");
+        tracing::info!(
+            trigger = trigger,
+            "registered event handler for filesystem trigger"
+        );
         Ok(())
     }
 
@@ -225,12 +227,14 @@ mod tests {
         let manifest = connector.manifest();
 
         // Should have FilesystemRead and FilesystemWrite for the test dir
-        let has_read = manifest.capabilities.iter().any(|c| {
-            matches!(c, Capability::FilesystemRead { .. })
-        });
-        let has_write = manifest.capabilities.iter().any(|c| {
-            matches!(c, Capability::FilesystemWrite { .. })
-        });
+        let has_read = manifest
+            .capabilities
+            .iter()
+            .any(|c| matches!(c, Capability::FilesystemRead { .. }));
+        let has_write = manifest
+            .capabilities
+            .iter()
+            .any(|c| matches!(c, Capability::FilesystemWrite { .. }));
         assert!(has_read);
         assert!(has_write);
 
@@ -258,7 +262,10 @@ mod tests {
         fs::write(&file, "test content").ok();
 
         let result = connector
-            .execute("read_file", serde_json::json!({ "path": file.to_string_lossy() }))
+            .execute(
+                "read_file",
+                serde_json::json!({ "path": file.to_string_lossy() }),
+            )
             .await
             .unwrap();
 
@@ -297,7 +304,10 @@ mod tests {
         fs::write(dir.join("file2.txt"), "b").ok();
 
         let result = connector
-            .execute("list_dir", serde_json::json!({ "path": dir.to_string_lossy() }))
+            .execute(
+                "list_dir",
+                serde_json::json!({ "path": dir.to_string_lossy() }),
+            )
             .await
             .unwrap();
 
@@ -311,7 +321,9 @@ mod tests {
     #[tokio::test]
     async fn test_execute_unknown_action() {
         let (dir, connector) = test_connector("exec_unknown");
-        let result = connector.execute("nonexistent", serde_json::json!({})).await;
+        let result = connector
+            .execute("nonexistent", serde_json::json!({}))
+            .await;
         assert!(result.is_err());
 
         fs::remove_dir_all(&dir).ok();

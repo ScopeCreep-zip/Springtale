@@ -1,6 +1,6 @@
+use axum::Json;
 use axum::extract::{Query, State};
 use axum::response::IntoResponse;
-use axum::Json;
 
 use springtale_store::backend::trait_::StorageBackend;
 use springtale_store::schema::events::EventFilter;
@@ -38,7 +38,11 @@ pub async fn list(
     let filter = EventFilter {
         connector_name: params.connector.clone(),
         limit: Some(clamped_limit),
-        offset: if params.offset > 0 { Some(params.offset) } else { None },
+        offset: if params.offset > 0 {
+            Some(params.offset)
+        } else {
+            None
+        },
         ..Default::default()
     };
 

@@ -93,7 +93,11 @@ mod tests {
     fn test_all_triggers_have_schemas() {
         let triggers = trigger_declarations();
         for trigger in &triggers {
-            assert!(trigger.schema.is_some(), "trigger {} missing schema", trigger.name);
+            assert!(
+                trigger.schema.is_some(),
+                "trigger {} missing schema",
+                trigger.name
+            );
         }
     }
 }

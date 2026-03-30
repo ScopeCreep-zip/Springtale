@@ -51,9 +51,10 @@ fn open_store() -> Result<SqliteBackend> {
         // Parse just the store section from config
         let figment = figment::Figment::new()
             .merge(<figment::providers::Toml as figment::providers::Format>::file(config_path))
-            .merge(figment::providers::Env::prefixed("SPRINGTALE_").map(|key| {
-                key.as_str().replace("__", ".").into()
-            }));
+            .merge(
+                figment::providers::Env::prefixed("SPRINGTALE_")
+                    .map(|key| key.as_str().replace("__", ".").into()),
+            );
 
         #[derive(serde::Deserialize, Default)]
         struct PartialConfig {

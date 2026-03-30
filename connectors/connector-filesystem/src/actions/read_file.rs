@@ -125,7 +125,10 @@ mod tests {
         let result = execute(&config, &input);
 
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), FilesystemError::PathNotAllowed(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            FilesystemError::PathNotAllowed(_)
+        ));
 
         fs::remove_dir_all(&allowed).ok();
         fs::remove_dir_all(&forbidden).ok();
@@ -147,7 +150,10 @@ mod tests {
         let result = execute(&config, &input);
 
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), FilesystemError::PathNotFound(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            FilesystemError::PathNotFound(_)
+        ));
 
         fs::remove_dir_all(&dir).ok();
     }
@@ -165,6 +171,9 @@ mod tests {
         let result = execute(&config, &input);
 
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), FilesystemError::InvalidInput(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            FilesystemError::InvalidInput(_)
+        ));
     }
 }

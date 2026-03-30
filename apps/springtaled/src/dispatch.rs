@@ -157,7 +157,10 @@ async fn dispatch_action_inner(
 
         Action::AiComplete { prompt, .. } => {
             // Phase 2a: adds real AI adapters. NoopAdapter passes through.
-            tracing::debug!(prompt_len = prompt.len(), "AI complete pass-through (NoopAdapter)");
+            tracing::debug!(
+                prompt_len = prompt.len(),
+                "AI complete pass-through (NoopAdapter)"
+            );
             Ok("ai: noop".to_owned())
         }
     }

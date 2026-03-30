@@ -66,7 +66,6 @@ impl GithubClient {
         // SECURITY: expose needed for Authorization header on each API call
         format!("Bearer {}", self.auth_token.expose_secret())
     }
-
 }
 
 #[async_trait]
@@ -137,10 +136,7 @@ impl GithubApi for GithubClient {
         repo: &str,
         pull_number: u64,
     ) -> Result<String, GithubError> {
-        let url = format!(
-            "{}/repos/{owner}/{repo}/pulls/{pull_number}",
-            self.api_base
-        );
+        let url = format!("{}/repos/{owner}/{repo}/pulls/{pull_number}", self.api_base);
 
         let response = self
             .inner

@@ -29,9 +29,13 @@ pub async fn execute(
     client: &dyn KickApi,
     input: &serde_json::Value,
 ) -> Result<ActionResult, KickError> {
-    let channel_id = input.get("channel_id").and_then(|v| v.as_str())
+    let channel_id = input
+        .get("channel_id")
+        .and_then(|v| v.as_str())
         .ok_or_else(|| KickError::InvalidInput("missing 'channel_id'".to_owned()))?;
-    let message = input.get("message").and_then(|v| v.as_str())
+    let message = input
+        .get("message")
+        .and_then(|v| v.as_str())
         .ok_or_else(|| KickError::InvalidInput("missing 'message'".to_owned()))?;
 
     let response = client.send_chat(channel_id, message).await?;
@@ -50,7 +54,11 @@ mod tests {
     use crate::client::KickClient;
 
     fn test_client() -> KickClient {
-        KickClient::new("http://localhost:0", secrecy::SecretBox::new(Box::new("fake_token".to_owned()))).unwrap()
+        KickClient::new(
+            "http://localhost:0",
+            secrecy::SecretBox::new(Box::new("fake_token".to_owned())),
+        )
+        .unwrap()
     }
 
     #[test]
@@ -115,7 +123,10 @@ mod tests {
         let result = execute(&mock, &input).await.unwrap();
         assert!(result.success);
         assert_eq!(result.output["response"]["data"]["is_sent"], true);
-        assert_eq!(result.output["response"]["data"]["message_id"], "msg_abc123");
+        assert_eq!(
+            result.output["response"]["data"]["message_id"],
+            "msg_abc123"
+        );
         assert!(result.message.contains("42"));
     }
 }

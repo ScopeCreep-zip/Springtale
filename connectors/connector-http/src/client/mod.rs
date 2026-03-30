@@ -49,10 +49,13 @@ impl HttpClient {
     pub fn new(config: HttpConfig) -> Result<Self, HttpError> {
         let mut default_headers = reqwest::header::HeaderMap::new();
         for (key, value) in &config.default_headers {
-            let header_name = reqwest::header::HeaderName::from_bytes(key.as_bytes())
-                .map_err(|e| HttpError::InvalidConfig(format!("invalid header name '{key}': {e}")))?;
-            let header_value = reqwest::header::HeaderValue::from_str(value)
-                .map_err(|e| HttpError::InvalidConfig(format!("invalid header value for '{key}': {e}")))?;
+            let header_name =
+                reqwest::header::HeaderName::from_bytes(key.as_bytes()).map_err(|e| {
+                    HttpError::InvalidConfig(format!("invalid header name '{key}': {e}"))
+                })?;
+            let header_value = reqwest::header::HeaderValue::from_str(value).map_err(|e| {
+                HttpError::InvalidConfig(format!("invalid header value for '{key}': {e}"))
+            })?;
             default_headers.insert(header_name, header_value);
         }
 
@@ -67,8 +70,8 @@ impl HttpClient {
 
     /// Validate that a URL's host is in the allow-list.
     fn validate_host(&self, url: &str) -> Result<(), HttpError> {
-        let parsed = reqwest::Url::parse(url)
-            .map_err(|e| HttpError::InvalidUrl(format!("{url}: {e}")))?;
+        let parsed =
+            reqwest::Url::parse(url).map_err(|e| HttpError::InvalidUrl(format!("{url}: {e}")))?;
 
         let host = parsed
             .host_str()

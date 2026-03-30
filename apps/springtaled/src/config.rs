@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
-use figment::providers::{Env, Format, Toml};
 use figment::Figment;
+use figment::providers::{Env, Format, Toml};
 use garde::Validate;
 use serde::Deserialize;
 use springtale_store::paths;
@@ -24,6 +24,14 @@ pub struct SpringtaleConfig {
     #[serde(default)]
     #[garde(dive)]
     pub api: ApiConfig,
+    /// Bot runtime configuration. If absent, bot is disabled.
+    #[serde(default)]
+    #[garde(skip)]
+    pub bot: Option<springtale_bot::BotConfig>,
+    /// Telegram connector configuration. If absent, connector not loaded.
+    #[serde(default)]
+    #[garde(skip)]
+    pub telegram: Option<connector_telegram::TelegramConfig>,
 }
 
 #[derive(Debug, Deserialize, Validate)]
@@ -135,9 +143,7 @@ pub fn load_config() -> Result<SpringtaleConfig, anyhow::Error> {
         // Use __ (double underscore) as nesting separator to preserve
         // single underscores in field names like vault_path, socket_path.
         // Example: SPRINGTALE_CRYPTO__VAULT_PATH=/path sets crypto.vault_path
-        .merge(Env::prefixed("SPRINGTALE_").map(|key| {
-            key.as_str().replace("__", ".").into()
-        }))
+        .merge(Env::prefixed("SPRINGTALE_").map(|key| key.as_str().replace("__", ".").into()))
         .extract()?;
 
     // Validate configuration (garde)

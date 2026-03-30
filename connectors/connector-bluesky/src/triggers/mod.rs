@@ -87,8 +87,7 @@ fn like() -> TriggerDecl {
 fn repost() -> TriggerDecl {
     TriggerDecl {
         name: "repost".to_owned(),
-        description: "Fires when someone reposts one of the authenticated user's posts."
-            .to_owned(),
+        description: "Fires when someone reposts one of the authenticated user's posts.".to_owned(),
         schema: Some(serde_json::json!({
             "type": "object",
             "properties": {
@@ -132,7 +131,11 @@ mod tests {
     #[test]
     fn test_all_triggers_have_schemas() {
         for trigger in trigger_declarations() {
-            assert!(trigger.schema.is_some(), "trigger {} missing schema", trigger.name);
+            assert!(
+                trigger.schema.is_some(),
+                "trigger {} missing schema",
+                trigger.name
+            );
         }
     }
 }

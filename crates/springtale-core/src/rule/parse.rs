@@ -211,7 +211,10 @@ mod tests {
         let result = parse_rule(&toml);
         assert!(result.is_err(), "should reject > 100 actions");
         let err = result.err().map(|e| e.to_string()).unwrap_or_default();
-        assert!(err.contains("maximum"), "error should mention maximum: {err}");
+        assert!(
+            err.contains("maximum"),
+            "error should mention maximum: {err}"
+        );
     }
 
     #[test]
@@ -240,7 +243,11 @@ mod tests {
         );
 
         let result = parse_rule(&toml);
-        assert!(result.is_ok(), "100 actions should be accepted: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "100 actions should be accepted: {:?}",
+            result.err()
+        );
     }
 
     #[test]

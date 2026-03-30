@@ -19,13 +19,13 @@ pub fn validate_path_param(param: &str) -> Result<(), axum::http::StatusCode> {
 
 use std::time::Duration;
 
+use axum::Router;
 use axum::http::StatusCode;
 use axum::middleware;
 use axum::routing::{delete, get, post, put};
-use axum::Router;
+use tower::ServiceBuilder;
 use tower::buffer::BufferLayer;
 use tower::limit::RateLimitLayer;
-use tower::ServiceBuilder;
 use tower_http::limit::RequestBodyLimitLayer;
 use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
@@ -61,10 +61,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/rules/{id}", put(rules::update).delete(rules::delete))
         .route("/rules/{id}/run", post(rules::run))
         .route("/events", get(events::list))
-        .route(
-            "/webhook/{connector}/{trigger}",
-            post(webhooks::receive),
-        )
+        .route("/webhook/{connector}/{trigger}", post(webhooks::receive))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::require_auth,
@@ -82,9 +79,7 @@ pub fn build_router(state: AppState) -> Router {
                 .layer(TraceLayer::new_for_http())
                 .layer(RequestBodyLimitLayer::new(1024 * 1024))
                 .layer(axum::error_handling::HandleErrorLayer::new(
-                    |_err: tower::BoxError| async move {
-                        StatusCode::TOO_MANY_REQUESTS
-                    },
+                    |_err: tower::BoxError| async move { StatusCode::TOO_MANY_REQUESTS },
                 ))
                 .layer(BufferLayer::new(256))
                 .layer(RateLimitLayer::new(rate_limit, Duration::from_secs(1)))

@@ -31,7 +31,9 @@ pub async fn execute(
     client: &dyn KickApi,
     input: &serde_json::Value,
 ) -> Result<ActionResult, KickError> {
-    let slug = input.get("slug").and_then(|v| v.as_str())
+    let slug = input
+        .get("slug")
+        .and_then(|v| v.as_str())
         .ok_or_else(|| KickError::InvalidInput("missing 'slug'".to_owned()))?;
 
     let channel = client.get_channel_by_slug(slug).await?;
@@ -50,7 +52,11 @@ mod tests {
     use crate::client::KickClient;
 
     fn test_client() -> KickClient {
-        KickClient::new("http://localhost:0", secrecy::SecretBox::new(Box::new("fake_token".to_owned()))).unwrap()
+        KickClient::new(
+            "http://localhost:0",
+            secrecy::SecretBox::new(Box::new("fake_token".to_owned())),
+        )
+        .unwrap()
     }
 
     #[test]
@@ -102,7 +108,10 @@ mod tests {
         let result = execute(&mock, &input).await.unwrap();
         assert!(result.success);
         assert_eq!(result.output["channel"]["data"][0]["slug"], "xqc");
-        assert_eq!(result.output["channel"]["data"][0]["title"], "xQc's Channel");
+        assert_eq!(
+            result.output["channel"]["data"][0]["title"],
+            "xQc's Channel"
+        );
         assert!(result.message.contains("xqc"));
     }
 }

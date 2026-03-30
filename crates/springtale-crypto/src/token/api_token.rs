@@ -17,8 +17,7 @@ type HmacSha256 = Hmac<Sha256>;
 pub fn derive_api_token_hash(passphrase: &[u8]) -> [u8; 32] {
     // HMAC-SHA256 accepts any key size — this cannot fail.
     #[allow(clippy::expect_used)]
-    let mut mac = HmacSha256::new_from_slice(passphrase)
-        .expect("HMAC-SHA256 accepts any key size");
+    let mut mac = HmacSha256::new_from_slice(passphrase).expect("HMAC-SHA256 accepts any key size");
     mac.update(b"springtale-api-token");
     let result = mac.finalize();
     let bytes = result.into_bytes();

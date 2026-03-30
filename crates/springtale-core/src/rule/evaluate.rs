@@ -20,17 +20,13 @@ pub fn evaluate_condition(
     regex_cache: &RegexCache,
 ) -> bool {
     match condition {
-        Condition::And { conditions } => {
-            conditions
-                .iter()
-                .all(|c| evaluate_condition(c, payload, regex_cache))
-        }
+        Condition::And { conditions } => conditions
+            .iter()
+            .all(|c| evaluate_condition(c, payload, regex_cache)),
 
-        Condition::Or { conditions } => {
-            conditions
-                .iter()
-                .any(|c| evaluate_condition(c, payload, regex_cache))
-        }
+        Condition::Or { conditions } => conditions
+            .iter()
+            .any(|c| evaluate_condition(c, payload, regex_cache)),
 
         Condition::Not { condition } => !evaluate_condition(condition, payload, regex_cache),
 

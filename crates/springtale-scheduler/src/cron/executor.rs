@@ -239,7 +239,11 @@ mod tests {
         let mut executor = CronExecutor::new(tx);
 
         let result = executor.schedule("ok-job", "0 * * * * *"); // every minute
-        assert!(result.is_ok(), "should accept every-minute cron: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "should accept every-minute cron: {:?}",
+            result.err()
+        );
     }
 
     #[tokio::test]
@@ -248,6 +252,10 @@ mod tests {
         let mut executor = CronExecutor::new(tx);
 
         let result = executor.schedule("ok-job", "0 */5 * * * *");
-        assert!(result.is_ok(), "should accept every-5-minutes: {:?}", result.err());
+        assert!(
+            result.is_ok(),
+            "should accept every-5-minutes: {:?}",
+            result.err()
+        );
     }
 }

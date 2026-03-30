@@ -89,7 +89,8 @@ mod tests {
         let config = crate::config::PresearchConfig {
             api_key: secrecy::SecretBox::new(Box::new("fake".to_owned())),
             api_base: "http://localhost:0".to_owned(),
-            cache_ttl_secs: 60, allowed_scrape_hosts: vec![],
+            cache_ttl_secs: 60,
+            allowed_scrape_hosts: vec![],
         };
         PresearchClient::new(&config).unwrap()
     }
@@ -116,7 +117,10 @@ mod tests {
         let input = serde_json::json!({});
         let result = execute(&client, &cache, &input).await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), PresearchError::InvalidInput(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            PresearchError::InvalidInput(_)
+        ));
     }
 
     #[tokio::test]
@@ -126,7 +130,10 @@ mod tests {
         let input = serde_json::json!({ "url": 123 });
         let result = execute(&client, &cache, &input).await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), PresearchError::InvalidInput(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            PresearchError::InvalidInput(_)
+        ));
     }
 
     #[tokio::test]
@@ -136,14 +143,18 @@ mod tests {
         let input = serde_json::json!({ "url": null });
         let result = execute(&client, &cache, &input).await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), PresearchError::InvalidInput(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            PresearchError::InvalidInput(_)
+        ));
     }
 
     // --- Mock client tests: verify response extraction and cache interaction ---
 
     #[tokio::test]
     async fn test_execute_returns_scraped_content_uncached() {
-        let mock = MockPresearchClient::for_fetch("<html><body>Hello World</body></html>".to_owned());
+        let mock =
+            MockPresearchClient::for_fetch("<html><body>Hello World</body></html>".to_owned());
 
         let cache = test_cache();
         let input = serde_json::json!({ "url": "https://example.com/page" });
@@ -151,7 +162,10 @@ mod tests {
         let result = execute(&mock, &cache, &input).await.unwrap();
         assert!(result.success);
         assert_eq!(result.output["cached"], false);
-        assert_eq!(result.output["content"], "<html><body>Hello World</body></html>");
+        assert_eq!(
+            result.output["content"],
+            "<html><body>Hello World</body></html>"
+        );
         assert!(result.message.contains("example.com"));
     }
 

@@ -68,11 +68,7 @@ impl Connector for PresearchConnector {
         }
     }
 
-    async fn on_event(
-        &self,
-        trigger: &str,
-        _handler: EventHandler,
-    ) -> Result<(), ConnectorError> {
+    async fn on_event(&self, trigger: &str, _handler: EventHandler) -> Result<(), ConnectorError> {
         Err(ConnectorError::ExecutionFailed(format!(
             "Presearch connector has no triggers, cannot register handler for: {trigger}"
         )))
@@ -83,10 +79,7 @@ impl Connector for PresearchConnector {
     }
 }
 
-fn build_manifest(
-    config: &PresearchConfig,
-    actions: &[ActionDecl],
-) -> ConnectorManifest {
+fn build_manifest(config: &PresearchConfig, actions: &[ActionDecl]) -> ConnectorManifest {
     let capabilities = config
         .all_network_hosts()
         .into_iter()
@@ -122,7 +115,8 @@ mod tests {
         let config = PresearchConfig {
             api_key: SecretBox::new(Box::new("test_key".to_owned())),
             api_base: "https://presearch.com".to_owned(),
-            cache_ttl_secs: 300, allowed_scrape_hosts: vec![],
+            cache_ttl_secs: 300,
+            allowed_scrape_hosts: vec![],
         };
         PresearchConnector::new(config).unwrap()
     }
@@ -136,9 +130,10 @@ mod tests {
     #[test]
     fn test_manifest_network_capability() {
         let connector = test_connector();
-        let has_presearch = connector.manifest().capabilities.iter().any(|c| {
-            matches!(c, Capability::NetworkOutbound { host } if host == "presearch.com")
-        });
+        let has_presearch =
+            connector.manifest().capabilities.iter().any(
+                |c| matches!(c, Capability::NetworkOutbound { host } if host == "presearch.com"),
+            );
         assert!(has_presearch);
     }
 
@@ -152,7 +147,11 @@ mod tests {
     fn test_two_actions() {
         let connector = test_connector();
         assert_eq!(connector.actions().len(), 2);
-        let names: Vec<&str> = connector.actions().iter().map(|a| a.name.as_str()).collect();
+        let names: Vec<&str> = connector
+            .actions()
+            .iter()
+            .map(|a| a.name.as_str())
+            .collect();
         assert!(names.contains(&"search"));
         assert!(names.contains(&"scrape"));
     }

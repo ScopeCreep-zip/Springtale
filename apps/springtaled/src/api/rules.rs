@@ -1,7 +1,7 @@
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::Json;
 
 use springtale_store::backend::trait_::StorageBackend;
 
@@ -138,10 +138,7 @@ pub async fn update(
         }
     }
 
-    Ok((
-        StatusCode::OK,
-        Json(serde_json::json!({ "updated": id })),
-    ))
+    Ok((StatusCode::OK, Json(serde_json::json!({ "updated": id }))))
 }
 
 /// DELETE /rules/{id} — delete a rule.
@@ -179,10 +176,7 @@ pub async fn delete(
         engine.remove_rule(&rule_id);
     }
 
-    Ok((
-        StatusCode::OK,
-        Json(serde_json::json!({ "deleted": id })),
-    ))
+    Ok((StatusCode::OK, Json(serde_json::json!({ "deleted": id }))))
 }
 
 /// POST /rules/{id}/run — manually trigger a rule.
@@ -230,14 +224,15 @@ pub async fn run(
                 payload: serde_json::json!({"manual_trigger": true}),
             }
         }
-        springtale_core::rule::Trigger::ConnectorEvent { connector, event: ev } => {
-            springtale_core::rule::engine::TriggerEvent {
-                trigger_type: "ConnectorEvent".to_owned(),
-                connector: Some(connector.clone()),
-                event: Some(ev.clone()),
-                payload: serde_json::json!({"manual_trigger": true}),
-            }
-        }
+        springtale_core::rule::Trigger::ConnectorEvent {
+            connector,
+            event: ev,
+        } => springtale_core::rule::engine::TriggerEvent {
+            trigger_type: "ConnectorEvent".to_owned(),
+            connector: Some(connector.clone()),
+            event: Some(ev.clone()),
+            payload: serde_json::json!({"manual_trigger": true}),
+        },
         springtale_core::rule::Trigger::SystemEvent { event: ev } => {
             springtale_core::rule::engine::TriggerEvent {
                 trigger_type: "SystemEvent".to_owned(),
@@ -289,10 +284,7 @@ async fn schedule_rule_trigger(
 ///
 /// Called when a rule is updated or deleted via the API. Without this,
 /// deleted/changed cron jobs and file watches continue firing.
-async fn unschedule_rule_trigger(
-    state: &AppState,
-    rule: &springtale_core::rule::types::Rule,
-) {
+async fn unschedule_rule_trigger(state: &AppState, rule: &springtale_core::rule::types::Rule) {
     match &rule.trigger {
         springtale_core::rule::Trigger::Cron { .. } => {
             let mut cron = state.cron.lock().await;

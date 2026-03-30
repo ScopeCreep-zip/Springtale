@@ -87,7 +87,8 @@ mod tests {
         let config = crate::config::PresearchConfig {
             api_key: secrecy::SecretBox::new(Box::new("fake".to_owned())),
             api_base: "http://localhost:0".to_owned(),
-            cache_ttl_secs: 60, allowed_scrape_hosts: vec![],
+            cache_ttl_secs: 60,
+            allowed_scrape_hosts: vec![],
         };
         PresearchClient::new(&config).unwrap()
     }
@@ -114,7 +115,10 @@ mod tests {
         let input = serde_json::json!({});
         let result = execute(&client, &cache, &input).await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), PresearchError::InvalidInput(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            PresearchError::InvalidInput(_)
+        ));
     }
 
     #[tokio::test]
@@ -124,7 +128,10 @@ mod tests {
         let input = serde_json::json!({ "query": 42 });
         let result = execute(&client, &cache, &input).await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), PresearchError::InvalidInput(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            PresearchError::InvalidInput(_)
+        ));
     }
 
     #[tokio::test]
@@ -134,7 +141,10 @@ mod tests {
         let input = serde_json::json!({ "query": null });
         let result = execute(&client, &cache, &input).await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), PresearchError::InvalidInput(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            PresearchError::InvalidInput(_)
+        ));
     }
 
     // --- Mock client tests: verify response extraction and cache interaction ---
@@ -142,11 +152,11 @@ mod tests {
     #[tokio::test]
     async fn test_execute_returns_search_results_uncached() {
         let mock = MockPresearchClient::for_search(serde_json::json!({
-                "results": [
-                    { "title": "Result 1", "url": "https://example.com/1" },
-                    { "title": "Result 2", "url": "https://example.com/2" }
-                ]
-            }));
+            "results": [
+                { "title": "Result 1", "url": "https://example.com/1" },
+                { "title": "Result 2", "url": "https://example.com/2" }
+            ]
+        }));
 
         let cache = test_cache();
         let input = serde_json::json!({ "query": "rust programming" });
@@ -154,10 +164,7 @@ mod tests {
         let result = execute(&mock, &cache, &input).await.unwrap();
         assert!(result.success);
         assert_eq!(result.output["cached"], false);
-        assert_eq!(
-            result.output["results"]["results"][0]["title"],
-            "Result 1"
-        );
+        assert_eq!(result.output["results"]["results"][0]["title"], "Result 1");
         assert!(result.message.contains("rust programming"));
     }
 

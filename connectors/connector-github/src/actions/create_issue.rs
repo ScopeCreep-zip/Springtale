@@ -34,11 +34,17 @@ pub async fn execute(
     client: &dyn GithubApi,
     input: &serde_json::Value,
 ) -> Result<ActionResult, GithubError> {
-    let owner = input.get("owner").and_then(|v| v.as_str())
+    let owner = input
+        .get("owner")
+        .and_then(|v| v.as_str())
         .ok_or_else(|| GithubError::InvalidInput("missing 'owner'".to_owned()))?;
-    let repo = input.get("repo").and_then(|v| v.as_str())
+    let repo = input
+        .get("repo")
+        .and_then(|v| v.as_str())
         .ok_or_else(|| GithubError::InvalidInput("missing 'repo'".to_owned()))?;
-    let title = input.get("title").and_then(|v| v.as_str())
+    let title = input
+        .get("title")
+        .and_then(|v| v.as_str())
         .ok_or_else(|| GithubError::InvalidInput("missing 'title'".to_owned()))?;
     let body = input.get("body").and_then(|v| v.as_str()).unwrap_or("");
 

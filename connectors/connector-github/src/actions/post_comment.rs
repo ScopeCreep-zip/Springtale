@@ -34,13 +34,21 @@ pub async fn execute(
     client: &dyn GithubApi,
     input: &serde_json::Value,
 ) -> Result<ActionResult, GithubError> {
-    let owner = input.get("owner").and_then(|v| v.as_str())
+    let owner = input
+        .get("owner")
+        .and_then(|v| v.as_str())
         .ok_or_else(|| GithubError::InvalidInput("missing 'owner'".to_owned()))?;
-    let repo = input.get("repo").and_then(|v| v.as_str())
+    let repo = input
+        .get("repo")
+        .and_then(|v| v.as_str())
         .ok_or_else(|| GithubError::InvalidInput("missing 'repo'".to_owned()))?;
-    let issue_number = input.get("issue_number").and_then(|v| v.as_u64())
+    let issue_number = input
+        .get("issue_number")
+        .and_then(|v| v.as_u64())
         .ok_or_else(|| GithubError::InvalidInput("missing 'issue_number'".to_owned()))?;
-    let body = input.get("body").and_then(|v| v.as_str())
+    let body = input
+        .get("body")
+        .and_then(|v| v.as_str())
         .ok_or_else(|| GithubError::InvalidInput("missing 'body'".to_owned()))?;
 
     let response = client.post_comment(owner, repo, issue_number, body).await?;

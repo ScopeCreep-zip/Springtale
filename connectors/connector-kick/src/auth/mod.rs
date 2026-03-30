@@ -83,11 +83,7 @@ pub async fn exchange_code(
     );
 
     // Delegate HTTP call to client module (no raw reqwest in auth/)
-    let body = crate::client::KickClient::exchange_token(
-        &config.oauth_base,
-        form_body,
-    )
-    .await?;
+    let body = crate::client::KickClient::exchange_token(&config.oauth_base, form_body).await?;
 
     serde_json::from_str(&body)
         .map_err(|e| KickError::AuthFailed(format!("failed to parse token response: {e}")))
@@ -128,7 +124,10 @@ impl std::fmt::Debug for TokenResponse {
             .field("access_token", &"[REDACTED]")
             .field("token_type", &self.token_type)
             .field("expires_in", &self.expires_in)
-            .field("refresh_token", &self.refresh_token.as_ref().map(|_| "[REDACTED]"))
+            .field(
+                "refresh_token",
+                &self.refresh_token.as_ref().map(|_| "[REDACTED]"),
+            )
             .field("scope", &self.scope)
             .finish()
     }

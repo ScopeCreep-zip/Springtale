@@ -30,14 +30,21 @@ pub async fn execute(
     client: &dyn BlueskyApi,
     input: &serde_json::Value,
 ) -> Result<ActionResult, BlueskyError> {
-    let subject_uri = input.get("subject_uri").and_then(|v| v.as_str())
+    let subject_uri = input
+        .get("subject_uri")
+        .and_then(|v| v.as_str())
         .ok_or_else(|| BlueskyError::InvalidInput("missing 'subject_uri'".to_owned()))?;
-    let subject_cid = input.get("subject_cid").and_then(|v| v.as_str())
+    let subject_cid = input
+        .get("subject_cid")
+        .and_then(|v| v.as_str())
         .ok_or_else(|| BlueskyError::InvalidInput("missing 'subject_cid'".to_owned()))?;
 
     let response = client.like(subject_uri, subject_cid).await?;
 
-    let uri = response.get("uri").and_then(|v| v.as_str()).unwrap_or_default();
+    let uri = response
+        .get("uri")
+        .and_then(|v| v.as_str())
+        .unwrap_or_default();
 
     Ok(ActionResult {
         success: true,
@@ -65,35 +72,62 @@ mod tests {
     #[test]
     fn test_declaration_input_schema_required_fields() {
         let decl = declaration();
-        let schema = decl.input_schema.as_ref().unwrap_or_else(|| panic!("input_schema is None"));
-        let required = schema.get("required").unwrap_or_else(|| panic!("missing required"));
-        let required_arr = required.as_array().unwrap_or_else(|| panic!("required not array"));
-        let required_strs: Vec<&str> = required_arr
-            .iter()
-            .filter_map(|v| v.as_str())
-            .collect();
+        let schema = decl
+            .input_schema
+            .as_ref()
+            .unwrap_or_else(|| panic!("input_schema is None"));
+        let required = schema
+            .get("required")
+            .unwrap_or_else(|| panic!("missing required"));
+        let required_arr = required
+            .as_array()
+            .unwrap_or_else(|| panic!("required not array"));
+        let required_strs: Vec<&str> = required_arr.iter().filter_map(|v| v.as_str()).collect();
         assert_eq!(required_strs, vec!["subject_uri", "subject_cid"]);
     }
 
     #[test]
     fn test_declaration_input_schema_properties() {
         let decl = declaration();
-        let schema = decl.input_schema.as_ref().unwrap_or_else(|| panic!("input_schema is None"));
-        let props = schema.get("properties").unwrap_or_else(|| panic!("missing properties"));
-        let props_obj = props.as_object().unwrap_or_else(|| panic!("properties not object"));
-        assert!(props_obj.contains_key("subject_uri"), "missing 'subject_uri' property");
-        assert!(props_obj.contains_key("subject_cid"), "missing 'subject_cid' property");
+        let schema = decl
+            .input_schema
+            .as_ref()
+            .unwrap_or_else(|| panic!("input_schema is None"));
+        let props = schema
+            .get("properties")
+            .unwrap_or_else(|| panic!("missing properties"));
+        let props_obj = props
+            .as_object()
+            .unwrap_or_else(|| panic!("properties not object"));
+        assert!(
+            props_obj.contains_key("subject_uri"),
+            "missing 'subject_uri' property"
+        );
+        assert!(
+            props_obj.contains_key("subject_cid"),
+            "missing 'subject_cid' property"
+        );
         assert_eq!(props_obj.len(), 2, "expected exactly 2 properties");
     }
 
     #[test]
     fn test_declaration_output_schema_fields() {
         let decl = declaration();
-        let schema = decl.output_schema.as_ref().unwrap_or_else(|| panic!("output_schema is None"));
-        let props = schema.get("properties").unwrap_or_else(|| panic!("missing properties"));
-        let props_obj = props.as_object().unwrap_or_else(|| panic!("properties not object"));
+        let schema = decl
+            .output_schema
+            .as_ref()
+            .unwrap_or_else(|| panic!("output_schema is None"));
+        let props = schema
+            .get("properties")
+            .unwrap_or_else(|| panic!("missing properties"));
+        let props_obj = props
+            .as_object()
+            .unwrap_or_else(|| panic!("properties not object"));
         assert!(props_obj.contains_key("uri"), "missing 'uri' output field");
-        assert!(props_obj.contains_key("response"), "missing 'response' output field");
+        assert!(
+            props_obj.contains_key("response"),
+            "missing 'response' output field"
+        );
         assert_eq!(props_obj.len(), 2, "expected exactly 2 output properties");
     }
 
@@ -133,7 +167,10 @@ mod tests {
 
         let result = execute(&mock, &input).await.unwrap();
         assert!(result.success);
-        assert_eq!(result.output["uri"], "at://did:plc:abc123/app.bsky.feed.like/3k2la");
+        assert_eq!(
+            result.output["uri"],
+            "at://did:plc:abc123/app.bsky.feed.like/3k2la"
+        );
         assert!(result.message.contains("liked"));
     }
 

@@ -56,8 +56,9 @@ pub async fn run(action: ConnectorAction, store: &SqliteBackend, json: bool) -> 
             println!("Removed connector: {name}");
         }
         ConnectorAction::Install { path } => {
-            let contents = std::fs::read_to_string(&path)
-                .map_err(|e| anyhow::anyhow!("failed to read manifest at {}: {e}", path.display()))?;
+            let contents = std::fs::read_to_string(&path).map_err(|e| {
+                anyhow::anyhow!("failed to read manifest at {}: {e}", path.display())
+            })?;
             let manifest: ConnectorManifest = toml::from_str(&contents)
                 .map_err(|e| anyhow::anyhow!("failed to parse manifest TOML: {e}"))?;
 
@@ -66,7 +67,9 @@ pub async fn run(action: ConnectorAction, store: &SqliteBackend, json: bool) -> 
                 .map_err(|e| anyhow::anyhow!("manifest validation failed: {e}"))?;
 
             if manifest.signature.is_some() {
-                println!("  Note: manifest has signature — verification requires author key registry (Phase 2)");
+                println!(
+                    "  Note: manifest has signature — verification requires author key registry (Phase 2)"
+                );
             }
 
             let manifest_json = serde_json::to_string(&manifest)

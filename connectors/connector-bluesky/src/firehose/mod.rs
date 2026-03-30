@@ -129,9 +129,15 @@ mod tests {
     #[test]
     fn test_collection_to_trigger() {
         assert_eq!(collection_to_trigger("app.bsky.feed.post"), Some("mention"));
-        assert_eq!(collection_to_trigger("app.bsky.graph.follow"), Some("follow"));
+        assert_eq!(
+            collection_to_trigger("app.bsky.graph.follow"),
+            Some("follow")
+        );
         assert_eq!(collection_to_trigger("app.bsky.feed.like"), Some("like"));
-        assert_eq!(collection_to_trigger("app.bsky.feed.repost"), Some("repost"));
+        assert_eq!(
+            collection_to_trigger("app.bsky.feed.repost"),
+            Some("repost")
+        );
         assert_eq!(collection_to_trigger("unknown"), None);
     }
 

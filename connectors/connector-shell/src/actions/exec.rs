@@ -146,7 +146,10 @@ mod tests {
         let result = execute(&config, &input).await.unwrap();
         assert!(result.success);
         assert_eq!(result.output["exit_code"], 0);
-        assert_eq!(result.output["stdout"].as_str().unwrap().trim(), "hello world");
+        assert_eq!(
+            result.output["stdout"].as_str().unwrap().trim(),
+            "hello world"
+        );
     }
 
     #[tokio::test]
@@ -159,7 +162,10 @@ mod tests {
 
         let result = execute(&config, &input).await;
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), ShellError::CommandNotAllowed(_)));
+        assert!(matches!(
+            result.unwrap_err(),
+            ShellError::CommandNotAllowed(_)
+        ));
     }
 
     #[tokio::test]

@@ -63,11 +63,7 @@ impl Connector for HttpConnector {
         }
     }
 
-    async fn on_event(
-        &self,
-        trigger: &str,
-        _handler: EventHandler,
-    ) -> Result<(), ConnectorError> {
+    async fn on_event(&self, trigger: &str, _handler: EventHandler) -> Result<(), ConnectorError> {
         Err(ConnectorError::ExecutionFailed(format!(
             "HTTP connector has no triggers, cannot register handler for: {trigger}"
         )))
@@ -83,9 +79,7 @@ fn build_manifest(config: &HttpConfig, actions: &[ActionDecl]) -> ConnectorManif
     let capabilities = config
         .allowed_hosts
         .iter()
-        .map(|host| Capability::NetworkOutbound {
-            host: host.clone(),
-        })
+        .map(|host| Capability::NetworkOutbound { host: host.clone() })
         .collect();
 
     ConnectorManifest {
@@ -131,11 +125,9 @@ mod tests {
     #[test]
     fn test_manifest_network_capability() {
         let connector = test_connector();
-        let has_network = connector
-            .manifest()
-            .capabilities
-            .iter()
-            .any(|c| matches!(c, Capability::NetworkOutbound { host } if host == "api.example.com"));
+        let has_network = connector.manifest().capabilities.iter().any(
+            |c| matches!(c, Capability::NetworkOutbound { host } if host == "api.example.com"),
+        );
         assert!(has_network);
     }
 
@@ -149,7 +141,11 @@ mod tests {
     fn test_two_actions() {
         let connector = test_connector();
         assert_eq!(connector.actions().len(), 2);
-        let names: Vec<&str> = connector.actions().iter().map(|a| a.name.as_str()).collect();
+        let names: Vec<&str> = connector
+            .actions()
+            .iter()
+            .map(|a| a.name.as_str())
+            .collect();
         assert!(names.contains(&"get"));
         assert!(names.contains(&"post"));
     }
@@ -173,10 +169,7 @@ mod tests {
     async fn test_get_host_not_allowed() {
         let connector = test_connector();
         let result = connector
-            .execute(
-                "get",
-                serde_json::json!({ "url": "https://evil.com/data" }),
-            )
+            .execute("get", serde_json::json!({ "url": "https://evil.com/data" }))
             .await;
 
         assert!(result.is_err());

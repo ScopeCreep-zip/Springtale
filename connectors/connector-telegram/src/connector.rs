@@ -1,0 +1,226 @@
+use std::sync::Arc;
+
+use async_trait::async_trait;
+use secrecy::{ExposeSecret, SecretBox};
+use tokio::sync::Mutex;
+
+use springtale_connector::connector::trait_::{ActionResult, Connector, EventHandler};
+use springtale_connector::error::ConnectorError;
+use springtale_connector::manifest::types::{
+    ActionDecl, Capability, ConnectorManifest, DataDisclosure, TriggerDecl,
+};
+
+use crate::actions;
+use crate::client::TelegramClient;
+use crate::config::TelegramConfig;
+use crate::triggers;
+
+/// Telegram connector.
+/// Provides Telegram Bot API integration with polling or webhook triggers.
+pub struct TelegramConnector {
+    client: TelegramClient,
+    manifest: ConnectorManifest,
+    triggers: Vec<TriggerDecl>,
+    actions: Vec<ActionDecl>,
+    handlers: Arc<Mutex<Vec<(String, EventHandler)>>>,
+}
+
+impl TelegramConnector {
+    pub fn new(config: &TelegramConfig) -> Result<Self, crate::error::TelegramError> {
+        let trigger_decls = triggers::trigger_declarations();
+        let action_decls = actions::action_declarations();
+        let manifest = build_manifest(&trigger_decls, &action_decls);
+
+        // SECURITY: expose needed to clone bot_token into client
+        let token = SecretBox::new(Box::new(config.bot_token.expose_secret().clone()));
+        let client = TelegramClient::new(&config.api_base, token)?;
+
+        Ok(Self {
+            client,
+            manifest,
+            triggers: trigger_decls,
+            actions: action_decls,
+            handlers: Arc::new(Mutex::new(Vec::new())),
+        })
+    }
+
+    /// Dispatch a parsed update to registered handlers.
+    pub async fn dispatch_update(&self, update: &serde_json::Value) {
+        if let Some(message) = update.get("message") {
+            let text = message.get("text").and_then(|t| t.as_str()).unwrap_or("");
+
+            if text.starts_with('/') {
+                let (command, args) = crate::webhook::parse_command(text);
+                let mut payload = message.clone();
+                if let Some(obj) = payload.as_object_mut() {
+                    obj.insert("command".to_owned(), serde_json::Value::String(command));
+                    obj.insert("args".to_owned(), serde_json::Value::String(args));
+                }
+                self.dispatch_to_handlers("command_received", payload).await;
+            }
+
+            // Always fire message_received (even for commands)
+            self.dispatch_to_handlers("message_received", message.clone())
+                .await;
+        }
+    }
+
+    async fn dispatch_to_handlers(&self, trigger_name: &str, payload: serde_json::Value) {
+        let handlers = self.handlers.lock().await;
+        for (registered, handler) in handlers.iter() {
+            if registered == trigger_name {
+                handler(payload.clone());
+            }
+        }
+    }
+}
+
+#[async_trait]
+impl Connector for TelegramConnector {
+    fn triggers(&self) -> &[TriggerDecl] {
+        &self.triggers
+    }
+
+    fn actions(&self) -> &[ActionDecl] {
+        &self.actions
+    }
+
+    async fn execute(
+        &self,
+        action: &str,
+        input: serde_json::Value,
+    ) -> Result<ActionResult, ConnectorError> {
+        match action {
+            "send_message" => actions::send_message::execute(&self.client, &input)
+                .await
+                .map_err(ConnectorError::from),
+            "send_photo" => actions::send_photo::execute(&self.client, &input)
+                .await
+                .map_err(ConnectorError::from),
+            "edit_message" => actions::edit_message::execute(&self.client, &input)
+                .await
+                .map_err(ConnectorError::from),
+            "delete_message" => actions::delete_message::execute(&self.client, &input)
+                .await
+                .map_err(ConnectorError::from),
+            "send_inline_keyboard" => actions::send_inline_keyboard::execute(&self.client, &input)
+                .await
+                .map_err(ConnectorError::from),
+            unknown => Err(ConnectorError::ExecutionFailed(format!(
+                "unknown action: {unknown}"
+            ))),
+        }
+    }
+
+    async fn on_event(&self, trigger: &str, handler: EventHandler) -> Result<(), ConnectorError> {
+        let valid_triggers = ["message_received", "command_received"];
+        if !valid_triggers.contains(&trigger) {
+            return Err(ConnectorError::ExecutionFailed(format!(
+                "unknown trigger: {trigger}"
+            )));
+        }
+
+        {
+            let mut handlers = self.handlers.lock().await;
+            handlers.push((trigger.to_owned(), handler));
+        }
+
+        tracing::info!(trigger = trigger, "registered Telegram event handler");
+        Ok(())
+    }
+
+    fn manifest(&self) -> &ConnectorManifest {
+        &self.manifest
+    }
+}
+
+fn build_manifest(triggers: &[TriggerDecl], actions: &[ActionDecl]) -> ConnectorManifest {
+    ConnectorManifest {
+        name: "connector-telegram".to_owned(),
+        version: env!("CARGO_PKG_VERSION").to_owned(),
+        author: "Springtale".to_owned(),
+        description: "Telegram Bot connector — messaging, commands, inline keyboards.".to_owned(),
+        capabilities: vec![Capability::NetworkOutbound {
+            host: "api.telegram.org".to_owned(),
+        }],
+        triggers: triggers.to_vec(),
+        actions: actions.to_vec(),
+        data_disclosure: vec![DataDisclosure {
+            data_type: "chat messages".to_owned(),
+            purpose: "sending and receiving messages via Telegram Bot API".to_owned(),
+            destination: "api.telegram.org".to_owned(),
+        }],
+        wasm_hash: None,
+        signature: None,
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    fn test_config() -> TelegramConfig {
+        TelegramConfig {
+            bot_token: SecretBox::new(Box::new("123456:ABC-DEF".to_owned())),
+            api_base: "https://api.telegram.org".to_owned(),
+            update_mode: "polling".to_owned(),
+            webhook_url: None,
+            poll_timeout: 30,
+        }
+    }
+
+    #[test]
+    fn test_manifest_name() {
+        let connector = TelegramConnector::new(&test_config()).unwrap();
+        assert_eq!(connector.manifest().name, "connector-telegram");
+    }
+
+    #[test]
+    fn test_manifest_capabilities() {
+        let connector = TelegramConnector::new(&test_config()).unwrap();
+        let caps = &connector.manifest().capabilities;
+        assert_eq!(caps.len(), 1);
+        assert!(
+            matches!(&caps[0], Capability::NetworkOutbound { host } if host == "api.telegram.org")
+        );
+    }
+
+    #[test]
+    fn test_trigger_count() {
+        let connector = TelegramConnector::new(&test_config()).unwrap();
+        assert_eq!(connector.triggers().len(), 2);
+    }
+
+    #[test]
+    fn test_action_count() {
+        let connector = TelegramConnector::new(&test_config()).unwrap();
+        assert_eq!(connector.actions().len(), 5);
+    }
+
+    #[tokio::test]
+    async fn test_execute_unknown_action() {
+        let connector = TelegramConnector::new(&test_config()).unwrap();
+        let result = connector.execute("ban_user", serde_json::json!({})).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_on_event_valid() {
+        let connector = TelegramConnector::new(&test_config()).unwrap();
+        let handler: EventHandler = Box::new(|_| {});
+        assert!(
+            connector
+                .on_event("message_received", handler)
+                .await
+                .is_ok()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_on_event_invalid() {
+        let connector = TelegramConnector::new(&test_config()).unwrap();
+        let handler: EventHandler = Box::new(|_| {});
+        assert!(connector.on_event("nonexistent", handler).await.is_err());
+    }
+}

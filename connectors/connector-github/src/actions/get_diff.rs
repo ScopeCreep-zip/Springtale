@@ -31,11 +31,17 @@ pub async fn execute(
     client: &dyn GithubApi,
     input: &serde_json::Value,
 ) -> Result<ActionResult, GithubError> {
-    let owner = input.get("owner").and_then(|v| v.as_str())
+    let owner = input
+        .get("owner")
+        .and_then(|v| v.as_str())
         .ok_or_else(|| GithubError::InvalidInput("missing 'owner'".to_owned()))?;
-    let repo = input.get("repo").and_then(|v| v.as_str())
+    let repo = input
+        .get("repo")
+        .and_then(|v| v.as_str())
         .ok_or_else(|| GithubError::InvalidInput("missing 'repo'".to_owned()))?;
-    let pull_number = input.get("pull_number").and_then(|v| v.as_u64())
+    let pull_number = input
+        .get("pull_number")
+        .and_then(|v| v.as_u64())
         .ok_or_else(|| GithubError::InvalidInput("missing 'pull_number'".to_owned()))?;
 
     let diff = client.get_diff(owner, repo, pull_number).await?;

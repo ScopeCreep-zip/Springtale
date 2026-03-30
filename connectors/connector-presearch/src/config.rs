@@ -99,7 +99,8 @@ mod tests {
         let config = PresearchConfig {
             api_key: SecretBox::new(Box::new("secret_key".to_owned())),
             api_base: default_api_base(),
-            cache_ttl_secs: DEFAULT_CACHE_TTL_SECS, allowed_scrape_hosts: vec![],
+            cache_ttl_secs: DEFAULT_CACHE_TTL_SECS,
+            allowed_scrape_hosts: vec![],
         };
         let debug = format!("{config:?}");
         assert!(!debug.contains("secret_key"));
@@ -111,7 +112,8 @@ mod tests {
         let config = PresearchConfig {
             api_key: SecretBox::new(Box::new("key".to_owned())),
             api_base: default_api_base(),
-            cache_ttl_secs: DEFAULT_CACHE_TTL_SECS, allowed_scrape_hosts: vec![],
+            cache_ttl_secs: DEFAULT_CACHE_TTL_SECS,
+            allowed_scrape_hosts: vec![],
         };
         assert_eq!(config.cache_ttl(), std::time::Duration::from_secs(300));
     }

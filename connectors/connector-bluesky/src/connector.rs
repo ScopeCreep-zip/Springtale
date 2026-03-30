@@ -44,11 +44,7 @@ impl BlueskyConnector {
     }
 
     /// Dispatch a Jetstream event to registered handlers.
-    pub async fn dispatch_event(
-        &self,
-        trigger_name: &str,
-        payload: serde_json::Value,
-    ) {
+    pub async fn dispatch_event(&self, trigger_name: &str, payload: serde_json::Value) {
         let handlers = self.handlers.lock().await;
         for (registered, handler) in handlers.iter() {
             if registered == trigger_name {
@@ -93,11 +89,7 @@ impl Connector for BlueskyConnector {
         }
     }
 
-    async fn on_event(
-        &self,
-        trigger: &str,
-        handler: EventHandler,
-    ) -> Result<(), ConnectorError> {
+    async fn on_event(&self, trigger: &str, handler: EventHandler) -> Result<(), ConnectorError> {
         let valid_triggers = ["mention", "follow", "like", "repost"];
         if !valid_triggers.contains(&trigger) {
             return Err(ConnectorError::ExecutionFailed(format!(

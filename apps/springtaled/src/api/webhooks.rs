@@ -1,7 +1,7 @@
+use axum::Json;
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
-use axum::Json;
 
 use springtale_core::rule::engine::TriggerEvent;
 use springtale_store::backend::trait_::StorageBackend;
@@ -34,9 +34,7 @@ pub async fn receive(
     let registry = state.registry.read().await;
 
     // Check connector exists and is enabled
-    let entry = registry
-        .get(&connector_name)
-        .ok_or(StatusCode::NOT_FOUND)?;
+    let entry = registry.get(&connector_name).ok_or(StatusCode::NOT_FOUND)?;
 
     if !entry.enabled {
         return Err(StatusCode::NOT_FOUND);

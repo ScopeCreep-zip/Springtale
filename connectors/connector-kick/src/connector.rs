@@ -70,11 +70,7 @@ impl KickConnector {
     }
 
     /// Dispatch a webhook event to registered handlers by trigger name.
-    pub async fn dispatch_webhook(
-        &self,
-        trigger_name: &str,
-        payload: serde_json::Value,
-    ) {
+    pub async fn dispatch_webhook(&self, trigger_name: &str, payload: serde_json::Value) {
         let handlers = self.handlers.lock().await;
         for (registered, handler) in handlers.iter() {
             if registered == trigger_name {
@@ -89,11 +85,7 @@ impl KickConnector {
     /// verifying the RSA signature. It handles the Kick-specific mapping
     /// from event types to trigger names, including the livestream
     /// `is_live` branching logic.
-    pub async fn dispatch_raw_webhook(
-        &self,
-        kick_event_type: &str,
-        payload: serde_json::Value,
-    ) {
+    pub async fn dispatch_raw_webhook(&self, kick_event_type: &str, payload: serde_json::Value) {
         // For most events, use the direct mapping
         let trigger_name = if kick_event_type == "livestream.status.updated" {
             // Livestream events need payload inspection to determine trigger
@@ -144,12 +136,13 @@ impl Connector for KickConnector {
         }
     }
 
-    async fn on_event(
-        &self,
-        trigger: &str,
-        handler: EventHandler,
-    ) -> Result<(), ConnectorError> {
-        let valid_triggers = ["chat_message", "stream_live", "stream_offline", "channel_followed"];
+    async fn on_event(&self, trigger: &str, handler: EventHandler) -> Result<(), ConnectorError> {
+        let valid_triggers = [
+            "chat_message",
+            "stream_live",
+            "stream_offline",
+            "channel_followed",
+        ];
         if !valid_triggers.contains(&trigger) {
             return Err(ConnectorError::ExecutionFailed(format!(
                 "unknown trigger: {trigger}"
@@ -175,7 +168,11 @@ impl Connector for KickConnector {
                 .collect();
 
             if !new_events.is_empty() {
-                match self.client.subscribe_events(&new_events, callback_url).await {
+                match self
+                    .client
+                    .subscribe_events(&new_events, callback_url)
+                    .await
+                {
                     Ok(_) => {
                         for event in &new_events {
                             subscribed.insert((*event).to_owned());

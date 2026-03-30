@@ -28,7 +28,9 @@ pub async fn execute(
     client: &dyn KickApi,
     input: &serde_json::Value,
 ) -> Result<ActionResult, KickError> {
-    let channel_id = input.get("channel_id").and_then(|v| v.as_str())
+    let channel_id = input
+        .get("channel_id")
+        .and_then(|v| v.as_str())
         .ok_or_else(|| KickError::InvalidInput("missing 'channel_id'".to_owned()))?;
 
     let stream = client.get_stream(channel_id).await?;
@@ -47,7 +49,11 @@ mod tests {
     use crate::client::KickClient;
 
     fn test_client() -> KickClient {
-        KickClient::new("http://localhost:0", secrecy::SecretBox::new(Box::new("fake_token".to_owned()))).unwrap()
+        KickClient::new(
+            "http://localhost:0",
+            secrecy::SecretBox::new(Box::new("fake_token".to_owned())),
+        )
+        .unwrap()
     }
 
     #[test]
@@ -100,8 +106,14 @@ mod tests {
         let result = execute(&mock, &input).await.unwrap();
         assert!(result.success);
         assert_eq!(result.output["stream"]["data"][0]["is_live"], true);
-        assert_eq!(result.output["stream"]["data"][0]["title"], "Late Night Gaming");
-        assert_eq!(result.output["stream"]["data"][0]["started_at"], "2026-03-29T02:00:00Z");
+        assert_eq!(
+            result.output["stream"]["data"][0]["title"],
+            "Late Night Gaming"
+        );
+        assert_eq!(
+            result.output["stream"]["data"][0]["started_at"],
+            "2026-03-29T02:00:00Z"
+        );
         assert!(result.message.contains("42"));
     }
 }

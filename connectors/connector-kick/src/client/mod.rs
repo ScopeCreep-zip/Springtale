@@ -11,7 +11,11 @@ use crate::error::KickError;
 /// layer, not at reqwest level").
 #[async_trait]
 pub trait KickApi: Send + Sync {
-    async fn send_chat(&self, channel_id: &str, message: &str) -> Result<serde_json::Value, KickError>;
+    async fn send_chat(
+        &self,
+        channel_id: &str,
+        message: &str,
+    ) -> Result<serde_json::Value, KickError>;
     async fn get_channel_by_slug(&self, slug: &str) -> Result<serde_json::Value, KickError>;
     async fn get_stream(&self, channel_id: &str) -> Result<serde_json::Value, KickError>;
 }
@@ -45,10 +49,7 @@ impl KickClient {
     ///
     /// All reqwest calls must go through client/ — this is the HTTP call
     /// that `auth::exchange_code` delegates to.
-    pub async fn exchange_token(
-        oauth_base: &str,
-        form_body: String,
-    ) -> Result<String, KickError> {
+    pub async fn exchange_token(oauth_base: &str, form_body: String) -> Result<String, KickError> {
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
@@ -106,9 +107,11 @@ impl KickClient {
                 .send()
                 .await?;
 
-            results.push(handle_json_response(response)
-            .await
-            .map_err(KickError::RequestFailed)?);
+            results.push(
+                handle_json_response(response)
+                    .await
+                    .map_err(KickError::RequestFailed)?,
+            );
         }
 
         Ok(serde_json::json!(results))
@@ -188,14 +191,8 @@ impl KickApi for KickClient {
     /// Get channel information.
     /// `GET /public/v1/channels?slug={slug}` or `?broadcaster_user_id={id}`
     /// Kick API supports both query params (slug added 08/04/2025).
-    async fn get_channel_by_slug(
-        &self,
-        slug: &str,
-    ) -> Result<serde_json::Value, KickError> {
-        let url = format!(
-            "{}/public/v1/channels?slug={slug}",
-            self.api_base
-        );
+    async fn get_channel_by_slug(&self, slug: &str) -> Result<serde_json::Value, KickError> {
+        let url = format!("{}/public/v1/channels?slug={slug}", self.api_base);
 
         let response = self
             .inner
@@ -213,10 +210,7 @@ impl KickApi for KickClient {
 
     /// Get livestream status.
     /// `GET /public/v1/livestreams?channel_id={id}`
-    async fn get_stream(
-        &self,
-        channel_id: &str,
-    ) -> Result<serde_json::Value, KickError> {
+    async fn get_stream(&self, channel_id: &str) -> Result<serde_json::Value, KickError> {
         let url = format!(
             "{}/public/v1/livestreams?channel_id={channel_id}",
             self.api_base
@@ -260,17 +254,11 @@ pub mod test_helpers {
             Ok(self.response.clone())
         }
 
-        async fn get_channel_by_slug(
-            &self,
-            _slug: &str,
-        ) -> Result<serde_json::Value, KickError> {
+        async fn get_channel_by_slug(&self, _slug: &str) -> Result<serde_json::Value, KickError> {
             Ok(self.response.clone())
         }
 
-        async fn get_stream(
-            &self,
-            _channel_id: &str,
-        ) -> Result<serde_json::Value, KickError> {
+        async fn get_stream(&self, _channel_id: &str) -> Result<serde_json::Value, KickError> {
             Ok(self.response.clone())
         }
     }

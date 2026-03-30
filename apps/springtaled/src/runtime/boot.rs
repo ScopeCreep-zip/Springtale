@@ -1,7 +1,8 @@
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use tokio::sync::{mpsc, RwLock};
+use secrecy::ExposeSecret;
+use tokio::sync::{RwLock, mpsc};
 
 use springtale_connector::capability::grant::CapabilityPolicy;
 use springtale_connector::registry::store::ConnectorRegistry;
@@ -9,8 +10,8 @@ use springtale_core::rule::engine::RuleEngine;
 use springtale_crypto::identity::keypair::Keypair;
 use springtale_crypto::vault::store::Vault;
 use springtale_scheduler::cron::executor::CronExecutor;
-use springtale_scheduler::queue::producer::JobProducer;
 use springtale_scheduler::queue::consumer::JobConsumer;
+use springtale_scheduler::queue::producer::JobProducer;
 use springtale_scheduler::watcher::fs_watcher::FsWatcher;
 use springtale_store::backend::sqlite::SqliteBackend;
 use springtale_store::backend::trait_::StorageBackend;
@@ -41,10 +42,8 @@ pub async fn boot(config: SpringtaleConfig) -> Result<()> {
         std::fs::create_dir_all(parent)
             .with_context(|| format!("failed to create data directory: {}", parent.display()))?;
     }
-    let store = Arc::new(
-        SqliteBackend::open(&config.store.path)
-            .context("failed to open SQLite store")?,
-    );
+    let store =
+        Arc::new(SqliteBackend::open(&config.store.path).context("failed to open SQLite store")?);
     tracing::info!("store initialized");
 
     // ── Step 3: Initialize crypto vault ──
@@ -72,7 +71,9 @@ pub async fn boot(config: SpringtaleConfig) -> Result<()> {
     tracing::info!("transport initialized");
 
     // ── Step 5: Load rules from store → RuleEngine ──
-    let rules = store.list_rules().await
+    let rules = store
+        .list_rules()
+        .await
         .context("failed to load rules from store")?;
     let mut engine = RuleEngine::new();
     for rule in &rules {
@@ -86,8 +87,8 @@ pub async fn boot(config: SpringtaleConfig) -> Result<()> {
     let (trigger_tx, trigger_rx) = mpsc::channel(256);
 
     let mut cron_executor = CronExecutor::new(trigger_tx.clone());
-    let mut fs_watcher = FsWatcher::new(trigger_tx.clone())
-        .context("failed to create filesystem watcher")?;
+    let mut fs_watcher =
+        FsWatcher::new(trigger_tx.clone()).context("failed to create filesystem watcher")?;
 
     // Schedule cron triggers and file watches from rules
     for rule in &rules {
@@ -109,16 +110,18 @@ pub async fn boot(config: SpringtaleConfig) -> Result<()> {
     );
 
     // ── Step 7: Load connectors → ConnectorRegistry ──
-    let registry = Arc::new(RwLock::new(
-        ConnectorRegistry::new(CapabilityPolicy::Interactive),
-    ));
+    let registry = Arc::new(RwLock::new(ConnectorRegistry::new(
+        CapabilityPolicy::Interactive,
+    )));
 
     // Load installed connectors from store and log them.
     // Phase 1a: manifests are registered in the store (via CLI or API) but
     // connectors can't be activated from manifests alone — they require compiled
     // Rust code. The registry is populated when the daemon is built with
     // connector crates as dependencies (Phase 2 dynamic loading).
-    let installed_connectors = store.list_connectors().await
+    let installed_connectors = store
+        .list_connectors()
+        .await
         .context("failed to load connectors from store")?;
     let enabled_count = installed_connectors.iter().filter(|c| c.enabled).count();
     for connector in &installed_connectors {
@@ -147,10 +150,11 @@ pub async fn boot(config: SpringtaleConfig) -> Result<()> {
     consumer.set_handler(std::sync::Arc::new(move |job| {
         let reg = dispatch_registry.clone();
         Box::pin(async move {
-            let action: springtale_core::rule::action::Action =
-                serde_json::from_value(job.payload)
-                    .map_err(|e| format!("failed to deserialize action: {e}"))?;
-            crate::dispatch::dispatch_action(&action, &reg).await.map(|_| ())
+            let action: springtale_core::rule::action::Action = serde_json::from_value(job.payload)
+                .map_err(|e| format!("failed to deserialize action: {e}"))?;
+            crate::dispatch::dispatch_action(&action, &reg)
+                .await
+                .map(|_| ())
         })
     }));
 
@@ -162,8 +166,145 @@ pub async fn boot(config: SpringtaleConfig) -> Result<()> {
     });
     tracing::info!("job queue started (concurrency: 4)");
 
-    // ── Step 8: Build and start API server ──
+    // Wrap engine in Arc<RwLock> now so both bot and API can share it.
     let engine = Arc::new(RwLock::new(engine));
+
+    // ── Step 7c: Initialize bot runtime (if configured) ──
+    let (bot_msg_tx, bot_msg_rx) = mpsc::channel::<springtale_bot::IncomingMessage>(256);
+    let (bot_response_tx, mut bot_response_rx) =
+        mpsc::channel::<springtale_bot::OutgoingResponse>(256);
+    let (_bot_rule_tx, bot_rule_rx) =
+        mpsc::channel::<springtale_core::rule::engine::TriggerEvent>(256);
+
+    let bot_config = config.bot.unwrap_or_default();
+
+    let bot = springtale_bot::BotBuilder::new()
+        .store(store.clone() as Arc<dyn springtale_store::StorageBackend>)
+        .registry(registry.clone())
+        .engine(engine.clone())
+        .config(bot_config)
+        .connector_rx(bot_msg_rx)
+        .rule_rx(bot_rule_rx)
+        .response_tx(bot_response_tx)
+        .build()
+        .await
+        .context("failed to initialize bot runtime")?;
+
+    // Spawn bot event loop
+    let bot_handle = tokio::spawn(async move {
+        bot.start().await;
+    });
+
+    // Spawn response dispatcher: routes bot responses to connectors
+    let response_registry = registry.clone();
+    let _response_handle = tokio::spawn(async move {
+        while let Some(response) = bot_response_rx.recv().await {
+            let reg = response_registry.read().await;
+            let input = serde_json::json!({
+                "chat_id": response.channel_id,
+                "text": response.text,
+            });
+            match reg
+                .execute(&response.connector, "send_message", input)
+                .await
+            {
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::error!(
+                        connector = %response.connector,
+                        error = %e,
+                        "failed to send bot response"
+                    );
+                }
+            }
+        }
+    });
+
+    tracing::info!("bot runtime started");
+
+    // ── Step 7d: Wire Telegram connector (if configured) ──
+    if let Some(ref tg_config) = config.telegram {
+        // 1. Create and install connector into registry
+        let tg_connector = connector_telegram::TelegramConnector::new(tg_config)
+            .context("failed to create Telegram connector")?;
+        {
+            let mut reg = registry.write().await;
+            reg.install_native(Box::new(tg_connector))
+                .context("failed to install Telegram connector")?;
+        }
+        tracing::info!("Telegram connector installed");
+
+        // 2. Start polling loop with a separate client
+        //    (the original client is inside the connector, consumed by install_native)
+        // SECURITY: expose needed to create polling client with same token
+        let poll_token =
+            secrecy::SecretBox::new(Box::new(tg_config.bot_token.expose_secret().clone()));
+        let poll_client = connector_telegram::TelegramClient::new(&tg_config.api_base, poll_token)
+            .context("failed to create Telegram polling client")?;
+
+        let poll_client = std::sync::Arc::new(poll_client);
+        let poll_timeout = tg_config.poll_timeout;
+
+        // Polling dispatcher: extracts message fields from Telegram updates
+        // and sends IncomingMessage to the bot via bot_msg_tx.
+        // Uses tokio::spawn to bridge sync callback → async channel send.
+        let poll_tx = bot_msg_tx;
+        let poll_dispatcher: std::sync::Arc<dyn Fn(serde_json::Value) + Send + Sync> =
+            std::sync::Arc::new(move |update: serde_json::Value| {
+                if let Some(message) = update.get("message") {
+                    let tx = poll_tx.clone();
+                    let msg = message.clone();
+                    let raw = update.clone();
+                    tokio::spawn(async move {
+                        let user_id = msg
+                            .get("from")
+                            .and_then(|f| f.get("id"))
+                            .and_then(|i| i.as_i64())
+                            .map(|i| i.to_string())
+                            .unwrap_or_default();
+                        let channel_id = msg
+                            .get("chat")
+                            .and_then(|c| c.get("id"))
+                            .and_then(|i| i.as_i64())
+                            .map(|i| i.to_string())
+                            .unwrap_or_default();
+                        let text = msg
+                            .get("text")
+                            .and_then(|t| t.as_str())
+                            .unwrap_or("")
+                            .to_owned();
+
+                        let incoming = springtale_bot::IncomingMessage {
+                            user_id,
+                            channel_id,
+                            text,
+                            source_connector: "connector-telegram".to_owned(),
+                            raw,
+                        };
+                        if let Err(e) = tx.send(incoming).await {
+                            tracing::error!(error = %e, "failed to send Telegram message to bot");
+                        }
+                    });
+                }
+            });
+
+        let (_poll_shutdown_tx, poll_shutdown_rx) = tokio::sync::watch::channel(false);
+
+        tokio::spawn(async move {
+            connector_telegram::polling::polling_loop(
+                poll_client,
+                poll_timeout,
+                vec![],
+                poll_dispatcher,
+                poll_shutdown_rx,
+            )
+            .await;
+        });
+
+        tracing::info!("Telegram polling started");
+    }
+
+    // ── Step 8: Build and start API server ──
 
     let ready_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
@@ -210,6 +351,7 @@ pub async fn boot(config: SpringtaleConfig) -> Result<()> {
     tokio::select! {
         _ = api_handle => tracing::info!("API server stopped"),
         _ = event_loop => tracing::info!("event loop stopped"),
+        _ = bot_handle => tracing::info!("bot event loop stopped"),
     }
 
     // Cleanup
@@ -309,13 +451,10 @@ fn atty_check() -> bool {
 }
 
 /// Open an existing vault or create a new one on first run.
-fn open_or_create_vault(
-    path: &std::path::Path,
-    passphrase: &[u8],
-) -> Result<(Vault, Keypair)> {
+fn open_or_create_vault(path: &std::path::Path, passphrase: &[u8]) -> Result<(Vault, Keypair)> {
     if path.exists() {
-        let vault = Vault::open(path, passphrase)
-            .context("failed to open vault (wrong passphrase?)")?;
+        let vault =
+            Vault::open(path, passphrase).context("failed to open vault (wrong passphrase?)")?;
         let identity_bytes = vault
             .get("identity")
             .context("failed to read identity from vault")?
@@ -325,15 +464,13 @@ fn open_or_create_vault(
             .as_slice()
             .try_into()
             .context("identity key is wrong size (expected 32 bytes)")?;
-        let keypair = Keypair::from_secret_bytes(bytes)
-            .context("failed to restore keypair from vault")?;
+        let keypair =
+            Keypair::from_secret_bytes(bytes).context("failed to restore keypair from vault")?;
         Ok((vault, keypair))
     } else {
         tracing::info!("creating new vault and identity");
-        let keypair = Keypair::generate()
-            .context("failed to generate identity keypair")?;
-        let mut vault = Vault::create(path, passphrase)
-            .context("failed to create vault")?;
+        let keypair = Keypair::generate().context("failed to generate identity keypair")?;
+        let mut vault = Vault::create(path, passphrase).context("failed to create vault")?;
         // SECURITY: expose needed to persist identity key material
         vault
             .set("identity", keypair.expose_secret_bytes().to_vec())
@@ -342,4 +479,3 @@ fn open_or_create_vault(
         Ok((vault, keypair))
     }
 }
-
