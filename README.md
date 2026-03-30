@@ -38,11 +38,11 @@ Springtale is a Rust workspace of 17 crates — 8 libraries, 7 connectors, and 2
                                   │                    │
           ┌───────────────────────┼────────────────────┼─────────────┐
           │                       v                    v             │
-          │   ┌──────────┐   ┌──────────┐   ┌────────────────┐      │
-          │   │   mcp    │   │    ai    │   │   scheduler    │      │
-          │   │ protocol │   │ adapter  │   │ cron, watcher, │      │
-          │   │ bridge   │   │ + noop   │   │ jobs, retry    │      │
-          │   └────┬─────┘   └────┬─────┘   └───────┬────────┘      │
+          │   ┌──────────┐   ┌──────────┐   ┌────────────────┐       │
+          │   │   mcp    │   │    ai    │   │   scheduler    │       │
+          │   │ protocol │   │ adapter  │   │ cron, watcher, │       │
+          │   │ bridge   │   │ + noop   │   │ jobs, retry    │       │
+          │   └────┬─────┘   └────┬─────┘   └───────┬────────┘       │
           │        │              │                  │               │
           │        v              v                  v               │
           │   ┌─────────────────────────────────────────────────┐    │
@@ -51,22 +51,22 @@ Springtale is a Rust workspace of 17 crates — 8 libraries, 7 connectors, and 2
           │   └────────────┬────────────────────┬───────────────┘    │
           │                │                    │                    │
           │                v                    v                    │
-          │   ┌──────────────────┐   ┌──────────────────┐           │
-          │   │      store       │   │      crypto      │           │
-          │   │  SQLite backend  │   │ Ed25519, vault,  │           │
-          │   │  schema, queries │   │ signatures       │           │
-          │   └────────┬─────────┘   └──────────────────┘           │
-          │            │                                            │
-          │            v                                            │
-          │   ┌──────────────────┐   ┌──────────────────┐           │
-          │   │       core       │   │    transport     │           │
-          │   │  rule engine,    │   │ Unix socket      │           │
-          │   │  pipeline,       │   │ (← crypto)       │           │
-          │   │  router          │   │                  │           │
-          │   │  (zero deps)     │   │                  │           │
-          │   └──────────────────┘   └──────────────────┘           │
-          │                     Library Crates                      │
-          └─────────────────────────────────────────────────────────┘
+          │   ┌──────────────────┐   ┌──────────────────┐            │
+          │   │      store       │   │      crypto      │            │
+          │   │  SQLite backend  │   │ Ed25519, vault,  │            │
+          │   │  schema, queries │   │ signatures       │            │
+          │   └────────┬─────────┘   └──────────────────┘            │
+          │            │                                             │
+          │            v                                             │
+          │   ┌──────────────────┐   ┌──────────────────┐            │
+          │   │       core       │   │    transport     │            │
+          │   │  rule engine,    │   │ Unix socket      │            │
+          │   │  pipeline,       │   │ (← crypto)       │            │
+          │   │  router          │   │                  │            │
+          │   │  (zero deps)     │   │                  │            │
+          │   └──────────────────┘   └──────────────────┘            │
+          │                     Library Crates                       │
+          └────────────────────────────────────────────────────────-─┘
 ```
 
 *Fig. 1. Crate dependency graph. Arrows point from dependent to dependency. `core` and `crypto` have zero internal dependencies.*
@@ -84,7 +84,7 @@ When something happens — a Kick stream goes live, a file changes, a cron timer
        │                       │  2. evaluate conditions       │
        │                       │  3. run pipeline stages       │
        │                       │  4. enqueue job               │
-       │                       │  5. dispatch ─────────────────>│
+       │                       │  5. dispatch ────────────────>│
        │                       │     (capability check first)  │
        │                       │<──── result ──────────────────┤
        │                       │  6. log event                 │
@@ -124,13 +124,13 @@ Security and privacy are constraints, not features. Every decision is evaluated 
   ├───────────────────────────────────────────────────────────┤
   │  WASM Sandbox — 10M fuel, 64MB memory, 30s timeout        │
   ├───────────────────────────────────────────────────────────┤
-  │  Capability Model — exact-host matching, toxic pair block  │
+  │  Capability Model — exact-host matching, toxic pair block │
   ├───────────────────────────────────────────────────────────┤
-  │  Manifest Signing — Ed25519, verify on every load          │
+  │  Manifest Signing — Ed25519, verify on every load         │
   ├───────────────────────────────────────────────────────────┤
-  │  Secret<T> — cannot log, clone, serialize; zeroed on drop  │
+  │  Secret<T> — cannot log, clone, serialize; zeroed on drop │
   ├───────────────────────────────────────────────────────────┤
-  │  Supply Chain — cargo-deny, cargo-audit, gitleaks          │
+  │  Supply Chain — cargo-deny, cargo-audit, gitleaks         │
   └───────────────────────────────────────────────────────────┘
 ```
 
@@ -139,19 +139,19 @@ Security and privacy are constraints, not features. Every decision is evaluated 
 ### 3.2. Connector Isolation
 
 ```
-  ┌─ Native (in-process) ─────────────────────────────────────┐
+  ┌─ Native (in-process) ─────────────────────────────────────-┐
   │  7 first-party connectors                                  │
   │  Trust: HIGH — audited, signed by Springtale team          │
   │  Isolation: capability-checked at runtime                  │
   └────────────────────────────────────────────────────────────┘
 
   ┌─ WASM (sandboxed) ────────────────────────────────────────┐
-  │  ┌──────────────────────────────────────────────────────┐  │
-  │  │  Wasmtime: 10M instr │ 64MB mem │ 30s timeout       │  │
-  │  │  Host API: only declared capabilities exposed        │  │
-  │  └──────────────────────────────────────────────────────┘  │
-  │  Trust: LOW — community-authored, untrusted                │
-  └────────────────────────────────────────────────────────────┘
+  │  ┌──────────────────────────────────────────────────────┐ │
+  │  │  Wasmtime: 10M instr │ 64MB mem │ 30s timeout        │ │
+  │  │  Host API: only declared capabilities exposed        │ │
+  │  └──────────────────────────────────────────────────────┘ │
+  │  Trust: LOW — community-authored, untrusted               │
+  └───────────────────────────────────────────────────────────┘
 ```
 
 *Fig. 4. Connector trust boundary. Native connectors run in-process. WASM connectors are sandboxed.*
@@ -283,20 +283,20 @@ Full quickstart with a worked example: [docs/QUICKSTART.md](docs/QUICKSTART.md)
        │
        v
   ┌──────────────────────────────────────────────┐
-  │                CI Pipeline                    │
-  │                                               │
+  │                CI Pipeline                   │
+  │                                              │
   │  ┌─────────┐  ┌─────────┐  ┌──────────────┐  │
   │  │  fmt    │  │ clippy  │  │    test      │  │
   │  │         │  │ (SAST)  │  │ nextest +    │  │
   │  │         │  │         │  │ doc tests    │  │
   │  └────┬────┘  └────┬────┘  └──────┬───────┘  │
-  │       │            │              │           │
-  │  ┌────v────┐  ┌────v────┐  ┌─────v────────┐  │
+  │       │            │              │          │
+  │  ┌────v────┐  ┌────v────┐  ┌────-─v───────┐  │
   │  │  deny   │  │  audit  │  │  gitleaks    │  │
   │  │ license │  │ RustSec │  │  secrets     │  │
   │  │ +advisory│ │         │  │  detection   │  │
   │  └────┬────┘  └────┬────┘  └─────┬────────┘  │
-  └───────┼────────────┼─────────────┼────────────┘
+  └───────┼────────────┼─────────────┼───────────┘
           v            v             v
        ALL PASS ──────────────> Merge Allowed
 ```
