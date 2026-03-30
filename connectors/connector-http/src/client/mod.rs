@@ -163,6 +163,47 @@ async fn to_http_response(response: reqwest::Response) -> Result<HttpResponse, H
 }
 
 #[cfg(test)]
+pub mod test_helpers {
+    use super::*;
+
+    /// Configurable mock for `HttpApi`.
+    ///
+    /// Set the `response` field to the `HttpResponse` the mock should return.
+    /// All trait methods return a clone of that response.
+    pub struct MockHttpClient {
+        pub response: HttpResponse,
+    }
+
+    #[async_trait]
+    impl HttpApi for MockHttpClient {
+        async fn get(
+            &self,
+            _url: &str,
+            _headers: &HashMap<String, String>,
+        ) -> Result<HttpResponse, HttpError> {
+            Ok(HttpResponse {
+                status: self.response.status,
+                headers: self.response.headers.clone(),
+                body: self.response.body.clone(),
+            })
+        }
+
+        async fn post(
+            &self,
+            _url: &str,
+            _headers: &HashMap<String, String>,
+            _body: &str,
+        ) -> Result<HttpResponse, HttpError> {
+            Ok(HttpResponse {
+                status: self.response.status,
+                headers: self.response.headers.clone(),
+                body: self.response.body.clone(),
+            })
+        }
+    }
+}
+
+#[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;

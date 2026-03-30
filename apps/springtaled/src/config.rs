@@ -4,6 +4,7 @@ use figment::providers::{Env, Format, Toml};
 use figment::Figment;
 use garde::Validate;
 use serde::Deserialize;
+use springtale_store::paths;
 
 /// Top-level daemon configuration.
 ///
@@ -28,15 +29,15 @@ pub struct SpringtaleConfig {
 #[derive(Debug, Deserialize, Validate)]
 pub struct StoreConfig {
     /// Path to the SQLite database file.
-    #[serde(default = "default_db_path")]
-    #[garde(skip)]
+    #[serde(default = "paths::default_db_path")]
+    #[garde(custom(validate_path))]
     pub path: PathBuf,
 }
 
 impl Default for StoreConfig {
     fn default() -> Self {
         Self {
-            path: default_db_path(),
+            path: paths::default_db_path(),
         }
     }
 }
@@ -44,15 +45,15 @@ impl Default for StoreConfig {
 #[derive(Debug, Deserialize, Validate)]
 pub struct CryptoConfig {
     /// Path to the encrypted vault file.
-    #[serde(default = "default_vault_path")]
-    #[garde(skip)]
+    #[serde(default = "paths::default_vault_path")]
+    #[garde(custom(validate_path))]
     pub vault_path: PathBuf,
 }
 
 impl Default for CryptoConfig {
     fn default() -> Self {
         Self {
-            vault_path: default_vault_path(),
+            vault_path: paths::default_vault_path(),
         }
     }
 }
@@ -60,15 +61,15 @@ impl Default for CryptoConfig {
 #[derive(Debug, Deserialize, Validate)]
 pub struct TransportConfig {
     /// Path to the Unix domain socket.
-    #[serde(default = "default_socket_path")]
-    #[garde(skip)]
+    #[serde(default = "paths::default_socket_path")]
+    #[garde(custom(validate_path))]
     pub socket_path: PathBuf,
 }
 
 impl Default for TransportConfig {
     fn default() -> Self {
         Self {
-            socket_path: default_socket_path(),
+            socket_path: paths::default_socket_path(),
         }
     }
 }
@@ -96,18 +97,6 @@ impl Default for ApiConfig {
     }
 }
 
-fn default_db_path() -> PathBuf {
-    data_dir().join("springtale.db")
-}
-
-fn default_vault_path() -> PathBuf {
-    data_dir().join("vault.bin")
-}
-
-fn default_socket_path() -> PathBuf {
-    data_dir().join("springtale.sock")
-}
-
 fn default_bind() -> String {
     "127.0.0.1:8080".to_owned()
 }
@@ -116,18 +105,20 @@ fn default_rate_limit() -> u32 {
     100
 }
 
-/// XDG-compliant data directory.
-fn data_dir() -> PathBuf {
-    dirs_next().unwrap_or_else(|| PathBuf::from(".springtale"))
-}
-
-fn dirs_next() -> Option<PathBuf> {
-    std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share"))
-        })
-        .map(|base| base.join("springtale"))
+/// Validate that a path is absolute and does not contain parent directory references.
+/// Prevents path traversal attacks via config injection.
+#[allow(clippy::ptr_arg)] // garde derive macro passes &PathBuf, not &Path
+fn validate_path(value: &PathBuf, _ctx: &()) -> garde::Result {
+    if !value.is_absolute() {
+        return Err(garde::Error::new("path must be absolute"));
+    }
+    if value
+        .components()
+        .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err(garde::Error::new("path must not contain '..'"));
+    }
+    Ok(())
 }
 
 /// Load configuration from TOML file + environment variable overrides.

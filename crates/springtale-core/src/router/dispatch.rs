@@ -21,6 +21,7 @@ pub fn dispatch_event(engine: &RuleEngine, event: &TriggerEvent) -> Vec<RuleMatc
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
     use crate::rule::action::Action;
@@ -45,7 +46,7 @@ mod tests {
             actions: vec![Action::SendMessage {
                 text: "live!".into(),
             }],
-        });
+        }).unwrap();
 
         let event = TriggerEvent {
             trigger_type: "ConnectorEvent".into(),

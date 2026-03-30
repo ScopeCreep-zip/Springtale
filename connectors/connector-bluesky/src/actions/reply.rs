@@ -66,44 +66,7 @@ pub async fn execute(
 mod tests {
     use super::*;
 
-    /// Mock client that returns canned ATProto createRecord responses.
-    struct MockBlueskyClient {
-        response: serde_json::Value,
-    }
-
-    #[async_trait::async_trait]
-    impl BlueskyApi for MockBlueskyClient {
-        async fn create_post(&self, _text: &str) -> Result<serde_json::Value, BlueskyError> {
-            Ok(self.response.clone())
-        }
-
-        async fn reply(
-            &self,
-            _text: &str,
-            _parent_uri: &str,
-            _parent_cid: &str,
-            _root_uri: &str,
-            _root_cid: &str,
-        ) -> Result<serde_json::Value, BlueskyError> {
-            Ok(self.response.clone())
-        }
-
-        async fn like(
-            &self,
-            _subject_uri: &str,
-            _subject_cid: &str,
-        ) -> Result<serde_json::Value, BlueskyError> {
-            Ok(self.response.clone())
-        }
-
-        async fn repost(
-            &self,
-            _subject_uri: &str,
-            _subject_cid: &str,
-        ) -> Result<serde_json::Value, BlueskyError> {
-            Ok(self.response.clone())
-        }
-    }
+    use crate::client::test_helpers::MockBlueskyClient;
 
     #[test]
     fn test_declaration_name() {

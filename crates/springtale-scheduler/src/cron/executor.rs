@@ -37,14 +37,31 @@ impl CronExecutor {
         }
     }
 
+    /// Minimum interval between cron firings (60 seconds).
+    /// Prevents per-second or per-minute cron abuse that could starve the system.
+    const MIN_CRON_INTERVAL_SECS: i64 = 60;
+
     /// Schedule a new cron job.
     ///
     /// The `expression` is a standard cron expression (6 or 7 fields).
+    /// Rejects expressions that fire more frequently than once per minute.
     /// When the schedule fires, a `TriggerEvent` with type "Cron" is
     /// sent to the rule engine.
     pub fn schedule(&mut self, name: &str, expression: &str) -> Result<(), SchedulerError> {
         let schedule = Schedule::from_str(expression)
             .map_err(|e| SchedulerError::InvalidCron(format!("{expression}: {e}")))?;
+
+        // Validate minimum interval by checking the gap between next 2 firings
+        let mut upcoming = schedule.upcoming(Utc);
+        if let (Some(first), Some(second)) = (upcoming.next(), upcoming.next()) {
+            let interval = (second - first).num_seconds();
+            if interval < Self::MIN_CRON_INTERVAL_SECS {
+                return Err(SchedulerError::InvalidCron(format!(
+                    "{expression}: fires every {interval}s, minimum interval is {}s",
+                    Self::MIN_CRON_INTERVAL_SECS
+                )));
+            }
+        }
 
         let tx = self.trigger_tx.clone();
         let job_name = name.to_owned();
@@ -173,7 +190,7 @@ mod tests {
         let (tx, _rx) = mpsc::channel(10);
         let mut executor = CronExecutor::new(tx);
 
-        let result = executor.schedule("test-job", "* * * * * *"); // every second
+        let result = executor.schedule("test-job", "0 * * * * *"); // every minute
         assert!(result.is_ok());
         assert_eq!(executor.list(), vec!["test-job"]);
     }
@@ -183,7 +200,7 @@ mod tests {
         let (tx, _rx) = mpsc::channel(10);
         let mut executor = CronExecutor::new(tx);
 
-        executor.schedule("test-job", "* * * * * *").ok();
+        executor.schedule("test-job", "0 * * * * *").ok();
         assert!(executor.cancel("test-job"));
         assert!(executor.list().is_empty());
     }
@@ -197,22 +214,40 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_cron_fires_event() {
-        let (tx, mut rx) = mpsc::channel(10);
+    async fn test_rejects_per_second_cron() {
+        let (tx, _rx) = mpsc::channel(10);
         let mut executor = CronExecutor::new(tx);
 
-        // Schedule every second
-        executor.schedule("fast-job", "* * * * * *").ok();
+        let result = executor.schedule("spam", "* * * * * *");
+        assert!(result.is_err(), "should reject per-second cron");
+        let err = result.err().map(|e| e.to_string()).unwrap_or_default();
+        assert!(err.contains("minimum interval"), "error: {err}");
+    }
 
-        // Wait for at least one event (with timeout)
-        let result = tokio::time::timeout(std::time::Duration::from_secs(3), rx.recv()).await;
+    #[tokio::test]
+    async fn test_rejects_every_30_seconds() {
+        let (tx, _rx) = mpsc::channel(10);
+        let mut executor = CronExecutor::new(tx);
 
-        assert!(result.is_ok(), "timed out waiting for cron event");
-        let event = result.ok().flatten();
-        assert!(event.is_some());
-        let event = event.as_ref();
-        assert_eq!(event.map(|e| e.trigger_type.as_str()), Some("Cron"));
+        let result = executor.schedule("spam", "0,30 * * * * *");
+        assert!(result.is_err(), "should reject 30-second interval");
+    }
 
-        executor.cancel_all();
+    #[tokio::test]
+    async fn test_accepts_every_minute() {
+        let (tx, _rx) = mpsc::channel(10);
+        let mut executor = CronExecutor::new(tx);
+
+        let result = executor.schedule("ok-job", "0 * * * * *"); // every minute
+        assert!(result.is_ok(), "should accept every-minute cron: {:?}", result.err());
+    }
+
+    #[tokio::test]
+    async fn test_accepts_every_5_minutes() {
+        let (tx, _rx) = mpsc::channel(10);
+        let mut executor = CronExecutor::new(tx);
+
+        let result = executor.schedule("ok-job", "0 */5 * * * *");
+        assert!(result.is_ok(), "should accept every-5-minutes: {:?}", result.err());
     }
 }

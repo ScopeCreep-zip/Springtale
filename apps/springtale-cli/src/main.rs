@@ -62,27 +62,16 @@ fn open_store() -> Result<SqliteBackend> {
         }
         #[derive(serde::Deserialize, Default)]
         struct StoreSection {
-            #[serde(default = "default_db_path")]
+            #[serde(default = "springtale_store::paths::default_db_path")]
             path: std::path::PathBuf,
         }
 
         let config: PartialConfig = figment.extract().unwrap_or_default();
         config.store.path
     } else {
-        default_db_path()
+        springtale_store::paths::default_db_path()
     };
 
     SqliteBackend::open(&store_path)
         .map_err(|e| anyhow::anyhow!("failed to open store at {}: {e}", store_path.display()))
-}
-
-fn default_db_path() -> std::path::PathBuf {
-    std::env::var_os("XDG_DATA_HOME")
-        .map(std::path::PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME")
-                .map(|home| std::path::PathBuf::from(home).join(".local/share"))
-        })
-        .map(|base| base.join("springtale/springtale.db"))
-        .unwrap_or_else(|| std::path::PathBuf::from(".springtale/springtale.db"))
 }

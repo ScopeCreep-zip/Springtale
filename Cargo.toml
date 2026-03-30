@@ -68,6 +68,7 @@ argon2           = "0.5"
 rand             = { version = "0.8",  features = ["getrandom", "std_rng"] }
 sha2             = "0.10"
 hmac             = "0.12"
+subtle           = "2"
 
 # ── Identifiers ────────────────────────────────────────────────────────────────
 uuid             = { version = "1",    features = ["v4", "serde"] }

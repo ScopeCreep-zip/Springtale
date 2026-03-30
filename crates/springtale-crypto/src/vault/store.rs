@@ -56,10 +56,15 @@ impl Vault {
     pub fn open(path: impl Into<PathBuf>, passphrase: &[u8]) -> Result<Self, CryptoError> {
         let path = path.into();
 
-        #[cfg(unix)]
-        check_permissions(&path)?;
+        // Open the file FIRST, then check permissions on the file descriptor.
+        // This eliminates the TOCTOU race between permission check and read.
+        let mut file = std::fs::File::open(&path)?;
 
-        let data = std::fs::read(&path)?;
+        #[cfg(unix)]
+        check_fd_permissions(&file)?;
+
+        let mut data = Vec::new();
+        std::io::Read::read_to_end(&mut file, &mut data)?;
 
         if data.len() < 16 + 24 + 16 {
             // salt + nonce + minimum ciphertext (at least a tag)
@@ -192,15 +197,17 @@ fn set_permissions(path: &Path) -> Result<(), CryptoError> {
     Ok(())
 }
 
-/// Check that vault file has secure permissions (0o600).
+/// Check that an open vault file has secure permissions (0o600).
+///
+/// Uses fstat on the file descriptor to avoid TOCTOU race conditions —
+/// the permission check operates on the same file handle we'll read from.
 #[cfg(unix)]
-fn check_permissions(path: &Path) -> Result<(), CryptoError> {
-    use std::os::unix::fs::PermissionsExt;
-    let metadata = std::fs::metadata(path)?;
-    let mode = metadata.permissions().mode() & 0o777;
+fn check_fd_permissions(file: &std::fs::File) -> Result<(), CryptoError> {
+    use std::os::unix::fs::MetadataExt;
+    let metadata = file.metadata()?;
+    let mode = metadata.mode() & 0o777;
     if mode & 0o077 != 0 {
         tracing::warn!(
-            path = %path.display(),
             mode = format!("{mode:04o}"),
             "vault file has insecure permissions (should be 0600)"
         );

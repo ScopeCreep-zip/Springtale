@@ -4,6 +4,10 @@ use serde::{Deserialize, Serialize};
 /// Maximum nesting depth for Chain actions.
 pub const MAX_CHAIN_DEPTH: u32 = 4;
 
+/// Maximum number of actions per rule (including Chain steps at each level).
+/// Prevents job queue flooding from a single trigger event.
+pub const MAX_ACTIONS_PER_RULE: usize = 100;
+
 /// An action to perform when a rule's conditions are met.
 ///
 /// Actions are the "do" part of a rule. They execute sequentially within

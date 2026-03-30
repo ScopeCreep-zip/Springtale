@@ -83,22 +83,7 @@ pub async fn execute(
 mod tests {
     use super::*;
     use crate::client::PresearchClient;
-
-    /// Mock client that returns canned responses for testing action logic.
-    struct MockPresearchClient {
-        fetch_response: String,
-    }
-
-    #[async_trait::async_trait]
-    impl PresearchApi for MockPresearchClient {
-        async fn search(&self, _query: &str) -> Result<serde_json::Value, PresearchError> {
-            Ok(serde_json::json!({}))
-        }
-
-        async fn fetch_url(&self, _url: &str) -> Result<String, PresearchError> {
-            Ok(self.fetch_response.clone())
-        }
-    }
+    use crate::client::test_helpers::MockPresearchClient;
 
     fn real_test_client() -> PresearchClient {
         let config = crate::config::PresearchConfig {
@@ -158,9 +143,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_returns_scraped_content_uncached() {
-        let mock = MockPresearchClient {
-            fetch_response: "<html><body>Hello World</body></html>".to_owned(),
-        };
+        let mock = MockPresearchClient::for_fetch("<html><body>Hello World</body></html>".to_owned());
 
         let cache = test_cache();
         let input = serde_json::json!({ "url": "https://example.com/page" });
@@ -174,9 +157,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_returns_cached_result_on_second_call() {
-        let mock = MockPresearchClient {
-            fetch_response: "page content".to_owned(),
-        };
+        let mock = MockPresearchClient::for_fetch("page content".to_owned());
 
         let cache = test_cache();
         let input = serde_json::json!({ "url": "https://example.com/cached" });
@@ -194,9 +175,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_stores_result_in_cache() {
-        let mock = MockPresearchClient {
-            fetch_response: "cached body".to_owned(),
-        };
+        let mock = MockPresearchClient::for_fetch("cached body".to_owned());
 
         let cache = test_cache();
         let input = serde_json::json!({ "url": "https://example.com/store" });

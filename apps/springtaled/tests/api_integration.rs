@@ -23,25 +23,7 @@ use springtale_store::backend::sqlite::SqliteBackend;
 use springtaled::api::build_router;
 use springtaled::api::state::AppState;
 
-/// Derive the API token hash from a passphrase, matching the algorithm in
-/// `springtaled::runtime::boot::derive_api_token_hash`.
-fn derive_api_token_hash(passphrase: &[u8]) -> [u8; 32] {
-    use hmac::{Hmac, Mac};
-    use sha2::Sha256;
-
-    type HmacSha256 = Hmac<Sha256>;
-
-    #[allow(clippy::expect_used)]
-    let mut mac =
-        HmacSha256::new_from_slice(passphrase).expect("HMAC-SHA256 accepts any key size");
-    mac.update(b"springtale-api-token");
-    let result = mac.finalize();
-    let bytes = result.into_bytes();
-
-    let mut hash = [0u8; 32];
-    hash.copy_from_slice(&bytes);
-    hash
-}
+use springtale_crypto::token::derive_api_token_hash;
 
 /// Build a test router with in-memory state. Returns (Router, hex-encoded token).
 ///

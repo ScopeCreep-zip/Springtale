@@ -22,6 +22,9 @@ fn default_limit() -> u32 {
     50
 }
 
+/// Maximum events per request. Prevents OOM from unbounded queries.
+const MAX_EVENT_LIMIT: u32 = 10_000;
+
 /// GET /events — paginated event log.
 ///
 /// Returns recent events (trigger type, connector, timestamp, action taken).
@@ -30,9 +33,11 @@ pub async fn list(
     State(state): State<AppState>,
     Query(params): Query<EventsQuery>,
 ) -> impl IntoResponse {
+    let clamped_limit = params.limit.min(MAX_EVENT_LIMIT);
+
     let filter = EventFilter {
         connector_name: params.connector.clone(),
-        limit: Some(params.limit),
+        limit: Some(clamped_limit),
         offset: if params.offset > 0 { Some(params.offset) } else { None },
         ..Default::default()
     };
@@ -42,7 +47,7 @@ pub async fn list(
     match events {
         Ok(events) => Json(serde_json::json!({
             "events": events,
-            "limit": params.limit,
+            "limit": clamped_limit,
             "offset": params.offset,
         })),
         Err(_) => Json(serde_json::json!({

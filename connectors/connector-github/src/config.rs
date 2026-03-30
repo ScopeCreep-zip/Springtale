@@ -1,5 +1,6 @@
 use secrecy::{ExposeSecret, SecretBox};
 use serde::Deserialize;
+use springtale_connector::config::{deserialize_secret, deserialize_secret_option};
 
 /// Configuration for the GitHub connector.
 ///
@@ -22,24 +23,6 @@ pub struct GithubConfig {
 
 fn default_api_base() -> String {
     "https://api.github.com".to_owned()
-}
-
-fn deserialize_secret<'de, D>(deserializer: D) -> Result<SecretBox<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let s = String::deserialize(deserializer)?;
-    Ok(SecretBox::new(Box::new(s)))
-}
-
-fn deserialize_secret_option<'de, D>(
-    deserializer: D,
-) -> Result<Option<SecretBox<String>>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let opt = Option::<String>::deserialize(deserializer)?;
-    Ok(opt.map(|s| SecretBox::new(Box::new(s))))
 }
 
 impl std::fmt::Debug for GithubConfig {

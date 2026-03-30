@@ -60,7 +60,7 @@ pub async fn boot(config: SpringtaleConfig) -> Result<()> {
     tracing::info!(node_id = %hex::encode(node_id.as_bytes()), "identity loaded");
 
     // Derive API token from passphrase hash (HMAC-SHA256)
-    let api_token_hash = derive_api_token_hash(&passphrase);
+    let api_token_hash = springtale_crypto::token::derive_api_token_hash(&passphrase);
 
     // ── Step 4: Initialize transport ──
     tracing::info!(path = %config.transport.socket_path.display(), "binding local transport");
@@ -76,7 +76,9 @@ pub async fn boot(config: SpringtaleConfig) -> Result<()> {
         .context("failed to load rules from store")?;
     let mut engine = RuleEngine::new();
     for rule in &rules {
-        engine.add_rule(rule.clone());
+        if let Err(e) = engine.add_rule(rule.clone()) {
+            tracing::warn!(rule = %rule.name, error = %e, "skipping rule with invalid conditions");
+        }
     }
     tracing::info!(rules = rules.len(), "rule engine loaded");
 
@@ -238,7 +240,7 @@ async fn event_loop(
                 "rule matched trigger — enqueuing actions"
             );
 
-            for action in &rule_match.actions {
+            for action in rule_match.actions.iter() {
                 match serde_json::to_value(action) {
                     Ok(payload) => {
                         if let Err(e) = producer.enqueue(payload, 3).await {
@@ -262,9 +264,25 @@ async fn event_loop(
     }
 }
 
-/// Get the vault passphrase from environment or interactive prompt.
+/// Get the vault passphrase from Docker secret file, environment, or interactive prompt.
+///
+/// Priority:
+/// 1. SPRINGTALE_PASSPHRASE_FILE — read passphrase from file (Docker secrets pattern)
+/// 2. SPRINGTALE_PASSPHRASE — direct env var (development only, visible in `docker inspect`)
+/// 3. Interactive prompt via rpassword (if stdin is a terminal)
 fn get_passphrase() -> Result<Vec<u8>> {
-    // Try environment variable first (for daemon/Docker deployment)
+    // Docker secrets pattern: read from file path in env var
+    if let Ok(file_path) = std::env::var("SPRINGTALE_PASSPHRASE_FILE") {
+        let pass = std::fs::read_to_string(&file_path)
+            .with_context(|| format!("failed to read passphrase from {file_path}"))?;
+        let pass = pass.trim_end(); // trim trailing newline from file
+        if pass.is_empty() {
+            anyhow::bail!("passphrase file is empty: {file_path}");
+        }
+        return Ok(pass.as_bytes().to_vec());
+    }
+
+    // Direct env var (development convenience, NOT recommended for production)
     if let Ok(pass) = std::env::var("SPRINGTALE_PASSPHRASE") {
         return Ok(pass.into_bytes());
     }
@@ -280,7 +298,7 @@ fn get_passphrase() -> Result<Vec<u8>> {
     }
 
     anyhow::bail!(
-        "no passphrase provided: set SPRINGTALE_PASSPHRASE env var or run interactively"
+        "no passphrase provided: set SPRINGTALE_PASSPHRASE_FILE, SPRINGTALE_PASSPHRASE, or run interactively"
     )
 }
 
@@ -325,25 +343,3 @@ fn open_or_create_vault(
     }
 }
 
-/// Derive an API authentication token hash from the vault passphrase.
-///
-/// Uses HMAC-SHA256(passphrase, "springtale-api-token") as the token.
-/// The management API compares incoming Bearer tokens against this hash.
-fn derive_api_token_hash(passphrase: &[u8]) -> [u8; 32] {
-    use hmac::{Hmac, Mac};
-    use sha2::Sha256;
-
-    type HmacSha256 = Hmac<Sha256>;
-
-    // HMAC-SHA256 accepts any key size — this cannot fail.
-    #[allow(clippy::expect_used)]
-    let mut mac = HmacSha256::new_from_slice(passphrase)
-        .expect("HMAC-SHA256 accepts any key size");
-    mac.update(b"springtale-api-token");
-    let result = mac.finalize();
-    let bytes = result.into_bytes();
-
-    let mut hash = [0u8; 32];
-    hash.copy_from_slice(&bytes);
-    hash
-}

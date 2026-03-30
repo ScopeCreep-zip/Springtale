@@ -87,7 +87,7 @@ pub async fn run(action: RuleAction, store: &SqliteBackend, json: bool) -> Resul
 
             // Load into engine and evaluate
             let mut engine = RuleEngine::new();
-            engine.add_rule(rule);
+            engine.add_rule(rule)?;
             let matches = engine.evaluate(&event);
 
             if matches.is_empty() {

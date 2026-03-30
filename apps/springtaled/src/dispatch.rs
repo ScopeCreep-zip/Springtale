@@ -14,6 +14,10 @@ use springtale_connector::registry::store::ConnectorRegistry;
 use springtale_core::rule::action::Action;
 use tokio::sync::RwLock;
 
+/// Maximum size for WriteFile action content (10 MiB).
+/// Prevents disk exhaustion from rules writing large files.
+const MAX_WRITE_FILE_BYTES: usize = 10 * 1024 * 1024;
+
 /// Dispatch a single action.
 ///
 /// Called by the job consumer when a job is dequeued. The job payload
@@ -49,8 +53,17 @@ async fn dispatch_action_inner(
             params,
         } => {
             let input = serde_json::Value::Object(params.clone());
-            let registry = registry.read().await;
-            match registry.execute(connector, action_name, input).await {
+
+            // Get Arc'd host + cloned capability checker under lock, then drop
+            // lock before the actual network call. This prevents holding the
+            // registry read lock across potentially long connector operations.
+            let (host, checker) = {
+                let reg = registry.read().await;
+                reg.get_for_execute(connector).map_err(|e| e.to_string())?
+            };
+            // Lock is dropped here.
+
+            match host.execute_checked(action_name, input, &checker).await {
                 Ok(result) => {
                     tracing::info!(
                         connector = %connector,
@@ -89,6 +102,12 @@ async fn dispatch_action_inner(
             content,
             delete_source: _,
         } => {
+            if content.len() > MAX_WRITE_FILE_BYTES {
+                return Err(format!(
+                    "file content size ({} bytes) exceeds maximum ({MAX_WRITE_FILE_BYTES} bytes)",
+                    content.len()
+                ));
+            }
             tokio::fs::write(destination, content)
                 .await
                 .map_err(|e| format!("failed to write file {destination}: {e}"))?;

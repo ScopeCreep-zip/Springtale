@@ -1,6 +1,7 @@
 use rand::Rng;
 use secrecy::ExposeSecret;
 use sha2::{Digest, Sha256};
+use springtale_connector::encoding::{base64url_encode, urlencoded};
 
 use crate::config::KickConfig;
 use crate::error::KickError;
@@ -53,11 +54,11 @@ pub fn build_authorize_url(config: &KickConfig, pkce: &PkceChallenge, state: &st
     format!(
         "{}/oauth/authorize?client_id={}&redirect_uri={}&response_type=code&scope={}&code_challenge={}&code_challenge_method=S256&state={}",
         config.oauth_base,
-        urlencoded(&config.client_id),
-        urlencoded(&config.redirect_uri),
-        urlencoded(&scopes),
-        urlencoded(&pkce.challenge),
-        urlencoded(state),
+        urlencoded(&config.client_id, false),
+        urlencoded(&config.redirect_uri, false),
+        urlencoded(&scopes, false),
+        urlencoded(&pkce.challenge, false),
+        urlencoded(state, false),
     )
 }
 
@@ -74,11 +75,11 @@ pub async fn exchange_code(
     // SECURITY: expose needed for OAuth token exchange
     let form_body = format!(
         "grant_type=authorization_code&client_id={}&client_secret={}&redirect_uri={}&code={}&code_verifier={}",
-        urlencoded(&config.client_id),
-        urlencoded(config.client_secret.expose_secret()),
-        urlencoded(&config.redirect_uri),
-        urlencoded(code),
-        urlencoded(pkce_verifier),
+        urlencoded(&config.client_id, false),
+        urlencoded(config.client_secret.expose_secret(), false),
+        urlencoded(&config.redirect_uri, false),
+        urlencoded(code, false),
+        urlencoded(pkce_verifier, false),
     );
 
     // Delegate HTTP call to client module (no raw reqwest in auth/)
@@ -131,54 +132,6 @@ impl std::fmt::Debug for TokenResponse {
             .field("scope", &self.scope)
             .finish()
     }
-}
-
-/// Base64url encoding without padding (RFC 4648 §5).
-fn base64url_encode(data: &[u8]) -> String {
-    let mut result = String::with_capacity(data.len() * 4 / 3 + 4);
-    let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_";
-
-    let mut i = 0;
-    while i + 2 < data.len() {
-        let n = (u32::from(data[i]) << 16) | (u32::from(data[i + 1]) << 8) | u32::from(data[i + 2]);
-        result.push(char::from(alphabet[((n >> 18) & 0x3F) as usize]));
-        result.push(char::from(alphabet[((n >> 12) & 0x3F) as usize]));
-        result.push(char::from(alphabet[((n >> 6) & 0x3F) as usize]));
-        result.push(char::from(alphabet[(n & 0x3F) as usize]));
-        i += 3;
-    }
-
-    let remaining = data.len() - i;
-    if remaining == 1 {
-        let n = u32::from(data[i]) << 16;
-        result.push(char::from(alphabet[((n >> 18) & 0x3F) as usize]));
-        result.push(char::from(alphabet[((n >> 12) & 0x3F) as usize]));
-    } else if remaining == 2 {
-        let n = (u32::from(data[i]) << 16) | (u32::from(data[i + 1]) << 8);
-        result.push(char::from(alphabet[((n >> 18) & 0x3F) as usize]));
-        result.push(char::from(alphabet[((n >> 12) & 0x3F) as usize]));
-        result.push(char::from(alphabet[((n >> 6) & 0x3F) as usize]));
-    }
-
-    result
-}
-
-/// Simple percent-encoding for URL parameters.
-fn urlencoded(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => result.push(c),
-            ' ' => result.push_str("%20"),
-            _ => {
-                for byte in c.to_string().as_bytes() {
-                    result.push('%');
-                    result.push_str(&format!("{byte:02X}"));
-                }
-            }
-        }
-    }
-    result
 }
 
 #[cfg(test)]

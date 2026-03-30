@@ -8,7 +8,7 @@ use springtale_store::backend::sqlite::SqliteBackend;
 
 /// Initialize Springtale: create data directory, vault, SQLite database, and default config.
 pub async fn run() -> Result<()> {
-    let data_dir = data_dir();
+    let data_dir = springtale_store::paths::data_dir();
     println!("Initializing Springtale in {}", data_dir.display());
 
     // Create data directory
@@ -96,12 +96,3 @@ bind = "127.0.0.1:8080"
     Ok(())
 }
 
-fn data_dir() -> PathBuf {
-    std::env::var_os("XDG_DATA_HOME")
-        .map(PathBuf::from)
-        .or_else(|| {
-            std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".local/share"))
-        })
-        .map(|base| base.join("springtale"))
-        .unwrap_or_else(|| PathBuf::from(".springtale"))
-}

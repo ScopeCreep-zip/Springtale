@@ -29,6 +29,7 @@ pub async fn remove(
     State(state): State<AppState>,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    super::validate_path_param(&name)?;
     let mut registry = state.registry.write().await;
     registry
         .remove(&name)
@@ -42,6 +43,7 @@ pub async fn enable(
     State(state): State<AppState>,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    super::validate_path_param(&name)?;
     let mut registry = state.registry.write().await;
     registry
         .enable(&name)
@@ -55,6 +57,7 @@ pub async fn disable(
     State(state): State<AppState>,
     Path(name): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    super::validate_path_param(&name)?;
     let mut registry = state.registry.write().await;
     registry
         .disable(&name)

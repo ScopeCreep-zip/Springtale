@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use secrecy::{ExposeSecret, SecretBox};
+use springtale_connector::client::handle_json_response;
 
 use crate::config::GithubConfig;
 use crate::error::GithubError;
@@ -93,7 +94,9 @@ impl GithubApi for GithubClient {
             .send()
             .await?;
 
-        handle_response(response).await
+        handle_json_response(response)
+            .await
+            .map_err(GithubError::RequestFailed)
     }
 
     /// Post a comment on an issue or pull request.
@@ -122,7 +125,9 @@ impl GithubApi for GithubClient {
             .send()
             .await?;
 
-        handle_response(response).await
+        handle_json_response(response)
+            .await
+            .map_err(GithubError::RequestFailed)
     }
 
     /// Get the diff for a pull request.
@@ -163,24 +168,6 @@ impl GithubApi for GithubClient {
             .await
             .map_err(|e| GithubError::RequestFailed(format!("failed to read diff: {e}")))
     }
-}
-
-/// Handle a JSON API response — check status and parse body.
-async fn handle_response(response: reqwest::Response) -> Result<serde_json::Value, GithubError> {
-    let status = response.status().as_u16();
-    let body = response
-        .text()
-        .await
-        .map_err(|e| GithubError::RequestFailed(format!("failed to read response: {e}")))?;
-
-    if status >= 400 {
-        return Err(GithubError::RequestFailed(format!(
-            "GitHub API returned {status}: {body}"
-        )));
-    }
-
-    serde_json::from_str(&body)
-        .map_err(|e| GithubError::RequestFailed(format!("failed to parse JSON response: {e}")))
 }
 
 #[cfg(test)]

@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use secrecy::{ExposeSecret, SecretBox};
+use springtale_connector::client::handle_json_response;
 
 use crate::error::KickError;
 
@@ -105,7 +106,9 @@ impl KickClient {
                 .send()
                 .await?;
 
-            results.push(handle_response(response).await?);
+            results.push(handle_json_response(response)
+            .await
+            .map_err(KickError::RequestFailed)?);
         }
 
         Ok(serde_json::json!(results))
@@ -177,7 +180,9 @@ impl KickApi for KickClient {
             .send()
             .await?;
 
-        handle_response(response).await
+        handle_json_response(response)
+            .await
+            .map_err(KickError::RequestFailed)
     }
 
     /// Get channel information.
@@ -201,7 +206,9 @@ impl KickApi for KickClient {
             .send()
             .await?;
 
-        handle_response(response).await
+        handle_json_response(response)
+            .await
+            .map_err(KickError::RequestFailed)
     }
 
     /// Get livestream status.
@@ -224,26 +231,49 @@ impl KickApi for KickClient {
             .send()
             .await?;
 
-        handle_response(response).await
+        handle_json_response(response)
+            .await
+            .map_err(KickError::RequestFailed)
     }
 }
 
-/// Handle a JSON API response.
-async fn handle_response(response: reqwest::Response) -> Result<serde_json::Value, KickError> {
-    let status = response.status().as_u16();
-    let body = response
-        .text()
-        .await
-        .map_err(|e| KickError::RequestFailed(format!("failed to read response: {e}")))?;
+#[cfg(test)]
+pub mod test_helpers {
+    use super::*;
 
-    if status >= 400 {
-        return Err(KickError::RequestFailed(format!(
-            "Kick API returned {status}: {body}"
-        )));
+    /// Configurable mock for `KickApi`.
+    ///
+    /// Set the `response` field to the JSON value the mock should return
+    /// for whichever method the test exercises. Methods that the test does
+    /// not call will return the same response (safe for most cases).
+    pub struct MockKickApi {
+        pub response: serde_json::Value,
     }
 
-    serde_json::from_str(&body)
-        .map_err(|e| KickError::RequestFailed(format!("failed to parse response: {e}")))
+    #[async_trait]
+    impl KickApi for MockKickApi {
+        async fn send_chat(
+            &self,
+            _channel_id: &str,
+            _message: &str,
+        ) -> Result<serde_json::Value, KickError> {
+            Ok(self.response.clone())
+        }
+
+        async fn get_channel_by_slug(
+            &self,
+            _slug: &str,
+        ) -> Result<serde_json::Value, KickError> {
+            Ok(self.response.clone())
+        }
+
+        async fn get_stream(
+            &self,
+            _channel_id: &str,
+        ) -> Result<serde_json::Value, KickError> {
+            Ok(self.response.clone())
+        }
+    }
 }
 
 #[cfg(test)]

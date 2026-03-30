@@ -370,6 +370,53 @@ fn days_to_date(days: u64) -> (u64, u64, u64) {
 }
 
 #[cfg(test)]
+pub mod test_helpers {
+    use super::*;
+
+    /// Configurable mock for `BlueskyApi`.
+    ///
+    /// Set the `response` field to the JSON value the mock should return.
+    /// All trait methods return `self.response.clone()`.
+    pub struct MockBlueskyClient {
+        pub response: serde_json::Value,
+    }
+
+    #[async_trait]
+    impl BlueskyApi for MockBlueskyClient {
+        async fn create_post(&self, _text: &str) -> Result<serde_json::Value, BlueskyError> {
+            Ok(self.response.clone())
+        }
+
+        async fn reply(
+            &self,
+            _text: &str,
+            _parent_uri: &str,
+            _parent_cid: &str,
+            _root_uri: &str,
+            _root_cid: &str,
+        ) -> Result<serde_json::Value, BlueskyError> {
+            Ok(self.response.clone())
+        }
+
+        async fn like(
+            &self,
+            _subject_uri: &str,
+            _subject_cid: &str,
+        ) -> Result<serde_json::Value, BlueskyError> {
+            Ok(self.response.clone())
+        }
+
+        async fn repost(
+            &self,
+            _subject_uri: &str,
+            _subject_cid: &str,
+        ) -> Result<serde_json::Value, BlueskyError> {
+            Ok(self.response.clone())
+        }
+    }
+}
+
+#[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;

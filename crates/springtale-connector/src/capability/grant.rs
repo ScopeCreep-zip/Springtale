@@ -40,6 +40,11 @@ pub enum CapabilityPolicy {
 ///
 /// Created when a connector is installed. Called BEFORE every `execute()`.
 /// The connector cannot bypass this — it sits in the dispatch layer.
+///
+/// Derives `Clone` so the dispatch layer can clone the checker and drop the
+/// registry lock before executing connector actions (avoids holding the lock
+/// across potentially long network calls).
+#[derive(Clone)]
 pub struct CapabilityChecker {
     grants: std::collections::HashMap<String, CapabilityGrant>,
 }

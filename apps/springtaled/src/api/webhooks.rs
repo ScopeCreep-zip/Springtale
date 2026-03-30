@@ -9,6 +9,10 @@ use springtale_store::schema::events::EventEntry;
 
 use super::state::AppState;
 
+/// Maximum JSON nesting depth for webhook payloads.
+/// Prevents stack exhaustion from deeply nested structures.
+const MAX_JSON_DEPTH: usize = 64;
+
 /// POST /webhook/{connector}/{trigger} — receive an inbound webhook.
 ///
 /// The management API receives webhook POSTs from external services (GitHub, Kick, etc.)
@@ -24,6 +28,9 @@ pub async fn receive(
     headers: HeaderMap,
     body: axum::body::Bytes,
 ) -> Result<impl IntoResponse, StatusCode> {
+    super::validate_path_param(&connector_name)?;
+    super::validate_path_param(&trigger_name)?;
+
     let registry = state.registry.read().await;
 
     // Check connector exists and is enabled
@@ -35,9 +42,13 @@ pub async fn receive(
         return Err(StatusCode::NOT_FOUND);
     }
 
-    // Parse body as JSON
+    // Parse body as JSON and validate nesting depth
     let payload: serde_json::Value =
         serde_json::from_slice(&body).map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    if json_depth(&payload) > MAX_JSON_DEPTH {
+        return Err(StatusCode::BAD_REQUEST);
+    }
 
     // Log the webhook receipt (without payload content per privacy model)
     tracing::info!(
@@ -82,9 +93,19 @@ pub async fn receive(
         payload,
     };
 
-    if let Err(e) = state.trigger_tx.send(trigger_event).await {
-        tracing::error!(error = %e, "failed to dispatch webhook trigger event");
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
+    // Use try_send to avoid blocking if the trigger channel is full.
+    // Returns 503 Service Unavailable instead of hanging indefinitely.
+    if let Err(e) = state.trigger_tx.try_send(trigger_event) {
+        match e {
+            tokio::sync::mpsc::error::TrySendError::Full(_) => {
+                tracing::warn!("trigger channel full, dropping webhook event");
+                return Err(StatusCode::SERVICE_UNAVAILABLE);
+            }
+            tokio::sync::mpsc::error::TrySendError::Closed(_) => {
+                tracing::error!("trigger channel closed");
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        }
     }
 
     Ok((
@@ -95,4 +116,32 @@ pub async fn receive(
             "trigger": trigger_name,
         })),
     ))
+}
+
+/// Calculate the maximum nesting depth of a JSON value.
+/// Uses iterative stack to avoid stack overflow on deeply nested input.
+fn json_depth(value: &serde_json::Value) -> usize {
+    let mut max_depth = 0;
+    let mut stack: Vec<(&serde_json::Value, usize)> = vec![(value, 1)];
+
+    while let Some((val, depth)) = stack.pop() {
+        if depth > max_depth {
+            max_depth = depth;
+        }
+        match val {
+            serde_json::Value::Object(map) => {
+                for v in map.values() {
+                    stack.push((v, depth + 1));
+                }
+            }
+            serde_json::Value::Array(arr) => {
+                for v in arr {
+                    stack.push((v, depth + 1));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    max_depth
 }

@@ -5,10 +5,15 @@
 #   docker compose down        # stop and remove
 #
 # Before first run:
-#   1. Create a vault: docker compose run --rm springtale init
-#   2. Set SPRINGTALE_PASSPHRASE in .env or environment
+#   1. Create secrets: mkdir -p secrets && echo -n "your-passphrase" > secrets/passphrase.txt
+#   2. Create a vault: docker compose run --rm springtaled springtale init
 #
 # Data persisted in ./data/ directory (vault.bin, springtale.db)
+# Passphrase loaded from file (not env var) per security audit requirements.
+
+secrets:
+  springtale_passphrase:
+    file: ./secrets/passphrase.txt
 
 services:
   springtaled:
@@ -19,10 +24,13 @@ services:
     volumes:
       - ./data:/data
       - ./springtale.toml:/etc/springtale/springtale.toml:ro
+    secrets:
+      - springtale_passphrase
     environment:
-      - SPRINGTALE_PASSPHRASE=${SPRINGTALE_PASSPHRASE}
+      # Passphrase loaded from Docker secret file (not env var).
+      # boot.rs reads SPRINGTALE_PASSPHRASE_FILE first, falls back to SPRINGTALE_PASSPHRASE.
+      - SPRINGTALE_PASSPHRASE_FILE=/run/secrets/springtale_passphrase
       # Double underscore (__) separates config nesting levels.
-      # Single underscore preserved in field names (vault_path, socket_path).
       - SPRINGTALE_STORE__PATH=/data/springtale.db
       - SPRINGTALE_CRYPTO__VAULT_PATH=/data/vault.bin
       - SPRINGTALE_TRANSPORT__SOCKET_PATH=/data/springtale.sock

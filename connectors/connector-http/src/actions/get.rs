@@ -86,39 +86,7 @@ fn parse_headers(input: &serde_json::Value) -> HashMap<String, String> {
 mod tests {
     use super::*;
     use crate::client::{HttpClient, HttpResponse};
-
-    /// Mock client that returns canned responses for testing action logic.
-    struct MockHttpClient {
-        response: HttpResponse,
-    }
-
-    #[async_trait::async_trait]
-    impl HttpApi for MockHttpClient {
-        async fn get(
-            &self,
-            _url: &str,
-            _headers: &HashMap<String, String>,
-        ) -> Result<HttpResponse, HttpError> {
-            Ok(HttpResponse {
-                status: self.response.status,
-                headers: self.response.headers.clone(),
-                body: self.response.body.clone(),
-            })
-        }
-
-        async fn post(
-            &self,
-            _url: &str,
-            _headers: &HashMap<String, String>,
-            _body: &str,
-        ) -> Result<HttpResponse, HttpError> {
-            Ok(HttpResponse {
-                status: self.response.status,
-                headers: self.response.headers.clone(),
-                body: self.response.body.clone(),
-            })
-        }
-    }
+    use crate::client::test_helpers::MockHttpClient;
 
     fn real_test_client() -> HttpClient {
         let config = crate::config::HttpConfig {

@@ -6,6 +6,17 @@ pub mod rules;
 pub mod state;
 pub mod webhooks;
 
+/// Maximum length for API path parameters. Prevents DoS via oversized route strings.
+const MAX_PATH_SEGMENT_LEN: usize = 256;
+
+/// Validate that a path parameter is within acceptable length.
+pub fn validate_path_param(param: &str) -> Result<(), axum::http::StatusCode> {
+    if param.len() > MAX_PATH_SEGMENT_LEN {
+        return Err(axum::http::StatusCode::BAD_REQUEST);
+    }
+    Ok(())
+}
+
 use std::time::Duration;
 
 use axum::http::StatusCode;

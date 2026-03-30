@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 use secrecy::{ExposeSecret, SecretBox};
+use springtale_connector::encoding::urlencoded;
 
 use crate::config::PresearchConfig;
 use crate::error::PresearchError;
@@ -48,7 +49,7 @@ impl PresearchClient {
 
     /// Execute a search query against the Presearch API (internal implementation).
     async fn do_search(&self, query: &str) -> Result<serde_json::Value, PresearchError> {
-        let url = format!("{}/search?q={}", self.api_base, urlencoded(query));
+        let url = format!("{}/search?q={}", self.api_base, urlencoded(query, true));
 
         let response = self
             .inner
@@ -138,22 +139,47 @@ impl PresearchApi for PresearchClient {
     }
 }
 
-/// Simple percent-encoding for query parameters.
-fn urlencoded(s: &str) -> String {
-    let mut result = String::with_capacity(s.len());
-    for c in s.chars() {
-        match c {
-            'A'..='Z' | 'a'..='z' | '0'..='9' | '-' | '_' | '.' | '~' => result.push(c),
-            ' ' => result.push('+'),
-            _ => {
-                for byte in c.to_string().as_bytes() {
-                    result.push('%');
-                    result.push_str(&format!("{byte:02X}"));
-                }
+#[cfg(test)]
+pub mod test_helpers {
+    use super::*;
+
+    /// Configurable mock for `PresearchApi`.
+    ///
+    /// Set `search_response` for search tests and `fetch_response` for
+    /// scrape tests. Unused fields can be left as defaults.
+    pub struct MockPresearchClient {
+        pub search_response: serde_json::Value,
+        pub fetch_response: String,
+    }
+
+    impl MockPresearchClient {
+        /// Create a mock configured for search tests.
+        pub fn for_search(response: serde_json::Value) -> Self {
+            Self {
+                search_response: response,
+                fetch_response: String::new(),
+            }
+        }
+
+        /// Create a mock configured for fetch/scrape tests.
+        pub fn for_fetch(response: String) -> Self {
+            Self {
+                search_response: serde_json::json!({}),
+                fetch_response: response,
             }
         }
     }
-    result
+
+    #[async_trait]
+    impl PresearchApi for MockPresearchClient {
+        async fn search(&self, _query: &str) -> Result<serde_json::Value, PresearchError> {
+            Ok(self.search_response.clone())
+        }
+
+        async fn fetch_url(&self, _url: &str) -> Result<String, PresearchError> {
+            Ok(self.fetch_response.clone())
+        }
+    }
 }
 
 #[cfg(test)]
@@ -175,8 +201,8 @@ mod tests {
 
     #[test]
     fn test_urlencoded() {
-        assert_eq!(urlencoded("hello world"), "hello+world");
-        assert_eq!(urlencoded("rust+lang"), "rust%2Blang");
-        assert_eq!(urlencoded("simple"), "simple");
+        assert_eq!(urlencoded("hello world", true), "hello+world");
+        assert_eq!(urlencoded("rust+lang", true), "rust%2Blang");
+        assert_eq!(urlencoded("simple", true), "simple");
     }
 }

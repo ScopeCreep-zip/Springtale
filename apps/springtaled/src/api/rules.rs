@@ -7,6 +7,10 @@ use springtale_store::backend::trait_::StorageBackend;
 
 use super::state::AppState;
 
+/// Maximum number of rules per instance. Prevents O(n) rule evaluation from
+/// becoming a DoS vector when combined with high event rates.
+const MAX_RULES: usize = 10_000;
+
 /// GET /rules — list all rules.
 pub async fn list(State(state): State<AppState>) -> impl IntoResponse {
     let engine = state.engine.read().await;
@@ -37,6 +41,15 @@ pub async fn create(
     let rule: springtale_core::rule::types::Rule =
         serde_json::from_value(body).map_err(|_| StatusCode::BAD_REQUEST)?;
 
+    // Check rule count limit before inserting
+    {
+        let engine = state.engine.read().await;
+        if engine.list_rules().len() >= MAX_RULES {
+            tracing::warn!("rule count limit reached ({MAX_RULES})");
+            return Err(StatusCode::TOO_MANY_REQUESTS);
+        }
+    }
+
     let rule_id = rule.id;
 
     // Add to store
@@ -56,7 +69,11 @@ pub async fn create(
     // Add to engine
     {
         let mut engine = state.engine.write().await;
-        engine.add_rule(rule);
+        if let Err(e) = engine.add_rule(rule) {
+            tracing::error!(error = %e, "failed to add rule to engine");
+            let _ = state.store.delete_rule(&rule_id).await;
+            return Err(StatusCode::BAD_REQUEST);
+        }
     }
 
     Ok((
@@ -71,6 +88,7 @@ pub async fn update(
     Path(id): Path<String>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    super::validate_path_param(&id)?;
     let uuid = uuid::Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let rule_id = springtale_core::rule::types::RuleId(uuid);
 
@@ -91,12 +109,19 @@ pub async fn update(
     // Now safe to delete old rule from store (new one is persisted)
     let _ = state.store.delete_rule(&rule_id).await;
 
-    // Unschedule old triggers, schedule new ones
-    {
+    // Unschedule old triggers, schedule new ones.
+    // Clone the rule data under lock, then drop lock before awaiting unschedule
+    // to avoid holding the engine read lock across the cron Mutex await.
+    let old_rule = {
         let engine = state.engine.read().await;
-        if let Some(old_rule) = engine.list_rules().iter().find(|r| r.id == rule_id) {
-            unschedule_rule_trigger(&state, old_rule).await;
-        }
+        engine
+            .list_rules()
+            .iter()
+            .find(|r| r.id == rule_id)
+            .map(|r| (*r).clone())
+    };
+    if let Some(old_rule) = old_rule {
+        unschedule_rule_trigger(&state, &old_rule).await;
     }
 
     if let Err(e) = schedule_rule_trigger(&state, &rule).await {
@@ -107,7 +132,10 @@ pub async fn update(
     {
         let mut engine = state.engine.write().await;
         engine.remove_rule(&rule_id);
-        engine.add_rule(rule);
+        if let Err(e) = engine.add_rule(rule) {
+            tracing::error!(error = %e, "failed to add updated rule to engine");
+            return Err(StatusCode::BAD_REQUEST);
+        }
     }
 
     Ok((
@@ -121,15 +149,22 @@ pub async fn delete(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    super::validate_path_param(&id)?;
     let uuid = uuid::Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let rule_id = springtale_core::rule::types::RuleId(uuid);
 
-    // Unschedule triggers before deleting
-    {
+    // Unschedule triggers before deleting.
+    // Clone rule data under lock, drop lock before awaiting unschedule.
+    let old_rule = {
         let engine = state.engine.read().await;
-        if let Some(rule) = engine.list_rules().iter().find(|r| r.id == rule_id) {
-            unschedule_rule_trigger(&state, rule).await;
-        }
+        engine
+            .list_rules()
+            .iter()
+            .find(|r| r.id == rule_id)
+            .map(|r| (*r).clone())
+    };
+    if let Some(old_rule) = old_rule {
+        unschedule_rule_trigger(&state, &old_rule).await;
     }
 
     state
@@ -155,6 +190,7 @@ pub async fn run(
     State(state): State<AppState>,
     Path(id): Path<String>,
 ) -> Result<impl IntoResponse, StatusCode> {
+    super::validate_path_param(&id)?;
     let uuid = uuid::Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let rule_id = springtale_core::rule::types::RuleId(uuid);
 

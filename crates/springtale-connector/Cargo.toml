@@ -9,6 +9,8 @@ description = "Connector trait, WASM sandbox, manifest management, and capabilit
 [dependencies]
 wasmtime = { workspace = true }
 wasmtime-wasi = { workspace = true }
+base64 = { workspace = true }
+secrecy = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 schemars = { workspace = true }
@@ -20,6 +22,7 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
+reqwest = { workspace = true }
 toml = { workspace = true }
 springtale-crypto = { workspace = true }
 springtale-store = { workspace = true }

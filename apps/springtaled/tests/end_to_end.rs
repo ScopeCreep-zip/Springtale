@@ -43,7 +43,7 @@ fn test_rule_matches_connector_event() {
     };
 
     let rule_id = rule.id;
-    engine.add_rule(rule);
+    engine.add_rule(rule).expect("failed to add rule");
 
     let event = TriggerEvent {
         trigger_type: "ConnectorEvent".into(),
@@ -70,27 +70,41 @@ fn test_rule_matches_connector_event() {
 // ────────────────────────────────────────────────────────────────────────────────
 
 #[tokio::test]
-async fn test_cron_trigger_fires() {
-    let (tx, mut rx) = tokio::sync::mpsc::channel(256);
+async fn test_cron_scheduling_and_cancellation() {
+    let (tx, _rx) = tokio::sync::mpsc::channel(256);
     let mut executor = CronExecutor::new(tx);
 
-    // Schedule a cron that fires every second
+    // Valid expression (every minute) should succeed
     executor
-        .schedule("every-second", "* * * * * *")
+        .schedule("every-minute", "0 * * * * *")
         .unwrap();
+    assert_eq!(executor.list(), vec!["every-minute"]);
 
-    // Wait for at least one event (generous timeout to avoid flakes)
-    let result = tokio::time::timeout(std::time::Duration::from_secs(5), rx.recv()).await;
+    // Per-second expression should be rejected by minimum interval check
+    let result = executor.schedule("spam", "* * * * * *");
+    assert!(result.is_err(), "should reject per-second cron");
 
-    assert!(result.is_ok(), "timed out waiting for cron trigger event");
-    let event = result.unwrap();
-    assert!(event.is_some(), "channel closed unexpectedly");
+    // Verify next fire time is calculable
+    let next = executor.next_fire_for("every-minute");
+    assert!(next.is_some(), "should have a next fire time");
 
-    let event = event.unwrap();
-    assert_eq!(event.trigger_type, "Cron");
-    assert_eq!(event.event.as_deref(), Some("every-second"));
-    assert!(event.payload["fired_at"].is_string());
-    assert_eq!(event.payload["schedule_name"], "every-second");
+    // Cancel and verify
+    assert!(executor.cancel("every-minute"));
+    assert!(executor.list().is_empty());
+
+    executor.cancel_all();
+}
+
+#[tokio::test]
+async fn test_cron_rejects_too_frequent() {
+    let (tx, _rx) = tokio::sync::mpsc::channel(256);
+    let mut executor = CronExecutor::new(tx);
+
+    // Every 30 seconds: rejected
+    assert!(executor.schedule("fast", "0,30 * * * * *").is_err());
+
+    // Every 5 minutes: accepted
+    assert!(executor.schedule("ok", "0 */5 * * * *").is_ok());
 
     executor.cancel_all();
 }

@@ -83,15 +83,12 @@ mod tests {
         assert!(matches!(result, Err(KickError::InvalidInput(_))));
     }
 
-    struct MockKickApi;
+    use crate::client::test_helpers::MockKickApi;
 
-    #[async_trait::async_trait]
-    impl KickApi for MockKickApi {
-        async fn send_chat(&self, _channel_id: &str, _message: &str) -> Result<serde_json::Value, KickError> {
-            unreachable!()
-        }
-        async fn get_channel_by_slug(&self, _slug: &str) -> Result<serde_json::Value, KickError> {
-            Ok(serde_json::json!({
+    #[tokio::test]
+    async fn test_execute_get_channel_mock_extracts_response() {
+        let mock = MockKickApi {
+            response: serde_json::json!({
                 "data": [{
                     "id": 12345,
                     "slug": "xqc",
@@ -99,16 +96,8 @@ mod tests {
                     "broadcaster_user_id": 67890,
                     "banner_picture": null
                 }]
-            }))
-        }
-        async fn get_stream(&self, _channel_id: &str) -> Result<serde_json::Value, KickError> {
-            unreachable!()
-        }
-    }
-
-    #[tokio::test]
-    async fn test_execute_get_channel_mock_extracts_response() {
-        let mock = MockKickApi;
+            }),
+        };
         let input = serde_json::json!({ "slug": "xqc" });
         let result = execute(&mock, &input).await.unwrap();
         assert!(result.success);

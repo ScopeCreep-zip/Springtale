@@ -2,7 +2,10 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 pub mod capability;
+pub mod client;
+pub mod config;
 pub mod connector;
+pub mod encoding;
 pub mod error;
 pub mod manifest;
 pub mod native;

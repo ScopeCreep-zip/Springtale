@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::sync::Arc;
 
 use crate::capability::grant::{CapabilityChecker, CapabilityPolicy};
 use crate::connector::trait_::Connector;
@@ -6,9 +7,12 @@ use crate::error::ConnectorError;
 use crate::native::runtime::NativeConnectorHost;
 
 /// Entry in the connector registry.
+///
+/// The host is `Arc`-wrapped so the dispatch layer can clone the reference
+/// and drop the registry lock before executing connector actions.
 pub struct ConnectorEntry {
     /// The hosted connector (native or WASM).
-    pub host: NativeConnectorHost,
+    pub host: Arc<NativeConnectorHost>,
     /// Whether this connector is currently enabled.
     pub enabled: bool,
 }
@@ -53,7 +57,7 @@ impl ConnectorRegistry {
         self.connectors.insert(
             name.clone(),
             ConnectorEntry {
-                host: result.host,
+                host: Arc::new(result.host),
                 enabled: true,
             },
         );
@@ -110,6 +114,29 @@ impl ConnectorRegistry {
     /// Get a mutable reference to the capability checker (for approving pending caps).
     pub fn capability_checker_mut(&mut self) -> &mut CapabilityChecker {
         &mut self.capability_checker
+    }
+
+    /// Get a connector host and capability checker for out-of-lock execution.
+    ///
+    /// Returns an Arc-cloned host and cloned capability checker. The caller
+    /// can drop the registry lock and then call `host.execute_checked()`
+    /// without holding any lock across the network call.
+    pub fn get_for_execute(
+        &self,
+        connector_name: &str,
+    ) -> Result<(Arc<NativeConnectorHost>, CapabilityChecker), ConnectorError> {
+        let entry = self
+            .connectors
+            .get(connector_name)
+            .ok_or_else(|| ConnectorError::NotFound(connector_name.to_owned()))?;
+
+        if !entry.enabled {
+            return Err(ConnectorError::ExecutionFailed(format!(
+                "connector '{connector_name}' is disabled"
+            )));
+        }
+
+        Ok((Arc::clone(&entry.host), self.capability_checker.clone()))
     }
 
     /// Execute an action on a connector with capability checking.

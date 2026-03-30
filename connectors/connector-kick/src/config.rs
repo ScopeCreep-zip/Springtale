@@ -1,5 +1,6 @@
 use secrecy::SecretBox;
 use serde::Deserialize;
+use springtale_connector::config::deserialize_secret;
 
 /// Configuration for the Kick connector.
 #[derive(Deserialize)]
@@ -50,14 +51,6 @@ fn default_api_base() -> String {
 
 fn default_oauth_base() -> String {
     "https://id.kick.com".to_owned()
-}
-
-fn deserialize_secret<'de, D>(deserializer: D) -> Result<SecretBox<String>, D::Error>
-where
-    D: serde::Deserializer<'de>,
-{
-    let s = String::deserialize(deserializer)?;
-    Ok(SecretBox::new(Box::new(s)))
 }
 
 impl std::fmt::Debug for KickConfig {

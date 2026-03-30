@@ -81,22 +81,7 @@ pub async fn execute(
 mod tests {
     use super::*;
     use crate::client::PresearchClient;
-
-    /// Mock client that returns canned responses for testing action logic.
-    struct MockPresearchClient {
-        search_response: serde_json::Value,
-    }
-
-    #[async_trait::async_trait]
-    impl PresearchApi for MockPresearchClient {
-        async fn search(&self, _query: &str) -> Result<serde_json::Value, PresearchError> {
-            Ok(self.search_response.clone())
-        }
-
-        async fn fetch_url(&self, _url: &str) -> Result<String, PresearchError> {
-            Ok(String::new())
-        }
-    }
+    use crate::client::test_helpers::MockPresearchClient;
 
     fn real_test_client() -> PresearchClient {
         let config = crate::config::PresearchConfig {
@@ -156,14 +141,12 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_returns_search_results_uncached() {
-        let mock = MockPresearchClient {
-            search_response: serde_json::json!({
+        let mock = MockPresearchClient::for_search(serde_json::json!({
                 "results": [
                     { "title": "Result 1", "url": "https://example.com/1" },
                     { "title": "Result 2", "url": "https://example.com/2" }
                 ]
-            }),
-        };
+            }));
 
         let cache = test_cache();
         let input = serde_json::json!({ "query": "rust programming" });
@@ -180,9 +163,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_returns_cached_result_on_second_call() {
-        let mock = MockPresearchClient {
-            search_response: serde_json::json!({ "items": ["a", "b"] }),
-        };
+        let mock = MockPresearchClient::for_search(serde_json::json!({ "items": ["a", "b"] }));
 
         let cache = test_cache();
         let input = serde_json::json!({ "query": "cached query" });
@@ -199,9 +180,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_execute_stores_result_in_cache() {
-        let mock = MockPresearchClient {
-            search_response: serde_json::json!({ "count": 5 }),
-        };
+        let mock = MockPresearchClient::for_search(serde_json::json!({ "count": 5 }));
 
         let cache = test_cache();
         let input = serde_json::json!({ "query": "test" });

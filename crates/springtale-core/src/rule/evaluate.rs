@@ -1,21 +1,38 @@
 use regex::RegexBuilder;
 
 use super::condition::Condition;
+use super::engine::RegexCache;
 
 /// Maximum compiled regex size (prevents ReDoS via counted repetitions).
 const REGEX_SIZE_LIMIT: usize = 1_000_000; // 1MB
 
 /// Evaluate a condition tree against a trigger payload.
 ///
-/// This is a pure function with no side effects: `(Condition, Payload) -> bool`.
+/// This is a pure function with no side effects: `(Condition, Payload, Cache) -> bool`.
 /// No network. No AI. No I/O.
-pub fn evaluate_condition(condition: &Condition, payload: &serde_json::Value) -> bool {
+///
+/// The `regex_cache` contains pre-compiled regexes populated at `add_rule()` time.
+/// If a pattern is in the cache, it's used directly (avoiding recompilation).
+/// If not (shouldn't happen in normal flow), falls back to compiling on the fly.
+pub fn evaluate_condition(
+    condition: &Condition,
+    payload: &serde_json::Value,
+    regex_cache: &RegexCache,
+) -> bool {
     match condition {
-        Condition::And { conditions } => conditions.iter().all(|c| evaluate_condition(c, payload)),
+        Condition::And { conditions } => {
+            conditions
+                .iter()
+                .all(|c| evaluate_condition(c, payload, regex_cache))
+        }
 
-        Condition::Or { conditions } => conditions.iter().any(|c| evaluate_condition(c, payload)),
+        Condition::Or { conditions } => {
+            conditions
+                .iter()
+                .any(|c| evaluate_condition(c, payload, regex_cache))
+        }
 
-        Condition::Not { condition } => !evaluate_condition(condition, payload),
+        Condition::Not { condition } => !evaluate_condition(condition, payload, regex_cache),
 
         Condition::FieldEquals { field, value } => {
             resolve_field(payload, field).is_some_and(|v| v == value)
@@ -26,15 +43,20 @@ pub fn evaluate_condition(condition: &Condition, payload: &serde_json::Value) ->
             .is_some_and(|s| s.contains(value.as_str())),
 
         Condition::Regex { field, pattern } => {
-            let Some(field_value) =
-                resolve_field(payload, field).and_then(|v| v.as_str().map(String::from))
-            else {
+            let Some(field_value) = resolve_field(payload, field).and_then(|v| v.as_str()) else {
                 return false;
             };
+
+            // Use cached regex if available (normal path — compiled at add_rule time)
+            if let Some(re) = regex_cache.get(pattern) {
+                return re.is_match(field_value);
+            }
+
+            // Fallback: compile on the fly (shouldn't happen in normal flow)
             RegexBuilder::new(pattern)
                 .size_limit(REGEX_SIZE_LIMIT)
                 .build()
-                .is_ok_and(|re| re.is_match(&field_value))
+                .is_ok_and(|re| re.is_match(field_value))
         }
 
         Condition::TimeInRange { start, end } => {
@@ -80,9 +102,28 @@ fn resolve_field<'a>(payload: &'a serde_json::Value, field: &str) -> Option<&'a 
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
     use serde_json::json;
+    use std::collections::HashMap;
+
+    /// Empty cache for tests that don't use Regex conditions.
+    fn empty_cache() -> RegexCache {
+        HashMap::new()
+    }
+
+    /// Build a cache with one pre-compiled regex pattern.
+    fn cache_with(pattern: &str) -> RegexCache {
+        let mut cache = HashMap::new();
+        if let Ok(re) = regex::RegexBuilder::new(pattern)
+            .size_limit(REGEX_SIZE_LIMIT)
+            .build()
+        {
+            cache.insert(pattern.to_owned(), re);
+        }
+        cache
+    }
 
     #[test]
     fn test_field_equals_match() {
@@ -91,7 +132,7 @@ mod tests {
             field: "category".into(),
             value: json!("gaming"),
         };
-        assert!(evaluate_condition(&cond, &payload));
+        assert!(evaluate_condition(&cond, &payload, &empty_cache()));
     }
 
     #[test]
@@ -101,7 +142,7 @@ mod tests {
             field: "category".into(),
             value: json!("gaming"),
         };
-        assert!(!evaluate_condition(&cond, &payload));
+        assert!(!evaluate_condition(&cond, &payload, &empty_cache()));
     }
 
     #[test]
@@ -111,7 +152,7 @@ mod tests {
             field: "category".into(),
             value: json!("gaming"),
         };
-        assert!(!evaluate_condition(&cond, &payload));
+        assert!(!evaluate_condition(&cond, &payload, &empty_cache()));
     }
 
     #[test]
@@ -121,7 +162,7 @@ mod tests {
             field: "trigger.category".into(),
             value: json!("gaming"),
         };
-        assert!(evaluate_condition(&cond, &payload));
+        assert!(evaluate_condition(&cond, &payload, &empty_cache()));
     }
 
     #[test]
@@ -131,7 +172,7 @@ mod tests {
             field: "title".into(),
             value: "Halo".into(),
         };
-        assert!(evaluate_condition(&cond, &payload));
+        assert!(evaluate_condition(&cond, &payload, &empty_cache()));
     }
 
     #[test]
@@ -141,27 +182,40 @@ mod tests {
             field: "title".into(),
             value: "Zelda".into(),
         };
-        assert!(!evaluate_condition(&cond, &payload));
+        assert!(!evaluate_condition(&cond, &payload, &empty_cache()));
     }
 
     #[test]
-    fn test_regex_match() {
+    fn test_regex_match_with_cache() {
+        let pattern = r"\.(pdf|docx)$";
+        let payload = json!({"filename": "report_2026.pdf"});
+        let cond = Condition::Regex {
+            field: "filename".into(),
+            pattern: pattern.into(),
+        };
+        assert!(evaluate_condition(&cond, &payload, &cache_with(pattern)));
+    }
+
+    #[test]
+    fn test_regex_no_match_with_cache() {
+        let pattern = r"\.(pdf|docx)$";
+        let payload = json!({"filename": "image.png"});
+        let cond = Condition::Regex {
+            field: "filename".into(),
+            pattern: pattern.into(),
+        };
+        assert!(!evaluate_condition(&cond, &payload, &cache_with(pattern)));
+    }
+
+    #[test]
+    fn test_regex_match_fallback_no_cache() {
+        // Tests the fallback path when regex is not in cache
         let payload = json!({"filename": "report_2026.pdf"});
         let cond = Condition::Regex {
             field: "filename".into(),
             pattern: r"\.(pdf|docx)$".into(),
         };
-        assert!(evaluate_condition(&cond, &payload));
-    }
-
-    #[test]
-    fn test_regex_no_match() {
-        let payload = json!({"filename": "image.png"});
-        let cond = Condition::Regex {
-            field: "filename".into(),
-            pattern: r"\.(pdf|docx)$".into(),
-        };
-        assert!(!evaluate_condition(&cond, &payload));
+        assert!(evaluate_condition(&cond, &payload, &empty_cache()));
     }
 
     #[test]
@@ -172,7 +226,7 @@ mod tests {
             pattern: r"[invalid".into(),
         };
         // Invalid regex → evaluates to false, does not panic
-        assert!(!evaluate_condition(&cond, &payload));
+        assert!(!evaluate_condition(&cond, &payload, &empty_cache()));
     }
 
     #[test]
@@ -190,7 +244,7 @@ mod tests {
                 },
             ],
         };
-        assert!(evaluate_condition(&cond, &payload));
+        assert!(evaluate_condition(&cond, &payload, &empty_cache()));
     }
 
     #[test]
@@ -208,7 +262,7 @@ mod tests {
                 },
             ],
         };
-        assert!(!evaluate_condition(&cond, &payload));
+        assert!(!evaluate_condition(&cond, &payload, &empty_cache()));
     }
 
     #[test]
@@ -226,7 +280,7 @@ mod tests {
                 },
             ],
         };
-        assert!(evaluate_condition(&cond, &payload));
+        assert!(evaluate_condition(&cond, &payload, &empty_cache()));
     }
 
     #[test]
@@ -238,7 +292,7 @@ mod tests {
                 value: json!(1),
             }),
         };
-        assert!(!evaluate_condition(&cond, &payload));
+        assert!(!evaluate_condition(&cond, &payload, &empty_cache()));
     }
 
     #[test]
@@ -251,7 +305,7 @@ mod tests {
             pattern: format!("a{{{}}}", 100_000_000), // a{100000000} — enormous expansion
         };
         // Should return false (regex fails to compile due to size_limit)
-        assert!(!evaluate_condition(&cond, &payload));
+        assert!(!evaluate_condition(&cond, &payload, &empty_cache()));
     }
 
     #[test]
@@ -261,6 +315,6 @@ mod tests {
             field: "items.1".into(),
             value: json!("b"),
         };
-        assert!(evaluate_condition(&cond, &payload));
+        assert!(evaluate_condition(&cond, &payload, &empty_cache()));
     }
 }
