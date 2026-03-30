@@ -94,9 +94,9 @@ Rule authoring guide: [docs/guide/rules.md](docs/guide/rules.md)
                                   │                    │
           ┌───────────────────────┼────────────────────┼─────────────┐
           │                       v                    v             │
-          │   ┌──────────┐   ┌──────────┐   ┌────────────────┐      │
-          │   │   mcp    │   │    ai    │   │   scheduler    │      │
-          │   └────┬─────┘   └────┬─────┘   └───────┬────────┘      │
+          │   ┌──────────┐   ┌──────────┐    ┌────────────────┐      │
+          │   │   mcp    │   │    ai    │    │   scheduler    │      │
+          │   └────┬─────┘   └────┬─────┘    └───────┬────────┘      │
           │        │              │                  │               │
           │        v              v                  v               │
           │   ┌─────────────────────────────────────────────────┐    │
@@ -105,20 +105,20 @@ Rule authoring guide: [docs/guide/rules.md](docs/guide/rules.md)
           │   └────────────┬────────────────────┬───────────────┘    │
           │                │                    │                    │
           │                v                    v                    │
-          │   ┌──────────────────┐   ┌──────────────────┐           │
-          │   │      store       │   │      crypto      │           │
-          │   │    (SQLite)      │   │   (Ed25519,      │           │
-          │   │                  │   │    vault)         │           │
-          │   └────────┬─────────┘   └──────────────────┘           │
-          │            │                                            │
-          │            v                                            │
-          │   ┌──────────────────┐   ┌──────────────────┐           │
-          │   │      core        │   │    transport     │           │
-          │   │  (rule engine,   │   │  (Unix socket)   │           │
-          │   │   pipeline)      │   │                  │           │
-          │   └──────────────────┘   └──────────────────┘           │
-          │                     Library Crates                      │
-          └─────────────────────────────────────────────────────────┘
+          │   ┌──────────────────┐    ┌──────────────────┐           │
+          │   │      store       │    │      crypto      │           │
+          │   │    (SQLite)      │    │   (Ed25519,      │           │
+          │   │                  │    │    vault)        │           │
+          │   └────────┬─────────┘    └──────────────────┘           │
+          │            │                                             │
+          │            v                                             │
+          │   ┌──────────────────┐    ┌──────────────────┐           │
+          │   │      core        │    │    transport     │           │
+          │   │  (rule engine,   │    │  (Unix socket)   │           │
+          │   │   pipeline)      │    │                  │           │
+          │   └──────────────────┘    └──────────────────┘           │
+          │                      Library Crates                      │
+          └──────────────────────-───────────────────────────────────┘
 ```
 
 *Fig. 1. Crate dependency graph. 8 libraries, 7 connectors, 2 apps. ~20K lines of Rust.*
@@ -133,7 +133,7 @@ When an event arrives — webhook, file change, cron timer — it flows through:
                      3. run pipeline stages                   │
                      4. capability check ──> 5. execute() ───>│
                                                               │
-                     6. log event <────────── result <─────────┘
+                     6. log event <────────── result <────────┘
 ```
 
 *Fig. 2. Event flow. Capability checks happen before every dispatch — a connector can never exceed its declared permissions.*
@@ -160,7 +160,7 @@ Security and privacy are constraints, not features. Eight independent layers —
   ├───────────────────────────────────────────────────────────┤
   │  Manifest Signing — Ed25519, verify on every load         │
   ├───────────────────────────────────────────────────────────┤
-  │  Secret<T> — can't log, clone, or serialize; zeroed on drop│
+  │ Secret<T> — can't log, clone, or serialize; zeroed on drop│
   ├───────────────────────────────────────────────────────────┤
   │  Supply Chain — cargo-deny, cargo-audit, gitleaks in CI   │
   └───────────────────────────────────────────────────────────┘
