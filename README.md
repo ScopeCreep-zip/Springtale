@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="docs/logo/Bug.png" alt="Springtale mascot" width="200">
+</p>
+
 # Springtale
 
 A local-first, privacy-preserving automation platform built for people whose safety depends on privacy. Connector infrastructure first, AI consumer second.
