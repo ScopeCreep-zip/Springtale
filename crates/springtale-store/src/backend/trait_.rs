@@ -2,10 +2,13 @@ use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 
 use crate::error::StoreError;
+use crate::schema::audit::{AuditEntry, AuditFilter};
 use crate::schema::bot::{MemoryRow, SessionRow, UserPrefsRow};
 use crate::schema::connectors::ConnectorRow;
 use crate::schema::events::{EventEntry, EventFilter};
 use crate::schema::jobs::{JobId, JobRow};
+use crate::schema::formations::{FormationMemberRow, FormationRow};
+use crate::schema::safety::SafetyConfigRow;
 use springtale_core::rule::types::{Rule, RuleId};
 
 /// Persistence backend for all Springtale data.
@@ -86,6 +89,9 @@ pub trait StorageBackend: Send + Sync + 'static {
     /// Delete a bot session.
     async fn delete_session(&self, user_id: &str, channel_id: &str) -> Result<(), StoreError>;
 
+    /// List all active bot sessions.
+    async fn list_sessions(&self) -> Result<Vec<SessionRow>, StoreError>;
+
     // ── User Preferences ──────────────────────────────────────
 
     /// Upsert user preferences.
@@ -137,4 +143,86 @@ pub trait StorageBackend: Send + Sync + 'static {
 
     /// Delete a command alias.
     async fn delete_alias(&self, alias: &str) -> Result<(), StoreError>;
+
+    // ── Audit Trail ───────────────────────────────────────────
+
+    /// Insert an audit trail entry (append-only).
+    async fn insert_audit_entry(&self, entry: &AuditEntry) -> Result<(), StoreError>;
+
+    /// List audit trail entries matching a filter.
+    async fn list_audit_entries(&self, filter: &AuditFilter)
+    -> Result<Vec<AuditEntry>, StoreError>;
+
+    /// Export audit trail entries within a time range.
+    async fn export_audit(
+        &self,
+        after: &DateTime<Utc>,
+        before: &DateTime<Utc>,
+    ) -> Result<Vec<AuditEntry>, StoreError>;
+
+    /// Delete audit entries older than a given timestamp (retention).
+    async fn delete_audit_before(&self, before: &DateTime<Utc>) -> Result<u64, StoreError>;
+
+    // ── Safety Config ──────────────────────────────────────────
+
+    /// Get the current safety configuration.
+    /// Returns None if no config has been saved yet (use defaults).
+    async fn get_safety_config(&self) -> Result<Option<SafetyConfigRow>, StoreError> {
+        Ok(None)
+    }
+
+    /// Upsert safety configuration (single-row table).
+    async fn upsert_safety_config(&self, _config: &SafetyConfigRow) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    // ── Formations ────────────────────────────────────────────
+
+    /// Insert a new formation.
+    async fn insert_formation(&self, _row: &FormationRow) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// List all formations.
+    async fn list_formations(&self) -> Result<Vec<FormationRow>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    /// Get a formation by ID.
+    async fn get_formation(&self, _id: &str) -> Result<Option<FormationRow>, StoreError> {
+        Ok(None)
+    }
+
+    /// Update a formation's status.
+    async fn update_formation_status(&self, _id: &str, _status: &str) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Delete a formation and its members.
+    async fn delete_formation(&self, _id: &str) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Insert a formation member.
+    async fn insert_formation_member(&self, _row: &FormationMemberRow) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// List members of a formation.
+    async fn list_formation_members(&self, _formation_id: &str) -> Result<Vec<FormationMemberRow>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    // ── Emergency ─────────────────────────────────────────────
+
+    /// Emergency data destruction. Must complete within 3 seconds.
+    ///
+    /// Overwrites all persistent data with random bytes and deletes files.
+    /// For in-memory backends, clears all data structures.
+    ///
+    /// Not async — the 3-second deadline cannot afford async overhead.
+    /// Default implementation is a no-op (safe for backends with no persistence).
+    fn panic_wipe(&self) -> Result<(), StoreError> {
+        Ok(())
+    }
 }

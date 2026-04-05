@@ -12,7 +12,9 @@ members = [
   # Phase 1b
   "crates/springtale-bot",
   # Phase 2a
-  # "crates/springtale-sentinel",
+  "crates/springtale-sentinel",
+  # Shared runtime
+  "crates/springtale-runtime",
   # Phase 1a connectors
   "connectors/connector-kick",
   "connectors/connector-presearch",
@@ -23,9 +25,25 @@ members = [
   "connectors/connector-http",
   # Phase 1b connectors
   "connectors/connector-telegram",
+  # Phase 2a connectors
+  "connectors/connector-nostr",
+  "connectors/connector-irc",
+  "connectors/connector-discord",
+  "connectors/connector-slack",
+  "connectors/connector-signal",
+  "connectors/connector-browser",
+  # connector-matrix: DEFERRED — matrix-sdk 0.16 requires rusqlite 0.37 which
+  # has CVE-2025-70873 (heap info disclosure). Our store uses rusqlite 0.39
+  # (patched). Downgrading would expose activist/survivor data to heap leaks.
+  # Waiting for matrix-sdk to update to rusqlite 0.39+.
   # Apps
   "apps/springtaled",
   "apps/springtale-cli",
+]
+exclude = [
+  # Tauri desktop app has its own dependency tree (tauri 2.x crates).
+  # Excluded from workspace to avoid version conflicts.
+  "tauri/apps/desktop/src-tauri",
 ]
 
 [workspace.package]
@@ -38,6 +56,7 @@ repository = "https://github.com/ScopeCreep-zip/Springtale"
 # ── Async Runtime ──────────────────────────────────────────────────────────────
 tokio            = { version = "1",    features = ["full"] }
 tokio-util       = { version = "0.7",  features = ["codec"] }
+tokio-stream     = { version = "0.1", features = ["sync"] }
 async-trait      = "0.1"
 
 # ── Observability ──────────────────────────────────────────────────────────────
@@ -75,11 +94,13 @@ uuid             = { version = "1",    features = ["v4", "serde"] }
 
 # ── HTTP Server ────────────────────────────────────────────────────────────────
 axum             = { version = "0.8",  features = ["macros", "multipart"] }
+axum-server      = { version = "0.8",  features = ["tls-rustls"] }
 tower            = { version = "0.5", features = ["limit", "buffer"] }
-tower-http       = { version = "0.6",  features = ["cors", "trace", "auth", "limit", "timeout"] }
+tower-http       = { version = "0.6",  features = ["cors", "fs", "set-header", "trace", "auth", "limit", "timeout"] }
+rust-embed       = { version = "8", features = ["interpolate-folder-path"] }
 
 # ── HTTP Client ────────────────────────────────────────────────────────────────
-reqwest          = { version = "0.13", default-features = false, features = ["json", "rustls", "stream"] }
+reqwest          = { version = "0.13", default-features = false, features = ["json", "multipart", "rustls", "stream"] }
 
 # ── Database (local-first) ─────────────────────────────────────────────────────
 rusqlite         = { version = "0.39", features = ["bundled", "vtab"] }
@@ -116,8 +137,17 @@ futures-util      = { version = "0.3", features = ["sink"] }
 # ── Regex ──────────────────────────────────────────────────────────────────────
 regex            = "1"
 
+# ── TLS ────────────────────────────────────────────────────────────────────────
+rustls           = { version = "0.23", default-features = false, features = ["ring", "std"] }
+tokio-rustls     = "0.26"
+rustls-pemfile   = "2"
+rustls-pki-types = "1"
+
 # ── Config ─────────────────────────────────────────────────────────────────────
 figment          = { version = "0.10", features = ["toml", "env"] }
+
+# ── Compile-time Registration ─────────────────────────────────────────────────
+inventory        = "0.3"
 
 # ── Concurrency ────────────────────────────────────────────────────────────────
 dashmap          = "6"
@@ -143,4 +173,42 @@ springtale-store      = { path = "crates/springtale-store" }
 springtale-ai         = { path = "crates/springtale-ai" }
 springtale-bot        = { path = "crates/springtale-bot" }
 springtale-mcp        = { path = "crates/springtale-mcp" }
+springtale-sentinel   = { path = "crates/springtale-sentinel" }
+springtale-runtime    = { path = "crates/springtale-runtime" }
+connector-kick        = { path = "connectors/connector-kick" }
+connector-presearch   = { path = "connectors/connector-presearch" }
+connector-bluesky     = { path = "connectors/connector-bluesky" }
+connector-github      = { path = "connectors/connector-github" }
+connector-filesystem  = { path = "connectors/connector-filesystem" }
+connector-shell       = { path = "connectors/connector-shell" }
+connector-http        = { path = "connectors/connector-http" }
 connector-telegram    = { path = "connectors/connector-telegram" }
+connector-nostr       = { path = "connectors/connector-nostr" }
+connector-irc         = { path = "connectors/connector-irc" }
+connector-discord     = { path = "connectors/connector-discord" }
+connector-slack       = { path = "connectors/connector-slack" }
+connector-signal      = { path = "connectors/connector-signal" }
+connector-browser     = { path = "connectors/connector-browser" }
+
+# ── Nostr Protocol ─────────────────────────────────────────────────────────────
+nostr-sdk            = { version = "0.44", features = ["nip44", "nip59"] }
+
+# ── IRC Protocol ───────────────────────────────────────────────────────────────
+# Privacy: ctcp feature DISABLED to suppress all CTCP replies (VERSION, TIME, PING).
+# This prevents bot fingerprinting — empty VERSION is MORE identifiable than no response.
+irc                  = { version = "1.1", default-features = false, features = ["tls-rust", "toml_config"] }
+
+# ── Discord Protocol ──────────────────────────────────────────────────────────
+# Privacy: no MESSAGE_CONTENT intent by default. Slash commands preferred.
+twilight-gateway     = { version = "0.17", default-features = false, features = ["rustls-webpki-roots", "zstd"] }
+twilight-http        = { version = "0.17", default-features = false, features = ["rustls-webpki-roots"] }
+twilight-model       = "0.17"
+
+# ── Slack Protocol (Socket Mode) ──────────────────────────────────────────────
+# Socket Mode uses WebSocket — no public HTTP endpoint needed (local-first friendly).
+tokio-tungstenite    = { version = "0.26", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
+
+# ── Browser Automation ────────────────────────────────────────────────────────
+# No TLS dependency — connects to pre-installed Chrome via DevTools Protocol.
+# Domain allow-list enforced per connector capability model.
+chromiumoxide        = { version = "0.9", default-features = false }

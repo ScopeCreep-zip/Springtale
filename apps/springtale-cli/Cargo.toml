@@ -25,3 +25,4 @@ springtale-core = { workspace = true }
 springtale-crypto = { workspace = true }
 springtale-connector = { workspace = true }
 springtale-store = { workspace = true }
+springtale-runtime = { workspace = true }

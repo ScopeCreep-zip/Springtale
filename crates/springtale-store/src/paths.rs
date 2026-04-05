@@ -27,6 +27,11 @@ pub fn default_vault_path() -> PathBuf {
     data_dir().join("vault.bin")
 }
 
+/// Default path to the config file.
+pub fn default_config_path() -> PathBuf {
+    data_dir().join("springtale.toml")
+}
+
 /// Default path to the Unix domain socket.
 pub fn default_socket_path() -> PathBuf {
     data_dir().join("springtale.sock")

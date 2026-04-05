@@ -14,6 +14,10 @@ regex = { workspace = true }
 thiserror = { workspace = true }
 async-trait = { workspace = true }
 tracing = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+secrecy = { workspace = true }
+toml = { workspace = true }
 springtale-core = { workspace = true }
 
 [dev-dependencies]

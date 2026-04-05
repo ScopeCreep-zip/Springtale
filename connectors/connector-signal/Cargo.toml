@@ -1,0 +1,24 @@
+[package]
+name = "connector-signal"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Signal connector — signal-cli bridge, E2E encrypted messaging, disappearing messages."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+rand = { workspace = true }
+reqwest = { workspace = true }
+futures-util = { workspace = true }
+secrecy = { workspace = true }
+springtale-connector = { workspace = true }
+inventory = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }

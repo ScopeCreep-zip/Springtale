@@ -20,14 +20,21 @@ pub async fn require_auth(
     request: Request<axum::body::Body>,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    let auth_header = request
+    // Try Authorization header first (standard path)
+    // Fall back to ?token= query parameter for SSE (EventSource limitation —
+    // the browser EventSource API cannot send custom headers).
+    // This is safe because the dashboard binds 127.0.0.1 only.
+    let token = request
         .headers()
         .get("authorization")
         .and_then(|v| v.to_str().ok())
-        .ok_or(StatusCode::UNAUTHORIZED)?;
-
-    let token = auth_header
-        .strip_prefix("Bearer ")
+        .and_then(|h| h.strip_prefix("Bearer "))
+        .or_else(|| {
+            request
+                .uri()
+                .query()
+                .and_then(|q| q.split('&').find_map(|pair| pair.strip_prefix("token=")))
+        })
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
     let token_bytes = hex::decode(token).map_err(|_| StatusCode::UNAUTHORIZED)?;

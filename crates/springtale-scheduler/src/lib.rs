@@ -3,12 +3,14 @@
 
 pub mod cron;
 pub mod error;
+pub mod heartbeat;
 pub mod queue;
 pub mod retry;
 pub mod watcher;
 
 pub use cron::CronExecutor;
 pub use error::SchedulerError;
+pub use heartbeat::HeartbeatMonitor;
 pub use queue::consumer::JobConsumer;
 pub use queue::producer::{Job, JobProducer, JobStatus};
 pub use retry::backoff::{BackoffConfig, RetryState};

@@ -3,8 +3,6 @@ use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 
-use springtale_store::backend::trait_::StorageBackend;
-
 use super::state::AppState;
 
 /// GET /health — liveness probe.
@@ -28,7 +26,7 @@ pub async fn ready(State(state): State<AppState>) -> impl IntoResponse {
     }
 
     // Verify store is accessible by listing rules (lightweight query)
-    let store_ok = state.store.list_rules().await.is_ok();
+    let store_ok = state.runtime.store.list_rules().await.is_ok();
 
     if store_ok {
         (

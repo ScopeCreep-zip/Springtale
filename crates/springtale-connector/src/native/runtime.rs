@@ -82,4 +82,13 @@ impl NativeConnectorHost {
     pub fn manifest(&self) -> &ConnectorManifest {
         self.inner.manifest()
     }
+
+    /// Verify a webhook signature before dispatch.
+    pub async fn verify_webhook(
+        &self,
+        headers: &std::collections::HashMap<String, String>,
+        body: &[u8],
+    ) -> Result<(), ConnectorError> {
+        self.inner.verify_webhook(headers, body).await
+    }
 }

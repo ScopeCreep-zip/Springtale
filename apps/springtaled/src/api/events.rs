@@ -2,7 +2,6 @@ use axum::Json;
 use axum::extract::{Query, State};
 use axum::response::IntoResponse;
 
-use springtale_store::backend::trait_::StorageBackend;
 use springtale_store::schema::events::EventFilter;
 
 use super::state::AppState;
@@ -46,7 +45,7 @@ pub async fn list(
         ..Default::default()
     };
 
-    let events = state.store.list_events(&filter).await;
+    let events = springtale_runtime::operations::events::list_events(&state.runtime, &filter).await;
 
     match events {
         Ok(events) => Json(serde_json::json!({

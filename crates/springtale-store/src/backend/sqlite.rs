@@ -11,6 +11,8 @@ use crate::schema::bot::{MemoryRow, SessionRow, UserPrefsRow};
 use crate::schema::connectors::ConnectorRow;
 use crate::schema::events::{EventEntry, EventFilter};
 use crate::schema::jobs::{JobId, JobRow};
+use crate::schema::formations::{FormationMemberRow, FormationRow};
+use crate::schema::safety::SafetyConfigRow;
 use springtale_core::rule::types::{Rule, RuleId};
 
 /// SQLite-backed storage. Single-file, zero external dependencies.
@@ -563,6 +565,56 @@ impl super::trait_::StorageBackend for SqliteBackend {
         Ok(())
     }
 
+    async fn list_sessions(&self) -> Result<Vec<SessionRow>, StoreError> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare(
+            "SELECT user_id, channel_id, last_bot_message, pending_command, \
+             state_data, created_at, updated_at \
+             FROM bot_sessions ORDER BY updated_at DESC",
+        )?;
+        let tuples: Vec<(
+            String,
+            String,
+            Option<String>,
+            Option<String>,
+            String,
+            String,
+            String,
+        )> = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                    row.get::<_, Option<String>>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut sessions = Vec::with_capacity(tuples.len());
+        for (uid, cid, last_msg, pending, state, created, updated) in tuples {
+            let created_at = chrono::DateTime::parse_from_rfc3339(&created)
+                .map(|dt| dt.with_timezone(&Utc))
+                .map_err(|e| StoreError::Serialization(e.to_string()))?;
+            let updated_at = chrono::DateTime::parse_from_rfc3339(&updated)
+                .map(|dt| dt.with_timezone(&Utc))
+                .map_err(|e| StoreError::Serialization(e.to_string()))?;
+            sessions.push(SessionRow {
+                user_id: uid,
+                channel_id: cid,
+                last_bot_message: last_msg,
+                pending_command: pending,
+                state_data: state,
+                created_at,
+                updated_at,
+            });
+        }
+        Ok(sessions)
+    }
+
     // ── User Preferences ──────────────────────────────────────
 
     async fn upsert_user_prefs(&self, prefs: &UserPrefsRow) -> Result<(), StoreError> {
@@ -786,6 +838,337 @@ impl super::trait_::StorageBackend for SqliteBackend {
     async fn delete_alias(&self, alias: &str) -> Result<(), StoreError> {
         let conn = self.conn.lock().await;
         conn.execute("DELETE FROM bot_aliases WHERE alias = ?1", params![alias])?;
+        Ok(())
+    }
+
+    // ── Audit Trail ───────────────────────────────────────────
+
+    async fn insert_audit_entry(
+        &self,
+        entry: &crate::schema::audit::AuditEntry,
+    ) -> Result<(), StoreError> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "INSERT INTO audit_trail (id, timestamp, connector_name, action_type, action_summary, verdict, verdict_reason, result, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            params![
+                entry.id.to_string(),
+                entry.timestamp.to_rfc3339(),
+                entry.connector_name,
+                entry.action_type,
+                entry.action_summary,
+                entry.verdict,
+                entry.verdict_reason,
+                entry.result,
+                Utc::now().to_rfc3339(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    async fn list_audit_entries(
+        &self,
+        filter: &crate::schema::audit::AuditFilter,
+    ) -> Result<Vec<crate::schema::audit::AuditEntry>, StoreError> {
+        let conn = self.conn.lock().await;
+
+        let mut sql = String::from(
+            "SELECT id, timestamp, connector_name, action_type, action_summary, verdict, verdict_reason, result FROM audit_trail WHERE 1=1",
+        );
+        let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+        let mut param_idx = 1;
+
+        if let Some(ref name) = filter.connector_name {
+            sql.push_str(&format!(" AND connector_name = ?{param_idx}"));
+            param_values.push(Box::new(name.clone()));
+            param_idx += 1;
+        }
+        if let Some(ref after) = filter.after {
+            sql.push_str(&format!(" AND timestamp > ?{param_idx}"));
+            param_values.push(Box::new(after.to_rfc3339()));
+            param_idx += 1;
+        }
+        if let Some(ref before) = filter.before {
+            sql.push_str(&format!(" AND timestamp < ?{param_idx}"));
+            param_values.push(Box::new(before.to_rfc3339()));
+            param_idx += 1;
+        }
+        if let Some(ref verdict) = filter.verdict {
+            sql.push_str(&format!(" AND verdict = ?{param_idx}"));
+            param_values.push(Box::new(verdict.clone()));
+            param_idx += 1;
+        }
+
+        sql.push_str(" ORDER BY timestamp DESC");
+
+        if let Some(limit) = filter.limit {
+            sql.push_str(&format!(" LIMIT ?{param_idx}"));
+            param_values.push(Box::new(limit as i64));
+            param_idx += 1;
+        }
+
+        if let Some(offset) = filter.offset {
+            sql.push_str(&format!(" OFFSET ?{param_idx}"));
+            param_values.push(Box::new(offset as i64));
+            let _ = param_idx;
+        }
+
+        let params_refs: Vec<&dyn rusqlite::types::ToSql> =
+            param_values.iter().map(|p| p.as_ref()).collect();
+
+        let mut stmt = conn.prepare(&sql)?;
+        let rows = stmt
+            .query_map(params_refs.as_slice(), |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                    row.get::<_, String>(6)?,
+                    row.get::<_, String>(7)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut entries = Vec::new();
+        for (id_str, ts_str, connector, action_type, summary, verdict, reason, result) in rows {
+            let id = uuid::Uuid::parse_str(&id_str)
+                .map_err(|e| StoreError::Serialization(e.to_string()))?;
+            let timestamp = chrono::DateTime::parse_from_rfc3339(&ts_str)
+                .map(|dt| dt.with_timezone(&Utc))
+                .map_err(|e| StoreError::Serialization(e.to_string()))?;
+            entries.push(crate::schema::audit::AuditEntry {
+                id,
+                timestamp,
+                connector_name: connector,
+                action_type,
+                action_summary: summary,
+                verdict,
+                verdict_reason: reason,
+                result,
+            });
+        }
+        Ok(entries)
+    }
+
+    async fn export_audit(
+        &self,
+        after: &DateTime<Utc>,
+        before: &DateTime<Utc>,
+    ) -> Result<Vec<crate::schema::audit::AuditEntry>, StoreError> {
+        self.list_audit_entries(&crate::schema::audit::AuditFilter {
+            after: Some(*after),
+            before: Some(*before),
+            ..Default::default()
+        })
+        .await
+    }
+
+    async fn delete_audit_before(&self, before: &DateTime<Utc>) -> Result<u64, StoreError> {
+        let conn = self.conn.lock().await;
+        let deleted = conn.execute(
+            "DELETE FROM audit_trail WHERE timestamp < ?1",
+            params![before.to_rfc3339()],
+        )?;
+        Ok(deleted as u64)
+    }
+
+    async fn get_safety_config(&self) -> Result<Option<SafetyConfigRow>, StoreError> {
+        let conn = self.conn.lock().await;
+        let result = conn.query_row(
+            "SELECT window_title, auto_lock_minutes, content_protected, quick_hide_shortcut, updated_at
+             FROM safety_config WHERE id = 1",
+            [],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, i64>(1)?,
+                    row.get::<_, bool>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            },
+        );
+
+        match result {
+            Ok((title, minutes, protected, shortcut, updated)) => {
+                let updated_at = chrono::DateTime::parse_from_rfc3339(&updated)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .map_err(|e| StoreError::Serialization(e.to_string()))?;
+                Ok(Some(SafetyConfigRow {
+                    window_title: title,
+                    auto_lock_minutes: minutes as u32,
+                    content_protected: protected,
+                    quick_hide_shortcut: shortcut,
+                    updated_at,
+                }))
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    async fn upsert_safety_config(&self, config: &SafetyConfigRow) -> Result<(), StoreError> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "INSERT INTO safety_config (id, window_title, auto_lock_minutes, content_protected, quick_hide_shortcut, updated_at)
+             VALUES (1, ?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(id) DO UPDATE SET
+                window_title = excluded.window_title,
+                auto_lock_minutes = excluded.auto_lock_minutes,
+                content_protected = excluded.content_protected,
+                quick_hide_shortcut = excluded.quick_hide_shortcut,
+                updated_at = excluded.updated_at",
+            params![
+                config.window_title,
+                config.auto_lock_minutes as i64,
+                config.content_protected,
+                config.quick_hide_shortcut,
+                config.updated_at.to_rfc3339(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    async fn insert_formation(&self, row: &FormationRow) -> Result<(), StoreError> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "INSERT INTO formations (id, name, intent, status, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            params![
+                row.id,
+                row.name,
+                row.intent,
+                row.status,
+                row.created_at.to_rfc3339(),
+                row.updated_at.to_rfc3339(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    async fn list_formations(&self) -> Result<Vec<FormationRow>, StoreError> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare(
+            "SELECT id, name, intent, status, created_at, updated_at FROM formations ORDER BY created_at DESC",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, String>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, String>(3)?,
+                row.get::<_, String>(4)?,
+                row.get::<_, String>(5)?,
+            ))
+        })?;
+
+        let mut formations = Vec::new();
+        for row in rows {
+            let (id, name, intent, status, created, updated) = row?;
+            let created_at = chrono::DateTime::parse_from_rfc3339(&created)
+                .map(|dt| dt.with_timezone(&Utc))
+                .map_err(|e| StoreError::Serialization(e.to_string()))?;
+            let updated_at = chrono::DateTime::parse_from_rfc3339(&updated)
+                .map(|dt| dt.with_timezone(&Utc))
+                .map_err(|e| StoreError::Serialization(e.to_string()))?;
+            formations.push(FormationRow { id, name, intent, status, created_at, updated_at });
+        }
+        Ok(formations)
+    }
+
+    async fn get_formation(&self, id: &str) -> Result<Option<FormationRow>, StoreError> {
+        let conn = self.conn.lock().await;
+        let result = conn.query_row(
+            "SELECT id, name, intent, status, created_at, updated_at FROM formations WHERE id = ?1",
+            params![id],
+            |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                    row.get::<_, String>(5)?,
+                ))
+            },
+        );
+
+        match result {
+            Ok((fid, name, intent, status, created, updated)) => {
+                let created_at = chrono::DateTime::parse_from_rfc3339(&created)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .map_err(|e| StoreError::Serialization(e.to_string()))?;
+                let updated_at = chrono::DateTime::parse_from_rfc3339(&updated)
+                    .map(|dt| dt.with_timezone(&Utc))
+                    .map_err(|e| StoreError::Serialization(e.to_string()))?;
+                Ok(Some(FormationRow { id: fid, name, intent, status, created_at, updated_at }))
+            }
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    async fn update_formation_status(&self, id: &str, status: &str) -> Result<(), StoreError> {
+        let conn = self.conn.lock().await;
+        let now = Utc::now().to_rfc3339();
+        conn.execute(
+            "UPDATE formations SET status = ?1, updated_at = ?2 WHERE id = ?3",
+            params![status, now, id],
+        )?;
+        Ok(())
+    }
+
+    async fn delete_formation(&self, id: &str) -> Result<(), StoreError> {
+        let conn = self.conn.lock().await;
+        conn.execute("DELETE FROM formation_members WHERE formation_id = ?1", params![id])?;
+        conn.execute("DELETE FROM formations WHERE id = ?1", params![id])?;
+        Ok(())
+    }
+
+    async fn insert_formation_member(&self, row: &FormationMemberRow) -> Result<(), StoreError> {
+        let conn = self.conn.lock().await;
+        conn.execute(
+            "INSERT INTO formation_members (id, formation_id, connector_name, role_hint)
+             VALUES (?1, ?2, ?3, ?4)",
+            params![row.id, row.formation_id, row.connector_name, row.role_hint],
+        )?;
+        Ok(())
+    }
+
+    async fn list_formation_members(&self, formation_id: &str) -> Result<Vec<FormationMemberRow>, StoreError> {
+        let conn = self.conn.lock().await;
+        let mut stmt = conn.prepare(
+            "SELECT id, formation_id, connector_name, role_hint FROM formation_members WHERE formation_id = ?1",
+        )?;
+        let rows = stmt.query_map(params![formation_id], |row| {
+            Ok(FormationMemberRow {
+                id: row.get(0)?,
+                formation_id: row.get(1)?,
+                connector_name: row.get(2)?,
+                role_hint: row.get(3)?,
+            })
+        })?;
+
+        let mut members = Vec::new();
+        for row in rows {
+            members.push(row?);
+        }
+        Ok(members)
+    }
+
+    fn panic_wipe(&self) -> Result<(), StoreError> {
+        // Close the connection to release file locks
+        // (acquiring the mutex ensures no other operations are in progress)
+        let _conn = self.conn.blocking_lock();
+
+        // Wipe all SQLite files if we have a path
+        if let Some(ref path) = self.path {
+            super::wipe::secure_wipe_sqlite(path)?;
+        }
+
         Ok(())
     }
 }
@@ -1285,5 +1668,128 @@ mod tests {
         store.upsert_alias("s", "search", "user1").await.unwrap();
         store.delete_alias("s").await.unwrap();
         assert!(store.list_aliases().await.unwrap().is_empty());
+    }
+
+    // ── Audit Trail ──────────────────────────────────────────
+
+    fn test_audit_entry(connector: &str, verdict: &str) -> crate::schema::audit::AuditEntry {
+        crate::schema::audit::AuditEntry {
+            id: uuid::Uuid::new_v4(),
+            timestamp: Utc::now(),
+            connector_name: connector.into(),
+            action_type: "RunConnector".into(),
+            action_summary: "test action".into(),
+            verdict: verdict.into(),
+            verdict_reason: String::new(),
+            result: "ok".into(),
+        }
+    }
+
+    #[tokio::test]
+    async fn test_insert_and_list_audit_entries() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        store
+            .insert_audit_entry(&test_audit_entry("connector-test", "go"))
+            .await
+            .unwrap();
+        store
+            .insert_audit_entry(&test_audit_entry("connector-test", "throttle"))
+            .await
+            .unwrap();
+
+        let entries = store
+            .list_audit_entries(&crate::schema::audit::AuditFilter::default())
+            .await
+            .unwrap();
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn test_audit_filter_by_connector() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        store
+            .insert_audit_entry(&test_audit_entry("connector-a", "go"))
+            .await
+            .unwrap();
+        store
+            .insert_audit_entry(&test_audit_entry("connector-b", "go"))
+            .await
+            .unwrap();
+
+        let entries = store
+            .list_audit_entries(&crate::schema::audit::AuditFilter {
+                connector_name: Some("connector-a".into()),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].connector_name, "connector-a");
+    }
+
+    #[tokio::test]
+    async fn test_audit_filter_by_verdict() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        store
+            .insert_audit_entry(&test_audit_entry("test", "go"))
+            .await
+            .unwrap();
+        store
+            .insert_audit_entry(&test_audit_entry("test", "throttle"))
+            .await
+            .unwrap();
+        store
+            .insert_audit_entry(&test_audit_entry("test", "pause"))
+            .await
+            .unwrap();
+
+        let entries = store
+            .list_audit_entries(&crate::schema::audit::AuditFilter {
+                verdict: Some("throttle".into()),
+                ..Default::default()
+            })
+            .await
+            .unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].verdict, "throttle");
+    }
+
+    #[tokio::test]
+    async fn test_audit_delete_before() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        let mut old = test_audit_entry("test", "go");
+        old.timestamp = Utc::now() - chrono::Duration::days(30);
+        store.insert_audit_entry(&old).await.unwrap();
+
+        let new = test_audit_entry("test", "go");
+        store.insert_audit_entry(&new).await.unwrap();
+
+        let deleted = store
+            .delete_audit_before(&(Utc::now() - chrono::Duration::days(7)))
+            .await
+            .unwrap();
+        assert_eq!(deleted, 1);
+
+        let remaining = store
+            .list_audit_entries(&crate::schema::audit::AuditFilter::default())
+            .await
+            .unwrap();
+        assert_eq!(remaining.len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_audit_export_time_range() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        let entry = test_audit_entry("test", "go");
+        store.insert_audit_entry(&entry).await.unwrap();
+
+        let entries = store
+            .export_audit(
+                &(Utc::now() - chrono::Duration::hours(1)),
+                &(Utc::now() + chrono::Duration::hours(1)),
+            )
+            .await
+            .unwrap();
+        assert_eq!(entries.len(), 1);
     }
 }

@@ -2,6 +2,7 @@
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
 pub mod error;
+pub mod http;
 pub mod local;
 pub mod transport;
 pub mod veilid;

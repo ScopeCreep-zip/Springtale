@@ -56,4 +56,27 @@ pub trait Connector: Send + Sync + 'static {
 
     /// Get the connector's manifest.
     fn manifest(&self) -> &ConnectorManifest;
+
+    /// Verify an incoming webhook payload's signature.
+    ///
+    /// Called by the management API BEFORE dispatching a webhook event.
+    /// Connectors with webhooks (GitHub, Kick, Telegram) override this
+    /// to verify HMAC/RSA/Ed25519 signatures. Connectors without
+    /// webhooks (Discord gateway, Slack Socket Mode, Nostr relay) can
+    /// use the default implementation which rejects all webhooks.
+    ///
+    /// # Arguments
+    /// * `headers` — HTTP headers from the webhook request
+    /// * `body` — raw request body bytes (for HMAC computation)
+    ///
+    /// Default: returns `Err` (reject all webhooks for safety).
+    async fn verify_webhook(
+        &self,
+        _headers: &std::collections::HashMap<String, String>,
+        _body: &[u8],
+    ) -> Result<(), ConnectorError> {
+        Err(ConnectorError::ExecutionFailed(
+            "this connector does not support webhooks".to_owned(),
+        ))
+    }
 }

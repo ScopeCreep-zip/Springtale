@@ -7,7 +7,7 @@ use clap::Parser;
 
 use springtale_store::backend::sqlite::SqliteBackend;
 
-use cli::{Cli, Command, ServerAction};
+use cli::{Cli, Command, CryptoAction, ServerAction, TravelAction, VaultAction};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -22,6 +22,41 @@ async fn main() -> Result<()> {
                 commands::server::run().await?;
             }
         },
+        Command::Panic => {
+            let store = open_store()?;
+            commands::panic::run(&store).await?;
+        }
+        Command::Travel { action } => {
+            let vault_path = springtale_store::paths::default_vault_path();
+            let db_path = springtale_store::paths::default_db_path();
+            let config_path = std::path::PathBuf::from("springtale.toml");
+            match action {
+                TravelAction::Prepare { backup_to } => {
+                    let store = open_store()?;
+                    commands::travel::prepare(
+                        &backup_to,
+                        &vault_path,
+                        &db_path,
+                        &config_path,
+                        &store,
+                    )?;
+                }
+                TravelAction::Restore { from } => {
+                    commands::travel::restore(&from, &vault_path, &db_path, &config_path)?;
+                }
+            }
+        }
+        Command::Vault { action } => match action {
+            VaultAction::DuressSetup => {
+                let vault_path = springtale_store::paths::default_vault_path();
+                commands::vault::duress_setup(&vault_path)?;
+            }
+        },
+        Command::Crypto { action } => match action {
+            CryptoAction::RotateVaultKey => {
+                commands::crypto::rotate_vault_key()?;
+            }
+        },
         // Commands that need the store
         command => {
             let store = open_store()?;
@@ -34,6 +69,15 @@ async fn main() -> Result<()> {
                 }
                 Command::Events { limit, connector } => {
                     commands::events::run(&store, limit, connector, cli.json).await?;
+                }
+                Command::Memory { action } => {
+                    commands::memory::run(action, &store).await?;
+                }
+                Command::Data { action } => {
+                    commands::data::run(action, &store).await?;
+                }
+                Command::Agent { action } => {
+                    commands::agent::run(action, &store).await?;
                 }
                 _ => unreachable!(),
             }

@@ -6,6 +6,7 @@ pub mod config;
 pub mod connector;
 pub mod error;
 pub mod sandbox;
+pub mod factory;
 
 pub use config::ShellConfig;
 pub use connector::ShellConnector;

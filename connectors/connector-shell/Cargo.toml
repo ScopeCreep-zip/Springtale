@@ -15,6 +15,7 @@ tracing = { workspace = true }
 async-trait = { workspace = true }
 tokio = { workspace = true }
 springtale-connector = { workspace = true }
+inventory = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

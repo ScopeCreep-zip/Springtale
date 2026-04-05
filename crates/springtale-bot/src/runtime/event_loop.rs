@@ -4,6 +4,7 @@ use springtale_connector::registry::store::ConnectorRegistry;
 use springtale_core::rule::action::Action;
 use tokio::sync::{RwLock, mpsc};
 
+use crate::cooperation::cadence::Tick;
 use crate::handler::registry::HandlerContext;
 use crate::router::AliasResolver;
 use crate::runtime::lifecycle::{Bot, OutgoingResponse};
@@ -55,6 +56,11 @@ pub async fn run_event_loop(bot: &mut Bot) {
                         "trigger processing failed — continuing"
                     );
                 }
+            }
+
+            // Source 3: Cadence ticks from cooperation module (§5)
+            Ok(tick) = bot.cadence_rx.recv() => {
+                handle_cadence_tick(bot, &tick).await;
             }
 
             // All channels closed — shutdown
@@ -139,13 +145,25 @@ async fn handle_incoming_message(
             }
         }
         crate::router::RouteResult::NoMatch { suggestion } => {
-            send_response(
-                &bot.response_tx,
-                &msg.channel_id,
-                suggestion,
-                &msg.source_connector,
-            )
-            .await;
+            // Phase 2a: try AI fallback before static suggestion
+            if let Some(response) = ai_fallback(bot, &session_key, &msg.text).await {
+                let _ = bot.context.push(&session_key, "assistant", &response).await;
+                send_response(
+                    &bot.response_tx,
+                    &msg.channel_id,
+                    response,
+                    &msg.source_connector,
+                )
+                .await;
+            } else {
+                send_response(
+                    &bot.response_tx,
+                    &msg.channel_id,
+                    suggestion,
+                    &msg.source_connector,
+                )
+                .await;
+            }
         }
     }
 
@@ -153,6 +171,79 @@ async fn handle_incoming_message(
     let _ = bot.context.compact(&session_key).await;
 
     Ok(())
+}
+
+/// Try AI fallback for an unmatched message.
+///
+/// Returns `Some(response)` if AI is available and responds successfully.
+/// Returns `None` if AI is unavailable, disabled, or errors — caller
+/// should fall back to the static "Unknown command" suggestion.
+async fn ai_fallback(
+    bot: &mut Bot,
+    session_key: &crate::state::session::SessionKey,
+    user_text: &str,
+) -> Option<String> {
+    // Check if AI is available (NoopAdapter returns false → skip)
+    if !bot.ai_adapter.is_available().await {
+        return None;
+    }
+
+    // Gather recent conversation context
+    let recent = bot.context.recent(session_key, 10).await.ok()?;
+
+    // Build command list for the system prompt
+    let commands: Vec<String> = bot
+        .handlers
+        .list_commands()
+        .iter()
+        .map(|(name, desc, _)| format!("/{name} — {desc}"))
+        .collect();
+    let command_list = commands.join("\n");
+
+    // Build chat messages
+    let mut messages = vec![springtale_ai::ChatMessage {
+        role: "system".into(),
+        content: format!(
+            "You are {}, a helpful bot. The user sent a message that didn't match any command. \
+             Respond conversationally. If they seem to want a command, suggest the right one.\n\n\
+             Available commands:\n{}",
+            bot.config.persona.name, command_list
+        ),
+    }];
+
+    // Add conversation history
+    for entry in recent.iter().rev() {
+        messages.push(springtale_ai::ChatMessage {
+            role: entry.author.clone(),
+            content: String::from_utf8_lossy(&entry.content_encrypted).into_owned(),
+        });
+    }
+
+    // Add the current user message
+    messages.push(springtale_ai::ChatMessage {
+        role: "user".into(),
+        content: user_text.to_owned(),
+    });
+
+    let request = springtale_ai::AiRequest::Chat { messages };
+    let options = springtale_ai::AiOptions {
+        max_tokens: 512,
+        timeout: std::time::Duration::from_secs(10),
+        temperature: Some(0.7),
+    };
+
+    match bot.ai_adapter.complete(request, options).await {
+        Ok(response) if !response.content.is_empty() => Some(response.content),
+        Ok(_) => {
+            tracing::debug!("AI fallback returned empty response");
+            None
+        }
+        Err(springtale_ai::AiError::Disabled) => None, // Expected for NoopAdapter
+        Err(e) => {
+            tracing::warn!(error = %e, "AI fallback failed — using static suggestion");
+            None
+        }
+    }
 }
 
 async fn handle_trigger_event(
@@ -337,4 +428,41 @@ async fn dispatch_bot_action_inner(
             Ok("ai: noop".to_owned())
         }
     }
+}
+
+/// Handle a cadence tick — process all active formations.
+///
+/// Per COOPERATION.pdf §5: each tick broadcasts the current intent.
+/// Formations collect tick reports from members, update momentum (§7),
+/// check for interference (§13), and trigger recovery if needed (§15, §18).
+async fn handle_cadence_tick(bot: &mut Bot, tick: &Tick) {
+    let formations = bot.formations.read().await;
+    let formation_count = formations.len();
+
+    if formation_count == 0 {
+        return; // no active formations — skip
+    }
+
+    tracing::trace!(
+        tick = tick.sequence,
+        formations = formation_count,
+        "cadence tick processing"
+    );
+
+    // Phase 2a: tick processing is a placeholder that logs and updates momentum.
+    // Full tick processing (collect TickReports from each member, detect
+    // interference, trigger recovery) requires agent execution infrastructure
+    // that will be wired when formations actually dispatch actions.
+    drop(formations);
+
+    let mut formations = bot.formations.write().await;
+    for formation in formations.iter_mut() {
+        if formation.is_viable() {
+            // Record successful tick for momentum building
+            formation.momentum.record_success();
+        }
+    }
+
+    // Remove non-viable formations
+    formations.retain(|f| f.is_viable());
 }

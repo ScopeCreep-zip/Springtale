@@ -9,6 +9,7 @@ pub mod connector;
 pub mod error;
 pub mod triggers;
 pub mod webhook;
+pub mod factory;
 
 pub use client::KickApi;
 pub use config::KickConfig;

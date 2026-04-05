@@ -26,6 +26,8 @@ pub struct GithubConnector {
     actions: Vec<ActionDecl>,
     /// Registered event handlers for webhook-driven triggers.
     handlers: Arc<Mutex<Vec<(String, EventHandler)>>>,
+    /// Webhook secret for HMAC-SHA256 signature verification.
+    webhook_secret: Option<secrecy::SecretBox<String>>,
 }
 
 impl GithubConnector {
@@ -34,6 +36,9 @@ impl GithubConnector {
         let trigger_decls = triggers::trigger_declarations();
         let action_decls = actions::action_declarations();
         let manifest = build_manifest(&trigger_decls, &action_decls);
+        let webhook_secret = config.webhook_secret.as_ref().map(|s| {
+            secrecy::SecretBox::new(Box::new(secrecy::ExposeSecret::expose_secret(s).clone()))
+        });
         let client = GithubClient::new(&config)?;
 
         Ok(Self {
@@ -42,6 +47,7 @@ impl GithubConnector {
             triggers: trigger_decls,
             actions: action_decls,
             handlers: Arc::new(Mutex::new(Vec::new())),
+            webhook_secret,
         })
     }
 
@@ -113,6 +119,26 @@ impl Connector for GithubConnector {
 
     fn manifest(&self) -> &ConnectorManifest {
         &self.manifest
+    }
+
+    async fn verify_webhook(
+        &self,
+        headers: &std::collections::HashMap<String, String>,
+        body: &[u8],
+    ) -> Result<(), ConnectorError> {
+        let secret = self.webhook_secret.as_ref().ok_or_else(|| {
+            ConnectorError::ExecutionFailed(
+                "webhook_secret not configured — cannot verify GitHub webhook".to_owned(),
+            )
+        })?;
+
+        let signature = headers.get("x-hub-signature-256").ok_or_else(|| {
+            ConnectorError::ExecutionFailed("missing X-Hub-Signature-256 header".to_owned())
+        })?;
+
+        crate::webhook::verify_signature(secret, body, signature).map_err(|e| {
+            ConnectorError::ExecutionFailed(format!("webhook verification failed: {e}"))
+        })
     }
 }
 

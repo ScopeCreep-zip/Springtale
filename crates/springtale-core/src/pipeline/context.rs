@@ -44,6 +44,12 @@ pub struct PipelineContext {
 
     /// File attachments flowing through the pipeline.
     pub attachments: Vec<Attachment>,
+
+    /// Fuel remaining for this pipeline execution (None = unlimited).
+    /// Set by the orchestrator at spawn time. The orchestrator manages
+    /// the atomic fuel budget externally; this field carries the snapshot
+    /// allocated to this specific pipeline.
+    pub fuel_remaining: Option<u64>,
 }
 
 impl PipelineContext {
@@ -58,10 +64,12 @@ impl PipelineContext {
             chain_depth: 0,
             max_chain_depth: 4,
             attachments: Vec::new(),
+            fuel_remaining: None,
         }
     }
 
     /// Create a child context for a sub-pipeline (increments chain depth).
+    /// Inherits fuel_remaining from parent (read-only snapshot).
     pub fn child(&self) -> Result<Self, super::error::PipelineError> {
         let new_depth = self.chain_depth + 1;
         if new_depth > self.max_chain_depth {
@@ -79,6 +87,7 @@ impl PipelineContext {
             chain_depth: new_depth,
             max_chain_depth: self.max_chain_depth,
             attachments: Vec::new(),
+            fuel_remaining: self.fuel_remaining,
         })
     }
 }

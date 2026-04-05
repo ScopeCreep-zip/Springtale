@@ -20,4 +20,16 @@ pub enum TransportError {
 
     #[error("transport not connected")]
     NotConnected,
+
+    #[error("TLS error: {0}")]
+    Tls(String),
+
+    #[error("DNS rebinding attempt: Host header {host} does not match {expected}")]
+    DnsRebinding { host: String, expected: String },
+
+    #[error("peer certificate rejected: {0}")]
+    PeerCertRejected(String),
+
+    #[error("HTTP error: {0}")]
+    Http(String),
 }

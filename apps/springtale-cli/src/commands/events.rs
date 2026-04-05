@@ -2,7 +2,6 @@ use anyhow::Result;
 use tabled::{Table, Tabled};
 
 use springtale_store::backend::sqlite::SqliteBackend;
-use springtale_store::backend::trait_::StorageBackend;
 use springtale_store::schema::events::EventFilter;
 
 use crate::output;
@@ -33,7 +32,9 @@ pub async fn run(
         ..Default::default()
     };
 
-    let events = store.list_events(&filter).await?;
+    let events = springtale_runtime::operations::events::list_events_from_store(store, &filter)
+        .await
+        .map_err(|e| anyhow::anyhow!("{e}"))?;
 
     if json {
         output::print_json(&events)?;

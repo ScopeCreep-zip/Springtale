@@ -30,6 +30,13 @@ pub struct Vault {
     encryption_key: Option<SecretBox<[u8; 32]>>,
     /// The salt used for this vault file.
     salt: [u8; 16],
+    /// Which vault session is active (Real or Duress).
+    session: super::duress::VaultSession,
+    /// For dual vaults: raw bytes of the INACTIVE region (preserved unchanged on save).
+    /// None for legacy single-region vaults.
+    inactive_region_bytes: Option<Vec<u8>>,
+    /// For dual vaults: which region index (0 or 1) is the active one.
+    active_region_index: u8,
 }
 
 impl Vault {
@@ -46,13 +53,47 @@ impl Vault {
             entries: Some(HashMap::new()),
             encryption_key: Some(SecretBox::new(Box::new(key))),
             salt,
+            session: super::duress::VaultSession::Real,
+            inactive_region_bytes: None,
+            active_region_index: 0,
         };
 
         key.zeroize();
         Ok(vault)
     }
 
+    /// Create an ephemeral vault (memory-only, no file I/O).
+    ///
+    /// All state is lost on exit. `save()` is a no-op.
+    /// Used with `--ephemeral` flag for travel mode / device seizure protection.
+    pub fn create_ephemeral(passphrase: &[u8]) -> Result<Self, CryptoError> {
+        let salt = kdf::generate_salt();
+        let mut key = kdf::derive_key(passphrase, &salt)?;
+
+        let vault = Self {
+            path: PathBuf::new(), // empty path signals ephemeral
+            entries: Some(HashMap::new()),
+            encryption_key: Some(SecretBox::new(Box::new(key))),
+            salt,
+            session: super::duress::VaultSession::Real,
+            inactive_region_bytes: None,
+            active_region_index: 0,
+        };
+
+        key.zeroize();
+        Ok(vault)
+    }
+
+    /// Returns true if this vault is ephemeral (no file backing).
+    pub fn is_ephemeral(&self) -> bool {
+        self.path.as_os_str().is_empty()
+    }
+
     /// Open an existing vault file and decrypt it.
+    ///
+    /// Automatically detects dual-region (duress) vaults by file size.
+    /// For dual vaults, tries the passphrase against both regions.
+    /// Returns `is_duress_session() == true` if the duress region was unlocked.
     pub fn open(path: impl Into<PathBuf>, passphrase: &[u8]) -> Result<Self, CryptoError> {
         let path = path.into();
 
@@ -66,8 +107,40 @@ impl Vault {
         let mut data = Vec::new();
         std::io::Read::read_to_end(&mut file, &mut data)?;
 
+        // Detect dual-region (duress) vault by constant file size
+        if super::duress::is_dual_vault(data.len()) {
+            let region_total = super::duress::REGION_HEADER_SIZE + super::duress::REGION_SIZE;
+            let (entries, salt, mut key, session) =
+                super::duress::open_dual_vault(&data, passphrase)?;
+
+            // Determine which region was active and preserve the other's raw bytes
+            let (active_index, inactive_bytes) = match session {
+                super::duress::VaultSession::Real => {
+                    // Region 0 decrypted → preserve region 1
+                    (0u8, data[region_total..].to_vec())
+                }
+                super::duress::VaultSession::Duress => {
+                    // Region 1 decrypted → preserve region 0
+                    (1u8, data[..region_total].to_vec())
+                }
+            };
+
+            let vault = Self {
+                path,
+                entries: Some(entries),
+                encryption_key: Some(SecretBox::new(Box::new(key))),
+                salt,
+                session,
+                inactive_region_bytes: Some(inactive_bytes),
+                active_region_index: active_index,
+            };
+
+            key.zeroize();
+            return Ok(vault);
+        }
+
+        // Legacy single-region format
         if data.len() < 16 + 24 + 16 {
-            // salt + nonce + minimum ciphertext (at least a tag)
             return Err(CryptoError::VaultDecryptionFailed);
         }
 
@@ -98,6 +171,9 @@ impl Vault {
             entries: Some(entries),
             encryption_key: Some(SecretBox::new(Box::new(key))),
             salt,
+            session: super::duress::VaultSession::Real,
+            inactive_region_bytes: None,
+            active_region_index: 0,
         };
 
         key.zeroize();
@@ -105,33 +181,57 @@ impl Vault {
     }
 
     /// Save the vault to disk (encrypted).
+    ///
+    /// No-op for ephemeral vaults — data stays in memory only.
+    ///
+    /// For dual (duress) vaults: re-encrypts ONLY the active region.
+    /// The inactive region's raw ciphertext is preserved unchanged
+    /// (asymmetric save — VeraCrypt model).
     pub fn save(&self) -> Result<(), CryptoError> {
+        if self.is_ephemeral() {
+            return Ok(());
+        }
         let entries = self.entries.as_ref().ok_or(CryptoError::VaultLocked)?;
         let key_box = self
             .encryption_key
             .as_ref()
             .ok_or(CryptoError::VaultLocked)?;
 
-        let plaintext =
-            serde_json::to_vec(entries).map_err(|e| CryptoError::Serialization(e.to_string()))?;
-
-        // Generate a fresh nonce for each save (192-bit, collision negligible at 2^-96)
-        let nonce = XChaCha20Poly1305::generate_nonce(&mut rand::rngs::OsRng);
-
         // SECURITY: expose needed for AEAD encryption
         let key = key_box.expose_secret();
-        let cipher = XChaCha20Poly1305::new_from_slice(key)
-            .map_err(|_| CryptoError::KeyGeneration("invalid key length".into()))?;
 
-        let ciphertext = cipher
-            .encrypt(&nonce, plaintext.as_slice())
-            .map_err(|_| CryptoError::KeyGeneration("encryption failed".into()))?;
+        let file_data = if let Some(ref inactive_bytes) = self.inactive_region_bytes {
+            // Dual vault: re-encrypt active region, preserve inactive region
+            let active_region = super::duress::encrypt_region_with_key(key, &self.salt, entries)?;
 
-        // Write: [salt (16)] [nonce (24)] [ciphertext]
-        let mut file_data = Vec::with_capacity(16 + 24 + ciphertext.len());
-        file_data.extend_from_slice(&self.salt);
-        file_data.extend_from_slice(nonce.as_slice());
-        file_data.extend_from_slice(&ciphertext);
+            let mut data = Vec::with_capacity(super::duress::DUAL_VAULT_FILE_SIZE);
+            if self.active_region_index == 0 {
+                data.extend_from_slice(&active_region);
+                data.extend_from_slice(inactive_bytes);
+            } else {
+                data.extend_from_slice(inactive_bytes);
+                data.extend_from_slice(&active_region);
+            }
+            data
+        } else {
+            // Legacy single-region format
+            let plaintext = serde_json::to_vec(entries)
+                .map_err(|e| CryptoError::Serialization(e.to_string()))?;
+
+            let nonce = XChaCha20Poly1305::generate_nonce(&mut rand::rngs::OsRng);
+            let cipher = XChaCha20Poly1305::new_from_slice(key)
+                .map_err(|_| CryptoError::KeyGeneration("invalid key length".into()))?;
+
+            let ciphertext = cipher
+                .encrypt(&nonce, plaintext.as_slice())
+                .map_err(|_| CryptoError::KeyGeneration("encryption failed".into()))?;
+
+            let mut data = Vec::with_capacity(16 + 24 + ciphertext.len());
+            data.extend_from_slice(&self.salt);
+            data.extend_from_slice(nonce.as_slice());
+            data.extend_from_slice(&ciphertext);
+            data
+        };
 
         // Write atomically: write to temp file then rename
         let tmp_path = self.path.with_extension("bin.tmp");
@@ -180,6 +280,37 @@ impl Vault {
     /// Check if the vault is currently unlocked.
     pub fn is_unlocked(&self) -> bool {
         self.entries.is_some()
+    }
+
+    /// Check if this session was unlocked with a duress passphrase.
+    pub fn is_duress_session(&self) -> bool {
+        self.session == super::duress::VaultSession::Duress
+    }
+
+    /// Get the vault session type.
+    pub fn session(&self) -> super::duress::VaultSession {
+        self.session
+    }
+
+    /// Emergency data destruction — zeroes key material and overwrites vault file.
+    ///
+    /// Must complete within 3 seconds. Synchronous (no async overhead).
+    ///
+    /// 1. Lock vault (zeroes encryption key in memory via SecretBox drop)
+    /// 2. Overwrite vault file with random bytes
+    /// 3. Delete vault file
+    ///
+    /// After this call, the vault is irrecoverable.
+    pub fn panic_wipe(&mut self) -> Result<(), CryptoError> {
+        // Step 1: Zero key material in memory
+        self.lock();
+
+        // Step 2+3: Overwrite and delete vault file (skip for ephemeral)
+        if !self.is_ephemeral() {
+            super::wipe::wipe_vault_file(&self.path)?;
+        }
+
+        Ok(())
     }
 
     /// Get the vault file path.
@@ -359,6 +490,77 @@ mod tests {
         assert!(!data.starts_with(b"\x89PNG")); // png
         assert!(!data.starts_with(b"SQLite")); // sqlite
         assert!(!data.starts_with(b"{")); // json
+
+        fs::remove_file(&path).ok();
+    }
+
+    #[test]
+    fn test_dual_vault_open_modify_save_reopen() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("dual.bin");
+
+        // Create dual vault with real + decoy data
+        let mut real = HashMap::new();
+        real.insert("identity".into(), b"real_key".to_vec());
+        let mut decoy = HashMap::new();
+        decoy.insert("note".into(), b"groceries".to_vec());
+
+        crate::vault::duress::create_dual_vault(&path, b"real_pass", b"duress_pass", &real, &decoy)
+            .unwrap();
+
+        // Open with real passphrase, modify, save
+        let mut vault = Vault::open(&path, b"real_pass").unwrap();
+        assert!(!vault.is_duress_session());
+        assert_eq!(
+            vault.get("identity").unwrap().unwrap().as_slice(),
+            b"real_key"
+        );
+
+        vault.set("new_key", b"new_value".to_vec()).unwrap();
+        vault.save().unwrap();
+
+        // Reopen with real passphrase — new data should be there
+        let vault2 = Vault::open(&path, b"real_pass").unwrap();
+        assert_eq!(
+            vault2.get("new_key").unwrap().unwrap().as_slice(),
+            b"new_value"
+        );
+        assert_eq!(
+            vault2.get("identity").unwrap().unwrap().as_slice(),
+            b"real_key"
+        );
+
+        // Reopen with duress passphrase — decoy data should still be intact
+        let vault3 = Vault::open(&path, b"duress_pass").unwrap();
+        assert!(vault3.is_duress_session());
+        assert_eq!(
+            vault3.get("note").unwrap().unwrap().as_slice(),
+            b"groceries"
+        );
+        assert!(vault3.get("new_key").unwrap().is_none()); // Real data NOT visible
+
+        // File size should still be constant
+        let file_size = fs::metadata(&path).unwrap().len();
+        assert_eq!(file_size, crate::vault::duress::DUAL_VAULT_FILE_SIZE as u64);
+    }
+
+    #[test]
+    fn test_legacy_vault_still_works_with_duress_code() {
+        let path = temp_vault_path();
+
+        // Create a legacy single-region vault
+        let mut vault = Vault::create(&path, b"legacy_pass").unwrap();
+        vault.set("key1", b"val1".to_vec()).unwrap();
+        vault.save().unwrap();
+
+        // Open it — should work, session = Real, not duress
+        let vault2 = Vault::open(&path, b"legacy_pass").unwrap();
+        assert!(!vault2.is_duress_session());
+        assert_eq!(vault2.get("key1").unwrap().unwrap().as_slice(), b"val1");
+
+        // File size should NOT be the dual vault constant
+        let file_size = fs::metadata(&path).unwrap().len();
+        assert_ne!(file_size, crate::vault::duress::DUAL_VAULT_FILE_SIZE as u64);
 
         fs::remove_file(&path).ok();
     }

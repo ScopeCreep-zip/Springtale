@@ -8,8 +8,23 @@ const MIGRATION_001: &str = include_str!("001_init.sql");
 /// Embedded SQL for schema version 2.
 const MIGRATION_002: &str = include_str!("002_bot.sql");
 
+/// Embedded SQL for schema version 3.
+const MIGRATION_003: &str = include_str!("003_sentinel.sql");
+
+/// Embedded SQL for schema version 4.
+const MIGRATION_004: &str = include_str!("004_safety.sql");
+
+/// Embedded SQL for schema version 5.
+const MIGRATION_005: &str = include_str!("005_formations.sql");
+
 /// All migrations in order.
-const MIGRATIONS: &[(i64, &str)] = &[(1, MIGRATION_001), (2, MIGRATION_002)];
+const MIGRATIONS: &[(i64, &str)] = &[
+    (1, MIGRATION_001),
+    (2, MIGRATION_002),
+    (3, MIGRATION_003),
+    (4, MIGRATION_004),
+    (5, MIGRATION_005),
+];
 
 /// Run all pending migrations on the given connection.
 ///
@@ -94,7 +109,22 @@ mod tests {
         let version: i64 = conn
             .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 2);
+        assert_eq!(version, 5);
+    }
+
+    #[test]
+    fn test_migration_003_creates_audit_trail() {
+        let conn = Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='audit_trail'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
     }
 
     #[test]

@@ -24,6 +24,7 @@ chrono      = { workspace = true }
 uuid        = { workspace = true }
 regex       = { workspace = true }
 rand        = { workspace = true }
+dashmap     = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

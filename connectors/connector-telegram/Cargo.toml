@@ -17,6 +17,7 @@ tokio = { workspace = true }
 reqwest = { workspace = true }
 subtle = { workspace = true }
 springtale-connector = { workspace = true }
+inventory = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

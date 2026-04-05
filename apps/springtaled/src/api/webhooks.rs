@@ -4,7 +4,6 @@ use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 
 use springtale_core::rule::engine::TriggerEvent;
-use springtale_store::backend::trait_::StorageBackend;
 use springtale_store::schema::events::EventEntry;
 
 use super::state::AppState;
@@ -31,7 +30,7 @@ pub async fn receive(
     super::validate_path_param(&connector_name)?;
     super::validate_path_param(&trigger_name)?;
 
-    let registry = state.registry.read().await;
+    let registry = state.runtime.registry.read().await;
 
     // Check connector exists and is enabled
     let entry = registry.get(&connector_name).ok_or(StatusCode::NOT_FOUND)?;
@@ -55,12 +54,23 @@ pub async fn receive(
         "webhook received"
     );
 
-    // Phase 1a: webhook signature verification will be connector-aware in Phase 2.
-    // In production, this handler would:
-    // 1. Read connector-specific signature headers
-    // 2. Call the connector's verify function (GitHub HMAC, Kick RSA)
-    // 3. Only dispatch after verification succeeds
-    let _ = headers; // Used for signature verification in production
+    // Verify webhook signature BEFORE dispatching.
+    // Each connector implements verify_webhook() with its own scheme
+    // (GitHub: HMAC-SHA256, Kick: RSA, Telegram: secret token).
+    // Connectors that don't support webhooks reject with an error.
+    let header_map: std::collections::HashMap<String, String> = headers
+        .iter()
+        .filter_map(|(k, v)| v.to_str().ok().map(|v| (k.to_string(), v.to_owned())))
+        .collect();
+
+    if let Err(e) = entry.host.verify_webhook(&header_map, &body).await {
+        tracing::warn!(
+            connector = %connector_name,
+            error = %e,
+            "webhook signature verification failed"
+        );
+        return Err(StatusCode::UNAUTHORIZED);
+    }
 
     // Store event in log (metadata only, NOT payload content per privacy model)
     let event = EventEntry {
@@ -70,9 +80,12 @@ pub async fn receive(
         action_taken: "webhook_received".to_owned(),
         timestamp: chrono::Utc::now(),
     };
-    if let Err(e) = state.store.log_event(&event).await {
+    if let Err(e) = state.runtime.store.log_event(&event).await {
         tracing::warn!(error = %e, "failed to log webhook event");
     }
+
+    // Broadcast to SSE subscribers (dashboard live event stream)
+    let _ = state.event_tx.send(event);
 
     // Drop the registry lock before sending to the channel
     drop(registry);

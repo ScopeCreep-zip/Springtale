@@ -40,6 +40,61 @@ pub enum Command {
     },
     /// Initialize Springtale (create data directory, vault, config).
     Init,
+    /// Emergency data destruction — overwrites vault + database with random bytes.
+    /// NO confirmation prompt. This is for emergencies (IPV, device seizure).
+    Panic,
+    /// Travel mode — encrypted backup + local wipe, or restore from backup.
+    Travel {
+        #[command(subcommand)]
+        action: TravelAction,
+    },
+    /// Vault management — duress passphrase setup.
+    Vault {
+        #[command(subcommand)]
+        action: VaultAction,
+    },
+    /// Bot memory inspection and maintenance.
+    Memory {
+        #[command(subcommand)]
+        action: MemoryAction,
+    },
+    /// Data export and purge.
+    Data {
+        #[command(subcommand)]
+        action: DataAction,
+    },
+    /// Agent configuration.
+    Agent {
+        #[command(subcommand)]
+        action: AgentAction,
+    },
+    /// Cryptographic operations.
+    Crypto {
+        #[command(subcommand)]
+        action: CryptoAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum TravelAction {
+    /// Export encrypted backup and wipe local data.
+    Prepare {
+        /// Path to save the encrypted backup file.
+        #[arg(long)]
+        backup_to: std::path::PathBuf,
+    },
+    /// Restore data from an encrypted backup.
+    Restore {
+        /// Path to the encrypted backup file.
+        #[arg(long)]
+        from: std::path::PathBuf,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum VaultAction {
+    /// Configure a duress passphrase (dual-region vault).
+    DuressSetup,
 }
 
 #[derive(Subcommand)]
@@ -87,10 +142,66 @@ pub enum RuleAction {
         /// Rule ID.
         id: String,
     },
+    /// Delete a rule by ID.
+    Delete {
+        /// Rule ID.
+        id: String,
+    },
+    /// Update a rule from a JSON or TOML file.
+    Update {
+        /// Rule ID to update.
+        id: String,
+        /// Path to the updated rule definition file.
+        file: std::path::PathBuf,
+    },
 }
 
 #[derive(Subcommand)]
 pub enum ServerAction {
     /// Start springtaled inline.
     Start,
+}
+
+#[derive(Subcommand)]
+pub enum MemoryAction {
+    /// Inspect bot memory — list sessions and entry counts.
+    Audit,
+    /// Force memory compaction — delete oldest entries beyond limit.
+    Compact {
+        /// Maximum entries per session (default: 100).
+        #[arg(long, default_value = "100")]
+        max_entries: usize,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum DataAction {
+    /// Export all user data to a JSON file.
+    Export {
+        /// Output file path (default: stdout).
+        #[arg(long)]
+        output: Option<std::path::PathBuf>,
+        /// Encrypt the export file.
+        #[arg(long)]
+        encrypt: bool,
+    },
+    /// Delete all user data (rules, events, sessions, memory) without destroying the vault.
+    Purge,
+}
+
+#[derive(Subcommand)]
+pub enum AgentAction {
+    /// Set an agent's autonomy level (observe, suggest, act-with-approval, act-autonomously).
+    SetAutonomy {
+        /// Agent name.
+        name: String,
+        /// Autonomy level.
+        level: String,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum CryptoAction {
+    /// Re-encrypt the vault with a new passphrase.
+    RotateVaultKey,
 }

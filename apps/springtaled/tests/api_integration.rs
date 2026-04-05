@@ -30,7 +30,8 @@ use springtale_crypto::token::derive_api_token_hash;
 /// The `ready` flag defaults to `true`. Pass `false` for tests that need
 /// the daemon to appear as still booting.
 fn build_test_app(ready: bool) -> (Router, String) {
-    let store = Arc::new(SqliteBackend::open_in_memory().unwrap());
+    let store: Arc<dyn springtale_store::StorageBackend> =
+        Arc::new(SqliteBackend::open_in_memory().unwrap());
     let registry = Arc::new(RwLock::new(ConnectorRegistry::new(
         CapabilityPolicy::AllowAll,
     )));
@@ -46,16 +47,44 @@ fn build_test_app(ready: bool) -> (Router, String) {
 
     let ready_flag = Arc::new(AtomicBool::new(ready));
 
-    let state = AppState {
+    let sentinel = Arc::new(springtale_sentinel::Sentinel::new(
+        springtale_sentinel::SentinelConfig::default(),
+        store.clone(),
+    ));
+
+    let ai_adapter: Arc<dyn springtale_ai::AiAdapter> = Arc::new(springtale_ai::NoopAdapter);
+
+    let (event_tx, _) = tokio::sync::broadcast::channel(256);
+
+    let heartbeat_monitor = std::sync::Arc::new(tokio::sync::Mutex::new(
+        springtale_scheduler::HeartbeatMonitor::new(0, trigger_tx.clone()),
+    ));
+
+    let canvas = std::sync::Arc::new(tokio::sync::RwLock::new(
+        springtale_core::canvas::CanvasState::default(),
+    ));
+    let (canvas_tx, _rx) = tokio::sync::broadcast::channel(64);
+
+    let runtime = springtale_runtime::RuntimeState {
         store,
         registry,
         engine,
+        ai_adapter,
+        sentinel,
+        canvas,
+        canvas_tx,
+    };
+
+    let state = AppState {
+        runtime,
         api_token_hash,
         ready: ready_flag,
         trigger_tx,
         cron,
         fs_watcher,
         rate_limit_per_sec: 1000,
+        event_tx,
+        heartbeat_monitor,
     };
 
     let router = build_router(state);

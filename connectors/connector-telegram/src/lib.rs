@@ -10,6 +10,7 @@ pub mod error;
 pub mod polling;
 pub mod triggers;
 pub mod webhook;
+pub mod factory;
 
 pub use client::{TelegramApi, TelegramClient};
 pub use config::TelegramConfig;

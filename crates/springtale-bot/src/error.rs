@@ -32,4 +32,7 @@ pub enum BotError {
 
     #[error("bot not initialized: {0}")]
     NotInitialized(String),
+
+    #[error("AI error: {0}")]
+    Ai(#[from] springtale_ai::AiError),
 }

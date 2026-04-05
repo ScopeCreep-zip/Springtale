@@ -1,0 +1,18 @@
+#![forbid(unsafe_code)]
+#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
+pub mod audit;
+pub mod circuit_breaker;
+pub mod config;
+pub mod dead_man;
+pub mod error;
+pub mod impact;
+pub mod rate_limiter;
+pub mod sentinel;
+pub mod toxic_pairs;
+pub mod verdict;
+
+pub use config::SentinelConfig;
+pub use error::SentinelError;
+pub use sentinel::Sentinel;
+pub use verdict::Verdict;

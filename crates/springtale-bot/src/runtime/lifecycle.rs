@@ -1,12 +1,15 @@
 use std::sync::Arc;
+use std::time::Duration;
 
 use serde::Deserialize;
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::{RwLock, broadcast, mpsc};
 
 use springtale_connector::registry::store::ConnectorRegistry;
 use springtale_core::rule::engine::{RuleEngine, TriggerEvent};
 use springtale_store::StorageBackend;
 
+use crate::cooperation::cadence::{CadenceBus, Tick};
+use crate::cooperation::formation::Formation;
 use crate::error::BotError;
 use crate::handler::HandlerRegistry;
 use crate::memory::ConversationContext;
@@ -74,9 +77,17 @@ pub struct Bot {
     pub(crate) engine: Arc<RwLock<RuleEngine>>,
     pub(crate) config: BotConfig,
     pub(crate) context: ConversationContext,
+    pub(crate) ai_adapter: Arc<dyn springtale_ai::AiAdapter>,
     pub(crate) connector_rx: mpsc::Receiver<IncomingMessage>,
     pub(crate) rule_rx: mpsc::Receiver<TriggerEvent>,
     pub(crate) response_tx: mpsc::Sender<OutgoingResponse>,
+    /// Active formations (cooperation module).
+    pub(crate) formations: Arc<RwLock<Vec<Formation>>>,
+    /// Cadence bus — used by orchestrator::composer when creating formations.
+    #[allow(dead_code)]
+    pub(crate) cadence: CadenceBus,
+    /// Receiver for cadence ticks (event loop select! branch).
+    pub(crate) cadence_rx: broadcast::Receiver<Tick>,
 }
 
 impl Bot {
@@ -92,6 +103,7 @@ pub struct BotBuilder {
     registry: Option<Arc<RwLock<ConnectorRegistry>>>,
     engine: Option<Arc<RwLock<RuleEngine>>>,
     config: BotConfig,
+    ai_adapter: Option<Arc<dyn springtale_ai::AiAdapter>>,
     connector_rx: Option<mpsc::Receiver<IncomingMessage>>,
     rule_rx: Option<mpsc::Receiver<TriggerEvent>>,
     response_tx: Option<mpsc::Sender<OutgoingResponse>>,
@@ -104,6 +116,7 @@ impl BotBuilder {
             registry: None,
             engine: None,
             config: BotConfig::default(),
+            ai_adapter: None,
             connector_rx: None,
             rule_rx: None,
             response_tx: None,
@@ -142,6 +155,11 @@ impl BotBuilder {
 
     pub fn response_tx(mut self, tx: mpsc::Sender<OutgoingResponse>) -> Self {
         self.response_tx = Some(tx);
+        self
+    }
+
+    pub fn ai_adapter(mut self, adapter: Arc<dyn springtale_ai::AiAdapter>) -> Self {
+        self.ai_adapter = Some(adapter);
         self
     }
 
@@ -192,8 +210,28 @@ impl BotBuilder {
             )?;
         }
 
-        // Build conversation context
-        let context = ConversationContext::new(store.clone(), self.config.context_window);
+        // AI adapter — defaults to NoopAdapter if not provided
+        let ai_adapter: Arc<dyn springtale_ai::AiAdapter> = self
+            .ai_adapter
+            .unwrap_or_else(|| Arc::new(springtale_ai::NoopAdapter));
+
+        // Build conversation context with AI adapter for summarization compaction
+        let context = ConversationContext::new(
+            store.clone(),
+            self.config.context_window,
+            ai_adapter.clone(),
+        );
+
+        // Create cadence bus for cooperation (§5)
+        let (cadence_tx, _) = broadcast::channel::<Tick>(64);
+        let cadence = CadenceBus::new(Duration::from_secs(1), cadence_tx);
+        let cadence_rx = cadence.subscribe();
+
+        // Spawn cadence tick task (external clock, Necrodancer pattern)
+        let cadence_clone = cadence.clone();
+        tokio::spawn(async move {
+            cadence_clone.run().await;
+        });
 
         Ok(Bot {
             router,
@@ -203,9 +241,13 @@ impl BotBuilder {
             engine,
             config: self.config,
             context,
+            ai_adapter,
             connector_rx,
             rule_rx,
             response_tx,
+            formations: Arc::new(RwLock::new(Vec::new())),
+            cadence,
+            cadence_rx,
         })
     }
 }

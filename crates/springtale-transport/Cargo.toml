@@ -19,7 +19,16 @@ futures-util = { workspace = true }
 bytes = { workspace = true }
 springtale-crypto = { workspace = true }
 
+# HTTP transport (Phase 2a)
+axum = { workspace = true }
+axum-server = { workspace = true }
+reqwest = { workspace = true }
+rustls = { workspace = true }
+rustls-pemfile = { workspace = true }
+hex = { workspace = true }
+
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 rand = { workspace = true }
 tempfile = { workspace = true }
+rcgen = "0.13"

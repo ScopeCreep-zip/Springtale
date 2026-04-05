@@ -3,78 +3,68 @@ use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 
-use springtale_store::backend::trait_::StorageBackend;
+use springtale_runtime::operations;
 
 use super::state::AppState;
 
-/// Maximum number of rules per instance. Prevents O(n) rule evaluation from
-/// becoming a DoS vector when combined with high event rates.
-const MAX_RULES: usize = 10_000;
+/// GET /rules/schema — return JSON schemas for trigger, condition, and action types.
+///
+/// Used by the visual rule builder to generate input forms for each type.
+pub async fn schema() -> impl IntoResponse {
+    Json(serde_json::json!({
+        "triggers": {
+            "Cron": { "fields": { "expression": { "type": "string", "description": "Cron expression (6 fields)" } } },
+            "FileWatch": { "fields": { "path": { "type": "string" }, "event": { "type": "string", "enum": ["create", "modify", "delete"] } } },
+            "Webhook": { "fields": { "path": { "type": "string" } } },
+            "ConnectorEvent": { "fields": { "connector": { "type": "string" }, "event": { "type": "string" } } },
+            "SystemEvent": { "fields": { "event": { "type": "string" } } },
+            "Heartbeat": { "fields": {} },
+        },
+        "conditions": {
+            "FieldEquals": { "fields": { "field": { "type": "string" }, "value": { "type": "any" } } },
+            "Contains": { "fields": { "field": { "type": "string" }, "value": { "type": "string" } } },
+            "Regex": { "fields": { "field": { "type": "string" }, "pattern": { "type": "string" } } },
+            "TimeInRange": { "fields": { "start": { "type": "string", "description": "HH:MM" }, "end": { "type": "string" } } },
+            "DayOfWeek": { "fields": { "days": { "type": "array", "items": { "type": "integer", "min": 0, "max": 6 } } } },
+        },
+        "actions": {
+            "RunConnector": { "fields": { "connector": { "type": "string" }, "action": { "type": "string" }, "params": { "type": "object" } } },
+            "SendMessage": { "fields": { "text": { "type": "string" } } },
+            "WriteFile": { "fields": { "destination": { "type": "string" }, "content": { "type": "string" } } },
+            "Notify": { "fields": { "title": { "type": "string" }, "body": { "type": "string" } } },
+            "Delay": { "fields": { "seconds": { "type": "integer" } } },
+            "AiComplete": { "fields": { "prompt": { "type": "string" }, "adapter": { "type": "string", "optional": true } } },
+        },
+    }))
+}
 
 /// GET /rules — list all rules.
 pub async fn list(State(state): State<AppState>) -> impl IntoResponse {
-    let engine = state.engine.read().await;
-    let rules: Vec<serde_json::Value> = engine
-        .list_rules()
-        .iter()
-        .map(|rule| {
-            serde_json::json!({
-                "id": rule.id.to_string(),
-                "name": rule.name,
-                "status": format!("{:?}", rule.status),
-                "trigger_type": format!("{:?}", rule.trigger),
-            })
-        })
-        .collect();
-
+    let rules = operations::rules::list_rules(&state.runtime).await;
     Json(serde_json::json!({ "rules": rules }))
 }
 
 /// POST /rules — create a new rule.
-///
-/// Accepts a JSON rule definition. Adds to both the engine and the store.
 pub async fn create(
     State(state): State<AppState>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    // Phase 1a: parse rule from JSON body
     let rule: springtale_core::rule::types::Rule =
         serde_json::from_value(body).map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    // Check rule count limit before inserting
-    {
-        let engine = state.engine.read().await;
-        if engine.list_rules().len() >= MAX_RULES {
-            tracing::warn!("rule count limit reached ({MAX_RULES})");
-            return Err(StatusCode::TOO_MANY_REQUESTS);
-        }
-    }
-
-    let rule_id = rule.id;
-
-    // Add to store
-    state
-        .store
-        .insert_rule(&rule)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    // Schedule trigger if applicable — if this fails, roll back the store insert
+    // Schedule trigger (app-specific: cron/fs_watcher)
     if let Err(e) = schedule_rule_trigger(&state, &rule).await {
-        tracing::error!(rule = %rule.name, error = %e, "trigger scheduling failed, rolling back");
-        let _ = state.store.delete_rule(&rule_id).await;
+        tracing::error!(rule = %rule.name, error = %e, "trigger scheduling failed");
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
 
-    // Add to engine
-    {
-        let mut engine = state.engine.write().await;
-        if let Err(e) = engine.add_rule(rule) {
-            tracing::error!(error = %e, "failed to add rule to engine");
-            let _ = state.store.delete_rule(&rule_id).await;
-            return Err(StatusCode::BAD_REQUEST);
+    let rule_id = match operations::rules::create_rule(&state.runtime, rule).await {
+        Ok(id) => id,
+        Err(e) => {
+            tracing::error!(error = %e, "failed to create rule");
+            return Err(StatusCode::INTERNAL_SERVER_ERROR);
         }
-    }
+    };
 
     Ok((
         StatusCode::CREATED,
@@ -92,50 +82,33 @@ pub async fn update(
     let uuid = uuid::Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let rule_id = springtale_core::rule::types::RuleId(uuid);
 
-    let mut rule: springtale_core::rule::types::Rule =
+    let rule: springtale_core::rule::types::Rule =
         serde_json::from_value(body).map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    // Force the rule ID to match the URL path — prevents ID mismatch
-    rule.id = rule_id;
-
-    // Insert new rule FIRST — if this fails, old rule is still intact in store.
-    // This prevents data loss if the insert fails after deleting the old rule.
-    state
-        .store
-        .insert_rule(&rule)
-        .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    // Now safe to delete old rule from store (new one is persisted)
-    let _ = state.store.delete_rule(&rule_id).await;
-
-    // Unschedule old triggers, schedule new ones.
-    // Clone the rule data under lock, then drop lock before awaiting unschedule
-    // to avoid holding the engine read lock across the cron Mutex await.
+    // Unschedule old triggers (app-specific)
     let old_rule = {
-        let engine = state.engine.read().await;
+        let engine = state.runtime.engine.read().await;
         engine
             .list_rules()
             .iter()
             .find(|r| r.id == rule_id)
             .map(|r| (*r).clone())
     };
-    if let Some(old_rule) = old_rule {
-        unschedule_rule_trigger(&state, &old_rule).await;
+    if let Some(ref old) = old_rule {
+        unschedule_rule_trigger(&state, old).await;
     }
 
+    // Delegate store+engine update to operations
+    operations::rules::update_rule(&state.runtime, &rule_id, rule.clone())
+        .await
+        .map_err(|e| {
+            tracing::error!(error = %e, "failed to update rule");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    // Schedule new triggers (app-specific)
     if let Err(e) = schedule_rule_trigger(&state, &rule).await {
         tracing::warn!(rule = %rule.name, error = %e, "failed to schedule updated rule trigger");
-    }
-
-    // Update engine
-    {
-        let mut engine = state.engine.write().await;
-        engine.remove_rule(&rule_id);
-        if let Err(e) = engine.add_rule(rule) {
-            tracing::error!(error = %e, "failed to add updated rule to engine");
-            return Err(StatusCode::BAD_REQUEST);
-        }
     }
 
     Ok((StatusCode::OK, Json(serde_json::json!({ "updated": id }))))
@@ -150,36 +123,53 @@ pub async fn delete(
     let uuid = uuid::Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let rule_id = springtale_core::rule::types::RuleId(uuid);
 
-    // Unschedule triggers before deleting.
-    // Clone rule data under lock, drop lock before awaiting unschedule.
+    // Unschedule triggers (app-specific)
     let old_rule = {
-        let engine = state.engine.read().await;
+        let engine = state.runtime.engine.read().await;
         engine
             .list_rules()
             .iter()
             .find(|r| r.id == rule_id)
             .map(|r| (*r).clone())
     };
-    if let Some(old_rule) = old_rule {
-        unschedule_rule_trigger(&state, &old_rule).await;
+    if let Some(ref old) = old_rule {
+        unschedule_rule_trigger(&state, old).await;
     }
 
-    state
-        .store
-        .delete_rule(&rule_id)
+    // Delegate store+engine deletion to operations
+    operations::rules::delete_rule(&state.runtime, &rule_id)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
-
-    // Remove from engine
-    {
-        let mut engine = state.engine.write().await;
-        engine.remove_rule(&rule_id);
-    }
 
     Ok((StatusCode::OK, Json(serde_json::json!({ "deleted": id }))))
 }
 
-/// POST /rules/{id}/run — manually trigger a rule.
+/// POST /rules/{id}/toggle — toggle a rule's enabled/disabled status.
+pub async fn toggle(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<impl IntoResponse, StatusCode> {
+    super::validate_path_param(&id)?;
+    let uuid = uuid::Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
+    let rule_id = springtale_core::rule::types::RuleId(uuid);
+
+    let enabled = body
+        .get("enabled")
+        .and_then(|v| v.as_bool())
+        .ok_or(StatusCode::BAD_REQUEST)?;
+
+    operations::rules::toggle_rule(&state.runtime, &rule_id, enabled)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "id": id, "enabled": enabled })),
+    ))
+}
+
+/// POST /rules/{id}/run — manually trigger a rule (dry-run).
 pub async fn run(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -188,77 +178,23 @@ pub async fn run(
     let uuid = uuid::Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let rule_id = springtale_core::rule::types::RuleId(uuid);
 
-    let engine = state.engine.read().await;
-
-    // Find the rule
-    let rule = engine
-        .list_rules()
-        .into_iter()
-        .find(|r| r.id == rule_id)
-        .ok_or(StatusCode::NOT_FOUND)?;
-
-    // Create a synthetic trigger event that matches the rule's trigger definition.
-    // Each trigger type requires specific fields to match (see trigger_matches in engine.rs).
-    let event = match &rule.trigger {
-        springtale_core::rule::Trigger::Cron { .. } => {
-            springtale_core::rule::engine::TriggerEvent {
-                trigger_type: "Cron".to_owned(),
-                connector: None,
-                event: None,
-                payload: serde_json::json!({"manual_trigger": true}),
-            }
-        }
-        springtale_core::rule::Trigger::FileWatch { path, event: ev } => {
-            springtale_core::rule::engine::TriggerEvent {
-                trigger_type: "FileWatch".to_owned(),
-                connector: None,
-                event: Some(format!("{path}:{ev}")),
-                payload: serde_json::json!({"manual_trigger": true, "path": path}),
-            }
-        }
-        springtale_core::rule::Trigger::Webhook { path } => {
-            springtale_core::rule::engine::TriggerEvent {
-                trigger_type: "Webhook".to_owned(),
-                connector: None,
-                event: Some(path.clone()),
-                payload: serde_json::json!({"manual_trigger": true}),
-            }
-        }
-        springtale_core::rule::Trigger::ConnectorEvent {
-            connector,
-            event: ev,
-        } => springtale_core::rule::engine::TriggerEvent {
-            trigger_type: "ConnectorEvent".to_owned(),
-            connector: Some(connector.clone()),
-            event: Some(ev.clone()),
-            payload: serde_json::json!({"manual_trigger": true}),
-        },
-        springtale_core::rule::Trigger::SystemEvent { event: ev } => {
-            springtale_core::rule::engine::TriggerEvent {
-                trigger_type: "SystemEvent".to_owned(),
-                connector: None,
-                event: Some(ev.clone()),
-                payload: serde_json::json!({"manual_trigger": true}),
-            }
-        }
-    };
-
-    let matches = engine.evaluate(&event);
+    let result = operations::rules::run_rule(&state.runtime, &rule_id)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
 
     Ok((
         StatusCode::OK,
         Json(serde_json::json!({
             "rule_id": id,
-            "matched": !matches.is_empty(),
-            "actions_count": matches.iter().map(|m| m.actions.len()).sum::<usize>(),
+            "matched": result.matched,
+            "actions_count": result.actions_count,
         })),
     ))
 }
 
 /// Schedule a rule's trigger in the cron executor or file watcher.
 ///
-/// Called when a rule is created or updated via the API. Without this,
-/// cron and FileWatch triggers added at runtime would never fire.
+/// App-specific: cron and fs_watcher are in AppState, not RuntimeState.
 async fn schedule_rule_trigger(
     state: &AppState,
     rule: &springtale_core::rule::types::Rule,
@@ -275,15 +211,12 @@ async fn schedule_rule_trigger(
                 .watch(path)
                 .map_err(|e| format!("failed to watch path: {e}"))?;
         }
-        _ => {} // Other trigger types don't need scheduler registration
+        _ => {}
     }
     Ok(())
 }
 
 /// Unschedule a rule's trigger from the cron executor or file watcher.
-///
-/// Called when a rule is updated or deleted via the API. Without this,
-/// deleted/changed cron jobs and file watches continue firing.
 async fn unschedule_rule_trigger(state: &AppState, rule: &springtale_core::rule::types::Rule) {
     match &rule.trigger {
         springtale_core::rule::Trigger::Cron { .. } => {
