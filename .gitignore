@@ -1,5 +1,6 @@
 # ── Rust Build ─────────────────────────────────────────────────────
 /target/
+**/target/
 **/*.rs.bk
 *.pdb
 
@@ -32,9 +33,12 @@ cosign.key
 
 # ── Node / TypeScript SDK ─────────────────────────────────────────
 node_modules/
-sdk/**/dist/
+**/dist/
 sdk/**/*.tsbuildinfo
 .pnpm-store/
+
+# ── Tauri generated schemas ───────────────────────────────────────
+**/src-tauri/gen/
 
 # ── Nix ────────────────────────────────────────────────────────────
 result
