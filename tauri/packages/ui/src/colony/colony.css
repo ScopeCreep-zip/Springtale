@@ -1,0 +1,301 @@
+/* ================================================================
+   SPRINGTALE COLONY — shared base styles
+   Imported by both desktop and dashboard index.css
+   ================================================================ */
+
+@import "./sprites.css";
+
+/* ================================================================
+   COLONY ELEMENT STYLES
+   ================================================================ */
+
+@layer components {
+  /* Tree elements on canvas */
+  .colony-tree {
+    position: absolute;
+    z-index: 4;
+    cursor: pointer;
+  }
+  .colony-tree:hover {
+    filter: brightness(1.15);
+  }
+  .colony-tree.is-selected {
+    filter: brightness(1.2) drop-shadow(0 0 3px var(--color-status-ok));
+  }
+
+  /* Agent elements on canvas */
+  .colony-agent {
+    position: absolute;
+    cursor: pointer;
+    z-index: 6;
+    transition: opacity .5s, filter .5s;
+  }
+  .colony-agent:hover {
+    filter: brightness(1.3) !important;
+    z-index: 10;
+  }
+  .colony-agent.is-selected {
+    filter: drop-shadow(0 0 3px var(--color-status-ok)) !important;
+  }
+  .colony-agent.is-degraded {
+    opacity: .65;
+    filter: saturate(.5);
+  }
+  .colony-agent.is-critical {
+    opacity: .4;
+    filter: saturate(.15) brightness(.7);
+  }
+  .colony-agent.is-warning {
+    animation: agent-warning-pulse 1s ease infinite;
+  }
+
+  /* Formation zones */
+  .colony-formation {
+    position: absolute;
+    z-index: 3;
+    cursor: pointer;
+    transition: opacity .5s;
+  }
+  .colony-formation-ring {
+    border: 1.5px dashed;
+    border-radius: 40%;
+    position: absolute;
+    inset: -8px;
+    transition: .3s;
+  }
+  .colony-formation.is-selected .colony-formation-ring {
+    border-style: solid;
+    border-width: 2.5px;
+  }
+
+  /* Mushroom outputs */
+  .colony-mushroom {
+    position: absolute;
+    z-index: 3;
+    pointer-events: none;
+    animation: mushroom-grow .3s ease-out;
+  }
+
+  /* Litter dots */
+  .colony-litter {
+    position: absolute;
+    z-index: 1;
+    pointer-events: none;
+  }
+
+  /* Simlish bubbles */
+  .colony-bubble {
+    position: absolute;
+    bottom: calc(100% + 28px);
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 20;
+    pointer-events: none;
+    animation: bubble-in .15s, bubble-out 2.5s .5s ease forwards;
+  }
+
+  /* Command buttons */
+  .colony-command-btn {
+    background: var(--color-soil-light);
+    border: 2px solid var(--color-bark);
+    font-family: inherit;
+    font-size: 6px;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 1px;
+    padding: 2px;
+  }
+  .colony-command-btn:hover {
+    border-color: var(--color-status-ok);
+    color: var(--color-text-primary);
+  }
+  .colony-command-btn:active {
+    transform: scale(.95);
+  }
+  .colony-command-btn.is-empty {
+    opacity: .15;
+    pointer-events: none;
+    border-color: transparent;
+  }
+
+  /* Stat bars */
+  .colony-stat-bar {
+    height: 4px;
+    background: #120f08;
+    border: 1px solid var(--color-bark);
+    position: relative;
+  }
+  .colony-stat-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+  }
+
+  /* Fuel bars (overhead on agents) */
+  .colony-fuel-bar {
+    width: 16px;
+    height: 2px;
+    background: #1a1510;
+    position: relative;
+  }
+  .colony-fuel-fill {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100%;
+  }
+
+  /* Autonomy pips */
+  .colony-autonomy-pip {
+    flex: 1;
+    height: 8px;
+    border: 1px solid var(--color-bark);
+    font-size: 4px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+  .colony-autonomy-pip:hover {
+    border-color: var(--color-text-secondary);
+  }
+
+  /* Roster slot (top bar) */
+  .colony-roster-slot {
+    width: 24px;
+    height: 24px;
+    background: var(--color-soil-deep);
+    border: 2px solid var(--color-bark);
+    cursor: pointer;
+    position: relative;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: transform .15s, border-color .15s;
+    font-size: 8px;
+    line-height: 1;
+  }
+  .colony-roster-slot:hover {
+    transform: scale(1.15);
+    z-index: 5;
+  }
+  .colony-roster-slot.is-selected {
+    border-color: var(--color-status-ok);
+    box-shadow: 0 0 4px rgba(61,184,160,.4);
+  }
+  /* Plumbob status dot */
+  .colony-roster-slot::before {
+    content: '';
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 5px;
+    height: 5px;
+    border: 1px solid var(--color-soil-deep);
+  }
+  .colony-roster-slot[data-status="ok"]::before { background: var(--color-status-ok); }
+  .colony-roster-slot[data-status="warn"]::before { background: var(--color-status-warn); }
+  .colony-roster-slot[data-status="idle"]::before { background: var(--color-status-idle); }
+  .colony-roster-slot[data-status="error"]::before { background: var(--color-status-error); }
+
+  /* Cadence bars */
+  .colony-cadence-bar {
+    width: 3px;
+    min-height: 2px;
+    background: var(--color-mycelium-active);
+  }
+
+  /* Event feed entries */
+  .colony-feed-entry {
+    display: flex;
+    gap: 3px;
+    padding: 2px 5px;
+    font-size: 6px;
+    background: rgba(14,12,8,.85);
+    margin-bottom: 1px;
+    border-right: 2px solid var(--color-status-ok);
+  }
+  .colony-feed-entry.is-warning {
+    border-right-color: var(--color-status-warn);
+  }
+
+  /* Pipeline tickets */
+  .colony-ticket {
+    background: var(--color-soil-mid);
+    border: 2px solid var(--color-bark);
+    padding: 2px 6px;
+    font-size: 6px;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+  }
+  .colony-ticket-timer {
+    width: 24px;
+    height: 3px;
+    background: var(--color-bark);
+    overflow: hidden;
+  }
+
+  /* Minimap */
+  .colony-minimap {
+    background: #080604;
+    border: 2px solid var(--color-bark);
+    position: relative;
+    height: calc(100% - 14px);
+  }
+  .colony-minimap-dot {
+    position: absolute;
+    width: 3px;
+    height: 3px;
+  }
+  .colony-minimap-tree {
+    position: absolute;
+  }
+  .colony-minimap-line {
+    position: absolute;
+    height: 1px;
+    opacity: .25;
+  }
+
+  /* Layer toggle buttons */
+  .colony-layer-btn {
+    background: var(--color-soil-mid);
+    border: 2px solid var(--color-bark);
+    color: var(--color-text-dim);
+    font-family: inherit;
+    font-size: 6px;
+    padding: 2px 6px;
+    cursor: pointer;
+  }
+  .colony-layer-btn:hover,
+  .colony-layer-btn.is-active {
+    border-color: var(--color-status-ok);
+    color: var(--color-text-primary);
+  }
+
+  /* Portrait frame (detail panel) */
+  .colony-portrait-frame {
+    width: 36px;
+    height: 36px;
+    background: #080604;
+    border: 2px solid var(--color-bark);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  /* Underground mode */
+  .colony-underground .colony-tree .pixel-sprite { opacity: .15 !important; }
+  .colony-underground .colony-tree .colony-tree-label { opacity: .3; }
+  .colony-underground .colony-litter { opacity: .05 !important; }
+  .colony-underground .colony-mushroom { opacity: .1 !important; }
+  .colony-underground .colony-agent { opacity: .5; }
+  .colony-underground .colony-formation { opacity: .15 !important; }
+}

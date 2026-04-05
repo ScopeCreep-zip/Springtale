@@ -1,0 +1,220 @@
+/* ================================================================
+   PIXEL SPRITES — 1:1 from springtale-colony-v8.html
+   All visual art uses box-shadow on 1px elements, scaled up.
+   Defined here as @layer components so Tailwind includes them.
+   ================================================================ */
+
+@layer components {
+  .pixel-sprite {
+    width: 1px;
+    height: 1px;
+    position: absolute;
+    pointer-events: none;
+  }
+
+  /* Deciduous tree: 9w × 11h pixels at scale(4) = 36×44px display */
+  .sprite-tree-deciduous {
+    box-shadow:
+      /* canopy top */
+      3px 0 var(--color-canopy), 4px 0 var(--color-canopy), 5px 0 var(--color-canopy),
+      2px 1px var(--color-canopy), 3px 1px var(--color-canopy-highlight), 4px 1px var(--color-canopy-highlight),
+      5px 1px var(--color-canopy), 6px 1px var(--color-canopy),
+      /* canopy mid */
+      1px 2px var(--color-canopy), 2px 2px var(--color-canopy-highlight), 3px 2px var(--color-canopy-highlight),
+      4px 2px var(--color-canopy), 5px 2px var(--color-canopy), 6px 2px var(--color-canopy-shadow),
+      7px 2px var(--color-canopy-shadow),
+      1px 3px var(--color-canopy), 2px 3px var(--color-canopy), 3px 3px var(--color-canopy-highlight),
+      4px 3px var(--color-canopy), 5px 3px var(--color-canopy-shadow), 6px 3px var(--color-canopy-shadow),
+      7px 3px var(--color-canopy-shadow),
+      /* canopy bottom */
+      1px 4px var(--color-canopy-shadow), 2px 4px var(--color-canopy), 3px 4px var(--color-canopy),
+      4px 4px var(--color-canopy), 5px 4px var(--color-canopy-shadow), 6px 4px var(--color-canopy-shadow),
+      2px 5px var(--color-canopy-shadow), 3px 5px var(--color-canopy-shadow), 4px 5px var(--color-canopy-shadow),
+      5px 5px var(--color-canopy-shadow), 6px 5px var(--color-canopy-shadow),
+      3px 6px var(--color-canopy-shadow), 4px 6px var(--color-canopy-shadow), 5px 6px var(--color-canopy-shadow),
+      /* trunk */
+      4px 7px var(--color-trunk), 4px 8px var(--color-trunk),
+      3px 9px var(--color-trunk-dark), 4px 9px var(--color-trunk-dark), 5px 9px var(--color-trunk-dark),
+      4px 10px var(--color-trunk-dark);
+    transform: scale(4);
+  }
+
+  /* Conifer tree: 9w × 13h pixels at scale(4) = 36×52px display */
+  .sprite-tree-conifer {
+    box-shadow:
+      4px 0 var(--color-canopy),
+      3px 1px var(--color-canopy), 4px 1px var(--color-canopy-highlight), 5px 1px var(--color-canopy),
+      2px 2px var(--color-canopy), 3px 2px var(--color-canopy-highlight), 4px 2px var(--color-canopy-highlight),
+      5px 2px var(--color-canopy), 6px 2px var(--color-canopy-shadow),
+      3px 3px var(--color-canopy), 4px 3px var(--color-canopy-highlight), 5px 3px var(--color-canopy),
+      2px 4px var(--color-canopy-shadow), 3px 4px var(--color-canopy), 4px 4px var(--color-canopy-highlight),
+      5px 4px var(--color-canopy), 6px 4px var(--color-canopy-shadow),
+      1px 5px var(--color-canopy-shadow), 2px 5px var(--color-canopy), 3px 5px var(--color-canopy),
+      4px 5px var(--color-canopy-highlight), 5px 5px var(--color-canopy), 6px 5px var(--color-canopy-shadow),
+      7px 5px var(--color-canopy-shadow),
+      2px 6px var(--color-canopy-shadow), 3px 6px var(--color-canopy), 4px 6px var(--color-canopy),
+      5px 6px var(--color-canopy-shadow), 6px 6px var(--color-canopy-shadow),
+      1px 7px var(--color-canopy-shadow), 2px 7px var(--color-canopy-shadow), 3px 7px var(--color-canopy),
+      4px 7px var(--color-canopy), 5px 7px var(--color-canopy-shadow), 6px 7px var(--color-canopy-shadow),
+      7px 7px var(--color-canopy-shadow),
+      0 8px var(--color-canopy-shadow), 1px 8px var(--color-canopy-shadow), 2px 8px var(--color-canopy-shadow),
+      3px 8px var(--color-canopy), 4px 8px var(--color-canopy), 5px 8px var(--color-canopy-shadow),
+      6px 8px var(--color-canopy-shadow), 7px 8px var(--color-canopy-shadow), 8px 8px var(--color-canopy-shadow),
+      /* trunk */
+      4px 9px var(--color-trunk), 4px 10px var(--color-trunk),
+      4px 11px var(--color-trunk-dark), 4px 12px var(--color-trunk-dark);
+    transform: scale(4);
+  }
+
+  /* Shrub: 7w × 5h pixels at scale(4) = 28×20px display */
+  .sprite-tree-shrub {
+    box-shadow:
+      2px 0 var(--color-canopy), 3px 0 var(--color-canopy-highlight), 4px 0 var(--color-canopy),
+      1px 1px var(--color-canopy), 2px 1px var(--color-canopy-highlight), 3px 1px var(--color-canopy-highlight),
+      4px 1px var(--color-canopy), 5px 1px var(--color-canopy-shadow),
+      1px 2px var(--color-canopy-shadow), 2px 2px var(--color-canopy), 3px 2px var(--color-canopy),
+      4px 2px var(--color-canopy-shadow), 5px 2px var(--color-canopy-shadow),
+      2px 3px var(--color-canopy-shadow), 3px 3px var(--color-canopy-shadow), 4px 3px var(--color-canopy-shadow),
+      3px 4px var(--color-trunk-dark);
+    transform: scale(4);
+  }
+
+  /* Mushroom sprites: 5w × 5h at scale(3) */
+  .sprite-mushroom-gold {
+    box-shadow:
+      1px 0 var(--color-mushroom-gold), 2px 0 var(--color-mushroom-gold), 3px 0 var(--color-mushroom-gold),
+      0 1px var(--color-mushroom-gold), 1px 1px #dab860, 2px 1px #dab860,
+      3px 1px var(--color-mushroom-gold), 4px 1px var(--color-mushroom-gold),
+      1px 2px var(--color-mushroom-gold), 2px 2px var(--color-mushroom-gold), 3px 2px var(--color-mushroom-gold),
+      2px 3px #d8d0b0, 2px 4px #d8d0b0;
+    transform: scale(3);
+  }
+  .sprite-mushroom-purple {
+    box-shadow:
+      1px 0 var(--color-mushroom-purple), 2px 0 var(--color-mushroom-purple), 3px 0 var(--color-mushroom-purple),
+      0 1px var(--color-mushroom-purple), 1px 1px #c088c0, 2px 1px #c088c0,
+      3px 1px var(--color-mushroom-purple), 4px 1px var(--color-mushroom-purple),
+      1px 2px var(--color-mushroom-purple), 2px 2px var(--color-mushroom-purple), 3px 2px var(--color-mushroom-purple),
+      2px 3px #d8d0b0, 2px 4px #d8d0b0;
+    transform: scale(3);
+  }
+  .sprite-mushroom-teal {
+    box-shadow:
+      1px 0 var(--color-mushroom-teal), 2px 0 var(--color-mushroom-teal), 3px 0 var(--color-mushroom-teal),
+      0 1px var(--color-mushroom-teal), 1px 1px #88c8c0, 2px 1px #88c8c0,
+      3px 1px var(--color-mushroom-teal), 4px 1px var(--color-mushroom-teal),
+      1px 2px var(--color-mushroom-teal), 2px 2px var(--color-mushroom-teal), 3px 2px var(--color-mushroom-teal),
+      2px 3px #d8d0b0, 2px 4px #d8d0b0;
+    transform: scale(3);
+  }
+
+  /* Agent springtail sprites — 7w × 8h at scale(4) */
+  .sprite-scout {
+    box-shadow:
+      1px -4px 0 var(--color-role-scout), 5px -4px 0 var(--color-role-scout),
+      0 -3px 0 var(--color-role-scout), 6px -3px 0 var(--color-role-scout),
+      1px -2px 0 var(--color-role-scout), 2px -2px 0 var(--color-role-scout), 3px -2px 0 var(--color-role-scout),
+      4px -2px 0 var(--color-role-scout), 5px -2px 0 var(--color-role-scout),
+      1px -1px 0 var(--color-role-scout), 2px -1px 0 #111, 4px -1px 0 #111, 5px -1px 0 var(--color-role-scout),
+      0 0 0 #1e3d5a, 1px 0 0 var(--color-role-scout), 2px 0 0 var(--color-role-scout),
+      3px 0 0 var(--color-role-scout), 4px 0 0 var(--color-role-scout), 5px 0 0 #1e3d5a, 6px 0 0 #1e3d5a,
+      1px 1px 0 var(--color-role-scout), 2px 1px 0 var(--color-role-scout), 4px 1px 0 var(--color-role-scout),
+      2px 2px 0 var(--color-role-scout), 3px 2px 0 var(--color-role-scout), 4px 2px 0 var(--color-role-scout),
+      1px 3px 0 #1e3d5a, 5px 3px 0 #1e3d5a;
+    transform: scale(4);
+  }
+  .sprite-worker {
+    box-shadow:
+      1px -4px 0 var(--color-role-worker), 5px -4px 0 var(--color-role-worker),
+      0 -3px 0 var(--color-role-worker), 6px -3px 0 var(--color-role-worker),
+      1px -2px 0 var(--color-role-worker), 2px -2px 0 var(--color-role-worker), 3px -2px 0 var(--color-role-worker),
+      4px -2px 0 var(--color-role-worker), 5px -2px 0 var(--color-role-worker),
+      1px -1px 0 var(--color-role-worker), 2px -1px 0 #111, 4px -1px 0 #111, 5px -1px 0 var(--color-role-worker),
+      0 0 0 #1e4a1e, 1px 0 0 var(--color-role-worker), 2px 0 0 var(--color-role-worker),
+      3px 0 0 var(--color-role-worker), 4px 0 0 var(--color-role-worker), 5px 0 0 #1e4a1e, 6px 0 0 #1e4a1e,
+      1px 1px 0 var(--color-role-worker), 2px 1px 0 var(--color-role-worker), 4px 1px 0 var(--color-role-worker),
+      2px 2px 0 var(--color-role-worker), 3px 2px 0 var(--color-role-worker), 4px 2px 0 var(--color-role-worker),
+      1px 3px 0 #1e4a1e, 5px 3px 0 #1e4a1e;
+    transform: scale(4);
+  }
+  .sprite-guard {
+    box-shadow:
+      1px -4px 0 var(--color-role-guard), 5px -4px 0 var(--color-role-guard),
+      0 -3px 0 var(--color-role-guard), 6px -3px 0 var(--color-role-guard),
+      1px -2px 0 var(--color-role-guard), 2px -2px 0 var(--color-role-guard), 3px -2px 0 var(--color-role-guard),
+      4px -2px 0 var(--color-role-guard), 5px -2px 0 var(--color-role-guard),
+      1px -1px 0 var(--color-role-guard), 2px -1px 0 #111, 4px -1px 0 #111, 5px -1px 0 var(--color-role-guard),
+      0 0 0 #5a4518, 1px 0 0 var(--color-role-guard), 2px 0 0 var(--color-role-guard),
+      3px 0 0 var(--color-role-guard), 4px 0 0 var(--color-role-guard), 5px 0 0 #5a4518, 6px 0 0 #5a4518,
+      1px 1px 0 var(--color-role-guard), 2px 1px 0 var(--color-role-guard), 4px 1px 0 var(--color-role-guard),
+      2px 2px 0 var(--color-role-guard), 3px 2px 0 var(--color-role-guard), 4px 2px 0 var(--color-role-guard),
+      1px 3px 0 #5a4518, 5px 3px 0 #5a4518;
+    transform: scale(4);
+  }
+  .sprite-analyst {
+    box-shadow:
+      1px -4px 0 var(--color-role-analyst), 5px -4px 0 var(--color-role-analyst),
+      0 -3px 0 var(--color-role-analyst), 6px -3px 0 var(--color-role-analyst),
+      1px -2px 0 var(--color-role-analyst), 2px -2px 0 var(--color-role-analyst), 3px -2px 0 var(--color-role-analyst),
+      4px -2px 0 var(--color-role-analyst), 5px -2px 0 var(--color-role-analyst),
+      1px -1px 0 var(--color-role-analyst), 2px -1px 0 #111, 4px -1px 0 #111, 5px -1px 0 var(--color-role-analyst),
+      0 0 0 #3d1e5a, 1px 0 0 var(--color-role-analyst), 2px 0 0 var(--color-role-analyst),
+      3px 0 0 var(--color-role-analyst), 4px 0 0 var(--color-role-analyst), 5px 0 0 #3d1e5a, 6px 0 0 #3d1e5a,
+      1px 1px 0 var(--color-role-analyst), 2px 1px 0 var(--color-role-analyst), 4px 1px 0 var(--color-role-analyst),
+      2px 2px 0 var(--color-role-analyst), 3px 2px 0 var(--color-role-analyst), 4px 2px 0 var(--color-role-analyst),
+      1px 3px 0 #3d1e5a, 5px 3px 0 #3d1e5a;
+    transform: scale(4);
+  }
+  .sprite-sentinel {
+    box-shadow:
+      1px -4px 0 #ccc, 5px -4px 0 #ccc,
+      0 -3px 0 #bbb, 6px -3px 0 #bbb,
+      1px -2px 0 #ccc, 2px -2px 0 #ddd, 3px -2px 0 #eee, 4px -2px 0 #ddd, 5px -2px 0 #ccc,
+      1px -1px 0 #ccc, 2px -1px 0 #e44, 4px -1px 0 #e44, 5px -1px 0 #ccc,
+      0 0 0 #888, 1px 0 0 #bbb, 2px 0 0 #ccc, 3px 0 0 #ccc, 4px 0 0 #ccc,
+      5px 0 0 #bbb, 6px 0 0 #888,
+      1px 1px 0 #aaa, 2px 1px 0 #aaa, 3px 1px 0 #999, 4px 1px 0 #aaa,
+      2px 2px 0 #aaa, 3px 2px 0 #bbb, 4px 2px 0 #aaa,
+      1px 3px 0 #777, 5px 3px 0 #777;
+    transform: scale(5);
+  }
+
+  /* ================================================================
+     COLONY ANIMATIONS
+     ================================================================ */
+
+  .mycelium-path {
+    fill: none;
+    stroke-width: 1.2;
+    stroke-dasharray: 4 6;
+  }
+  .mycelium-path.is-active {
+    animation: mycelium-flow 2.5s linear infinite;
+  }
+  @keyframes mycelium-flow {
+    to { stroke-dashoffset: -20; }
+  }
+
+  @keyframes agent-warning-pulse {
+    0%, 100% { filter: brightness(1); }
+    50% { filter: brightness(1.5) saturate(1.5); }
+  }
+
+  @keyframes mushroom-grow {
+    from { transform: scale(0); }
+    to { transform: scale(1); }
+  }
+
+  @keyframes bubble-in {
+    from { transform: translateX(-50%) scale(0); }
+    to { transform: translateX(-50%) scale(1); }
+  }
+  @keyframes bubble-out {
+    to { opacity: 0; transform: translateX(-50%) translateY(-6px); }
+  }
+
+  @keyframes cadence-pulse {
+    0%, 100% { opacity: 0.6; }
+    50% { opacity: 1; }
+  }
+}

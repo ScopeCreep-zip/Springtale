@@ -1,0 +1,110 @@
+@import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap');
+@import "tailwindcss";
+@import "../../../packages/ui/src/colony/colony.css";
+
+@theme {
+  /* Soil palette — springtail habitat */
+  --color-soil-deep: #0e0c08;
+  --color-soil-mid: #1a1710;
+  --color-soil-light: #252118;
+  --color-bark: #2a2520;
+  --color-bark-light: #3a3530;
+  --color-trunk: #5a4030;
+  --color-trunk-dark: #3a2818;
+
+  /* Canopy by health */
+  --color-canopy: #3a7a28;
+  --color-canopy-shadow: #2d5a1e;
+  --color-canopy-highlight: #4a9a38;
+  --color-canopy-degraded: #7a6a18;
+
+  /* Mycelium (pipeline) */
+  --color-mycelium: #d8d0b8;
+  --color-mycelium-active: #3db8a0;
+  --color-mycelium-warning: #d4a030;
+  --color-mycelium-error: #cc4d4d;
+
+  /* Mushroom caps */
+  --color-mushroom-gold: #c8a050;
+  --color-mushroom-purple: #a868a0;
+  --color-mushroom-teal: #68a8a0;
+
+  /* Agent roles */
+  --color-role-scout: #4d9de8;
+  --color-role-worker: #5dcc5d;
+  --color-role-guard: #d4a030;
+  --color-role-analyst: #9d5dcc;
+  --color-role-sentinel: #aab0b8;
+
+  /* Status */
+  --color-status-ok: #3db8a0;
+  --color-status-warn: #d4a030;
+  --color-status-error: #cc4d4d;
+  --color-status-idle: #555048;
+
+  /* Momentum tiers */
+  --color-momentum-cold: #556068;
+  --color-momentum-warm: #b88820;
+  --color-momentum-hot: #c83838;
+  --color-momentum-fever: #a828a0;
+
+  /* Text hierarchy */
+  --color-text-primary: #d8d0c0;
+  --color-text-secondary: #8a8478;
+  --color-text-dim: #5a564e;
+
+  /* Backwards compat for existing components */
+  --color-surface-primary: #0e0c08;
+  --color-surface-secondary: #1a1710;
+  --color-surface-elevated: #252118;
+  --color-border-default: #2a2520;
+  --color-border-input: #3a3530;
+  --color-accent: #3db8a0;
+  --color-success: #3db8a0;
+  --color-error: #cc4d4d;
+  --color-warning: #d4a030;
+}
+
+body {
+  font-family: 'Silkscreen', monospace;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+  background: var(--color-soil-deep);
+  color: var(--color-text-primary);
+  overflow: hidden;
+  height: 100vh;
+  user-select: none;
+}
+
+/* §16.1: Focus indicators visible — keyboard-only */
+*:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* §16.1: prefers-reduced-motion — no animations by default */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* §16.1: System high-contrast query respected */
+@media (prefers-contrast: more) {
+  :root {
+    --color-soil-deep: #000000;
+    --color-soil-mid: #000000;
+    --color-soil-light: #1a1a1a;
+    --color-bark: #ffffff;
+    --color-bark-light: #ffffff;
+    --color-text-primary: #ffffff;
+    --color-text-secondary: #e5e5e5;
+    --color-text-dim: #cccccc;
+    --color-accent: #5b9aff;
+    --color-status-ok: #00ff00;
+    --color-status-error: #ff4444;
+  }
+}
