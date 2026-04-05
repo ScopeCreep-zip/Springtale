@@ -1,0 +1,1450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Springtale Colony</title>
+  <link href="https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap" rel="stylesheet">
+  <style>
+    /* ================================================================
+       SPRINGTALE COLONY — v8 clean rewrite
+       Ecosystem: trees=connectors, mycelium=pipelines, springtails=agents
+       ================================================================ */
+
+    :root {
+      /* Soil palette — springtail habitat */
+      --soil-deep:    #0e0c08;
+      --soil-mid:     #1a1710;
+      --soil-light:   #252118;
+      --bark:         #2a2520;
+      --bark-light:   #3a3530;
+
+      /* Tree trunk */
+      --trunk:        #5a4030;
+      --trunk-dark:   #3a2818;
+
+      /* Canopy by health */
+      --canopy-healthy:    #3a7a28;
+      --canopy-shadow:     #2d5a1e;
+      --canopy-highlight:  #4a9a38;
+      --canopy-degraded:   #7a6a18;
+      --canopy-failing:    #5a3020;
+
+      /* Mycelium (pipeline) */
+      --mycelium:          #d8d0b8;
+      --mycelium-active:   #3db8a0;
+      --mycelium-warning:  #d4a030;
+      --mycelium-error:    #cc4d4d;
+
+      /* Mushroom caps (output types) */
+      --mushroom-gold:     #c8a050;
+      --mushroom-purple:   #a868a0;
+      --mushroom-teal:     #68a8a0;
+      --mushroom-stem:     #d8d0b0;
+
+      /* Agent roles — from springtail species coloration */
+      --role-scout:        #4d9de8;
+      --role-scout-dark:   #1e3d5a;
+      --role-worker:       #5dcc5d;
+      --role-worker-dark:  #1e4a1e;
+      --role-guard:        #d4a030;
+      --role-guard-dark:   #5a4518;
+      --role-analyst:      #9d5dcc;
+      --role-analyst-dark: #3d1e5a;
+      --role-sentinel:     #aab0b8;
+
+      /* Status */
+      --status-ok:     #3db8a0;
+      --status-warn:   #d4a030;
+      --status-error:  #cc4d4d;
+      --status-idle:   #555048;
+
+      /* Momentum tiers — from COOPERATION.pdf */
+      --momentum-cold:  #556068;
+      --momentum-warm:  #b88820;
+      --momentum-hot:   #c83838;
+      --momentum-fever: #a828a0;
+
+      /* Text hierarchy */
+      --text-primary:   #d8d0c0;
+      --text-secondary: #8a8478;
+      --text-dim:       #5a564e;
+
+      font-family: 'Silkscreen', monospace;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+    }
+
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: var(--soil-deep);
+      color: var(--text-primary);
+      overflow: hidden;
+      height: 100vh;
+      user-select: none;
+    }
+
+    /* ================================================================
+       SHELL LAYOUT — top bar + viewport + bottom panel
+       ================================================================ */
+    .shell {
+      display: grid;
+      grid-template-rows: 32px 1fr 148px;
+      height: 100vh;
+    }
+
+    /* ================================================================
+       TOP BAR — cadence waveform + agent roster + colony summary
+       Sources: RimWorld colonist bar, ONI colony summary, pixel waveform
+       ================================================================ */
+    .top-bar {
+      background: var(--soil-mid);
+      border-bottom: 2px solid var(--bark);
+      display: flex;
+      align-items: center;
+      padding: 0 8px;
+      gap: 6px;
+      z-index: 20;
+    }
+
+    /* Cadence waveform — pixel bar chart showing colony rhythm */
+    .cadence { display: flex; align-items: flex-end; gap: 1px; height: 16px; margin-right: 6px; flex-shrink: 0; }
+    .cadence-bar { width: 3px; min-height: 2px; background: var(--mycelium-active); }
+
+    /* Agent roster — RimWorld colonist bar pattern */
+    .roster { display: flex; gap: 2px; flex: 1; overflow-x: auto; scrollbar-width: none; padding: 2px 0; }
+    .roster::-webkit-scrollbar { display: none; }
+
+    .roster-slot {
+      width: 24px; height: 24px;
+      background: var(--soil-deep);
+      border: 2px solid var(--bark);
+      cursor: pointer;
+      position: relative;
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      transition: transform .15s, border-color .15s;
+    }
+    .roster-slot:hover { transform: scale(1.15); z-index: 5; }
+    .roster-slot.is-selected { border-color: var(--status-ok); box-shadow: 0 0 4px rgba(61,184,160,.4); }
+
+    /* Plumbob status dot — Sims pattern */
+    .roster-slot::before {
+      content: ''; position: absolute; top: -2px; right: -2px;
+      width: 5px; height: 5px; border: 1px solid var(--soil-deep);
+    }
+    .roster-slot[data-status="ok"]::before    { background: var(--status-ok); }
+    .roster-slot[data-status="warn"]::before  { background: var(--status-warn); }
+    .roster-slot[data-status="idle"]::before  { background: var(--status-idle); }
+    .roster-slot[data-status="error"]::before { background: var(--status-error); }
+
+    .roster-icon { font-size: 8px; line-height: 1; }
+
+    /* Formation group bracket in roster — Total War grouped cards */
+    .roster-group {
+      display: flex; align-items: center; gap: 0;
+      border: 1px solid var(--bark-light);
+      padding: 1px 2px; margin: 0 2px;
+    }
+    .roster-group-label {
+      font-size: 5px; color: var(--text-dim);
+      writing-mode: vertical-rl; margin-right: 2px; letter-spacing: .5px;
+    }
+
+    /* Colony summary — ONI 4-icon pattern */
+    .colony-summary { display: flex; gap: 10px; flex-shrink: 0; margin-left: auto; font-size: 8px; }
+    .summary-item { display: flex; align-items: center; gap: 3px; }
+    .summary-value { font-weight: 700; font-size: 9px; }
+
+    /* ================================================================
+       VIEWPORT — the ecosystem canvas
+       ================================================================ */
+    .viewport { position: relative; overflow: hidden; background: var(--soil-deep); }
+
+    .colony {
+      width: 100%; height: 100%;
+      position: relative;
+      transition: filter .5s;
+    }
+
+    /* Underground mode — infrastructure view */
+    .colony.is-underground { filter: hue-rotate(10deg) brightness(.7); }
+    .colony.is-underground .tree-canopy   { opacity: .15 !important; }
+    .colony.is-underground .tree-label     { opacity: .3; }
+    .colony.is-underground .litter-dot     { opacity: .05 !important; }
+    .colony.is-underground .mushroom       { opacity: .1 !important; }
+    .colony.is-underground .pipeline-label { opacity: 1 !important; }
+    .colony.is-underground .agent          { opacity: .5; }
+    .colony.is-underground .agent-overhead { display: none; }
+    .colony.is-underground .formation-zone { opacity: .15 !important; }
+
+    .ground {
+      position: absolute; inset: 0; z-index: 0; pointer-events: none;
+      background: repeating-conic-gradient(
+        from 0deg, transparent 0 89deg, rgba(50,42,25,.035) 89deg 90deg
+      ) 0 0 / 20px 20px;
+    }
+
+    /* Leaf litter — pixel dots for ground texture / event log */
+    .litter-dot { position: absolute; z-index: 1; pointer-events: none; }
+
+    /* ================================================================
+       PIXEL SPRITES — all visual art uses box-shadow on 1px elements
+       ================================================================ */
+    .pixel-sprite { width: 1px; height: 1px; position: absolute; pointer-events: none; }
+
+    /* Deciduous tree: 9w × 11h pixels at scale(4) = 36×44px display */
+    .sprite-tree-deciduous {
+      box-shadow:
+        /* canopy top */
+        3px 0 var(--canopy-healthy), 4px 0 var(--canopy-healthy), 5px 0 var(--canopy-healthy),
+        2px 1px var(--canopy-healthy), 3px 1px var(--canopy-highlight), 4px 1px var(--canopy-highlight),
+        5px 1px var(--canopy-healthy), 6px 1px var(--canopy-healthy),
+        /* canopy mid */
+        1px 2px var(--canopy-healthy), 2px 2px var(--canopy-highlight), 3px 2px var(--canopy-highlight),
+        4px 2px var(--canopy-healthy), 5px 2px var(--canopy-healthy), 6px 2px var(--canopy-shadow),
+        7px 2px var(--canopy-shadow),
+        1px 3px var(--canopy-healthy), 2px 3px var(--canopy-healthy), 3px 3px var(--canopy-highlight),
+        4px 3px var(--canopy-healthy), 5px 3px var(--canopy-shadow), 6px 3px var(--canopy-shadow),
+        7px 3px var(--canopy-shadow),
+        /* canopy bottom */
+        1px 4px var(--canopy-shadow), 2px 4px var(--canopy-healthy), 3px 4px var(--canopy-healthy),
+        4px 4px var(--canopy-healthy), 5px 4px var(--canopy-shadow), 6px 4px var(--canopy-shadow),
+        2px 5px var(--canopy-shadow), 3px 5px var(--canopy-shadow), 4px 5px var(--canopy-shadow),
+        5px 5px var(--canopy-shadow), 6px 5px var(--canopy-shadow),
+        3px 6px var(--canopy-shadow), 4px 6px var(--canopy-shadow), 5px 6px var(--canopy-shadow),
+        /* trunk */
+        4px 7px var(--trunk), 4px 8px var(--trunk),
+        3px 9px var(--trunk-dark), 4px 9px var(--trunk-dark), 5px 9px var(--trunk-dark),
+        4px 10px var(--trunk-dark);
+      transform: scale(4);
+    }
+
+    /* Conifer tree: 9w × 13h pixels at scale(4) = 36×52px display */
+    .sprite-tree-conifer {
+      box-shadow:
+        4px 0 var(--canopy-healthy),
+        3px 1px var(--canopy-healthy), 4px 1px var(--canopy-highlight), 5px 1px var(--canopy-healthy),
+        2px 2px var(--canopy-healthy), 3px 2px var(--canopy-highlight), 4px 2px var(--canopy-highlight),
+        5px 2px var(--canopy-healthy), 6px 2px var(--canopy-shadow),
+        3px 3px var(--canopy-healthy), 4px 3px var(--canopy-highlight), 5px 3px var(--canopy-healthy),
+        2px 4px var(--canopy-shadow), 3px 4px var(--canopy-healthy), 4px 4px var(--canopy-highlight),
+        5px 4px var(--canopy-healthy), 6px 4px var(--canopy-shadow),
+        1px 5px var(--canopy-shadow), 2px 5px var(--canopy-healthy), 3px 5px var(--canopy-healthy),
+        4px 5px var(--canopy-highlight), 5px 5px var(--canopy-healthy), 6px 5px var(--canopy-shadow),
+        7px 5px var(--canopy-shadow),
+        2px 6px var(--canopy-shadow), 3px 6px var(--canopy-healthy), 4px 6px var(--canopy-healthy),
+        5px 6px var(--canopy-shadow), 6px 6px var(--canopy-shadow),
+        1px 7px var(--canopy-shadow), 2px 7px var(--canopy-shadow), 3px 7px var(--canopy-healthy),
+        4px 7px var(--canopy-healthy), 5px 7px var(--canopy-shadow), 6px 7px var(--canopy-shadow),
+        7px 7px var(--canopy-shadow),
+        0 8px var(--canopy-shadow), 1px 8px var(--canopy-shadow), 2px 8px var(--canopy-shadow),
+        3px 8px var(--canopy-healthy), 4px 8px var(--canopy-healthy), 5px 8px var(--canopy-shadow),
+        6px 8px var(--canopy-shadow), 7px 8px var(--canopy-shadow), 8px 8px var(--canopy-shadow),
+        /* trunk */
+        4px 9px var(--trunk), 4px 10px var(--trunk),
+        4px 11px var(--trunk-dark), 4px 12px var(--trunk-dark);
+      transform: scale(4);
+    }
+
+    /* Shrub: 7w × 5h pixels at scale(4) = 28×20px display */
+    .sprite-tree-shrub {
+      box-shadow:
+        2px 0 var(--canopy-healthy), 3px 0 var(--canopy-highlight), 4px 0 var(--canopy-healthy),
+        1px 1px var(--canopy-healthy), 2px 1px var(--canopy-highlight), 3px 1px var(--canopy-highlight),
+        4px 1px var(--canopy-healthy), 5px 1px var(--canopy-shadow),
+        1px 2px var(--canopy-shadow), 2px 2px var(--canopy-healthy), 3px 2px var(--canopy-healthy),
+        4px 2px var(--canopy-shadow), 5px 2px var(--canopy-shadow),
+        2px 3px var(--canopy-shadow), 3px 3px var(--canopy-shadow), 4px 3px var(--canopy-shadow),
+        3px 4px var(--trunk-dark);
+      transform: scale(4);
+    }
+
+    /* Mushroom sprites: 5w × 5h at scale(3) */
+    .sprite-mushroom-gold {
+      box-shadow:
+        1px 0 var(--mushroom-gold), 2px 0 var(--mushroom-gold), 3px 0 var(--mushroom-gold),
+        0 1px var(--mushroom-gold), 1px 1px #dab860, 2px 1px #dab860,
+        3px 1px var(--mushroom-gold), 4px 1px var(--mushroom-gold),
+        1px 2px var(--mushroom-gold), 2px 2px var(--mushroom-gold), 3px 2px var(--mushroom-gold),
+        2px 3px var(--mushroom-stem), 2px 4px var(--mushroom-stem);
+      transform: scale(3);
+    }
+    .sprite-mushroom-purple {
+      box-shadow:
+        1px 0 var(--mushroom-purple), 2px 0 var(--mushroom-purple), 3px 0 var(--mushroom-purple),
+        0 1px var(--mushroom-purple), 1px 1px #c088c0, 2px 1px #c088c0,
+        3px 1px var(--mushroom-purple), 4px 1px var(--mushroom-purple),
+        1px 2px var(--mushroom-purple), 2px 2px var(--mushroom-purple), 3px 2px var(--mushroom-purple),
+        2px 3px var(--mushroom-stem), 2px 4px var(--mushroom-stem);
+      transform: scale(3);
+    }
+    .sprite-mushroom-teal {
+      box-shadow:
+        1px 0 var(--mushroom-teal), 2px 0 var(--mushroom-teal), 3px 0 var(--mushroom-teal),
+        0 1px var(--mushroom-teal), 1px 1px #88c8c0, 2px 1px #88c8c0,
+        3px 1px var(--mushroom-teal), 4px 1px var(--mushroom-teal),
+        1px 2px var(--mushroom-teal), 2px 2px var(--mushroom-teal), 3px 2px var(--mushroom-teal),
+        2px 3px var(--mushroom-stem), 2px 4px var(--mushroom-stem);
+      transform: scale(3);
+    }
+
+    /* Agent springtail sprites */
+    .sprite-scout {
+      box-shadow:
+        1px -4px 0 var(--role-scout), 5px -4px 0 var(--role-scout),
+        0 -3px 0 var(--role-scout), 6px -3px 0 var(--role-scout),
+        1px -2px 0 var(--role-scout), 2px -2px 0 var(--role-scout), 3px -2px 0 var(--role-scout),
+        4px -2px 0 var(--role-scout), 5px -2px 0 var(--role-scout),
+        1px -1px 0 var(--role-scout), 2px -1px 0 #111, 4px -1px 0 #111, 5px -1px 0 var(--role-scout),
+        0 0 0 var(--role-scout-dark), 1px 0 0 var(--role-scout), 2px 0 0 var(--role-scout),
+        3px 0 0 var(--role-scout), 4px 0 0 var(--role-scout), 5px 0 0 var(--role-scout-dark),
+        6px 0 0 var(--role-scout-dark),
+        1px 1px 0 var(--role-scout), 2px 1px 0 var(--role-scout), 4px 1px 0 var(--role-scout),
+        2px 2px 0 var(--role-scout), 3px 2px 0 var(--role-scout), 4px 2px 0 var(--role-scout),
+        1px 3px 0 var(--role-scout-dark), 5px 3px 0 var(--role-scout-dark);
+      transform: scale(4);
+    }
+    .sprite-worker {
+      box-shadow:
+        1px -4px 0 var(--role-worker), 5px -4px 0 var(--role-worker),
+        0 -3px 0 var(--role-worker), 6px -3px 0 var(--role-worker),
+        1px -2px 0 var(--role-worker), 2px -2px 0 var(--role-worker), 3px -2px 0 var(--role-worker),
+        4px -2px 0 var(--role-worker), 5px -2px 0 var(--role-worker),
+        1px -1px 0 var(--role-worker), 2px -1px 0 #111, 4px -1px 0 #111, 5px -1px 0 var(--role-worker),
+        0 0 0 var(--role-worker-dark), 1px 0 0 var(--role-worker), 2px 0 0 var(--role-worker),
+        3px 0 0 var(--role-worker), 4px 0 0 var(--role-worker), 5px 0 0 var(--role-worker-dark),
+        6px 0 0 var(--role-worker-dark),
+        1px 1px 0 var(--role-worker), 2px 1px 0 var(--role-worker), 4px 1px 0 var(--role-worker),
+        2px 2px 0 var(--role-worker), 3px 2px 0 var(--role-worker), 4px 2px 0 var(--role-worker),
+        1px 3px 0 var(--role-worker-dark), 5px 3px 0 var(--role-worker-dark);
+      transform: scale(4);
+    }
+    .sprite-guard {
+      box-shadow:
+        1px -4px 0 var(--role-guard), 5px -4px 0 var(--role-guard),
+        0 -3px 0 var(--role-guard), 6px -3px 0 var(--role-guard),
+        1px -2px 0 var(--role-guard), 2px -2px 0 var(--role-guard), 3px -2px 0 var(--role-guard),
+        4px -2px 0 var(--role-guard), 5px -2px 0 var(--role-guard),
+        1px -1px 0 var(--role-guard), 2px -1px 0 #111, 4px -1px 0 #111, 5px -1px 0 var(--role-guard),
+        0 0 0 var(--role-guard-dark), 1px 0 0 var(--role-guard), 2px 0 0 var(--role-guard),
+        3px 0 0 var(--role-guard), 4px 0 0 var(--role-guard), 5px 0 0 var(--role-guard-dark),
+        6px 0 0 var(--role-guard-dark),
+        1px 1px 0 var(--role-guard), 2px 1px 0 var(--role-guard), 4px 1px 0 var(--role-guard),
+        2px 2px 0 var(--role-guard), 3px 2px 0 var(--role-guard), 4px 2px 0 var(--role-guard),
+        1px 3px 0 var(--role-guard-dark), 5px 3px 0 var(--role-guard-dark);
+      transform: scale(4);
+    }
+    .sprite-analyst {
+      box-shadow:
+        1px -4px 0 var(--role-analyst), 5px -4px 0 var(--role-analyst),
+        0 -3px 0 var(--role-analyst), 6px -3px 0 var(--role-analyst),
+        1px -2px 0 var(--role-analyst), 2px -2px 0 var(--role-analyst), 3px -2px 0 var(--role-analyst),
+        4px -2px 0 var(--role-analyst), 5px -2px 0 var(--role-analyst),
+        1px -1px 0 var(--role-analyst), 2px -1px 0 #111, 4px -1px 0 #111, 5px -1px 0 var(--role-analyst),
+        0 0 0 var(--role-analyst-dark), 1px 0 0 var(--role-analyst), 2px 0 0 var(--role-analyst),
+        3px 0 0 var(--role-analyst), 4px 0 0 var(--role-analyst), 5px 0 0 var(--role-analyst-dark),
+        6px 0 0 var(--role-analyst-dark),
+        1px 1px 0 var(--role-analyst), 2px 1px 0 var(--role-analyst), 4px 1px 0 var(--role-analyst),
+        2px 2px 0 var(--role-analyst), 3px 2px 0 var(--role-analyst), 4px 2px 0 var(--role-analyst),
+        1px 3px 0 var(--role-analyst-dark), 5px 3px 0 var(--role-analyst-dark);
+      transform: scale(4);
+    }
+    .sprite-sentinel {
+      box-shadow:
+        1px -4px 0 #ccc, 5px -4px 0 #ccc,
+        0 -3px 0 #bbb, 6px -3px 0 #bbb,
+        1px -2px 0 #ccc, 2px -2px 0 #ddd, 3px -2px 0 #eee, 4px -2px 0 #ddd, 5px -2px 0 #ccc,
+        1px -1px 0 #ccc, 2px -1px 0 #e44, 4px -1px 0 #e44, 5px -1px 0 #ccc,
+        0 0 0 #888, 1px 0 0 #bbb, 2px 0 0 #ccc, 3px 0 0 #ccc, 4px 0 0 #ccc,
+        5px 0 0 #bbb, 6px 0 0 #888,
+        1px 1px 0 #aaa, 2px 1px 0 #aaa, 3px 1px 0 #999, 4px 1px 0 #aaa,
+        2px 2px 0 #aaa, 3px 2px 0 #bbb, 4px 2px 0 #aaa,
+        1px 3px 0 #777, 5px 3px 0 #777;
+      transform: scale(5);
+    }
+
+    /* ================================================================
+       TREE ELEMENTS on canvas
+       ================================================================ */
+    .tree { position: absolute; z-index: 4; cursor: pointer; }
+    .tree:hover { filter: brightness(1.15); }
+    .tree.is-selected { filter: brightness(1.2) drop-shadow(0 0 3px var(--status-ok)); }
+    .tree-canopy { transition: opacity .5s; }
+    .tree-label {
+      position: absolute; bottom: -16px; left: 50%; transform: translateX(-50%);
+      font-size: 5px; color: var(--text-dim); white-space: nowrap; transition: opacity .5s;
+    }
+    .tree-status {
+      position: absolute; bottom: -4px; left: 50%; transform: translateX(-50%);
+      width: 4px; height: 4px;
+    }
+    .tree-status.is-active  { background: var(--status-ok); }
+    .tree-status.is-paused  { background: var(--status-warn); }
+    .tree-status.is-idle    { background: var(--status-idle); }
+
+    /* ================================================================
+       AGENT ELEMENTS on canvas
+       ================================================================ */
+    .agent {
+      position: absolute; cursor: pointer; z-index: 6;
+      transition: opacity .5s, filter .5s;
+    }
+    .agent:hover { filter: brightness(1.3) !important; z-index: 10; }
+    .agent.is-selected { filter: drop-shadow(0 0 3px var(--status-ok)) !important; }
+    .agent.is-degraded { opacity: .65; filter: saturate(.5); }
+    .agent.is-critical { opacity: .4; filter: saturate(.15) brightness(.7); }
+    .agent.is-warning { animation: agent-warning-pulse 1s ease infinite; }
+    @keyframes agent-warning-pulse {
+      0%, 100% { filter: brightness(1); }
+      50% { filter: brightness(1.5) saturate(1.5); }
+    }
+
+    .agent-overhead {
+      position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%);
+      display: flex; flex-direction: column; align-items: center; gap: 1px;
+      pointer-events: none; margin-bottom: 2px;
+    }
+    .agent-action-icon { font-size: 8px; filter: drop-shadow(0 0 2px #000); }
+    .agent-name { font-size: 5px; color: var(--text-dim); }
+
+    .agent-fuel-bars { display: flex; gap: 1px; }
+    .fuel-bar { width: 16px; height: 2px; background: #1a1510; position: relative; }
+    .fuel-bar-fill { position: absolute; top: 0; left: 0; height: 100%; }
+    .fuel-bar-fill.is-ok   { background: var(--status-ok); }
+    .fuel-bar-fill.is-warn { background: var(--status-warn); }
+    .fuel-bar-fill.is-low  { background: var(--status-error); }
+    .fuel-bar-fill.is-hp   { background: var(--role-scout); }
+
+    /* ================================================================
+       FORMATION ZONES on canvas
+       ================================================================ */
+    .formation-zone {
+      position: absolute; z-index: 3;
+      cursor: pointer; transition: opacity .5s;
+    }
+    .formation-ring {
+      border: 1.5px dashed; border-radius: 40%;
+      position: absolute; inset: -8px; transition: .3s;
+    }
+    .formation-zone.is-selected .formation-ring {
+      border-style: solid; border-width: 2.5px;
+    }
+    .formation-label {
+      position: absolute; top: -18px; left: 50%; transform: translateX(-50%);
+      font-size: 6px; white-space: nowrap;
+      display: flex; gap: 4px; align-items: center;
+    }
+    .formation-momentum {
+      font-size: 5px; padding: 1px 4px; font-weight: 700;
+      color: var(--soil-deep);
+    }
+
+    /* ================================================================
+       SIMLISH BUBBLES — Sims smooth=normal, jagged=urgent
+       ================================================================ */
+    .simlish-bubble {
+      position: absolute; bottom: calc(100% + 28px); left: 50%;
+      transform: translateX(-50%);
+      padding: 2px 5px; font-size: 6px; white-space: nowrap;
+      z-index: 20; pointer-events: none;
+      animation: bubble-in .15s, bubble-out 2.5s .5s ease forwards;
+    }
+    .simlish-bubble.is-normal {
+      background: var(--soil-mid);
+      border: 2px solid var(--bark-light);
+      color: var(--text-secondary);
+    }
+    .simlish-bubble.is-urgent {
+      background: #2a1510;
+      border: 2px solid var(--status-error);
+      color: var(--status-error);
+    }
+    @keyframes bubble-in {
+      from { transform: translateX(-50%) scale(0); }
+      to   { transform: translateX(-50%) scale(1); }
+    }
+    @keyframes bubble-out {
+      to { opacity: 0; transform: translateX(-50%) translateY(-6px); }
+    }
+
+    /* ================================================================
+       MUSHROOM OUTPUTS
+       ================================================================ */
+    .mushroom {
+      position: absolute; z-index: 3; pointer-events: none;
+      animation: mushroom-grow .3s ease-out;
+      transition: opacity 2s;
+    }
+    @keyframes mushroom-grow {
+      from { transform: scale(0); }
+      to   { transform: scale(1); }
+    }
+
+    /* ================================================================
+       MYCELIUM LAYER (pipeline network)
+       ================================================================ */
+    .mycelium-layer {
+      position: absolute; inset: 0; z-index: 2; pointer-events: none;
+      transition: opacity .3s;
+    }
+    .mycelium-layer svg { width: 100%; height: 100%; }
+
+    .mycelium-path {
+      fill: none; stroke-width: 1.2;
+      stroke-dasharray: 4 6;
+      transition: opacity .3s, stroke-width .3s;
+    }
+    .mycelium-path.is-active {
+      animation: mycelium-flow 2.5s linear infinite;
+    }
+    @keyframes mycelium-flow { to { stroke-dashoffset: -20; } }
+
+    .pipeline-label {
+      position: absolute; font-size: 5px;
+      color: var(--mycelium-active); pointer-events: none;
+      opacity: 0; transition: opacity .5s;
+      text-shadow: 0 0 4px rgba(0,0,0,.8);
+    }
+
+    /* ================================================================
+       EVENT FEED — DRG Mission Control pattern
+       ================================================================ */
+    .event-feed {
+      position: absolute; top: 6px; right: 6px; width: 200px;
+      z-index: 15; pointer-events: none;
+    }
+    .feed-entry {
+      display: flex; gap: 3px; padding: 2px 5px;
+      font-size: 6px; background: rgba(14,12,8,.85);
+      margin-bottom: 1px; border-right: 2px solid var(--status-ok);
+    }
+    .feed-entry.is-warning { border-right-color: var(--status-warn); }
+    .feed-time { color: var(--text-dim); min-width: 32px; }
+    .feed-agent { font-weight: 700; min-width: 38px; }
+    .feed-agent.is-ok   { color: var(--status-ok); }
+    .feed-agent.is-warn { color: var(--status-warn); }
+    .feed-message { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+    /* ================================================================
+       PIPELINE TICKETS — Overcooked order pattern
+       ================================================================ */
+    .pipeline-tickets {
+      position: absolute; bottom: 4px; left: 50%; transform: translateX(-50%);
+      display: flex; gap: 4px; z-index: 15; pointer-events: none;
+    }
+    .ticket {
+      background: var(--soil-mid); border: 2px solid var(--bark);
+      padding: 2px 6px; font-size: 6px;
+      display: flex; align-items: center; gap: 4px;
+    }
+    .ticket-timer { width: 24px; height: 3px; background: var(--bark); overflow: hidden; }
+    .ticket-fill { height: 100%; }
+    .ticket-fill.is-ok   { background: var(--status-ok); }
+    .ticket-fill.is-warn { background: var(--status-warn); }
+
+    /* Layer toggle */
+    .layer-toggle {
+      position: absolute; top: 6px; left: 6px; z-index: 15;
+      display: flex; gap: 2px;
+    }
+    .layer-button {
+      background: var(--soil-mid); border: 2px solid var(--bark);
+      color: var(--text-dim); font-family: inherit; font-size: 6px;
+      padding: 2px 6px; cursor: pointer;
+    }
+    .layer-button:hover, .layer-button.is-active {
+      border-color: var(--status-ok); color: var(--text-primary);
+    }
+
+    /* ================================================================
+       BOTTOM PANEL — StarCraft 3-zone
+       ================================================================ */
+    .bottom-panel {
+      background: var(--soil-mid);
+      border-top: 2px solid var(--bark);
+      display: grid;
+      grid-template-columns: 140px 1fr 170px;
+      z-index: 20;
+    }
+
+    /* Zone 1: Minimap */
+    .minimap-zone { border-right: 2px solid var(--bark); padding: 6px; }
+    .zone-label { font-size: 5px; color: var(--text-dim); letter-spacing: 2px; margin-bottom: 3px; }
+    .minimap {
+      background: #080604; border: 2px solid var(--bark);
+      position: relative; height: calc(100% - 14px);
+    }
+    .minimap-dot { position: absolute; width: 3px; height: 3px; }
+    .minimap-tree { position: absolute; }
+    .minimap-line { position: absolute; height: 1px; opacity: .25; }
+
+    /* Zone 2: Detail panel */
+    .detail-zone {
+      padding: 6px 10px; overflow-y: auto;
+      scrollbar-width: thin; scrollbar-color: var(--bark) transparent;
+    }
+    .detail-header { font-size: 5px; color: var(--text-dim); letter-spacing: 2px; margin-bottom: 4px; }
+    .detail-portrait { display: flex; gap: 8px; align-items: flex-start; }
+    .portrait-frame {
+      width: 36px; height: 36px; background: #080604;
+      border: 2px solid var(--bark);
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .portrait-info { flex: 1; min-width: 0; }
+    .detail-name { font-size: 9px; font-weight: 700; }
+    .detail-role { font-size: 6px; color: var(--text-dim); text-transform: uppercase; letter-spacing: 1px; }
+    .detail-task {
+      font-size: 7px; color: var(--status-warn); margin-top: 2px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .detail-pipeline { font-size: 6px; color: var(--mycelium-active); margin-top: 3px; }
+    .detail-section-label { font-size: 6px; color: var(--text-dim); margin-top: 6px; margin-bottom: 2px; }
+    .detail-list-row {
+      display: flex; justify-content: space-between;
+      padding: 2px 0; border-bottom: 1px solid var(--bark); font-size: 6px;
+    }
+    .detail-empty { font-size: 7px; color: var(--text-dim); padding: 12px 0; text-align: center; }
+
+    .stat-row {
+      display: grid; grid-template-columns: 24px 1fr 20px;
+      gap: 1px 4px; align-items: center; margin-top: 4px;
+    }
+    .stat-label { font-size: 5px; color: var(--text-dim); }
+    .stat-bar { height: 4px; background: #120f08; border: 1px solid var(--bark); position: relative; }
+    .stat-fill { position: absolute; top: 0; left: 0; height: 100%; }
+    .stat-value { font-size: 6px; text-align: right; }
+
+    .autonomy-row { display: flex; gap: 2px; margin-top: 4px; }
+    .autonomy-pip {
+      flex: 1; height: 8px; border: 1px solid var(--bark);
+      font-size: 4px; display: flex; align-items: center; justify-content: center;
+      cursor: pointer;
+    }
+    .autonomy-pip:hover { border-color: var(--text-secondary); }
+    .autonomy-pip.is-active { font-weight: 700; }
+    .autonomy-pip[data-level="0"] { border-color: var(--status-ok); }
+    .autonomy-pip[data-level="0"].is-active { background: var(--status-ok); color: #000; }
+    .autonomy-pip[data-level="1"] { border-color: var(--role-scout); }
+    .autonomy-pip[data-level="1"].is-active { background: var(--role-scout); color: #000; }
+    .autonomy-pip[data-level="2"] { border-color: var(--status-warn); }
+    .autonomy-pip[data-level="2"].is-active { background: var(--status-warn); color: #000; }
+    .autonomy-pip[data-level="3"] { border-color: var(--status-error); }
+    .autonomy-pip[data-level="3"].is-active { background: var(--status-error); color: #000; }
+    .autonomy-pip[data-level="4"] { border-color: var(--role-analyst); }
+    .autonomy-pip[data-level="4"].is-active { background: var(--role-analyst); color: #000; }
+    .autonomy-label { font-size: 5px; margin-top: 2px; }
+
+    .momentum-bar { display: flex; gap: 2px; margin: 6px 0; }
+    .momentum-segment { flex: 1; height: 5px; background: #120f08; }
+    .momentum-segment[data-tier="0"] { background: var(--momentum-cold); }
+    .momentum-segment[data-tier="1"] { background: var(--momentum-warm); }
+    .momentum-segment[data-tier="2"] { background: var(--momentum-hot); }
+    .momentum-segment[data-tier="3"] { background: var(--momentum-fever); }
+    .momentum-desc { font-size: 6px; margin-bottom: 4px; }
+
+    /* Zone 3: Command card */
+    .command-zone { border-left: 2px solid var(--bark); padding: 6px; }
+    .command-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 3px; height: calc(100% - 16px);
+    }
+    .command-button {
+      background: var(--soil-light); border: 2px solid var(--bark);
+      font-family: inherit; font-size: 6px; color: var(--text-secondary);
+      cursor: pointer;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 1px; padding: 2px;
+    }
+    .command-button:hover { border-color: var(--status-ok); color: var(--text-primary); }
+    .command-button:active { transform: scale(.95); }
+    .command-icon { font-size: 10px; }
+    .command-hotkey { font-size: 5px; color: var(--text-dim); background: var(--soil-deep); padding: 0 2px; }
+    .command-button.is-empty { opacity: .15; pointer-events: none; border-color: transparent; }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <!-- TOP BAR -->
+    <div class="top-bar">
+      <div class="cadence" id="cadence"></div>
+      <div class="roster" id="roster"></div>
+      <div class="colony-summary">
+        <div class="summary-item">
+          <span style="color:var(--status-ok)">*</span>
+          <span class="summary-value" id="summary-agents">8</span>
+          <span style="color:var(--text-dim)">LIVE</span>
+        </div>
+        <div class="summary-item">
+          <span style="color:var(--canopy-healthy)">^</span>
+          <span class="summary-value" id="summary-trees">9</span>
+          <span style="color:var(--text-dim)">TREES</span>
+        </div>
+        <div class="summary-item">
+          <span style="color:var(--status-ok)">+</span>
+          <span class="summary-value" id="summary-guard">OK</span>
+          <span style="color:var(--text-dim)">GUARD</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- VIEWPORT -->
+    <div class="viewport">
+      <div class="colony" id="colony">
+        <div class="ground"></div>
+        <div class="mycelium-layer" id="mycelium-layer"></div>
+      </div>
+      <div class="layer-toggle">
+        <button class="layer-button is-active" data-layer="surface">SURFACE</button>
+        <button class="layer-button" data-layer="underground">UNDERGROUND</button>
+      </div>
+      <div class="event-feed" id="event-feed"></div>
+      <div class="pipeline-tickets">
+        <div class="ticket">
+          <span class="ticket-label" style="color:var(--status-warn)">L1 Approve</span>
+          <div class="ticket-timer"><div class="ticket-fill is-warn" style="width:65%"></div></div>
+        </div>
+        <div class="ticket">
+          <span class="ticket-label" style="color:var(--status-ok)">PR Lint</span>
+          <div class="ticket-timer"><div class="ticket-fill is-ok" style="width:40%"></div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- BOTTOM PANEL -->
+    <div class="bottom-panel">
+      <div class="minimap-zone">
+        <div class="zone-label">COLONY MAP</div>
+        <div class="minimap" id="minimap"></div>
+      </div>
+      <div class="detail-zone" id="detail-zone">
+        <div class="detail-header">SELECT</div>
+        <div class="detail-empty">Click a tree, springtail, or formation</div>
+      </div>
+      <div class="command-zone">
+        <div class="zone-label">COMMANDS</div>
+        <div class="command-grid" id="command-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ================================================================
+       The JavaScript follows the same cleanup principles:
+       - Descriptive variable names
+       - Helper functions for DOM creation
+       - No inline styles in generated HTML
+       - Event delegation where possible
+       - Clear separation of data, init, and update
+       ================================================================ */
+
+    // Deterministic hash for stable layout positions
+    function hash(str) {
+      let h = 5381;
+      for (let i = 0; i < str.length; i++) h = ((h << 5) + h) + str.charCodeAt(i);
+      return h;
+    }
+    function seeded(key, min, max) {
+      return min + ((hash(key) & 0x7FFFFFFF) % (max - min));
+    }
+
+    // ─── DATA ───────────────────────────────────────────────────────
+
+    const trees = [
+      { id: "github",    label: "GitHub",    type: "conifer",   x: 15, y: 28, status: "active"  },
+      { id: "kick",      label: "Kick",      type: "deciduous", x: 38, y: 18, status: "active"  },
+      { id: "bluesky",   label: "Bluesky",   type: "deciduous", x: 58, y: 20, status: "active"  },
+      { id: "telegram",  label: "Telegram",  type: "deciduous", x: 78, y: 22, status: "active"  },
+      { id: "discord",   label: "Discord",   type: "deciduous", x: 92, y: 42, status: "paused"  },
+      { id: "presearch", label: "Presearch", type: "shrub",     x: 66, y: 52, status: "active"  },
+      { id: "email",     label: "Email",     type: "shrub",     x: 10, y: 56, status: "active"  },
+      { id: "browser",   label: "Browser",   type: "conifer",   x: 88, y: 65, status: "idle"    },
+      { id: "shell",     label: "Shell",     type: "shrub",     x: 46, y: 8,  status: "active"  },
+    ];
+
+    const connections = [
+      { a: "kick",     b: "bluesky",   pipes: [{ id: "stream-notify",  dir: 1,  status: "active" }] },
+      { a: "github",   b: "shell",     pipes: [{ id: "pr-lint",        dir: 1,  status: "active" }] },
+      { a: "email",    b: "bluesky",   pipes: [{ id: "digest",         dir: 1,  status: "active" }] },
+      { a: "telegram", b: "presearch", pipes: [
+        { id: "cmd-route",     dir: 1,  status: "active" },
+        { id: "search-result", dir: -1, status: "active" },
+      ]},
+      { a: "kick",     b: "discord",   pipes: [{ id: "announce",  dir: 1, status: "warning" }] },
+      { a: "browser",  b: "github",    pipes: [{ id: "scrape",    dir: 1, status: "idle"    }] },
+      { a: "bluesky",  b: "telegram",  pipes: [{ id: "post-notify", dir: 1, status: "active" }] },
+    ];
+
+    const formations = [
+      {
+        id: "alpha", name: "Alpha Swarm",
+        intent: "EXECUTE", description: "Stream > Social",
+        momentum: 2, momentumLabel: "HOT", color: "var(--momentum-hot)",
+        members: ["s01", "s02", "s03"], zone: { x: 42, y: 22 },
+      },
+      {
+        id: "beta", name: "Beta Patrol",
+        intent: "RECONNOITER", description: "Chat Commands",
+        momentum: 1, momentumLabel: "WARM", color: "var(--momentum-warm)",
+        members: ["s04", "s05"], zone: { x: 73, y: 36 },
+      },
+    ];
+
+    const SPRITE_CLASS = {
+      scout: "sprite-scout", worker: "sprite-worker", guard: "sprite-guard",
+      analyst: "sprite-analyst", sentinel: "sprite-sentinel",
+    };
+    const ROLE_COLOR = {
+      scout: "var(--role-scout)", worker: "var(--role-worker)", guard: "var(--role-guard)",
+      analyst: "var(--role-analyst)", sentinel: "var(--role-sentinel)",
+    };
+    const AUTONOMY_LABELS = ["OBSERVE", "SUGGEST", "APPROVE", "AUTONOMOUS", "SELF-DIRECT"];
+    const AUTONOMY_COLORS = [
+      "var(--status-ok)", "var(--role-scout)", "var(--status-warn)",
+      "var(--status-error)", "var(--role-analyst)",
+    ];
+    const MOMENTUM_NAMES = ["COLD", "WARM", "HOT", "FEVER"];
+    const MOMENTUM_UNLOCKS = ["Read only", "Basic chains", "Write env + sync", "Consensus + AI"];
+    const SIMLISH = ["zib!", "glorpf~", "klik!", "vrm~", "bzzk!", "snrf...", "przt!", "pip!", "nrt!"];
+    const TREE_SPRITE = { conifer: "sprite-tree-conifer", deciduous: "sprite-tree-deciduous", shrub: "sprite-tree-shrub" };
+    const TREE_SIZE = {
+      conifer:   { width: 36, height: 52 },
+      deciduous: { width: 36, height: 44 },
+      shrub:     { width: 28, height: 20 },
+    };
+    const MUSHROOM_SPRITES = ["sprite-mushroom-gold", "sprite-mushroom-purple", "sprite-mushroom-teal"];
+
+    const agents = [
+      { id: "s01", name: "Bristle",    role: "scout",    autonomy: 1, fuel: 87, hp: 100, tree: "kick",      task: "Monitoring kick.stream_live",   status: "ok",   pipeline: "stream-notify" },
+      { id: "s02", name: "Furcula",    role: "worker",   autonomy: 2, fuel: 63, hp: 95,  tree: "github",    task: "Running PR lint checks",        status: "ok",   pipeline: "pr-lint" },
+      { id: "s03", name: "Collembola", role: "analyst",  autonomy: 3, fuel: 45, hp: 88,  tree: "bluesky",   task: "Composing social digest",       status: "ok",   pipeline: "digest" },
+      { id: "s04", name: "Chitin",     role: "guard",    autonomy: 1, fuel: 92, hp: 100, tree: "telegram",  task: "Routing /search commands",       status: "ok",   pipeline: "cmd-route" },
+      { id: "s05", name: "Podura",     role: "worker",   autonomy: 2, fuel: 71, hp: 100, tree: "presearch", task: "Aggregating search results",     status: "ok",   pipeline: "search-result" },
+      { id: "s06", name: "Sminthurus", role: "scout",    autonomy: 1, fuel: 55, hp: 92,  tree: "email",     task: "Idle — no pending triggers",    status: "idle", pipeline: null },
+      { id: "s07", name: "Tomocerus",  role: "analyst",  autonomy: 4, fuel: 30, hp: 78,  tree: "browser",   task: "Scrape failing — circuit 2/3",  status: "warn", pipeline: "scrape" },
+      { id: "s08", name: "Neanura",    role: "sentinel", autonomy: 0, fuel: 100, hp: 100, tree: null,       task: "Patrolling — all gates nominal", status: "ok",   pipeline: null },
+    ];
+
+    const eventLog = [
+      { time: "14:32", agent: "Bristle",   message: "kick > bluesky",       severity: "ok" },
+      { time: "14:31", agent: "Neanura",   message: "BLOCKED destructive",  severity: "warn" },
+      { time: "14:30", agent: "Tomocerus", message: "browser circuit 2/3",  severity: "warn" },
+      { time: "14:28", agent: "Chitin",    message: "/search > presearch",  severity: "ok" },
+      { time: "14:25", agent: "Podura",    message: "3 results cached",     severity: "ok" },
+    ];
+
+    const COMMANDS = {
+      none: [
+        { icon: "*", label: "INSTINCTS", key: "I" }, { icon: "~", label: "CANVAS", key: "V" },
+        { icon: "^", label: "TREES", key: "T" },     { icon: "-", label: "MEMORY", key: "M" },
+        { icon: "@", label: "AI", key: "F" },         { icon: "%", label: "SETTINGS", key: "S" },
+        null, null, null,
+      ],
+      agent: [
+        { icon: "<>", label: "REASSIGN", key: "R" }, { icon: "^", label: "AUTO +", key: "=" },
+        { icon: "v", label: "AUTO -", key: "-" },    { icon: "||", label: "PAUSE", key: "P" },
+        { icon: "<<", label: "RECALL", key: "C" },   { icon: "x", label: "DETACH", key: "D" },
+        { icon: "?", label: "INSPECT", key: "I" },   { icon: "[]", label: "GROUP", key: "G" },
+        null,
+      ],
+      tree: [
+        { icon: "+", label: "ENABLE", key: "E" },  { icon: "x", label: "DISABLE", key: "D" },
+        { icon: "%", label: "CONFIG", key: "C" },   { icon: "-", label: "REMOVE", key: "R" },
+        { icon: ".", label: "EVENTS", key: "V" },   { icon: ">", label: "TEST", key: "T" },
+        { icon: "^", label: "OUTPUTS", key: "O" },  null, null,
+      ],
+      formation: [
+        { icon: ">", label: "INTENT", key: "I" },  { icon: "+", label: "ADD", key: "A" },
+        { icon: "~", label: "FUEL", key: "F" },     { icon: "#", label: "GUARD", key: "G" },
+        { icon: "x", label: "DISSOLVE", key: "D" }, { icon: "!", label: "RALLY", key: "R" },
+        null, null, null,
+      ],
+    };
+
+    let selection = { id: null, type: null };
+    let currentLayer = "surface";
+    const cadenceBuffer = Array(20).fill(3);
+
+    // ─── POSITIONING ────────────────────────────────────────────────
+
+    function getAgentPosition(agent) {
+      const formation = formations.find(f => f.members.includes(agent.id));
+      if (formation) {
+        const offsetX = seeded(agent.id + "fx", -8, 9);
+        const offsetY = seeded(agent.id + "fy", -4, 5);
+        return { x: formation.zone.x + offsetX, y: formation.zone.y + offsetY };
+      }
+      const tree = trees.find(t => t.id === agent.tree);
+      if (!tree) return { x: 50, y: 78 };
+      return {
+        x: tree.x + seeded(agent.id + "tx", -5, 6),
+        y: tree.y + seeded(agent.id + "ty", 10, 16),
+      };
+    }
+
+    function getMyceliumPath(conn, width, height) {
+      const treeA = trees.find(t => t.id === conn.a);
+      const treeB = trees.find(t => t.id === conn.b);
+      if (!treeA || !treeB) return "";
+      const x1 = treeA.x * width / 100, y1 = treeA.y * height / 100;
+      const x2 = treeB.x * width / 100, y2 = treeB.y * height / 100;
+      const key = conn.a + conn.b;
+      const curveX = seeded(key + "cx", -35, 36);
+      const curveY = seeded(key + "cy", 8, 45);
+      return `M${x1},${y1} Q${(x1+x2)/2 + curveX},${(y1+y2)/2 + curveY} ${x2},${y2}`;
+    }
+
+    // ─── INIT ───────────────────────────────────────────────────────
+
+    function init() {
+      const colony = document.getElementById("colony");
+      const width = colony.offsetWidth;
+      const height = colony.offsetHeight;
+
+      buildLitter(colony);
+      buildMushrooms(colony);
+      buildFormationZones(colony);
+      buildTrees(colony);
+      buildMycelium(colony, width, height);
+      buildAgents(colony);
+      buildCadence();
+      setupEventDelegation(colony);
+      updateUI();
+    }
+
+    function buildLitter(colony) {
+      for (let i = 0; i < 45; i++) {
+        const dot = document.createElement("div");
+        dot.className = "litter-dot";
+        const x = seeded("litter" + i + "x", 3, 97);
+        const y = seeded("litter" + i + "y", 8, 92);
+        const w = seeded("litter" + i + "w", 2, 4);
+        const h = seeded("litter" + i + "h", 1, 3);
+        const hue = seeded("litter" + i + "hue", 35, 50);
+        const sat = seeded("litter" + i + "sat", 20, 40);
+        const lgt = seeded("litter" + i + "lgt", 8, 16);
+        dot.style.cssText = `left:${x}%;top:${y}%;width:${w}px;height:${h}px;background:hsl(${hue},${sat}%,${lgt}%);opacity:${.12 + ((i * 7) % 20) / 100}`;
+        colony.appendChild(dot);
+      }
+    }
+
+    function buildMushrooms(colony) {
+      trees.forEach(tree => {
+        if (tree.status !== "active") return;
+        const count = seeded(tree.id + "mushcount", 1, 3);
+        for (let i = 0; i < count; i++) {
+          const el = document.createElement("div");
+          el.className = "mushroom";
+          const spriteClass = MUSHROOM_SPRITES[seeded(tree.id + "mt" + i, 0, 3)];
+          el.innerHTML = `<div class="pixel-sprite ${spriteClass}"></div>`;
+          const ox = seeded(tree.id + "mx" + i, -4, 5);
+          const oy = seeded(tree.id + "my" + i, 5, 12);
+          el.style.cssText = `left:${tree.x + ox}%;top:${tree.y + oy}%`;
+          colony.appendChild(el);
+        }
+      });
+    }
+
+    function buildFormationZones(colony) {
+      formations.forEach(formation => {
+        const el = document.createElement("div");
+        el.className = "formation-zone";
+        el.id = "formation-" + formation.id;
+        el.dataset.formationId = formation.id;
+        el.style.cssText = `left:calc(${formation.zone.x}% - 50px);top:calc(${formation.zone.y}% - 30px);width:100px;height:60px`;
+        el.innerHTML = `
+          <div class="formation-ring" style="border-color:${formation.color}"></div>
+          <div class="formation-label">
+            <span style="color:${formation.color}">${formation.name}</span>
+            <span class="formation-momentum" style="background:${formation.color}">${formation.momentumLabel}</span>
+          </div>`;
+        colony.appendChild(el);
+      });
+    }
+
+    function buildTrees(colony) {
+      trees.forEach(tree => {
+        const el = document.createElement("div");
+        el.className = "tree";
+        el.id = "tree-" + tree.id;
+        el.dataset.treeId = tree.id;
+        const size = TREE_SIZE[tree.type];
+        el.style.cssText = `left:calc(${tree.x}% - ${size.width/2}px);top:calc(${tree.y}% - ${size.height}px);width:${size.width}px;height:${size.height + 16}px`;
+        el.innerHTML = `
+          <div class="pixel-sprite ${TREE_SPRITE[tree.type]} tree-canopy"></div>
+          <div class="tree-status is-${tree.status}"></div>
+          <div class="tree-label">${tree.label}</div>`;
+        colony.appendChild(el);
+      });
+    }
+
+    function buildMycelium(colony, width, height) {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+      svg.style.cssText = "width:100%;height:100%";
+
+      connections.forEach(conn => {
+        const pathData = getMyceliumPath(conn, width, height);
+        if (!pathData) return;
+
+        const hasActive = conn.pipes.some(p => p.status === "active");
+        const hasWarning = conn.pipes.some(p => p.status === "warning");
+        const strokeColor = hasActive ? "var(--mycelium-active)" : hasWarning ? "var(--mycelium-warning)" : "var(--mycelium)";
+
+        // Main path
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", pathData);
+        path.setAttribute("stroke", strokeColor);
+        path.setAttribute("class", `mycelium-path${hasActive ? " is-active" : ""}`);
+        path.style.opacity = hasActive ? .25 : .1;
+        path.id = "mycelium-" + conn.a + "-" + conn.b;
+        svg.appendChild(path);
+
+        // Flow dots — one per active directional pipe
+        conn.pipes.forEach(pipe => {
+          if (pipe.status !== "active") return;
+          const dot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          dot.setAttribute("r", "2.5");
+          dot.setAttribute("fill", strokeColor);
+          dot.setAttribute("opacity", ".6");
+          const motion = document.createElementNS("http://www.w3.org/2000/svg", "animateMotion");
+          motion.setAttribute("dur", (2 + seeded(pipe.id + "dur", 0, 20) / 10) + "s");
+          motion.setAttribute("repeatCount", "indefinite");
+          motion.setAttribute("path", pathData);
+          if (pipe.dir === -1) {
+            motion.setAttribute("keyPoints", "1;0");
+            motion.setAttribute("keyTimes", "0;1");
+            motion.setAttribute("calcMode", "linear");
+          }
+          dot.appendChild(motion);
+          svg.appendChild(dot);
+        });
+
+        // Pipeline label (visible in underground mode)
+        const treeA = trees.find(t => t.id === conn.a);
+        const treeB = trees.find(t => t.id === conn.b);
+        if (treeA && treeB) {
+          const label = document.createElement("div");
+          label.className = "pipeline-label";
+          label.id = "pipeline-label-" + conn.a + "-" + conn.b;
+          label.textContent = conn.pipes.map(p => p.id).join(" / ");
+          label.style.cssText = `left:${(treeA.x + treeB.x) / 2}%;top:${(treeA.y + treeB.y) / 2 + 3}%`;
+          colony.appendChild(label);
+        }
+      });
+
+      document.getElementById("mycelium-layer").appendChild(svg);
+    }
+
+    function buildAgents(colony) {
+      agents.forEach(agent => {
+        const el = document.createElement("div");
+        el.className = "agent";
+        el.id = "agent-" + agent.id;
+        el.dataset.agentId = agent.id;
+        const pos = getAgentPosition(agent);
+        el.style.cssText = `left:calc(${pos.x}% - 14px);top:calc(${pos.y}% - 10px)`;
+
+        const actionIcon = agent.status === "warn" ? "!" : agent.status === "idle" ? "-" : "*";
+        el.innerHTML = `
+          <div class="agent-overhead">
+            <span class="agent-action-icon" id="action-icon-${agent.id}">${actionIcon}</span>
+            <div class="agent-fuel-bars" id="fuel-bars-${agent.id}"></div>
+            <span class="agent-name">${agent.name}</span>
+          </div>
+          <div class="spr ${SPRITE_CLASS[agent.role]}"></div>`;
+        colony.appendChild(el);
+      });
+    }
+
+    function buildCadence() {
+      const container = document.getElementById("cadence");
+      container.innerHTML = cadenceBuffer.map((_, i) =>
+        `<div class="cadence-bar" id="cadence-bar-${i}"></div>`
+      ).join("");
+    }
+
+    // ─── EVENT DELEGATION ───────────────────────────────────────────
+
+    function setupEventDelegation(colony) {
+      colony.addEventListener("click", (event) => {
+        const target = event.target.closest("[data-agent-id], [data-tree-id], [data-formation-id]");
+        if (target) {
+          event.stopPropagation();
+          if (target.dataset.agentId) {
+            selection = { id: target.dataset.agentId, type: "agent" };
+          } else if (target.dataset.treeId) {
+            selection = { id: target.dataset.treeId, type: "tree" };
+          } else if (target.dataset.formationId) {
+            selection = { id: target.dataset.formationId, type: "formation" };
+          }
+        } else {
+          selection = { id: null, type: null };
+        }
+        updateUI();
+      });
+
+      // Layer toggle
+      document.querySelector(".layer-toggle").addEventListener("click", (event) => {
+        const button = event.target.closest(".layer-button");
+        if (!button) return;
+        setLayer(button.dataset.layer);
+      });
+    }
+
+    // ─── LAYER SWITCHING ────────────────────────────────────────────
+
+    function setLayer(layer) {
+      currentLayer = layer;
+      document.querySelectorAll(".layer-button").forEach(btn =>
+        btn.classList.toggle("is-active", btn.dataset.layer === layer)
+      );
+      document.getElementById("colony").classList.toggle("is-underground", layer === "underground");
+
+      connections.forEach(conn => {
+        const path = document.getElementById("mycelium-" + conn.a + "-" + conn.b);
+        if (!path) return;
+        const hasActive = conn.pipes.some(p => p.status === "active");
+        path.style.opacity = layer === "underground" ? (hasActive ? .65 : .3) : (hasActive ? .25 : .1);
+        path.style.strokeWidth = layer === "underground" ? "2.5" : "1.2";
+
+        const label = document.getElementById("pipeline-label-" + conn.a + "-" + conn.b);
+        if (label) label.style.opacity = layer === "underground" ? "1" : "0";
+      });
+    }
+
+    // ─── UI UPDATES (surgical, no full rebuild) ─────────────────────
+
+    function updateUI() {
+      updateRoster();
+      updateAgentElements();
+      updateSelectionHighlights();
+      updateDetailPanel();
+      updateCommandGrid();
+      updateEventFeed();
+      updateMinimap();
+    }
+
+    function updateRoster() {
+      const roster = document.getElementById("roster");
+      const parts = [];
+
+      formations.forEach(formation => {
+        const groupSlots = formation.members.map(memberId => {
+          const agent = agents.find(a => a.id === memberId);
+          if (!agent) return "";
+          const statusClass = agent.status === "ok" ? "ok" : agent.status === "warn" ? "warn" : "idle";
+          const icon = agent.fuel < 20 ? "!" : agent.status === "idle" ? "-" : "*";
+          const selectedClass = selection.id === agent.id ? "is-selected" : "";
+          return `<div class="roster-slot ${selectedClass}" data-status="${statusClass}" data-agent-id="${agent.id}" title="${agent.name}: ${agent.task}"><span class="roster-icon">${icon}</span></div>`;
+        }).join("");
+
+        parts.push(`
+          <div class="roster-group" style="border-color:${formation.color}" data-formation-id="${formation.id}">
+            <span class="roster-group-label" style="color:${formation.color}">${formation.name.split(" ")[0]}</span>
+            ${groupSlots}
+          </div>`);
+      });
+
+      // Unformed agents
+      agents.filter(a => !formations.some(f => f.members.includes(a.id))).forEach(agent => {
+        const statusClass = agent.status === "ok" ? "ok" : agent.status === "warn" ? "warn" : "idle";
+        const icon = agent.fuel < 20 ? "!" : agent.status === "idle" ? "-" : "*";
+        const selectedClass = selection.id === agent.id ? "is-selected" : "";
+        parts.push(`<div class="roster-slot ${selectedClass}" data-status="${statusClass}" data-agent-id="${agent.id}" title="${agent.name}: ${agent.task}"><span class="roster-icon">${icon}</span></div>`);
+      });
+
+      roster.innerHTML = parts.join("");
+    }
+
+    function updateAgentElements() {
+      agents.forEach(agent => {
+        const el = document.getElementById("agent-" + agent.id);
+        if (!el) return;
+
+        // State classes
+        el.classList.toggle("is-degraded", agent.fuel >= 20 && agent.fuel < 50);
+        el.classList.toggle("is-critical", agent.fuel < 20);
+        el.classList.toggle("is-warning", agent.status === "warn");
+        el.classList.toggle("is-selected", selection.id === agent.id);
+
+        // Action icon
+        const iconEl = document.getElementById("action-icon-" + agent.id);
+        if (iconEl) {
+          iconEl.textContent = agent.fuel < 20 ? "!" : agent.status === "warn" ? "!" : agent.status === "idle" ? "-" : "*";
+        }
+
+        // Fuel bars — only visible when below 80%
+        const barsEl = document.getElementById("fuel-bars-" + agent.id);
+        if (barsEl) {
+          if (agent.fuel < 80 || agent.hp < 80) {
+            const fuelClass = agent.fuel > 50 ? "is-ok" : agent.fuel > 20 ? "is-warn" : "is-low";
+            barsEl.innerHTML = `
+              <div class="fuel-bar"><div class="fuel-bar-fill ${fuelClass}" style="width:${agent.fuel}%"></div></div>
+              <div class="fuel-bar"><div class="fuel-bar-fill is-hp" style="width:${agent.hp}%"></div></div>`;
+          } else {
+            barsEl.innerHTML = "";
+          }
+        }
+      });
+    }
+
+    function updateSelectionHighlights() {
+      trees.forEach(tree => {
+        const el = document.getElementById("tree-" + tree.id);
+        if (el) el.classList.toggle("is-selected", selection.id === tree.id);
+      });
+      formations.forEach(formation => {
+        const el = document.getElementById("formation-" + formation.id);
+        if (el) el.classList.toggle("is-selected", selection.id === formation.id);
+      });
+    }
+
+    function updateDetailPanel() {
+      const panel = document.getElementById("detail-zone");
+
+      if (selection.type === "agent") {
+        const agent = agents.find(a => a.id === selection.id);
+        if (!agent) return;
+        const formation = formations.find(f => f.members.includes(agent.id));
+        const fuelColor = agent.fuel > 50 ? "var(--status-ok)" : "var(--status-warn)";
+        const autoColor = AUTONOMY_COLORS[agent.autonomy];
+
+        panel.innerHTML = `
+          <div class="detail-header">SPRINGTAIL</div>
+          <div class="detail-portrait">
+            <div class="portrait-frame">
+              <div class="spr ${SPRITE_CLASS[agent.role]}" style="transform:scale(3)"></div>
+            </div>
+            <div class="portrait-info">
+              <div class="detail-name">${agent.name}</div>
+              <div class="detail-role">${agent.role}${agent.tree ? " near " + agent.tree : " roaming"}${formation ? " / " + formation.name : ""}</div>
+              <div class="detail-task">${agent.task}</div>
+              <div class="stat-row">
+                <span class="stat-label">FUEL</span>
+                <div class="stat-bar"><div class="stat-fill" style="width:${agent.fuel}%;background:${fuelColor}"></div></div>
+                <span class="stat-value" style="color:${fuelColor}">${agent.fuel}</span>
+                <span class="stat-label">HP</span>
+                <div class="stat-bar"><div class="stat-fill" style="width:${agent.hp}%;background:var(--role-scout)"></div></div>
+                <span class="stat-value" style="color:var(--role-scout)">${agent.hp}</span>
+              </div>
+              ${agent.pipeline ? `<div class="detail-pipeline">PIPELINE: ${agent.pipeline}</div>` : ""}
+              <div class="autonomy-row">
+                ${[0,1,2,3,4].map(i => `<div class="autonomy-pip ${agent.autonomy === i ? "is-active" : ""}" data-level="${i}" onclick="setAutonomy('${agent.id}',${i})">${i}</div>`).join("")}
+              </div>
+              <div class="autonomy-label" style="color:${autoColor}">${AUTONOMY_LABELS[agent.autonomy]}</div>
+            </div>
+          </div>`;
+
+      } else if (selection.type === "tree") {
+        const tree = trees.find(t => t.id === selection.id);
+        if (!tree) return;
+        const relatedConns = connections.filter(c => c.a === tree.id || c.b === tree.id);
+        const nearbyAgents = agents.filter(a => a.tree === tree.id);
+        const statusColor = tree.status === "active" ? "var(--status-ok)" : tree.status === "paused" ? "var(--status-warn)" : "var(--text-dim)";
+
+        panel.innerHTML = `
+          <div class="detail-header">CONNECTOR</div>
+          <div class="detail-name">${tree.label}</div>
+          <div class="detail-role" style="color:${statusColor}">${tree.status.toUpperCase()} ${tree.type.toUpperCase()}</div>
+          <div class="detail-section-label">MYCELIUM</div>
+          ${relatedConns.flatMap(c => c.pipes.map(p => {
+            const pipeColor = p.status === "active" ? "var(--mycelium-active)" : "var(--text-dim)";
+            const direction = p.dir === 1 ? c.a + " > " + c.b : c.b + " > " + c.a;
+            return `<div class="detail-list-row"><span style="color:${pipeColor}">${p.id}</span><span>${direction}</span></div>`;
+          })).join("")}
+          <div class="detail-section-label">NEARBY SPRINGTAILS</div>
+          ${nearbyAgents.map(a => `<div class="detail-list-row"><span>* ${a.name}</span><span style="color:var(--text-dim)">${a.role}</span></div>`).join("")}`;
+
+      } else if (selection.type === "formation") {
+        const formation = formations.find(f => f.id === selection.id);
+        if (!formation) return;
+        const members = formation.members.map(id => agents.find(a => a.id === id)).filter(Boolean);
+
+        panel.innerHTML = `
+          <div class="detail-header">FORMATION</div>
+          <div class="detail-name" style="color:${formation.color}">${formation.name}</div>
+          <div class="detail-role">${formation.intent}: ${formation.description}</div>
+          <div class="momentum-bar">
+            ${MOMENTUM_NAMES.map((_, i) => `<div class="momentum-segment" ${i <= formation.momentum ? `data-tier="${i}"` : ""}></div>`).join("")}
+          </div>
+          <div class="momentum-desc" style="color:${formation.color}">${formation.momentumLabel} — ${MOMENTUM_UNLOCKS[formation.momentum]}</div>
+          ${members.map(a => {
+            const fuelColor = a.fuel > 50 ? "var(--status-ok)" : "var(--status-warn)";
+            return `<div class="detail-list-row"><span>* ${a.name} <span style="color:var(--text-dim)">${a.role}</span></span><span style="color:${fuelColor}">${a.fuel} fuel</span></div>`;
+          }).join("")}`;
+
+      } else {
+        panel.innerHTML = `
+          <div class="detail-header">COLONY</div>
+          <div class="detail-empty">Click a tree, springtail, or formation</div>`;
+      }
+    }
+
+    function updateCommandGrid() {
+      const grid = document.getElementById("command-grid");
+      const commands = COMMANDS[selection.type || "none"];
+      grid.innerHTML = commands.map(cmd => {
+        if (!cmd) return `<div class="command-button is-empty"></div>`;
+        return `
+          <button class="command-button" onclick="executeCommand('${cmd.label}')">
+            <span class="command-icon">${cmd.icon}</span>
+            ${cmd.label}
+            <span class="command-hotkey">${cmd.key}</span>
+          </button>`;
+      }).join("");
+    }
+
+    function updateEventFeed() {
+      const feed = document.getElementById("event-feed");
+      feed.innerHTML = eventLog.slice(0, 5).map(entry => `
+        <div class="feed-entry ${entry.severity === "warn" ? "is-warning" : ""}">
+          <span class="feed-time">${entry.time}</span>
+          <span class="feed-agent ${entry.severity === "warn" ? "is-warn" : "is-ok"}">${entry.agent}</span>
+          <span class="feed-message">${entry.message}</span>
+        </div>`
+      ).join("");
+    }
+
+    function updateMinimap() {
+      const minimap = document.getElementById("minimap");
+      minimap.innerHTML = "";
+
+      // Formation zones on minimap
+      formations.forEach(f => {
+        const dot = document.createElement("div");
+        dot.style.cssText = `position:absolute;left:${f.zone.x - 6}%;top:${f.zone.y - 4}%;width:12%;height:8%;border:1px solid ${f.color};border-radius:40%;opacity:.3`;
+        minimap.appendChild(dot);
+      });
+
+      // Trees on minimap
+      trees.forEach(tree => {
+        const dot = document.createElement("div");
+        dot.className = "minimap-tree";
+        const color = tree.status === "active" ? "var(--canopy-healthy)" : tree.status === "paused" ? "var(--canopy-degraded)" : "#333";
+        dot.style.cssText = `left:${tree.x - 1}%;top:${tree.y - 1}%;width:4px;height:4px;background:${color}`;
+        minimap.appendChild(dot);
+      });
+
+      // Mycelium on minimap
+      connections.forEach(conn => {
+        const treeA = trees.find(t => t.id === conn.a);
+        const treeB = trees.find(t => t.id === conn.b);
+        if (!treeA || !treeB) return;
+        const line = document.createElement("div");
+        line.className = "minimap-line";
+        const dx = treeB.x - treeA.x, dy = treeB.y - treeA.y;
+        const length = Math.sqrt(dx * dx + dy * dy);
+        const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+        const hasActive = conn.pipes.some(p => p.status === "active");
+        line.style.cssText = `left:${treeA.x}%;top:${treeA.y}%;width:${length}%;transform:rotate(${angle}deg);transform-origin:0 0;background:${hasActive ? "var(--mycelium-active)" : "var(--mycelium)"}`;
+        minimap.appendChild(line);
+      });
+
+      // Agents on minimap
+      agents.forEach(agent => {
+        const pos = getAgentPosition(agent);
+        const dot = document.createElement("div");
+        dot.className = "minimap-dot";
+        dot.style.cssText = `left:${pos.x}%;top:${pos.y}%;background:${ROLE_COLOR[agent.role] || "var(--text-secondary)"}`;
+        if (selection.id === agent.id) {
+          dot.style.width = "5px";
+          dot.style.height = "5px";
+        }
+        minimap.appendChild(dot);
+      });
+    }
+
+    // ─── ACTIONS ────────────────────────────────────────────────────
+
+    function setAutonomy(agentId, level) {
+      const agent = agents.find(a => a.id === agentId);
+      if (agent) { agent.autonomy = level; updateUI(); }
+    }
+
+    function executeCommand(label) {
+      const now = new Date();
+      const timestamp = `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`;
+      eventLog.unshift({ time: timestamp, agent: selection.id || "Colony", message: label, severity: "ok" });
+      if (eventLog.length > 12) eventLog.pop();
+      updateEventFeed();
+    }
+
+    // ─── TICKS ──────────────────────────────────────────────────────
+
+    // Cadence waveform
+    setInterval(() => {
+      cadenceBuffer.shift();
+      cadenceBuffer.push(2 + Math.floor(Math.random() * 12));
+      cadenceBuffer.forEach((value, i) => {
+        const bar = document.getElementById("cadence-bar-" + i);
+        if (bar) {
+          bar.style.height = value + "px";
+          bar.style.background = "var(--mycelium-active)";
+        }
+      });
+    }, 600);
+
+    // Fuel drain — L4D escalating degradation
+    setInterval(() => {
+      agents.forEach(agent => {
+        if (agent.status === "ok" && agent.fuel > 5 && Math.random() < .18) agent.fuel--;
+      });
+      updateAgentElements();
+    }, 5000);
+
+    // Simlish bubbles — Sims purposeful communication
+    setInterval(() => {
+      const eligible = agents.filter(a => a.status !== "warn");
+      if (!eligible.length) return;
+      const agent = eligible[Math.floor(Math.random() * eligible.length)];
+      const el = document.getElementById("agent-" + agent.id);
+      if (!el) return;
+      const bubble = document.createElement("div");
+      bubble.className = `simlish-bubble ${agent.status === "warn" ? "is-urgent" : "is-normal"}`;
+      bubble.textContent = SIMLISH[Math.floor(Math.random() * SIMLISH.length)];
+      el.appendChild(bubble);
+      setTimeout(() => bubble.remove(), 3000);
+    }, 4000);
+
+    // Mushroom spawn — pipeline output fruiting
+    setInterval(() => {
+      const activeTrees = trees.filter(t => t.status === "active");
+      if (!activeTrees.length) return;
+      const tree = activeTrees[Math.floor(Math.random() * activeTrees.length)];
+      const mushroom = document.createElement("div");
+      mushroom.className = "mushroom";
+      const spriteClass = MUSHROOM_SPRITES[Math.floor(Math.random() * 3)];
+      mushroom.innerHTML = `<div class="pixel-sprite ${spriteClass}"></div>`;
+      mushroom.style.cssText = `left:${tree.x - 3 + Math.random() * 6}%;top:${tree.y + 5 + Math.random() * 6}%`;
+      document.getElementById("colony").appendChild(mushroom);
+      setTimeout(() => { mushroom.style.opacity = "0"; setTimeout(() => mushroom.remove(), 2000); }, 12000);
+
+      const now = new Date();
+      eventLog.unshift({
+        time: `${now.getHours().toString().padStart(2, "0")}:${now.getMinutes().toString().padStart(2, "0")}`,
+        agent: tree.label,
+        message: "output fruited",
+        severity: "ok",
+      });
+      if (eventLog.length > 12) eventLog.pop();
+      updateEventFeed();
+    }, 7000);
+
+    // ─── KEYBOARD ───────────────────────────────────────────────────
+
+    document.addEventListener("keydown", (event) => {
+      const key = event.key.toLowerCase();
+      if (key >= "1" && key <= "8") {
+        const agent = agents[+key - 1];
+        if (agent) { selection = { id: agent.id, type: "agent" }; updateUI(); }
+      }
+      if (key === "u") setLayer(currentLayer === "underground" ? "surface" : "underground");
+      if (key === "escape") { selection = { id: null, type: null }; updateUI(); }
+    });
+
+    // ─── BOOT ───────────────────────────────────────────────────────
+    init();
+  </script>
+</body>
+</html>
