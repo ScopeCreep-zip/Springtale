@@ -31,6 +31,7 @@ extern crate connector_signal;
 extern crate connector_browser;
 
 pub mod config;
+pub mod dispatch;
 pub mod error;
 pub mod init;
 pub mod operations;

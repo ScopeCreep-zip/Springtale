@@ -13,6 +13,7 @@ springtale-connector = { workspace = true }
 springtale-store     = { workspace = true }
 springtale-transport = { workspace = true }
 springtale-ai        = { workspace = true }
+springtale-runtime   = { workspace = true }
 
 async-trait = { workspace = true }
 tokio       = { workspace = true }
@@ -24,6 +25,7 @@ chrono      = { workspace = true }
 uuid        = { workspace = true }
 regex       = { workspace = true }
 rand        = { workspace = true }
+hex         = { workspace = true }
 dashmap     = { workspace = true }
 
 [dev-dependencies]

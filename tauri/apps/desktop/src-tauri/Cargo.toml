@@ -20,6 +20,7 @@ uuid = { version = "1", features = ["v4"] }
 anyhow = "1"
 figment = { version = "0.10", features = ["toml", "env"] }
 chrono = { version = "0.4", features = ["serde"] }
+hex = "0.4"
 
 # Springtale core crates — the commands layer delegates to these.
 # Zero Tauri dependency in the crates themselves.

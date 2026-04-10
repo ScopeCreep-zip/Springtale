@@ -4,7 +4,7 @@ use chacha20poly1305::{
     XChaCha20Poly1305,
     aead::{Aead, AeadCore, KeyInit},
 };
-use zeroize::Zeroize;
+use secrecy::ExposeSecret;
 
 use super::kdf;
 use crate::error::CryptoError;
@@ -45,18 +45,18 @@ pub fn export_backup(
 
     // Derive encryption key from travel passphrase
     let salt = kdf::generate_salt();
-    let mut key = kdf::derive_key(travel_passphrase, &salt)?;
+    let key = kdf::derive_key(travel_passphrase, &salt)?;
 
     // Encrypt payload
     let nonce = XChaCha20Poly1305::generate_nonce(&mut rand::rngs::OsRng);
-    let cipher = XChaCha20Poly1305::new_from_slice(&key)
+    // SECURITY: expose needed for AEAD encryption of backup
+    let cipher = XChaCha20Poly1305::new_from_slice(key.expose_secret())
         .map_err(|_| CryptoError::KeyGeneration("invalid key length".into()))?;
 
     let ciphertext = cipher
         .encrypt(&nonce, payload.as_slice())
         .map_err(|_| CryptoError::KeyGeneration("backup encryption failed".into()))?;
-
-    key.zeroize();
+    drop(key); // SecretBox zeroizes on drop
 
     // Write: [salt (16)] [nonce (24)] [ciphertext]
     let mut file_data = Vec::with_capacity(16 + 24 + ciphertext.len());
@@ -102,18 +102,17 @@ pub fn import_backup(
     let ciphertext = &data[40..];
 
     // Derive key from travel passphrase
-    let mut key = kdf::derive_key(travel_passphrase, &salt)?;
+    let key = kdf::derive_key(travel_passphrase, &salt)?;
 
     let nonce = chacha20poly1305::XNonce::from_slice(&nonce_bytes);
-    // SECURITY: key exposed for AEAD decryption
-    let cipher =
-        XChaCha20Poly1305::new_from_slice(&key).map_err(|_| CryptoError::VaultDecryptionFailed)?;
+    // SECURITY: expose needed for AEAD decryption of backup
+    let cipher = XChaCha20Poly1305::new_from_slice(key.expose_secret())
+        .map_err(|_| CryptoError::VaultDecryptionFailed)?;
 
     let plaintext = cipher
         .decrypt(nonce, ciphertext)
         .map_err(|_| CryptoError::VaultDecryptionFailed)?;
-
-    key.zeroize();
+    drop(key); // SecretBox zeroizes on drop
 
     // Parse payload: [len (8 LE)] [bytes] for each file
     let mut cursor = 0;

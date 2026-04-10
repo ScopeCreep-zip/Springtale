@@ -16,6 +16,7 @@ pub mod composer;
 pub mod constraints;
 pub mod intent;
 pub mod intervention;
+pub mod orchestrate;
 
 pub use coordinator::CooperativeBlackboard;
 pub use error::OrchestratorError;

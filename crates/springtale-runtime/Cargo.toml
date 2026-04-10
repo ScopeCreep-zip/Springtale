@@ -32,13 +32,17 @@ connector-slack = { workspace = true }
 connector-signal = { workspace = true }
 connector-browser = { workspace = true }
 
-anyhow = { workspace = true }
+arc-swap = { workspace = true }
+ed25519-dalek = { workspace = true }
+hex = { workspace = true }
 inventory = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+regex = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
 

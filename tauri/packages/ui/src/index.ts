@@ -21,13 +21,27 @@ export { BottomPanel } from "./colony/BottomPanel";
 // Colony types + utilities
 export type {
   ColonyTree, ColonyAgent, ColonyConnection, ColonyFormation,
-  ColonySelection, ColonyCommand, ColonyPipe,
+  ColonySelection, ColonyCommand, ColonyPipe, DetailView,
 } from "./colony/types";
 export { seeded, hash, COMMANDS, TREE_TYPES, MOMENTUM_NAMES, MOMENTUM_COLORS } from "./colony/types";
 
+// Colony geometry (shared position calculations for canvas + minimap)
+export { getConnectorPosition, getAgentPosition, getFormationAgents, getFormationBounds } from "./colony/geometry";
+export type { ConnectorPositions } from "./colony/geometry";
+
+// Colony data mappers (DashboardState → colony visual model)
+export { mapTrees, mapAgents, mapConnections, mapFormations } from "./colony/mappers";
+
+// Colony panels
+export { AiConfigPanel } from "./colony/AiConfigPanel";
+export { AppSettingsPanel } from "./colony/AppSettingsPanel";
+export { ConnectorConfigPanel } from "./colony/ConnectorConfigPanel";
+export { TeamBuilder } from "./colony/TeamBuilder";
+export type { TeamConfig } from "./colony/TeamBuilder";
+
 // Dashboard state (data layer — platform-agnostic)
 export { createDashboardState, DashboardProvider, useDashboard } from "./dashboard/context";
-export type { DataProvider, DashboardState, FormationInfo, RuleSummary } from "./dashboard/types";
+export type { DataProvider, DashboardState, FormationInfo, RuleSummary, ConfigSchema, ConfigSchemaProperty, AvailableConnector } from "./dashboard/types";
 
 // Form components (rendered inside colony detail panel)
 export { TriggerPicker } from "./TriggerPicker";
@@ -36,8 +50,6 @@ export { ConditionEditor } from "./ConditionEditor";
 export type { ConditionDef } from "./ConditionEditor";
 export { RulePreview } from "./RulePreview";
 export { Canvas } from "./Canvas";
-export { HatchWizard } from "./HatchWizard";
-
 // Types still needed by dashboard state internals
 export type { EventItem } from "./CommandPanel";
 export type { ConnectorStatus } from "./ResourceBar";

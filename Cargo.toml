@@ -44,6 +44,10 @@ exclude = [
   # Tauri desktop app has its own dependency tree (tauri 2.x crates).
   # Excluded from workspace to avoid version conflicts.
   "tauri/apps/desktop/src-tauri",
+  # WASM connector SDK targets wasm32-unknown-unknown — different target
+  # than the workspace. Excluded to avoid cross-compilation conflicts.
+  "sdk/connector-sdk",
+  "sdk/examples/connector-hello-wasm",
 ]
 
 [workspace.package]
@@ -55,6 +59,7 @@ repository = "https://github.com/ScopeCreep-zip/Springtale"
 
 # ── Async Runtime ──────────────────────────────────────────────────────────────
 tokio            = { version = "1",    features = ["full"] }
+arc-swap         = "1"
 tokio-util       = { version = "0.7",  features = ["codec"] }
 tokio-stream     = { version = "0.1", features = ["sync"] }
 async-trait      = "0.1"
@@ -71,6 +76,7 @@ thiserror        = "2"
 serde            = { version = "1", features = ["derive"] }
 serde_json       = "1"
 toml             = "0.8"
+serde_yaml       = "0.9"
 schemars         = { version = "1", features = ["derive", "uuid1", "chrono04"] }
 
 # ── Validation ─────────────────────────────────────────────────────────────────
@@ -111,6 +117,7 @@ sqlx             = { version = "0.8",  features = ["postgres", "uuid", "chrono",
 # ── WASM Sandbox ───────────────────────────────────────────────────────────────
 wasmtime         = { version = "43",   features = ["cranelift", "component-model", "parallel-compilation"] }
 wasmtime-wasi    = { version = "43",   features = ["p2"] }
+wat              = "1"
 
 # ── MCP Protocol ───────────────────────────────────────────────────────────────
 rmcp             = { version = "1",    features = ["server", "transport-io", "macros"] }
@@ -133,6 +140,7 @@ rpassword        = "5"
 # ── Futures ─────────────────────────────────────────────────────────────────────
 futures-core      = "0.3"
 futures-util      = { version = "0.3", features = ["sink"] }
+async-stream      = "0.3"
 
 # ── Regex ──────────────────────────────────────────────────────────────────────
 regex            = "1"

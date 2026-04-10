@@ -48,6 +48,10 @@ pub struct AgentSlot {
     pub agent_id: AgentId,
     pub capabilities: Vec<String>,
     pub role_hint: Option<RoleHint>,
+    /// Per-agent AI adapter config. Read from config store key `ai:{agent_id}`
+    /// at formation assembly time. The composer passes this to the factory
+    /// to create a per-agent adapter during formation launch.
+    pub ai_config: Option<serde_json::Value>,
 }
 
 /// A hint about what role this agent should gravitate toward.
@@ -77,11 +81,13 @@ mod tests {
                     agent_id: AgentId::new(),
                     capabilities: vec!["slack_send".into()],
                     role_hint: Some(RoleHint::Primary),
+                    ai_config: None,
                 },
                 AgentSlot {
                     agent_id: AgentId::new(),
                     capabilities: vec!["github_read".into()],
                     role_hint: Some(RoleHint::Information),
+                    ai_config: None,
                 },
             ],
             intent: IntentPattern::Reconnoiter { target: "open_issues".into() },

@@ -1,11 +1,13 @@
 import { For, Show, Switch, Match } from "solid-js";
-import type { Component, JSX } from "solid-js";
+import type { Component } from "solid-js";
 import type {
-  ColonyTree, ColonyAgent, ColonyConnection, ColonyFormation, ColonySelection, ColonyCommand,
+  ColonyTree, ColonyAgent, ColonyConnection, ColonyFormation, ColonySelection, ColonyCommand, DetailView,
 } from "./types";
+import type { EventItem } from "../CommandPanel";
+import { getAgentPosition, getFormationBounds, type ConnectorPositions } from "./geometry";
 import {
   COMMANDS, ROLE_SPRITES, ROLE_COLORS, AUTONOMY_LABELS,
-  MOMENTUM_NAMES, MOMENTUM_COLORS, MOMENTUM_UNLOCKS, seeded,
+  MOMENTUM_NAMES, MOMENTUM_COLORS, MOMENTUM_UNLOCKS,
 } from "./types";
 
 export interface BottomPanelProps {
@@ -13,10 +15,18 @@ export interface BottomPanelProps {
   agents: ColonyAgent[];
   connections: ColonyConnection[];
   formations: ColonyFormation[];
+  events: EventItem[];
   selection: ColonySelection;
-  onCommand: (label: string) => void;
-  /** Optional custom detail content (for hatch wizard, settings, etc.) */
-  detailOverride?: JSX.Element;
+  detailView: DetailView;
+  onCommand: (action: string) => void;
+  outputs?: Array<{ id: string; connector_name: string; rule_name: string | null; output_json: string; success: boolean; error_message: string | null; created_at: string }>;
+  availableConnectors?: import("@springtale/types").AvailableConnector[];
+  onSelectAgent?: (id: string) => void;
+  onSelectConnector?: (id: string) => void;
+  onSetupConnector?: (name: string) => void;
+  onCreateBot?: () => void;
+  onAddToFormation?: (formationId: string, connectorName: string) => Promise<void>;
+  connectorPositions: ConnectorPositions;
 }
 
 /**
@@ -31,7 +41,7 @@ export const BottomPanel: Component<BottomPanelProps> = (props) => {
     <>
       {/* Zone 1: Minimap */}
       <div class="border-r-2 border-bark p-1.5">
-        <div class="text-text-dim" style={{ "font-size": "5px", "letter-spacing": "2px", "margin-bottom": "3px" }}>
+        <div class="colony-label text-text-dim">
           COLONY MAP
         </div>
         <Minimap
@@ -40,27 +50,68 @@ export const BottomPanel: Component<BottomPanelProps> = (props) => {
           connections={props.connections}
           formations={props.formations}
           selection={props.selection}
+          connectorPositions={props.connectorPositions}
         />
       </div>
 
-      {/* Zone 2: Detail Panel */}
+      {/* Zone 2: Detail Panel — view-mode driven */}
       <div class="overflow-y-auto p-1.5 px-2.5" style={{ "scrollbar-width": "thin", "scrollbar-color": "var(--color-bark) transparent" }}>
-        <Show when={props.detailOverride} fallback={
-          <DetailPanel
-            trees={props.trees}
-            agents={props.agents}
-            connections={props.connections}
-            formations={props.formations}
-            selection={props.selection}
-          />
-        }>
-          {props.detailOverride}
-        </Show>
+        <Switch>
+          <Match when={props.detailView.mode === "entity" && props.selection.type}>
+            <DetailPanel
+              trees={props.trees}
+              agents={props.agents}
+              connections={props.connections}
+              formations={props.formations}
+              selection={props.selection}
+            />
+          </Match>
+          <Match when={props.detailView.mode === "bots"}>
+            <BotsListView agents={props.agents} onSelect={props.onSelectAgent} onCreateNew={props.onCreateBot} />
+          </Match>
+          <Match when={props.detailView.mode === "connectors"}>
+            <ConnectorsListView
+              trees={props.trees}
+              available={props.availableConnectors ?? []}
+              onSelect={props.onSelectConnector}
+              onSetup={props.onSetupConnector}
+            />
+          </Match>
+          <Match when={props.detailView.mode === "events"}>
+            <EventsListView
+              events={props.events}
+              filterConnector={(props.detailView as { filterConnector?: string }).filterConnector}
+            />
+          </Match>
+          <Match when={props.detailView.mode === "outputs"}>
+            <OutputsListView
+              outputs={props.outputs ?? []}
+              connectorId={(props.detailView as { connectorId?: string }).connectorId ?? ""}
+            />
+          </Match>
+          <Match when={props.detailView.mode === "formations"}>
+            <FormationsListView
+              formations={props.formations}
+              agents={props.agents}
+              addAgentId={(props.detailView as { addAgentId?: string }).addAgentId}
+              onAddToFormation={props.onAddToFormation}
+            />
+          </Match>
+          <Match when={true}>
+            <DetailPanel
+              trees={props.trees}
+              agents={props.agents}
+              connections={props.connections}
+              formations={props.formations}
+              selection={props.selection}
+            />
+          </Match>
+        </Switch>
       </div>
 
       {/* Zone 3: Command Grid */}
       <div class="border-l-2 border-bark p-1.5">
-        <div class="text-text-dim" style={{ "font-size": "5px", "letter-spacing": "2px", "margin-bottom": "3px" }}>
+        <div class="colony-label text-text-dim">
           COMMANDS
         </div>
         <CommandGrid
@@ -80,74 +131,70 @@ const Minimap: Component<{
   connections: ColonyConnection[];
   formations: ColonyFormation[];
   selection: ColonySelection;
+  connectorPositions: ConnectorPositions;
 }> = (props) => {
-  const getAgentPos = (agent: ColonyAgent) => {
-    const formation = props.formations.find((f) => f.members.includes(agent.id));
-    if (formation) {
-      return {
-        x: formation.zone.x + seeded(agent.id + "fx", -8, 9),
-        y: formation.zone.y + seeded(agent.id + "fy", -4, 5),
-      };
-    }
-    const tree = props.trees.find((t) => t.id === agent.treeId);
-    if (!tree) return { x: 50, y: 78 };
-    return {
-      x: tree.x + seeded(agent.id + "tx", -5, 6),
-      y: tree.y + seeded(agent.id + "ty", 10, 16),
-    };
+  const connectorPos = (id: string) => {
+    const tree = props.trees.find((t) => t.id === id);
+    if (!tree) return { x: 50, y: 50 };
+    return props.connectorPositions[id] ?? { x: tree.x, y: tree.y };
   };
 
   return (
     <div class="colony-minimap">
-      {/* Formation zones */}
+      {/* Formation zones — computed from member positions via shared geometry */}
       <For each={props.formations}>
-        {(f) => (
-          <div
-            class="absolute rounded-[40%] opacity-30"
-            style={{
-              left: `${f.zone.x - 6}%`, top: `${f.zone.y - 4}%`,
-              width: "12%", height: "8%",
-              border: `1px solid ${f.color}`,
-            }}
-          />
-        )}
+        {(f) => {
+          const bounds = () => getFormationBounds(f, props.agents, props.trees, props.connectorPositions);
+          return (
+            <div
+              class="absolute rounded-[40%] opacity-30"
+              style={{
+                left: `${bounds().cx - bounds().rx}%`,
+                top: `${bounds().cy - bounds().ry}%`,
+                width: `${bounds().rx * 2}%`,
+                height: `${bounds().ry * 2}%`,
+                border: `1px solid ${f.color}`,
+              }}
+            />
+          );
+        }}
       </For>
 
-      {/* Trees */}
+      {/* Trees — respect drag positions */}
       <For each={props.trees}>
-        {(tree) => (
-          <div
-            class="colony-minimap-tree"
-            style={{
-              left: `${tree.x - 1}%`, top: `${tree.y - 1}%`,
-              width: "4px", height: "4px",
-              background: tree.status === "active" ? "var(--color-canopy)"
-                : tree.status === "paused" ? "var(--color-canopy-degraded)" : "#333",
-            }}
-          />
-        )}
+        {(tree) => {
+          const pos = () => connectorPos(tree.id);
+          return (
+            <div
+              class="colony-minimap-tree"
+              style={{
+                left: `${pos().x - 1}%`, top: `${pos().y - 1}%`,
+                width: "4px", height: "4px",
+                background: tree.status === "active" ? "var(--color-canopy)"
+                  : tree.status === "paused" ? "var(--color-canopy-degraded)" : "#333",
+              }}
+            />
+          );
+        }}
       </For>
 
-      {/* Connections */}
+      {/* Connections — respect drag positions */}
       <For each={props.connections}>
         {(conn) => {
-          const treeA = () => props.trees.find((t) => t.id === conn.a);
-          const treeB = () => props.trees.find((t) => t.id === conn.b);
-          const a = treeA();
-          const b = treeB();
-          if (!a || !b) return null;
-          const dx = b.x - a.x;
-          const dy = b.y - a.y;
-          const length = Math.sqrt(dx * dx + dy * dy);
-          const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+          const a = () => connectorPos(conn.a);
+          const b = () => connectorPos(conn.b);
+          const dx = () => b().x - a().x;
+          const dy = () => b().y - a().y;
+          const length = () => Math.sqrt(dx() * dx() + dy() * dy());
+          const angle = () => (Math.atan2(dy(), dx()) * 180) / Math.PI;
           const hasActive = conn.pipes.some((p) => p.status === "active");
           return (
             <div
               class="colony-minimap-line"
               style={{
-                left: `${a.x}%`, top: `${a.y}%`,
-                width: `${length}%`,
-                transform: `rotate(${angle}deg)`, "transform-origin": "0 0",
+                left: `${a().x}%`, top: `${a().y}%`,
+                width: `${length()}%`,
+                transform: `rotate(${angle()}deg)`, "transform-origin": "0 0",
                 background: hasActive ? "var(--color-mycelium-active)" : "var(--color-mycelium)",
               }}
             />
@@ -155,18 +202,18 @@ const Minimap: Component<{
         }}
       </For>
 
-      {/* Agents */}
+      {/* Agents — via shared geometry, respects drag positions */}
       <For each={props.agents}>
         {(agent) => {
-          const pos = getAgentPos(agent);
-          const isSelected = props.selection.id === agent.id;
+          const pos = () => getAgentPosition(agent, props.trees, props.connectorPositions);
+          const isSelected = () => props.selection.id === agent.id;
           return (
             <div
               class="colony-minimap-dot"
               style={{
-                left: `${pos.x}%`, top: `${pos.y}%`,
+                left: `${pos().x}%`, top: `${pos().y}%`,
                 background: ROLE_COLORS[agent.role] ?? "var(--color-text-secondary)",
-                ...(isSelected ? { width: "5px", height: "5px" } : {}),
+                ...(isSelected() ? { width: "5px", height: "5px" } : {}),
               }}
             />
           );
@@ -188,8 +235,8 @@ const DetailPanel: Component<{
   return (
     <Switch fallback={
       <div>
-        <div class="text-text-dim" style={{ "font-size": "5px", "letter-spacing": "2px", "margin-bottom": "4px" }}>COLONY</div>
-        <div class="py-3 text-center text-text-dim" style={{ "font-size": "7px" }}>
+        <div class="colony-label mb-1 text-text-dim">COLONY</div>
+        <div class="colony-text-xs py-3 text-center text-text-dim">
           Click a tree, springtail, or formation
         </div>
       </div>
@@ -198,48 +245,51 @@ const DetailPanel: Component<{
       <Match when={props.selection.type === "agent"}>
         {(() => {
           const agent = () => props.agents.find((a) => a.id === props.selection.id);
-          const formation = () => props.formations.find((f) => f.members.includes(props.selection.id ?? ""));
+          const formation = () => {
+            const a = agent();
+            return a?.connectorId ? props.formations.find((f) => f.members.includes(a.connectorId!)) : undefined;
+          };
           if (!agent()) return null;
           const a = agent()!;
           const fuelColor = a.fuel > 50 ? "var(--color-status-ok)" : "var(--color-status-warn)";
 
           return (
             <div>
-              <div class="text-text-dim" style={{ "font-size": "5px", "letter-spacing": "2px", "margin-bottom": "4px" }}>SPRINGTAIL</div>
+              <div class="colony-label mb-1 text-text-dim">SPRINGTAIL</div>
               <div class="flex items-start gap-2">
                 <div class="colony-portrait-frame">
                   <div class={`pixel-sprite ${ROLE_SPRITES[a.role]}`} style={{ transform: "scale(3)" }} />
                 </div>
                 <div class="min-w-0 flex-1">
-                  <div class="font-bold" style={{ "font-size": "9px" }}>{a.name}</div>
-                  <div class="uppercase text-text-dim" style={{ "font-size": "6px", "letter-spacing": "1px" }}>
-                    {a.role}{a.treeId ? ` near ${a.treeId}` : " roaming"}
+                  <div class="colony-text-md font-bold">{a.name}</div>
+                  <div class="colony-text-2xs uppercase text-text-dim" style={{ "letter-spacing": "1px" }}>
+                    {a.role}{a.connectorId ? ` near ${a.connectorId}` : " roaming"}
                     {formation() ? ` / ${formation()!.name}` : ""}
                   </div>
-                  <div class="mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap text-status-warn" style={{ "font-size": "7px" }}>
+                  <div class="colony-text-xs mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap text-status-warn">
                     {a.task}
                   </div>
                   {/* Stat bars */}
                   <div class="mt-1 grid items-center gap-x-1 gap-y-px" style={{ "grid-template-columns": "24px 1fr 20px" }}>
-                    <span class="text-text-dim" style={{ "font-size": "5px" }}>FUEL</span>
+                    <span class="colony-text-3xs text-text-dim">FUEL</span>
                     <div class="colony-stat-bar">
                       <div class="colony-stat-fill" style={{ width: `${a.fuel}%`, background: fuelColor }} />
                     </div>
                     <span class="text-right" style={{ "font-size": "6px", color: fuelColor }}>{a.fuel}</span>
-                    <span class="text-text-dim" style={{ "font-size": "5px" }}>HP</span>
+                    <span class="colony-text-3xs text-text-dim">HP</span>
                     <div class="colony-stat-bar">
                       <div class="colony-stat-fill" style={{ width: `${a.hp}%`, background: "var(--color-role-scout)" }} />
                     </div>
-                    <span class="text-right text-role-scout" style={{ "font-size": "6px" }}>{a.hp}</span>
+                    <span class="colony-text-2xs text-right text-role-scout">{a.hp}</span>
                   </div>
                   <Show when={a.pipeline}>
-                    <div class="mt-0.5 text-mycelium-active" style={{ "font-size": "6px" }}>
+                    <div class="colony-text-2xs mt-0.5 text-mycelium-active">
                       PIPELINE: {a.pipeline}
                     </div>
                   </Show>
                   {/* Autonomy pips */}
                   <div class="mt-1 flex gap-0.5">
-                    <For each={[0, 1, 2, 3, 4]}>
+                    <For each={[0, 1, 2, 3]}>
                       {(level) => (
                         <div
                           class={`colony-autonomy-pip ${a.autonomy === level ? "font-bold" : ""}`}
@@ -258,7 +308,7 @@ const DetailPanel: Component<{
                       )}
                     </For>
                   </div>
-                  <div class="mt-0.5 text-text-dim" style={{ "font-size": "5px" }}>
+                  <div class="colony-text-3xs mt-0.5 text-text-dim">
                     {AUTONOMY_LABELS[a.autonomy]}
                   </div>
                 </div>
@@ -269,23 +319,23 @@ const DetailPanel: Component<{
       </Match>
 
       {/* Tree detail */}
-      <Match when={props.selection.type === "tree"}>
+      <Match when={props.selection.type === "connector"}>
         {(() => {
           const tree = () => props.trees.find((t) => t.id === props.selection.id);
           if (!tree()) return null;
           const t = tree()!;
           const relatedConns = () => props.connections.filter((c) => c.a === t.id || c.b === t.id);
-          const nearbyAgents = () => props.agents.filter((a) => a.treeId === t.id);
+          const nearbyAgents = () => props.agents.filter((a) => a.connectorId === t.id);
           const statusColor = t.status === "active" ? "var(--color-status-ok)" : t.status === "paused" ? "var(--color-status-warn)" : "var(--color-text-dim)";
 
           return (
             <div>
-              <div class="text-text-dim" style={{ "font-size": "5px", "letter-spacing": "2px", "margin-bottom": "4px" }}>CONNECTOR</div>
-              <div class="font-bold" style={{ "font-size": "9px" }}>{t.label}</div>
+              <div class="colony-label mb-1 text-text-dim">CONNECTOR</div>
+              <div class="colony-text-md font-bold">{t.label}</div>
               <div class="uppercase" style={{ "font-size": "6px", "letter-spacing": "1px", color: statusColor }}>
                 {t.status.toUpperCase()} {t.type.toUpperCase()}
               </div>
-              <div class="mt-1.5 text-text-dim" style={{ "font-size": "6px" }}>MYCELIUM</div>
+              <div class="colony-text-2xs mt-1.5 text-text-dim">MYCELIUM</div>
               <For each={relatedConns()}>
                 {(conn) => (
                   <For each={conn.pipes}>
@@ -293,7 +343,7 @@ const DetailPanel: Component<{
                       const pipeColor = pipe.status === "active" ? "var(--color-mycelium-active)" : "var(--color-text-dim)";
                       const direction = pipe.dir === 1 ? `${conn.a} > ${conn.b}` : `${conn.b} > ${conn.a}`;
                       return (
-                        <div class="flex justify-between border-b border-bark py-0.5" style={{ "font-size": "6px" }}>
+                        <div class="colony-text-2xs flex justify-between border-b border-bark py-0.5">
                           <span style={{ color: pipeColor }}>{pipe.id}</span>
                           <span>{direction}</span>
                         </div>
@@ -302,10 +352,10 @@ const DetailPanel: Component<{
                   </For>
                 )}
               </For>
-              <div class="mt-1.5 text-text-dim" style={{ "font-size": "6px" }}>NEARBY SPRINGTAILS</div>
+              <div class="colony-text-2xs mt-1.5 text-text-dim">NEARBY SPRINGTAILS</div>
               <For each={nearbyAgents()}>
                 {(a) => (
-                  <div class="flex justify-between border-b border-bark py-0.5" style={{ "font-size": "6px" }}>
+                  <div class="colony-text-2xs flex justify-between border-b border-bark py-0.5">
                     <span>* {a.name}</span>
                     <span class="text-text-dim">{a.role}</span>
                   </div>
@@ -322,13 +372,13 @@ const DetailPanel: Component<{
           const formation = () => props.formations.find((f) => f.id === props.selection.id);
           if (!formation()) return null;
           const f = formation()!;
-          const members = () => f.members.map((id) => props.agents.find((a) => a.id === id)).filter(Boolean) as ColonyAgent[];
+          const members = () => props.agents.filter((a) => a.connectorId && f.members.includes(a.connectorId));
 
           return (
             <div>
-              <div class="text-text-dim" style={{ "font-size": "5px", "letter-spacing": "2px", "margin-bottom": "4px" }}>FORMATION</div>
+              <div class="colony-label mb-1 text-text-dim">FORMATION</div>
               <div class="font-bold" style={{ "font-size": "9px", color: f.color }}>{f.name}</div>
-              <div class="text-text-dim" style={{ "font-size": "6px" }}>{f.intent}: {f.description}</div>
+              <div class="colony-text-2xs text-text-dim">{f.intent}: {f.description}</div>
               {/* Momentum bar */}
               <div class="my-1.5 flex gap-0.5">
                 <For each={MOMENTUM_NAMES}>
@@ -349,7 +399,7 @@ const DetailPanel: Component<{
                 {(a) => {
                   const fuelColor = a.fuel > 50 ? "var(--color-status-ok)" : "var(--color-status-warn)";
                   return (
-                    <div class="flex justify-between border-b border-bark py-0.5" style={{ "font-size": "6px" }}>
+                    <div class="colony-text-2xs flex justify-between border-b border-bark py-0.5">
                       <span>* {a.name} <span class="text-text-dim">{a.role}</span></span>
                       <span style={{ color: fuelColor }}>{a.fuel} fuel</span>
                     </div>
@@ -380,11 +430,11 @@ const CommandGrid: Component<{
           return (
             <button
               class="colony-command-btn"
-              onClick={() => props.onCommand(cmd.label)}
+              onClick={() => props.onCommand(cmd.action)}
             >
-              <span style={{ "font-size": "10px" }}>{cmd.icon}</span>
+              <span class="colony-text-icon">{cmd.icon}</span>
               {cmd.label}
-              <span class="bg-soil-deep px-0.5 text-text-dim" style={{ "font-size": "5px" }}>{cmd.key}</span>
+              <span class="colony-text-3xs bg-soil-deep px-0.5 text-text-dim">{cmd.key}</span>
             </button>
           );
         }}
@@ -392,3 +442,227 @@ const CommandGrid: Component<{
     </div>
   );
 };
+
+// ── List Views ───────────────────────────────────────────
+
+const BotsListView: Component<{
+  agents: ColonyAgent[];
+  onSelect?: (id: string) => void;
+  onCreateNew?: () => void;
+}> = (props) => (
+  <div>
+    <div class="mb-1 flex items-center justify-between">
+      <span class="colony-label">BOTS ({props.agents.length})</span>
+      <button
+        onClick={() => props.onCreateNew?.()}
+        class="colony-text-3xs border border-bark bg-soil-light px-2 py-0.5 text-status-ok hover:border-status-ok"
+      >
+        + New Bot
+      </button>
+    </div>
+    <Show when={props.agents.length > 0} fallback={
+      <p class="colony-text-xs py-2 text-text-dim">No bots yet. Click + New Bot to hatch one.</p>
+    }>
+      <div class="space-y-1">
+        <For each={props.agents}>
+          {(agent) => (
+            <button
+              class="flex w-full items-center gap-2 rounded border border-bark p-2 text-start hover:border-bark-light"
+              onClick={() => props.onSelect?.(agent.id)}
+            >
+              <span class={`inline-block h-2 w-2 rounded-full ${
+                agent.status === "ok" ? "bg-status-ok" : agent.status === "warn" ? "bg-status-warn" : "bg-status-idle"
+              }`} />
+              <div class="min-w-0 flex-1">
+                <span class="colony-text-xs font-bold text-text-primary">{agent.name}</span>
+                <span class="colony-text-3xs ml-2 uppercase text-text-dim">{agent.role}</span>
+              </div>
+              <span class="colony-text-3xs text-text-dim">{agent.connectorId ?? "roaming"}</span>
+              <span class="colony-text-3xs text-text-dim">fuel:{agent.fuel}</span>
+            </button>
+          )}
+        </For>
+      </div>
+    </Show>
+  </div>
+);
+
+const ConnectorsListView: Component<{
+  trees: ColonyTree[];
+  available: import("@springtale/types").AvailableConnector[];
+  onSelect?: (id: string) => void;
+  onSetup?: (name: string) => void;
+}> = (props) => {
+  const notLoaded = () => props.available.filter((a) => !a.loaded);
+
+  return (
+    <div>
+      {/* Loaded connectors */}
+      <div class="colony-label mb-1">LOADED ({props.trees.length})</div>
+      <Show when={props.trees.length > 0} fallback={
+        <p class="colony-text-2xs py-1 text-text-dim">No connectors loaded yet.</p>
+      }>
+        <div class="mb-3 space-y-1">
+          <For each={props.trees}>
+            {(tree) => (
+              <button
+                class="flex w-full items-center gap-2 rounded border border-bark p-2 text-start hover:border-bark-light"
+                onClick={() => props.onSelect?.(tree.id)}
+              >
+                <span class={`inline-block h-2 w-2 rounded-full ${
+                  tree.status === "active" ? "bg-status-ok" : tree.status === "paused" ? "bg-status-warn" : "bg-status-idle"
+                }`} />
+                <span class="colony-text-xs font-bold text-text-primary">{tree.label}</span>
+                <span class="colony-text-3xs ml-auto uppercase text-text-dim">{tree.status}</span>
+              </button>
+            )}
+          </For>
+        </div>
+      </Show>
+
+      {/* Available but not loaded */}
+      <Show when={notLoaded().length > 0}>
+        <div class="colony-label mb-1">AVAILABLE ({notLoaded().length})</div>
+        <div class="space-y-1">
+          <For each={notLoaded()}>
+            {(connector) => (
+              <button
+                class="flex w-full items-center gap-2 rounded border border-bark-light border-dashed p-2 text-start hover:border-status-ok"
+                onClick={() => props.onSetup?.(connector.name)}
+              >
+                <span class="inline-block h-2 w-2 rounded-full bg-status-idle" />
+                <span class="colony-text-xs text-text-secondary">{connector.name.replace("connector-", "")}</span>
+                <span class="colony-text-3xs ml-auto text-status-ok">
+                  {connector.requires_config ? "Configure" : "Enable"}
+                </span>
+              </button>
+            )}
+          </For>
+        </div>
+      </Show>
+    </div>
+  );
+};
+
+const EventsListView: Component<{
+  events: EventItem[];
+  filterConnector?: string;
+}> = (props) => {
+  const filtered = () => {
+    if (props.filterConnector) {
+      return props.events.filter((e) => e.connectorName === props.filterConnector);
+    }
+    return props.events;
+  };
+
+  return (
+    <div>
+      <div class="colony-label mb-1">
+        {props.filterConnector ? `EVENTS: ${props.filterConnector}` : "EVENTS"} ({filtered().length})
+      </div>
+      <Show when={filtered().length > 0} fallback={
+        <p class="colony-text-xs py-2 text-text-dim">
+          {props.filterConnector ? `No events for ${props.filterConnector}.` : "No events yet."}
+        </p>
+      }>
+        <div class="space-y-0.5">
+          <For each={filtered()}>
+            {(event) => (
+              <div class="flex items-center gap-2 border-b border-bark py-1">
+                <span class="colony-text-3xs shrink-0 text-text-dim">
+                  {new Date(event.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                </span>
+                <span class={`colony-text-2xs shrink-0 font-bold ${
+                  /error|fail|block/i.test(event.actionTaken) ? "text-status-warn" : "text-status-ok"
+                }`}>
+                  {event.connectorName}
+                </span>
+                <span class="colony-text-2xs truncate text-text-secondary">{event.triggerType}</span>
+                <span class="colony-text-3xs ml-auto truncate text-text-dim">{event.actionTaken}</span>
+              </div>
+            )}
+          </For>
+        </div>
+      </Show>
+    </div>
+  );
+};
+
+const FormationsListView: Component<{
+  formations: ColonyFormation[];
+  agents: ColonyAgent[];
+  addAgentId?: string;
+  onAddToFormation?: (formationId: string, connectorName: string) => Promise<void>;
+}> = (props) => (
+  <div>
+    <div class="colony-label mb-1">
+      {props.addAgentId ? "SELECT FORMATION TO JOIN" : `FORMATIONS (${props.formations.length})`}
+    </div>
+    <Show when={props.formations.length > 0} fallback={
+      <p class="colony-text-xs py-2 text-text-dim">No formations. Use NEW RULE to create one.</p>
+    }>
+      <div class="space-y-1">
+        <For each={props.formations}>
+          {(formation) => {
+            const memberCount = formation.members.length;
+            return (
+              <button
+                class="flex w-full items-center gap-2 rounded border border-bark p-2 text-start hover:border-bark-light"
+                onClick={async () => {
+                  if (props.addAgentId && props.onAddToFormation) {
+                    const agent = props.agents.find((a) => a.id === props.addAgentId);
+                    if (agent?.connectorId) {
+                      await props.onAddToFormation(formation.id, agent.connectorId);
+                    }
+                  }
+                }}
+              >
+                <span class="colony-text-xs font-bold" style={{ color: formation.color }}>{formation.name}</span>
+                <span class="colony-text-3xs uppercase text-text-dim">{formation.intent}</span>
+                <span class="colony-text-3xs ml-auto text-text-dim">{memberCount} members</span>
+                <span class="colony-text-3xs font-bold" style={{ color: formation.color }}>{formation.momentumLabel}</span>
+              </button>
+            );
+          }}
+        </For>
+      </div>
+    </Show>
+  </div>
+);
+
+const OutputsListView: Component<{
+  outputs: Array<{ id: string; connector_name: string; rule_name: string | null; output_json: string; success: boolean; error_message: string | null; created_at: string }>;
+  connectorId: string;
+}> = (props) => (
+  <div>
+    <div class="colony-label mb-1">OUTPUTS: {props.connectorId} ({props.outputs.length})</div>
+    <Show when={props.outputs.length > 0} fallback={
+      <p class="colony-text-xs py-2 text-text-dim">No execution results yet for {props.connectorId}.</p>
+    }>
+      <div class="space-y-1">
+        <For each={props.outputs}>
+          {(output) => (
+            <div class={`rounded border p-2 ${output.success ? "border-bark" : "border-status-error"}`}>
+              <div class="flex items-center gap-2">
+                <span class={`inline-block h-2 w-2 rounded-full ${output.success ? "bg-status-ok" : "bg-status-error"}`} />
+                <span class="colony-text-2xs font-bold text-text-primary">{output.rule_name ?? "unknown"}</span>
+                <span class="colony-text-3xs ml-auto text-text-dim">
+                  {new Date(output.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                </span>
+              </div>
+              <Show when={output.error_message}>
+                <p class="colony-text-3xs mt-1 text-status-error">{output.error_message}</p>
+              </Show>
+              <pre class="colony-text-3xs mt-1 max-h-20 overflow-auto whitespace-pre-wrap text-text-secondary">
+                {(() => {
+                  try { return JSON.stringify(JSON.parse(output.output_json), null, 2); }
+                  catch { return output.output_json; }
+                })()}
+              </pre>
+            </div>
+          )}
+        </For>
+      </div>
+    </Show>
+  </div>
+);

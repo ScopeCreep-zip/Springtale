@@ -1,0 +1,22 @@
+/**
+ * Matches: springtale-runtime/src/operations/agent.rs — AgentState
+ *
+ * Aggregated agent state — joins rule data, recent events, and autonomy
+ * into a single response. All business logic (role inference, activity
+ * computation) lives in the backend.
+ */
+export interface AgentState {
+  rule_id: string;
+  name: string;
+  status: string;
+  trigger_type: string;
+  connector_name: string | null;
+  /** Agent role — inferred from trigger type by backend. */
+  role: "scout" | "worker" | "guard" | "analyst";
+  /** Fuel: 100 when enabled, 0 when disabled. */
+  fuel: number;
+  /** Activity state: "firing" | "error" | "active" | "waiting" | "idle". */
+  activity: "firing" | "error" | "active" | "waiting" | "idle";
+  /** Autonomy level index: 0=observe, 1=suggest, 2=approve, 3=autonomous. */
+  autonomy: number;
+}

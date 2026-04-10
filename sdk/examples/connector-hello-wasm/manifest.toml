@@ -1,0 +1,20 @@
+# Springtale Connector Manifest — Hello World Example
+#
+# This manifest declares the connector's metadata, capabilities,
+# triggers, and actions. It's verified alongside the .wasm binary
+# when the connector is installed.
+
+name = "connector-hello-wasm"
+version = "0.1.0"
+author = "springtale-examples"
+description = "Hello world WASM connector — demonstrates the SDK."
+
+# No capabilities needed (no network, filesystem, or shell access)
+
+[[actions]]
+name = "greet"
+description = "Returns a greeting for the given name"
+
+[[actions]]
+name = "echo"
+description = "Returns the input unchanged"

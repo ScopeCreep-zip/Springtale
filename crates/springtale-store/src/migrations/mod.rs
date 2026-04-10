@@ -17,6 +17,15 @@ const MIGRATION_004: &str = include_str!("004_safety.sql");
 /// Embedded SQL for schema version 5.
 const MIGRATION_005: &str = include_str!("005_formations.sql");
 
+/// Embedded SQL for schema version 6.
+const MIGRATION_006: &str = include_str!("006_config.sql");
+
+/// Embedded SQL for schema version 7.
+const MIGRATION_007: &str = include_str!("007_execution_results.sql");
+
+/// Embedded SQL for schema version 8.
+const MIGRATION_008: &str = include_str!("008_wasm_binaries.sql");
+
 /// All migrations in order.
 const MIGRATIONS: &[(i64, &str)] = &[
     (1, MIGRATION_001),
@@ -24,6 +33,9 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (3, MIGRATION_003),
     (4, MIGRATION_004),
     (5, MIGRATION_005),
+    (6, MIGRATION_006),
+    (7, MIGRATION_007),
+    (8, MIGRATION_008),
 ];
 
 /// Run all pending migrations on the given connection.
@@ -109,7 +121,7 @@ mod tests {
         let version: i64 = conn
             .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 5);
+        assert_eq!(version, 8);
     }
 
     #[test]

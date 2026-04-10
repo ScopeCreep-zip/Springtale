@@ -1,0 +1,49 @@
+//! Subtask types for formation orchestration.
+//!
+//! When the formation orchestrator decomposes an intent into work,
+//! it posts `SubTask`s to the CooperativeBlackboard. Members pull
+//! tasks matching their capabilities (RimWorld work priority pattern).
+//! Results are reported back via `SubTaskResult`.
+
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use super::cadence::AgentId;
+
+/// A subtask posted to the blackboard by the orchestrator.
+///
+/// Members pull subtasks matching their connector capabilities.
+/// The `assigned_to` field is a hint (role bias per §23),
+/// not a mandate — any capable member can pick up the task.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubTask {
+    /// Unique task identifier.
+    pub id: Uuid,
+    /// Target connector (e.g., "connector-github").
+    pub target_connector: String,
+    /// Action to execute (e.g., "create_issue").
+    pub action_name: String,
+    /// Action parameters (JSON).
+    pub params: serde_json::Value,
+    /// Priority (1 = highest). Members check highest priority first.
+    pub priority: u8,
+    /// Suggested agent — a hint, not a lock (§23 bias not mandate).
+    pub assigned_to: Option<AgentId>,
+    /// Human-readable description for the UI.
+    pub description: String,
+}
+
+/// Result of a member executing a subtask.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubTaskResult {
+    /// Which task was executed.
+    pub task_id: Uuid,
+    /// Which agent executed it.
+    pub agent_id: AgentId,
+    /// Whether execution succeeded.
+    pub success: bool,
+    /// Action output (connector response).
+    pub output: serde_json::Value,
+    /// Execution duration in milliseconds.
+    pub duration_ms: u64,
+}

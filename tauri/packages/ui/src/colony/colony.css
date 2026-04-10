@@ -28,7 +28,17 @@
     position: absolute;
     cursor: pointer;
     z-index: 6;
-    transition: opacity .5s, filter .5s;
+    width: 28px;   /* pixel-sprite is 7px × scale(4) */
+    height: 32px;  /* pixel-sprite is 8px × scale(4) */
+    transition: left 0.8s ease-in-out, top 0.8s ease-in-out, opacity .5s, filter .5s;
+  }
+  .colony-agent.is-walking {
+    animation: agent-walk 0.3s steps(2) infinite;
+  }
+  @keyframes agent-walk {
+    0%   { transform: translateY(0); }
+    50%  { transform: translateY(-2px); }
+    100% { transform: translateY(0); }
   }
   .colony-agent:hover {
     filter: brightness(1.3) !important;
@@ -49,23 +59,15 @@
     animation: agent-warning-pulse 1s ease infinite;
   }
 
-  /* Formation zones */
+  /* Formation zones — SVG ellipse with pointer-events: stroke.
+     Per MDN: HTML divs only support auto/none (whole element).
+     SVG supports stroke — only the ring border catches clicks,
+     interior passes through to agents/trees (StarCraft pattern). */
   .colony-formation {
     position: absolute;
     z-index: 3;
-    cursor: pointer;
-    transition: opacity .5s;
-  }
-  .colony-formation-ring {
-    border: 1.5px dashed;
-    border-radius: 40%;
-    position: absolute;
-    inset: -8px;
-    transition: .3s;
-  }
-  .colony-formation.is-selected .colony-formation-ring {
-    border-style: solid;
-    border-width: 2.5px;
+    pointer-events: none;
+    transition: left 0.8s ease-in-out, top 0.8s ease-in-out, width 0.8s ease-in-out, height 0.8s ease-in-out, opacity .5s;
   }
 
   /* Mushroom outputs */
@@ -94,20 +96,43 @@
     animation: bubble-in .15s, bubble-out 2.5s .5s ease forwards;
   }
 
+  /* Close button — consistent across all panels */
+  .colony-close-btn {
+    font-size: 14px;
+    line-height: 1;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+    color: var(--color-text-dim);
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  .colony-close-btn:hover {
+    color: var(--color-text-primary);
+    background: var(--color-bark);
+  }
+
   /* Command buttons */
   .colony-command-btn {
     background: var(--color-soil-light);
     border: 2px solid var(--color-bark);
     font-family: inherit;
-    font-size: 6px;
+    font-size: 9px;
     color: var(--color-text-secondary);
     cursor: pointer;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 1px;
-    padding: 2px;
+    gap: 2px;
+    padding: 3px 2px;
+    overflow: hidden;
+    min-width: 0;
+    line-height: 1.2;
+    text-align: center;
   }
   .colony-command-btn:hover {
     border-color: var(--color-status-ok);
@@ -124,7 +149,7 @@
 
   /* Stat bars */
   .colony-stat-bar {
-    height: 4px;
+    height: 6px;
     background: #120f08;
     border: 1px solid var(--color-bark);
     position: relative;
@@ -138,8 +163,8 @@
 
   /* Fuel bars (overhead on agents) */
   .colony-fuel-bar {
-    width: 16px;
-    height: 2px;
+    width: 20px;
+    height: 3px;
     background: #1a1510;
     position: relative;
   }
@@ -153,9 +178,9 @@
   /* Autonomy pips */
   .colony-autonomy-pip {
     flex: 1;
-    height: 8px;
+    height: 12px;
     border: 1px solid var(--color-bark);
-    font-size: 4px;
+    font-size: 7px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -167,8 +192,8 @@
 
   /* Roster slot (top bar) */
   .colony-roster-slot {
-    width: 24px;
-    height: 24px;
+    width: 30px;
+    height: 30px;
     background: var(--color-soil-deep);
     border: 2px solid var(--color-bark);
     cursor: pointer;
@@ -178,7 +203,7 @@
     align-items: center;
     justify-content: center;
     transition: transform .15s, border-color .15s;
-    font-size: 8px;
+    font-size: 11px;
     line-height: 1;
   }
   .colony-roster-slot:hover {
@@ -193,10 +218,10 @@
   .colony-roster-slot::before {
     content: '';
     position: absolute;
-    top: -2px;
-    right: -2px;
-    width: 5px;
-    height: 5px;
+    top: -3px;
+    right: -3px;
+    width: 7px;
+    height: 7px;
     border: 1px solid var(--color-soil-deep);
   }
   .colony-roster-slot[data-status="ok"]::before { background: var(--color-status-ok); }
@@ -206,20 +231,20 @@
 
   /* Cadence bars */
   .colony-cadence-bar {
-    width: 3px;
-    min-height: 2px;
+    width: 4px;
+    min-height: 3px;
     background: var(--color-mycelium-active);
   }
 
   /* Event feed entries */
   .colony-feed-entry {
     display: flex;
-    gap: 3px;
-    padding: 2px 5px;
-    font-size: 6px;
+    gap: 4px;
+    padding: 3px 6px;
+    font-size: 9px;
     background: rgba(14,12,8,.85);
-    margin-bottom: 1px;
-    border-right: 2px solid var(--color-status-ok);
+    margin-bottom: 2px;
+    border-right: 3px solid var(--color-status-ok);
   }
   .colony-feed-entry.is-warning {
     border-right-color: var(--color-status-warn);
@@ -251,8 +276,8 @@
   }
   .colony-minimap-dot {
     position: absolute;
-    width: 3px;
-    height: 3px;
+    width: 4px;
+    height: 4px;
   }
   .colony-minimap-tree {
     position: absolute;
@@ -269,8 +294,8 @@
     border: 2px solid var(--color-bark);
     color: var(--color-text-dim);
     font-family: inherit;
-    font-size: 6px;
-    padding: 2px 6px;
+    font-size: 9px;
+    padding: 3px 8px;
     cursor: pointer;
   }
   .colony-layer-btn:hover,
@@ -279,16 +304,93 @@
     color: var(--color-text-primary);
   }
 
+  /* Colony text sizes — scaled up from v8 for readability */
+  .colony-text-4xs { font-size: 7px; }
+  .colony-text-3xs { font-size: 8px; }
+  .colony-text-2xs { font-size: 9px; }
+  .colony-text-xs { font-size: 10px; }
+  .colony-text-sm { font-size: 11px; }
+  .colony-text-md { font-size: 13px; }
+  .colony-text-icon { font-size: 14px; }
+
+  /* Colony label — section headers in panels */
+  .colony-label {
+    font-size: 8px;
+    color: var(--color-text-dim);
+    letter-spacing: 2px;
+    margin-bottom: 4px;
+  }
+
+  /* Colony value — summary numbers */
+  .colony-value {
+    font-size: 13px;
+    font-weight: 700;
+  }
+
+  /* Vertical label (roster group) */
+  .colony-vertical-label {
+    font-size: 7px;
+    color: var(--color-text-dim);
+    writing-mode: vertical-rl;
+    margin-right: 3px;
+    letter-spacing: 0.5px;
+  }
+
   /* Portrait frame (detail panel) */
   .colony-portrait-frame {
-    width: 36px;
-    height: 36px;
+    width: 48px;
+    height: 48px;
     background: #080604;
     border: 2px solid var(--color-bark);
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
+  }
+
+  /* Agent activity states — derived from real events */
+  .colony-agent.is-firing {
+    animation: agent-fire-flash 0.3s ease;
+    filter: brightness(1.4) drop-shadow(0 0 4px var(--color-status-ok));
+  }
+  @keyframes agent-fire-flash {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+    100% { transform: scale(1); }
+  }
+  .colony-agent.is-error {
+    filter: drop-shadow(0 0 4px var(--color-status-error));
+    animation: agent-warning-pulse 1s ease infinite;
+  }
+  .colony-agent.is-waiting {
+    animation: agent-breathe 3s ease-in-out infinite;
+  }
+  @keyframes agent-breathe {
+    0%, 100% { opacity: 0.7; }
+    50% { opacity: 0.85; }
+  }
+  .colony-agent.is-active {
+    filter: drop-shadow(0 0 2px var(--color-status-ok));
+  }
+  .colony-agent.is-idle {
+    opacity: 0.4;
+    filter: saturate(0.2);
+  }
+
+  /* Simlish bubble variants */
+  .colony-bubble.is-normal {
+    background: var(--color-soil-mid);
+    border: 2px solid var(--color-bark-light);
+    color: var(--color-text-secondary);
+    font-size: 8px;
+    padding: 3px 6px;
+  }
+  .colony-bubble.is-urgent {
+    background: #2a1510;
+    border: 2px solid var(--color-status-error);
+    color: var(--color-status-error);
+    font-size: 8px;
+    padding: 3px 6px;
   }
 
   /* Underground mode */

@@ -4,15 +4,16 @@ use std::sync::Arc;
 use crate::capability::grant::{CapabilityChecker, CapabilityPolicy};
 use crate::connector::trait_::Connector;
 use crate::error::ConnectorError;
-use crate::native::runtime::NativeConnectorHost;
+use crate::host::ConnectorHost;
 
 /// Entry in the connector registry.
 ///
-/// The host is `Arc`-wrapped so the dispatch layer can clone the reference
-/// and drop the registry lock before executing connector actions.
+/// The host is `Arc<dyn ConnectorHost>` so both native and WASM connectors
+/// share the same dispatch path. The registry doesn't know which execution
+/// model is running underneath.
 pub struct ConnectorEntry {
-    /// The hosted connector (native or WASM).
-    pub host: Arc<NativeConnectorHost>,
+    /// The hosted connector (native or WASM — execution-model-agnostic).
+    pub host: Arc<dyn ConnectorHost>,
     /// Whether this connector is currently enabled.
     pub enabled: bool,
 }
@@ -41,7 +42,7 @@ impl ConnectorRegistry {
     ///
     /// Delegates to `registry::loader::load_native()` for the verification
     /// pipeline (manifest validation, capability registration), then adds
-    /// the connector to the registry.
+    /// the connector to the registry as `Arc<dyn ConnectorHost>`.
     pub fn install_native(
         &mut self,
         connector: Box<dyn Connector>,
@@ -53,15 +54,59 @@ impl ConnectorRegistry {
         )?;
 
         let name = result.host.name().to_owned();
+        let host: Arc<dyn ConnectorHost> = Arc::new(result.host);
 
         self.connectors.insert(
             name.clone(),
             ConnectorEntry {
-                host: Arc::new(result.host),
+                host,
                 enabled: true,
             },
         );
 
+        Ok(name)
+    }
+
+    /// Install a WASM connector from compiled bytes + manifest.
+    ///
+    /// The WASM binary is compiled, hash-verified against the manifest,
+    /// and loaded into a sandboxed host. Capabilities are registered
+    /// from the manifest's declarations.
+    #[cfg(feature = "wasm-sandbox")]
+    pub fn install_wasm(
+        &mut self,
+        wasm_engine: std::sync::Arc<crate::wasm::WasmEngine>,
+        wasm_bytes: &[u8],
+        manifest: crate::manifest::types::ConnectorManifest,
+        sandbox_limits: crate::wasm::SandboxLimits,
+    ) -> Result<String, ConnectorError> {
+        // Register capabilities from manifest
+        self.capability_checker.register(
+            &manifest.name,
+            &manifest.capabilities,
+            &self.default_policy,
+        )?;
+
+        // Create sandboxed WASM host
+        let host = crate::wasm::WasmConnectorHost::new(
+            wasm_engine,
+            wasm_bytes,
+            manifest.clone(),
+            sandbox_limits,
+        )?;
+
+        let name = manifest.name.clone();
+        let host: std::sync::Arc<dyn ConnectorHost> = std::sync::Arc::new(host);
+
+        self.connectors.insert(
+            name.clone(),
+            ConnectorEntry {
+                host,
+                enabled: true,
+            },
+        );
+
+        tracing::info!(connector = %name, "WASM connector installed (sandboxed)");
         Ok(name)
     }
 
@@ -124,7 +169,7 @@ impl ConnectorRegistry {
     pub fn get_for_execute(
         &self,
         connector_name: &str,
-    ) -> Result<(Arc<NativeConnectorHost>, CapabilityChecker), ConnectorError> {
+    ) -> Result<(Arc<dyn ConnectorHost>, CapabilityChecker), ConnectorError> {
         let entry = self
             .connectors
             .get(connector_name)

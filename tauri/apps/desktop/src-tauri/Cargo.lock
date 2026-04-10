@@ -85,6 +85,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c3d036a3c4ab069c7b410a2ce876bd74808d2d0888a82667669f8e783a898bf1"
 
 [[package]]
+name = "arc-swap"
+version = "1.9.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6a3a1fd6f75306b68087b831f025c712524bcb19aad54e557b1129cfa0a2b207"
+dependencies = [
+ "rustversion",
+]
+
+[[package]]
 name = "argon2"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -101,6 +110,28 @@ name = "arrayvec"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
+
+[[package]]
+name = "async-stream"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0b5a71a6f37880a80d1d7f19efd781e4b5de42c88f0722cc13bcb6cc2cfe8476"
+dependencies = [
+ "async-stream-impl",
+ "futures-core",
+ "pin-project-lite",
+]
+
+[[package]]
+name = "async-stream-impl"
+version = "0.3.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7c24de15d275a1ecfd47a380fb4d5ec9bfe0933f309ed5e705b775596a3574d"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.117",
+]
 
 [[package]]
 name = "async-trait"
@@ -5748,8 +5779,10 @@ dependencies = [
 name = "springtale-ai"
 version = "0.1.0"
 dependencies = [
+ "async-stream",
  "async-trait",
  "futures-core",
+ "futures-util",
  "regex",
  "reqwest",
  "secrecy",
@@ -5834,6 +5867,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "figment",
+ "hex",
  "serde",
  "serde_json",
  "springtale-ai",
@@ -5857,7 +5891,7 @@ dependencies = [
 name = "springtale-runtime"
 version = "0.1.0"
 dependencies = [
- "anyhow",
+ "arc-swap",
  "chrono",
  "connector-bluesky",
  "connector-browser",
@@ -5873,9 +5907,13 @@ dependencies = [
  "connector-signal",
  "connector-slack",
  "connector-telegram",
+ "ed25519-dalek",
+ "hex",
  "inventory",
+ "regex",
  "serde",
  "serde_json",
+ "serde_yaml",
  "springtale-ai",
  "springtale-connector",
  "springtale-core",

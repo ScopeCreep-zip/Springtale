@@ -10,5 +10,8 @@
   },
   "devDependencies": {
     "typescript": "^5.7"
+  },
+  "dependencies": {
+    "@solid-primitives/resize-observer": "^2.1.5"
   }
 }

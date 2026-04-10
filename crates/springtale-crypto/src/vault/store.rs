@@ -6,7 +6,6 @@ use chacha20poly1305::{
     aead::{Aead, AeadCore, KeyInit},
 };
 use secrecy::{ExposeSecret, SecretBox};
-use zeroize::Zeroize;
 
 use super::kdf;
 use crate::error::CryptoError;
@@ -46,20 +45,17 @@ impl Vault {
     pub fn create(path: impl Into<PathBuf>, passphrase: &[u8]) -> Result<Self, CryptoError> {
         let path = path.into();
         let salt = kdf::generate_salt();
-        let mut key = kdf::derive_key(passphrase, &salt)?;
+        let key = kdf::derive_key(passphrase, &salt)?;
 
-        let vault = Self {
+        Ok(Self {
             path,
             entries: Some(HashMap::new()),
-            encryption_key: Some(SecretBox::new(Box::new(key))),
+            encryption_key: Some(key),
             salt,
             session: super::duress::VaultSession::Real,
             inactive_region_bytes: None,
             active_region_index: 0,
-        };
-
-        key.zeroize();
-        Ok(vault)
+        })
     }
 
     /// Create an ephemeral vault (memory-only, no file I/O).
@@ -68,20 +64,17 @@ impl Vault {
     /// Used with `--ephemeral` flag for travel mode / device seizure protection.
     pub fn create_ephemeral(passphrase: &[u8]) -> Result<Self, CryptoError> {
         let salt = kdf::generate_salt();
-        let mut key = kdf::derive_key(passphrase, &salt)?;
+        let key = kdf::derive_key(passphrase, &salt)?;
 
-        let vault = Self {
+        Ok(Self {
             path: PathBuf::new(), // empty path signals ephemeral
             entries: Some(HashMap::new()),
-            encryption_key: Some(SecretBox::new(Box::new(key))),
+            encryption_key: Some(key),
             salt,
             session: super::duress::VaultSession::Real,
             inactive_region_bytes: None,
             active_region_index: 0,
-        };
-
-        key.zeroize();
-        Ok(vault)
+        })
     }
 
     /// Returns true if this vault is ephemeral (no file backing).
@@ -110,7 +103,7 @@ impl Vault {
         // Detect dual-region (duress) vault by constant file size
         if super::duress::is_dual_vault(data.len()) {
             let region_total = super::duress::REGION_HEADER_SIZE + super::duress::REGION_SIZE;
-            let (entries, salt, mut key, session) =
+            let (entries, salt, key, session) =
                 super::duress::open_dual_vault(&data, passphrase)?;
 
             // Determine which region was active and preserve the other's raw bytes
@@ -125,18 +118,15 @@ impl Vault {
                 }
             };
 
-            let vault = Self {
+            return Ok(Self {
                 path,
                 entries: Some(entries),
-                encryption_key: Some(SecretBox::new(Box::new(key))),
+                encryption_key: Some(key),
                 salt,
                 session,
                 inactive_region_bytes: Some(inactive_bytes),
                 active_region_index: active_index,
-            };
-
-            key.zeroize();
-            return Ok(vault);
+            });
         }
 
         // Legacy single-region format
@@ -152,11 +142,11 @@ impl Vault {
             .map_err(|_| CryptoError::VaultDecryptionFailed)?;
         let ciphertext = &data[40..];
 
-        let mut key = kdf::derive_key(passphrase, &salt)?;
+        let key = kdf::derive_key(passphrase, &salt)?;
         let nonce = XNonce::from_slice(&nonce_bytes);
 
         // SECURITY: expose needed for AEAD decryption
-        let cipher = XChaCha20Poly1305::new_from_slice(&key)
+        let cipher = XChaCha20Poly1305::new_from_slice(key.expose_secret())
             .map_err(|_| CryptoError::VaultDecryptionFailed)?;
 
         let plaintext = cipher
@@ -166,18 +156,15 @@ impl Vault {
         let entries: HashMap<String, Vec<u8>> = serde_json::from_slice(&plaintext)
             .map_err(|e| CryptoError::Serialization(e.to_string()))?;
 
-        let vault = Self {
+        Ok(Self {
             path,
             entries: Some(entries),
-            encryption_key: Some(SecretBox::new(Box::new(key))),
+            encryption_key: Some(key),
             salt,
             session: super::duress::VaultSession::Real,
             inactive_region_bytes: None,
             active_region_index: 0,
-        };
-
-        key.zeroize();
-        Ok(vault)
+        })
     }
 
     /// Save the vault to disk (encrypted).

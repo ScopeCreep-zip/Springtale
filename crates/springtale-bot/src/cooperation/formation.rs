@@ -80,7 +80,7 @@ impl Default for DynamicRole {
 }
 
 /// A member of a formation.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct FormationMember {
     pub agent_id: AgentId,
     pub capabilities: Vec<String>,
@@ -88,6 +88,23 @@ pub struct FormationMember {
     pub awareness: super::awareness::LocalAwareness,
     pub attention_load: f32,
     pub health: AgentHealth,
+    /// Per-agent AI adapter. Assigned by the composer at formation spawn time
+    /// from config store key `ai:{agent_id}`. Only callable when formation
+    /// momentum >= Fever AND agent has "ai_call" capability.
+    pub ai_adapter: Option<std::sync::Arc<dyn springtale_ai::AiAdapter>>,
+}
+
+impl std::fmt::Debug for FormationMember {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FormationMember")
+            .field("agent_id", &self.agent_id)
+            .field("capabilities", &self.capabilities)
+            .field("current_role", &self.current_role)
+            .field("attention_load", &self.attention_load)
+            .field("health", &self.health)
+            .field("ai_adapter", &self.ai_adapter.is_some())
+            .finish()
+    }
 }
 
 impl FormationMember {
@@ -99,7 +116,21 @@ impl FormationMember {
             awareness: super::awareness::LocalAwareness::default(),
             attention_load: 0.0,
             health: AgentHealth::default(),
+            ai_adapter: None,
         }
+    }
+
+    /// Create a member with a per-agent AI adapter.
+    pub fn with_ai_adapter(mut self, adapter: std::sync::Arc<dyn springtale_ai::AiAdapter>) -> Self {
+        self.ai_adapter = Some(adapter);
+        self.capabilities.push("ai_call".to_owned());
+        self
+    }
+
+    /// Check if this agent can make AI calls right now.
+    /// Requires: has "ai_call" capability AND has an adapter assigned.
+    pub fn can_use_ai(&self) -> bool {
+        self.ai_adapter.is_some() && self.has_capability("ai_call")
     }
 
     /// Check if this agent has a specific capability.
@@ -139,6 +170,12 @@ impl Default for FormationConstraints {
 /// The formation is the fundamental unit of cooperation. It replaces
 /// the parent→child pipeline with peer-to-peer coordination through
 /// a shared cadence bus, environment (blackboard), and momentum system.
+///
+/// The optional `orchestrator` is a formation-level AI adapter
+/// (same `AiAdapter` trait as per-agent). When present AND momentum
+/// is at Fever tier, the orchestrator decomposes the formation's
+/// intent into subtasks posted to the blackboard for members to pull
+/// (CrewAI/AutoGen manager pattern, gated by Patapon Fever mechanic).
 pub struct Formation {
     pub id: FormationId,
     pub members: Vec<FormationMember>,
@@ -147,6 +184,10 @@ pub struct Formation {
     pub momentum: MomentumState,
     pub environment: Arc<CooperativeBlackboard>,
     pub fuel: FuelBudget,
+    /// Formation-level AI orchestrator. Uses the same `AiAdapter` trait
+    /// as per-agent adapters (Ollama, OpenAI, Anthropic).
+    /// Loaded from config store key `ai:formation:{id}` at deploy time.
+    pub orchestrator: Option<Arc<dyn springtale_ai::AiAdapter>>,
 }
 
 impl Formation {
@@ -165,7 +206,26 @@ impl Formation {
             momentum: MomentumState::default(),
             environment: Arc::new(CooperativeBlackboard::new()),
             fuel,
+            orchestrator: None,
         }
+    }
+
+    /// Attach an AI orchestrator to this formation.
+    pub fn with_orchestrator(mut self, adapter: Arc<dyn springtale_ai::AiAdapter>) -> Self {
+        self.orchestrator = Some(adapter);
+        self
+    }
+
+    /// Check if AI orchestration is available.
+    ///
+    /// Requires:
+    /// 1. An AI adapter is attached (loaded from config store)
+    /// 2. Momentum is at Fever tier (15+ consecutive successes, per Patapon)
+    ///
+    /// The autonomy ceiling check is done at dispatch time, not here,
+    /// because different actions may require different approval levels.
+    pub fn can_orchestrate(&self) -> bool {
+        self.orchestrator.is_some() && self.momentum.can_use_ai()
     }
 
     /// Get count of operational members.
@@ -191,6 +251,18 @@ impl Formation {
     /// Find a mutable member by agent ID.
     pub fn member_mut(&mut self, agent_id: &AgentId) -> Option<&mut FormationMember> {
         self.members.iter_mut().find(|m| &m.agent_id == agent_id)
+    }
+
+    /// Remove permanently dead members from the formation.
+    ///
+    /// Per L4D pattern: recoverable-dead members stay (can be peer-revived).
+    /// Only permanently dead members are removed to free their slots.
+    /// Returns the number of members removed.
+    pub fn remove_dead_members(&mut self) -> usize {
+        let before = self.members.len();
+        self.members
+            .retain(|m| !matches!(m.health, AgentHealth::Dead { recoverable: false }));
+        before - self.members.len()
     }
 }
 

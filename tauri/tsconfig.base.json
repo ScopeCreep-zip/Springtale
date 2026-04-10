@@ -12,6 +12,10 @@
     "skipLibCheck": true,
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
-    "isolatedModules": true
+    "isolatedModules": true,
+    "paths": {
+      "@springtale/types": ["./packages/types/src/index.ts"],
+      "@springtale/ui": ["./packages/ui/src/index.ts"]
+    }
   }
 }

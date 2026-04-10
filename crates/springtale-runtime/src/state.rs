@@ -6,9 +6,11 @@
 
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use tokio::sync::{RwLock, broadcast};
 
 use springtale_connector::registry::store::ConnectorRegistry;
+use springtale_connector::wasm::WasmEngine;
 use springtale_core::canvas::{CanvasState, CanvasUpdate};
 use springtale_core::rule::engine::RuleEngine;
 
@@ -30,9 +32,15 @@ pub struct RuntimeState {
     /// Rule engine — loaded from store at init.
     pub engine: Arc<RwLock<RuleEngine>>,
     /// AI adapter (NoopAdapter if none configured).
-    pub ai_adapter: Arc<dyn springtale_ai::AiAdapter>,
+    /// Wrapped in ArcSwap for lock-free reads + atomic hot-swap at runtime.
+    /// Reads: `state.ai_adapter.load()` — zero contention.
+    /// Writes: `state.ai_adapter.store(new_adapter)` — atomic swap.
+    pub ai_adapter: Arc<ArcSwap<Arc<dyn springtale_ai::AiAdapter>>>,
     /// Sentinel behavioral monitor.
     pub sentinel: Arc<springtale_sentinel::Sentinel>,
+    /// Shared WASM engine for community connectors.
+    /// Epoch ticker calls `increment_epoch()` on this for wall-clock timeouts.
+    pub wasm_engine: Arc<WasmEngine>,
     /// Canvas/A2UI state.
     pub canvas: Arc<RwLock<CanvasState>>,
     /// Broadcast channel for canvas updates.

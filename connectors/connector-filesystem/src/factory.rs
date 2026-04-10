@@ -1,5 +1,6 @@
 use springtale_connector::error::ConnectorError;
 use springtale_connector::factory::{ConnectorFactory, FactoryEntry};
+use springtale_connector::manifest::types::{ActionDecl, TriggerDecl};
 use springtale_connector::Connector;
 
 struct FilesystemFactory;
@@ -14,6 +15,43 @@ impl ConnectorFactory for FilesystemFactory {
     }
     fn requires_config(&self) -> bool {
         false
+    }
+    fn trigger_declarations(&self) -> Vec<TriggerDecl> {
+        crate::triggers::trigger_declarations()
+    }
+    fn action_declarations(&self) -> Vec<ActionDecl> {
+        crate::actions::action_declarations()
+    }
+    fn config_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "watch_paths": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Directories to watch for changes",
+                    "default": []
+                },
+                "read_paths": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Directories allowed for reading",
+                    "default": []
+                },
+                "write_paths": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "Directories allowed for writing",
+                    "default": []
+                },
+                "debounce_ms": {
+                    "type": "integer",
+                    "description": "File change debounce in milliseconds",
+                    "default": 500
+                }
+            },
+            "required": []
+        }))
     }
     async fn create(
         &self,

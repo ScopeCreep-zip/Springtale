@@ -164,10 +164,149 @@ impl AiAdapter for AnthropicAdapter {
         })
     }
 
-    async fn stream(&self, _request: AiRequest, _options: AiOptions) -> Result<AiStream, AiError> {
-        Err(AiError::InferenceFailed(
-            "Anthropic streaming not yet implemented — use complete()".into(),
-        ))
+    async fn stream(&self, request: AiRequest, options: AiOptions) -> Result<AiStream, AiError> {
+        use crate::adapter::StreamChunk;
+        use futures_util::StreamExt as _;
+
+        // Build the request body (same as complete, but with stream: true)
+        let (system, messages) = match request {
+            AiRequest::Complete { prompt } => {
+                let sanitized = self.sanitize("prompt", &prompt)?;
+                (
+                    None,
+                    vec![serde_json::json!({"role": "user", "content": sanitized})],
+                )
+            }
+            AiRequest::Chat { messages } => {
+                let mut system_msg = None;
+                let mut chat_msgs = Vec::new();
+                for m in messages {
+                    let sanitized = self.sanitize(&format!("chat.{}", m.role), &m.content)?;
+                    if m.role == "system" {
+                        system_msg = Some(sanitized);
+                    } else {
+                        chat_msgs.push(serde_json::json!({"role": m.role, "content": sanitized}));
+                    }
+                }
+                (system_msg, chat_msgs)
+            }
+        };
+
+        let mut body = serde_json::json!({
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": options.max_tokens,
+            "stream": true,
+        });
+        if let Some(sys) = system {
+            body["system"] = serde_json::Value::String(sys);
+        }
+        if let Some(temp) = options.temperature {
+            body["temperature"] = serde_json::json!(temp);
+        }
+
+        // Send streaming request to Anthropic
+        let response = self
+            .client
+            .messages_stream_request(&body)
+            .send()
+            .await
+            .map_err(|e| AiError::InferenceFailed(format!("Anthropic stream request failed: {e}")))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(AiError::InferenceFailed(format!(
+                "Anthropic returned {status}: {body}"
+            )));
+        }
+
+        // Parse SSE from the response byte stream.
+        // Anthropic sends text/event-stream with lines:
+        //   event: content_block_delta
+        //   data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"..."}}
+        let mut byte_stream = response.bytes_stream();
+        let stream = async_stream::stream! {
+            let mut buffer = String::new();
+            while let Some(chunk_result) = byte_stream.next().await {
+                let chunk = match chunk_result {
+                    Ok(bytes) => String::from_utf8_lossy(&bytes).to_string(),
+                    Err(e) => {
+                        yield Err(AiError::InferenceFailed(format!("stream read error: {e}")));
+                        break;
+                    }
+                };
+                buffer.push_str(&chunk);
+
+                // Process complete SSE messages (separated by double newlines)
+                while let Some(split_pos) = buffer.find("\n\n") {
+                    let message = buffer[..split_pos].to_owned();
+                    buffer = buffer[split_pos + 2..].to_owned();
+
+                    // Extract the data line from the SSE message
+                    let data_line = message
+                        .lines()
+                        .find(|l| l.starts_with("data: "))
+                        .map(|l| &l[6..]);
+
+                    let Some(data_str) = data_line else { continue };
+
+                    let data: serde_json::Value = match serde_json::from_str(data_str) {
+                        Ok(v) => v,
+                        Err(_) => continue,
+                    };
+
+                    let event_type = data.get("type").and_then(|t| t.as_str()).unwrap_or("");
+
+                    match event_type {
+                        "content_block_delta" => {
+                            if let Some(text) = data
+                                .get("delta")
+                                .and_then(|d| d.get("text"))
+                                .and_then(|t| t.as_str())
+                            {
+                                yield Ok(StreamChunk {
+                                    delta: text.to_owned(),
+                                    finish_reason: None,
+                                });
+                            }
+                        }
+                        "message_delta" => {
+                            let reason = data
+                                .get("delta")
+                                .and_then(|d| d.get("stop_reason"))
+                                .and_then(|r| r.as_str())
+                                .map(|s| s.to_owned());
+                            if reason.is_some() {
+                                yield Ok(StreamChunk {
+                                    delta: String::new(),
+                                    finish_reason: reason,
+                                });
+                            }
+                        }
+                        "message_stop" => {
+                            yield Ok(StreamChunk {
+                                delta: String::new(),
+                                finish_reason: Some("stop".to_owned()),
+                            });
+                            return;
+                        }
+                        "error" => {
+                            let msg = data
+                                .get("error")
+                                .and_then(|e| e.get("message"))
+                                .and_then(|m| m.as_str())
+                                .unwrap_or("unknown error");
+                            yield Err(AiError::InferenceFailed(format!("Anthropic error: {msg}")));
+                            return;
+                        }
+                        _ => {} // message_start, content_block_start, content_block_stop, ping
+                    }
+                }
+            }
+        };
+
+        Ok(Box::pin(stream) as AiStream)
     }
 
     async fn parse_rule(

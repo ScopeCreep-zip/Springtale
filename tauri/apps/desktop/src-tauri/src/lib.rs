@@ -42,10 +42,15 @@ pub fn run() {
         .manage(app_state)
         .invoke_handler(tauri::generate_handler![
             commands::connectors::list_connectors,
+            commands::connectors::list_available_connectors,
+            commands::connectors::setup_connector,
             commands::connectors::enable_connector,
             commands::connectors::disable_connector,
             commands::connectors::get_connector_schemas,
             commands::connectors::remove_connector,
+            commands::connectors::remove_connector_cascade,
+            commands::connectors::get_connector_config,
+            commands::connectors::list_connector_outputs,
             commands::connectors::install_connector,
             commands::rules::list_rules,
             commands::rules::create_rule,
@@ -53,6 +58,11 @@ pub fn run() {
             commands::rules::delete_rule,
             commands::rules::update_rule,
             commands::rules::run_rule,
+            commands::rules::parse_rule,
+            commands::rules::create_connector_rule,
+            commands::rules::list_rules_for_connector,
+            commands::rules::test_connector,
+            commands::rules::reassign_rule_connector,
             commands::events::list_events,
             commands::vault::create_vault,
             commands::vault::unlock_vault,
@@ -73,6 +83,35 @@ pub fn run() {
             commands::formations::resume_formation,
             commands::formations::dissolve_formation,
             commands::formations::list_formations,
+            commands::formations::update_formation_intent,
+            commands::formations::add_formation_member,
+            commands::formations::list_intents,
+            commands::formations::deploy_team,
+            commands::formations::cycle_formation_intent,
+            commands::formations::cycle_formation_autonomy,
+            // Config
+            commands::config::get_config,
+            commands::config::set_config,
+            commands::config::list_config,
+            commands::config::set_ai_adapter,
+            commands::config::set_connector_config,
+            commands::config::configure_ai_adapter,
+            commands::config::upsert_connector_config,
+            commands::config::toggle_formation_guard,
+            // Agent
+            commands::agent::list_agent_states,
+            commands::agent::get_autonomy,
+            commands::agent::set_autonomy,
+            commands::agent::step_autonomy,
+            // Authors
+            commands::authors::list_authors,
+            commands::authors::add_author,
+            commands::authors::remove_author,
+            // Data
+            commands::data::export_data,
+            // Memory
+            commands::memory::audit_memory,
+            commands::memory::compact_memory,
         ])
         .run(tauri::generate_context!())
         .expect("error while running springtale desktop");

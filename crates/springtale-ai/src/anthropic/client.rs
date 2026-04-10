@@ -59,6 +59,21 @@ impl AnthropicClient {
             .map_err(|e| AiError::Serialization(format!("failed to parse Anthropic response: {e}")))
     }
 
+    /// Streaming messages completion — returns a reqwest::RequestBuilder
+    /// configured for SSE streaming. The caller wraps it with reqwest-eventsource.
+    pub fn messages_stream_request(
+        &self,
+        body: &serde_json::Value,
+    ) -> reqwest::RequestBuilder {
+        let url = format!("{}/v1/messages", self.base_url);
+        // SECURITY: expose needed for Anthropic x-api-key header
+        self.http
+            .post(&url)
+            .header("x-api-key", self.api_key.expose_secret().as_str())
+            .header("anthropic-version", "2023-06-01")
+            .json(body)
+    }
+
     /// Check if the API is reachable.
     pub async fn is_available(&self) -> bool {
         let url = format!("{}/v1/messages", self.base_url);

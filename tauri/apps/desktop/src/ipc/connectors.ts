@@ -15,12 +15,39 @@ export async function listConnectors(): Promise<ConnectorInfo[]> {
   return invoke<ConnectorInfo[]>("list_connectors");
 }
 
+export async function setupConnector(name: string, config: Record<string, unknown>): Promise<string> {
+  return invoke("setup_connector", { name, config });
+}
+
 export async function enableConnector(name: string): Promise<void> {
   return invoke("enable_connector", { name });
 }
 
 export async function disableConnector(name: string): Promise<void> {
   return invoke("disable_connector", { name });
+}
+
+import type { AvailableConnector } from "@springtale/types";
+export type { AvailableConnector };
+
+export async function listAvailableConnectors(): Promise<AvailableConnector[]> {
+  return invoke("list_available_connectors");
+}
+
+export async function removeConnector(name: string): Promise<void> {
+  return invoke("remove_connector", { name });
+}
+
+export async function removeConnectorCascade(name: string): Promise<string[]> {
+  return invoke("remove_connector_cascade", { name });
+}
+
+export async function getConnectorConfig(name: string): Promise<unknown> {
+  return invoke("get_connector_config", { name });
+}
+
+export async function listConnectorOutputs(name: string, limit?: number): Promise<unknown[]> {
+  return invoke("list_connector_outputs", { name, limit: limit ?? 20 });
 }
 
 import type { ConnectorSchema } from "@springtale/types";

@@ -23,6 +23,8 @@ pub struct RuleSummary {
     pub name: String,
     pub status: String,
     pub trigger_type: String,
+    /// Connector name from trigger (if ConnectorEvent trigger).
+    pub connector_name: Option<String>,
 }
 
 /// Create a new rule — adds to both store and engine.
@@ -221,8 +223,78 @@ pub async fn list_rules(state: &RuntimeState) -> Vec<RuleSummary> {
             name: r.name.clone(),
             status: format!("{:?}", r.status).to_lowercase(),
             trigger_type: r.trigger.trigger_type().to_owned(),
+            connector_name: r.trigger.connector_name(),
         })
         .collect()
+}
+
+// ── NL→Rule (AI-assisted rule generation) ───────────────────────────────────
+
+/// Parse natural language intent into a structured Rule via AI adapter.
+///
+/// Returns the generated Rule in Disabled status (user reviews before enabling).
+/// Does NOT persist — caller previews, then calls `create_rule()` to save.
+///
+/// Uses the adapter's `parse_rule()` method which builds a prompt from the
+/// installed connectors' trigger/action metadata, sends to the LLM, and
+/// parses the structured response into a typed `Rule`.
+pub async fn parse_rule_from_intent(
+    state: &RuntimeState,
+    intent: &str,
+) -> Result<Rule, OperationError> {
+    // Build ConnectorInfo list from registry (respecting DataDisclosure).
+    // Each connector's triggers and actions are included so the AI knows
+    // what's available to compose into rules.
+    let registry = state.registry.read().await;
+    let available: Vec<springtale_ai::ConnectorInfo> = registry
+        .list()
+        .iter()
+        .filter_map(|(name, _)| {
+            let entry = registry.get(name)?;
+            let manifest = entry.host.manifest();
+            Some(springtale_ai::ConnectorInfo {
+                name: manifest.name.clone(),
+                description: manifest.description.clone(),
+                triggers: manifest
+                    .triggers
+                    .iter()
+                    .map(|t| springtale_ai::adapter::TriggerInfo {
+                        name: t.name.clone(),
+                        description: t.description.clone(),
+                        schema: t.schema.clone(),
+                    })
+                    .collect(),
+                actions: manifest
+                    .actions
+                    .iter()
+                    .map(|a| springtale_ai::adapter::ActionInfo {
+                        name: a.name.clone(),
+                        description: a.description.clone(),
+                        input_schema: a.input_schema.clone(),
+                        output_schema: a.output_schema.clone(),
+                    })
+                    .collect(),
+                disclosure_level: springtale_ai::DisclosureLevel::NamesAndDescriptions,
+            })
+        })
+        .collect();
+    drop(registry);
+
+    // Call AI adapter's parse_rule method
+    let adapter = state.ai_adapter.load();
+    let rule = adapter
+        .parse_rule(intent, &available)
+        .await
+        .map_err(|e| OperationError::Ai(format!("{e}")))?;
+
+    tracing::info!(
+        rule_name = %rule.name,
+        trigger = ?rule.trigger,
+        actions = rule.actions.len(),
+        "AI generated rule from intent"
+    );
+
+    Ok(rule)
 }
 
 // ── Store-only operations (CLI) ──────────────────────────────────────────────
@@ -264,4 +336,160 @@ pub async fn delete_rule_from_store(
     id: &RuleId,
 ) -> Result<(), OperationError> {
     store.delete_rule(id).await.map_err(OperationError::Store)
+}
+
+/// Request to create a connector-event rule with simple fields.
+///
+/// Frontend sends field names, backend assembles the full Rule struct.
+/// Eliminates hardcoded "ConnectorEvent"/"RunConnector" type tags in frontend.
+#[derive(Debug, serde::Deserialize)]
+pub struct CreateConnectorRuleRequest {
+    pub name: String,
+    pub trigger_connector: String,
+    pub trigger_event: String,
+    pub action_connector: String,
+    pub action_name: String,
+    #[serde(default)]
+    pub conditions: Vec<springtale_core::rule::Condition>,
+}
+
+/// Create a connector-event rule from simple field names.
+///
+/// Replaces the frontend pattern of assembling `{ type: "ConnectorEvent", ... }`
+/// and `{ type: "RunConnector", ... }` payloads.
+pub async fn create_connector_rule(
+    state: &RuntimeState,
+    req: CreateConnectorRuleRequest,
+) -> Result<RuleId, OperationError> {
+    let rule = Rule {
+        id: RuleId::new(),
+        name: req.name,
+        description: String::new(),
+        status: springtale_core::rule::types::RuleStatus::Disabled,
+        version: springtale_core::rule::types::RuleVersion(1),
+        trigger: springtale_core::rule::Trigger::ConnectorEvent {
+            connector: req.trigger_connector,
+            event: req.trigger_event,
+        },
+        conditions: req.conditions,
+        actions: if req.action_name.is_empty() {
+            vec![]
+        } else {
+            vec![springtale_core::rule::Action::RunConnector {
+                connector: req.action_connector,
+                action: req.action_name,
+                params: serde_json::Map::new(),
+            }]
+        },
+    };
+
+    create_rule(state, rule).await
+}
+
+// ── Connector-scoped queries ────────────────────────────────────────────────
+
+/// List rules that belong to a specific connector.
+///
+/// Matches rules where the trigger connector matches the given name.
+/// Replaces frontend `rules.filter(r => r.connector === id)` pattern.
+pub async fn list_rules_for_connector(
+    state: &RuntimeState,
+    connector_name: &str,
+) -> Vec<RuleSummary> {
+    list_rules(state)
+        .await
+        .into_iter()
+        .filter(|r| r.connector_name.as_deref() == Some(connector_name))
+        .collect()
+}
+
+/// Test result for a connector.
+#[derive(Debug, Serialize)]
+pub struct ConnectorTestResult {
+    pub matched: bool,
+    pub rule_name: Option<String>,
+}
+
+/// Test a connector by finding and dry-running its first rule.
+///
+/// Replaces the frontend two-step: find rule → run rule.
+pub async fn test_connector(
+    state: &RuntimeState,
+    connector_name: &str,
+) -> Result<ConnectorTestResult, OperationError> {
+    let engine = state.engine.read().await;
+
+    let rule = engine
+        .list_rules()
+        .into_iter()
+        .find(|r| match &r.trigger {
+            springtale_core::rule::Trigger::ConnectorEvent { connector, .. } => {
+                connector == connector_name
+            }
+            _ => false,
+        })
+        .ok_or_else(|| {
+            OperationError::NotFound(format!("no rules for connector {connector_name}"))
+        })?;
+
+    let rule_name = rule.name.clone();
+    let event = build_synthetic_trigger(rule);
+    let matches = engine.evaluate(&event);
+
+    Ok(ConnectorTestResult {
+        matched: !matches.is_empty(),
+        rule_name: Some(rule_name),
+    })
+}
+
+/// Reassign a rule to a different connector.
+///
+/// Updates the trigger connector and (if RunConnector) the first action's
+/// connector. Preserves conditions, name, and other fields.
+pub async fn reassign_rule_connector(
+    state: &RuntimeState,
+    id: &RuleId,
+    new_connector: &str,
+) -> Result<(), OperationError> {
+    let engine = state.engine.read().await;
+    let rule = engine
+        .list_rules()
+        .into_iter()
+        .find(|r| &r.id == id)
+        .ok_or_else(|| OperationError::NotFound(format!("rule {id}")))?
+        .clone();
+    drop(engine);
+
+    let new_trigger = match &rule.trigger {
+        springtale_core::rule::Trigger::ConnectorEvent { event, .. } => {
+            springtale_core::rule::Trigger::ConnectorEvent {
+                connector: new_connector.to_owned(),
+                event: event.clone(),
+            }
+        }
+        other => other.clone(),
+    };
+
+    let new_actions: Vec<springtale_core::rule::Action> = rule
+        .actions
+        .iter()
+        .map(|a| match a {
+            springtale_core::rule::Action::RunConnector {
+                action, params, ..
+            } => springtale_core::rule::Action::RunConnector {
+                connector: new_connector.to_owned(),
+                action: action.clone(),
+                params: params.clone(),
+            },
+            other => other.clone(),
+        })
+        .collect();
+
+    let updated = Rule {
+        trigger: new_trigger,
+        actions: new_actions,
+        ..rule
+    };
+
+    update_rule(state, id, updated).await
 }

@@ -24,7 +24,10 @@ pub fn validate_command(
     // Check for shell metacharacters in arguments that could be used
     // for injection. We execute commands directly (not via shell), so
     // these characters shouldn't normally appear in legitimate arguments.
-    let dangerous_patterns = ["|", ";", "`", "$(", "${", ">>", "<<", "&&", "||"];
+    let dangerous_patterns = [
+        "|", ";", "`", "$(", "${", ">>", "<<", "&&", "||",
+        ">", "<", "&", "\n", "\r", "\0",
+    ];
 
     for arg in args {
         for pattern in &dangerous_patterns {
@@ -107,5 +110,35 @@ mod tests {
     fn test_safe_args_pass() {
         let config = test_config();
         assert!(validate_command(&config, "ls", &["-la".to_owned(), "/tmp".to_owned()]).is_ok());
+    }
+
+    #[test]
+    fn test_redirect_rejected() {
+        let config = test_config();
+        assert!(validate_command(&config, "echo", &["test > /tmp/file".to_owned()]).is_err());
+    }
+
+    #[test]
+    fn test_input_redirect_rejected() {
+        let config = test_config();
+        assert!(validate_command(&config, "cat", &["< /etc/passwd".to_owned()]).is_err());
+    }
+
+    #[test]
+    fn test_newline_injection_rejected() {
+        let config = test_config();
+        assert!(validate_command(&config, "echo", &["test\nrm -rf /".to_owned()]).is_err());
+    }
+
+    #[test]
+    fn test_background_rejected() {
+        let config = test_config();
+        assert!(validate_command(&config, "echo", &["test & rm /".to_owned()]).is_err());
+    }
+
+    #[test]
+    fn test_null_byte_rejected() {
+        let config = test_config();
+        assert!(validate_command(&config, "echo", &["test\0evil".to_owned()]).is_err());
     }
 }

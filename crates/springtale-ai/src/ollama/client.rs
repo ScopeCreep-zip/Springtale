@@ -55,6 +55,32 @@ impl OllamaClient {
         Ok(parsed)
     }
 
+    /// Streaming chat request — returns the raw reqwest::Response for NDJSON parsing.
+    pub async fn chat_stream(&self, request: &OllamaChatRequest) -> Result<reqwest::Response, AiError> {
+        let url = format!("{}/api/chat", self.base_url);
+        let mut body = serde_json::to_value(request)
+            .map_err(|e| AiError::Serialization(e.to_string()))?;
+        body["stream"] = serde_json::json!(true);
+
+        let response = self
+            .http
+            .post(&url)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| AiError::InferenceFailed(format!("Ollama stream request failed: {e}")))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(AiError::InferenceFailed(format!(
+                "Ollama returned {status}: {body}"
+            )));
+        }
+
+        Ok(response)
+    }
+
     /// Check if Ollama is running by listing models.
     pub async fn is_available(&self) -> bool {
         let url = format!("{}/api/tags", self.base_url);

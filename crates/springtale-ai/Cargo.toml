@@ -8,6 +8,7 @@ description = "AI adapter trait, input sanitization boundary, and NoopAdapter."
 
 [dependencies]
 futures-core = { workspace = true }
+futures-util = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 regex = { workspace = true }
@@ -16,6 +17,7 @@ async-trait = { workspace = true }
 tracing = { workspace = true }
 tokio = { workspace = true }
 reqwest = { workspace = true }
+async-stream = { workspace = true }
 secrecy = { workspace = true }
 toml = { workspace = true }
 springtale-core = { workspace = true }

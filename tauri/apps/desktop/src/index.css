@@ -1,5 +1,6 @@
 @import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap');
 @import "tailwindcss";
+@source "../../../packages/ui/src";
 @import "../../../packages/ui/src/colony/colony.css";
 
 @theme {

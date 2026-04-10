@@ -6,8 +6,9 @@
 
 use std::sync::Arc;
 
-use anyhow::{Context, Result};
 use tokio::sync::RwLock;
+
+use crate::error::OperationError;
 
 use springtale_connector::capability::grant::CapabilityPolicy;
 use springtale_connector::registry::store::ConnectorRegistry;
@@ -24,14 +25,39 @@ use crate::state::RuntimeState;
 ///
 /// Vault is NOT initialized here — desktop handles it via UI
 /// (user types passphrase), springtaled reads from env/file.
-pub async fn init(config: &RuntimeConfig) -> Result<RuntimeState> {
+pub async fn init(config: &RuntimeConfig) -> Result<RuntimeState, OperationError> {
     let store = init_store(&config.store).await?;
     tracing::info!("store initialized");
 
     let engine = init_engine(&store).await?;
-    let registry = init_registry(&store, &config.connector_configs).await?;
-    let ai_adapter = init_adapter(config)?;
+
+    // Shared WASM engine — all WASM connectors use the same engine
+    // so epoch interrupts work from a single ticker.
+    let wasm_engine = Arc::new(
+        springtale_connector::wasm::WasmEngine::new(
+            springtale_connector::wasm::SandboxLimits::default(),
+        )
+        .map_err(|e| OperationError::Init(format!("WASM engine creation failed: {e}")))?,
+    );
+
+    let registry = init_registry(&store, &config.connector_configs, &wasm_engine).await?;
+    let ai_adapter_arc = init_adapter(config)?;
     let sentinel = init_sentinel(config, &store);
+
+    // Start WASM epoch ticker — increments every 1s so wall-clock
+    // timeouts actually fire. Without this, a malicious WASM module
+    // doing blocking I/O could run forever (fuel only counts instructions).
+    {
+        let ticker_engine = wasm_engine.engine().clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
+            loop {
+                interval.tick().await;
+                ticker_engine.increment_epoch();
+            }
+        });
+        tracing::info!("WASM epoch ticker started (1s interval)");
+    }
 
     // Canvas/A2UI
     let canvas = Arc::new(tokio::sync::RwLock::new(
@@ -43,8 +69,9 @@ pub async fn init(config: &RuntimeConfig) -> Result<RuntimeState> {
         store,
         registry,
         engine,
-        ai_adapter,
+        ai_adapter: Arc::new(arc_swap::ArcSwap::from(Arc::new(ai_adapter_arc))),
         sentinel,
+        wasm_engine,
         canvas,
         canvas_tx,
     })
@@ -53,19 +80,23 @@ pub async fn init(config: &RuntimeConfig) -> Result<RuntimeState> {
 /// Initialize the store backend.
 async fn init_store(
     config: &crate::config::StoreConfig,
-) -> Result<Arc<dyn springtale_store::StorageBackend>> {
+) -> Result<Arc<dyn springtale_store::StorageBackend>, OperationError> {
     if config.ephemeral {
         tracing::warn!("EPHEMERAL MODE — all state in memory, lost on exit");
         Ok(Arc::new(springtale_store::backend::InMemoryBackend::new()))
     } else {
         tracing::info!(path = %config.path.display(), "opening SQLite store");
         if let Some(parent) = config.path.parent() {
-            std::fs::create_dir_all(parent).with_context(|| {
-                format!("failed to create data directory: {}", parent.display())
+            std::fs::create_dir_all(parent).map_err(|e| {
+                OperationError::Init(format!(
+                    "failed to create data directory {}: {e}",
+                    parent.display()
+                ))
             })?;
         }
         Ok(Arc::new(
-            SqliteBackend::open(&config.path).context("failed to open SQLite store")?,
+            SqliteBackend::open(&config.path)
+                .map_err(|e| OperationError::Init(format!("failed to open SQLite store: {e}")))?,
         ))
     }
 }
@@ -73,11 +104,11 @@ async fn init_store(
 /// Load rules from store into a RuleEngine.
 async fn init_engine(
     store: &Arc<dyn springtale_store::StorageBackend>,
-) -> Result<Arc<RwLock<RuleEngine>>> {
+) -> Result<Arc<RwLock<RuleEngine>>, OperationError> {
     let rules = store
         .list_rules()
         .await
-        .context("failed to load rules from store")?;
+        .map_err(|e| OperationError::Init(format!("failed to load rules: {e}")))?;
 
     let mut engine = RuleEngine::new();
     let mut loaded = 0;
@@ -98,15 +129,36 @@ async fn init_engine(
 async fn init_registry(
     _store: &Arc<dyn springtale_store::StorageBackend>,
     connector_configs: &std::collections::HashMap<String, serde_json::Value>,
-) -> Result<Arc<RwLock<ConnectorRegistry>>> {
+    shared_wasm_engine: &Arc<springtale_connector::wasm::WasmEngine>,
+) -> Result<Arc<RwLock<ConnectorRegistry>>, OperationError> {
     use springtale_connector::factory::FactoryEntry;
 
     let mut registry = ConnectorRegistry::new(CapabilityPolicy::Interactive);
     let mut registered = 0u32;
 
+    // Load the set of connectors explicitly removed by the user.
+    // Prevents auto-loading of no-config connectors (shell, filesystem)
+    // that were removed via the UI.
+    let removed_connectors: std::collections::HashSet<String> = _store
+        .list_config()
+        .await
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|(k, _)| k.strip_prefix("connector-removed:").map(|s| s.to_owned()))
+        .collect();
+
     for entry in inventory::iter::<FactoryEntry> {
         let factory = entry.factory;
         let key = factory.config_key();
+
+        // Skip connectors explicitly removed by the user
+        if removed_connectors.contains(factory.name()) {
+            tracing::debug!(
+                connector = factory.name(),
+                "skipping — explicitly removed by user"
+            );
+            continue;
+        }
 
         if let Some(config_value) = connector_configs.get(key) {
             match factory.create(config_value.clone()).await {
@@ -166,18 +218,103 @@ async fn init_registry(
         }
     }
 
+    // Also load connectors configured via UI (stored in config_store as "connector:{key}").
+    // TOML configs take precedence — config store only loads connectors not already loaded.
+    // This is the counterpart to setup_connector() which writes to config_store.
+    let loaded_keys: Vec<String> = inventory::iter::<FactoryEntry>
+        .into_iter()
+        .filter(|e| connector_configs.contains_key(e.factory.config_key()))
+        .map(|e| e.factory.config_key().to_owned())
+        .collect();
+
+    if let Ok(stored) = _store.list_config().await {
+        for (key, value_json) in &stored {
+            let Some(config_key) = key.strip_prefix("connector:") else {
+                continue;
+            };
+            if loaded_keys.contains(&config_key.to_owned()) {
+                continue; // already loaded from TOML
+            }
+            let Ok(config_value) = serde_json::from_str::<serde_json::Value>(value_json) else {
+                continue;
+            };
+            for entry in inventory::iter::<FactoryEntry> {
+                if entry.factory.config_key() == config_key {
+                    match entry.factory.create(config_value.clone()).await {
+                        Ok(connector) => match registry.install_native(connector) {
+                            Ok(name) => {
+                                tracing::info!(connector = %name, "loaded from config store");
+                                registered += 1;
+                            }
+                            Err(e) => tracing::warn!(
+                                connector = entry.factory.name(),
+                                error = %e,
+                                "failed to install connector from config store"
+                            ),
+                        },
+                        Err(e) => tracing::warn!(
+                            connector = entry.factory.name(),
+                            error = %e,
+                            "failed to create connector from config store"
+                        ),
+                    }
+                    break;
+                }
+            }
+        }
+    }
+
+    // Load persisted WASM connectors from store (installed via UI/CLI).
+    // These are community connectors that were installed as .wasm packages
+    // and persisted in the wasm_binaries table.
+    {
+        use springtale_connector::wasm::SandboxLimits;
+
+        let wasm_binaries = _store.list_wasm_binaries().await.unwrap_or_default();
+        if !wasm_binaries.is_empty() {
+            for bin in wasm_binaries {
+                if removed_connectors.contains(&bin.name) {
+                    tracing::debug!(connector = %bin.name, "skipping removed WASM connector");
+                    continue;
+                }
+                let manifest: springtale_connector::ConnectorManifest =
+                    match serde_json::from_str(&bin.manifest_json) {
+                        Ok(m) => m,
+                        Err(e) => {
+                            tracing::warn!(connector = %bin.name, error = %e, "invalid WASM manifest JSON");
+                            continue;
+                        }
+                    };
+                match registry.install_wasm(
+                    shared_wasm_engine.clone(),
+                    &bin.wasm_bytes,
+                    manifest,
+                    SandboxLimits::default(),
+                ) {
+                    Ok(name) => {
+                        tracing::info!(connector = %name, "loaded WASM connector from store");
+                        registered += 1;
+                    }
+                    Err(e) => {
+                        tracing::warn!(connector = %bin.name, error = %e, "failed to load WASM connector");
+                    }
+                }
+            }
+        }
+    }
+
     tracing::info!(registered, "connector registry initialized");
     Ok(Arc::new(RwLock::new(registry)))
 }
 
 /// Create an AI adapter from config. Uses the factory from springtale-ai.
-fn init_adapter(config: &RuntimeConfig) -> Result<Arc<dyn springtale_ai::AiAdapter>> {
+fn init_adapter(config: &RuntimeConfig) -> Result<Arc<dyn springtale_ai::AiAdapter>, OperationError> {
     springtale_ai::create_adapter(
         config.ai_ollama.as_ref(),
         config.ai_openai.as_ref(),
         config.ai_anthropic.as_ref(),
     )
-    .map_err(|e| anyhow::anyhow!("failed to create AI adapter: {e}"))
+    .map_err(|e| OperationError::Init(format!("failed to create AI adapter: {e}")))
 }
 
 /// Initialize the sentinel behavioral monitor.

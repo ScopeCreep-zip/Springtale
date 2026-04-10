@@ -1,5 +1,6 @@
 use springtale_connector::error::ConnectorError;
 use springtale_connector::factory::{ConnectorFactory, FactoryEntry};
+use springtale_connector::manifest::types::{ActionDecl, TriggerDecl};
 use springtale_connector::Connector;
 
 struct SignalFactory;
@@ -11,6 +12,33 @@ impl ConnectorFactory for SignalFactory {
     }
     fn config_key(&self) -> &'static str {
         "signal"
+    }
+    fn trigger_declarations(&self) -> Vec<TriggerDecl> {
+        crate::triggers::trigger_declarations()
+    }
+    fn action_declarations(&self) -> Vec<ActionDecl> {
+        crate::actions::action_declarations()
+    }
+    fn config_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "daemon_url": {
+                    "type": "string",
+                    "description": "signal-cli daemon HTTP endpoint (e.g. http://localhost:8080)"
+                },
+                "account_id": {
+                    "type": "string",
+                    "description": "Account identifier (user-chosen, NOT your phone number)"
+                },
+                "message_jitter_secs": {
+                    "type": "integer",
+                    "description": "Publish-side jitter in seconds",
+                    "default": 0
+                }
+            },
+            "required": ["daemon_url", "account_id"]
+        }))
     }
     async fn create(
         &self,

@@ -25,4 +25,10 @@ pub enum OperationError {
 
     #[error("serialization error: {0}")]
     Serialization(String),
+
+    #[error("AI error: {0}")]
+    Ai(String),
+
+    #[error("initialization failed: {0}")]
+    Init(String),
 }

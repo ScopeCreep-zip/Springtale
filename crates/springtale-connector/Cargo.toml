@@ -34,3 +34,4 @@ springtale-store = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
+wat = { workspace = true }

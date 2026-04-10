@@ -6,10 +6,17 @@ use crate::error::BotError;
 use crate::state::session::SessionKey;
 
 /// Sliding window of recent conversation per (user_id, channel_id).
+///
+/// Messages are encrypted at rest with XChaCha20-Poly1305. Each message
+/// gets its own random 24-byte nonce. The encryption key is derived from
+/// the vault at bot initialization and held in memory while running.
 pub struct ConversationContext {
     max_messages: usize,
     store: Arc<dyn StorageBackend>,
     ai_adapter: Arc<dyn springtale_ai::AiAdapter>,
+    /// XChaCha20-Poly1305 key for message-level encryption.
+    /// Derived from the vault at bot init. 32 bytes.
+    encryption_key: [u8; 32],
 }
 
 impl ConversationContext {
@@ -17,40 +24,47 @@ impl ConversationContext {
         store: Arc<dyn StorageBackend>,
         max_messages: usize,
         ai_adapter: Arc<dyn springtale_ai::AiAdapter>,
+        encryption_key: [u8; 32],
     ) -> Self {
         Self {
             max_messages,
             store,
             ai_adapter,
+            encryption_key,
         }
     }
 
     /// Push a new message into the conversation context.
     ///
-    /// Phase 1b: content stored as plaintext bytes in `content_encrypted`.
-    /// Phase 2 will add vault-based XChaCha20-Poly1305 encryption with the
-    /// random nonce already generated here. The nonce is random now so the
-    /// schema is migration-ready when encryption is wired in.
+    /// Content is encrypted with XChaCha20-Poly1305 using a random 24-byte
+    /// nonce. The encryption key was derived from the vault at bot init.
     pub async fn push(
         &self,
         key: &SessionKey,
         author: &str,
         content: &str,
     ) -> Result<(), BotError> {
-        // Derive source from author role
         let source = match author {
             "user" => "user_input",
             "assistant" => "connector_output",
             _ => "connector_output",
         };
 
-        // Generate random nonce for future encryption readiness
+        // Random 24-byte nonce — unique per message (XChaCha20 eliminates collision risk)
         let nonce = {
             use rand::RngCore;
-            let mut n = vec![0u8; 24];
+            let mut n = [0u8; 24];
             rand::thread_rng().fill_bytes(&mut n);
             n
         };
+
+        // Encrypt content with XChaCha20-Poly1305
+        let ciphertext = springtale_crypto::message::encrypt_message(
+            content.as_bytes(),
+            &nonce,
+            &self.encryption_key,
+        )
+        .map_err(|e| BotError::Memory(format!("encryption failed: {e}")))?;
 
         let entry = springtale_store::MemoryRow {
             id: uuid::Uuid::new_v4().to_string(),
@@ -60,9 +74,8 @@ impl ConversationContext {
             schema_version: 1,
             author: author.into(),
             source: source.into(),
-            // Phase 1b: plaintext bytes. Phase 2: vault.encrypt(content, &nonce)
-            content_encrypted: content.as_bytes().to_vec(),
-            nonce,
+            content_encrypted: ciphertext,
+            nonce: nonce.to_vec(),
             content_hash: None,
             parent_id: None,
             trust_score: if author == "user" { 1.0 } else { 0.8 },
@@ -73,16 +86,38 @@ impl ConversationContext {
         Ok(())
     }
 
-    /// Get recent conversation entries.
+    /// Get recent conversation entries, decrypted.
+    ///
+    /// Each entry's `content_encrypted` is decrypted in-place using the
+    /// stored nonce and the context's encryption key.
     pub async fn recent(
         &self,
         key: &SessionKey,
         limit: usize,
     ) -> Result<Vec<springtale_store::MemoryRow>, BotError> {
-        let entries = self
+        let mut entries = self
             .store
             .get_memory(&key.user_id, &key.channel_id, limit)
             .await?;
+
+        // Decrypt each entry's content
+        for entry in &mut entries {
+            let nonce: [u8; 24] = entry
+                .nonce
+                .as_slice()
+                .try_into()
+                .map_err(|_| BotError::Memory("invalid nonce length".into()))?;
+
+            let plaintext = springtale_crypto::message::decrypt_message(
+                &entry.content_encrypted,
+                &nonce,
+                &self.encryption_key,
+            )
+            .map_err(|e| BotError::Memory(format!("decryption failed: {e}")))?;
+
+            entry.content_encrypted = plaintext;
+        }
+
         Ok(entries)
     }
 

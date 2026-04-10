@@ -7,10 +7,12 @@
 
 pub mod agent;
 pub mod canvas;
+pub mod config;
 pub mod connectors;
 pub mod data;
 pub mod events;
 pub mod formations;
+pub mod migrate;
 pub mod memory;
 pub mod rules;
 pub mod safety;

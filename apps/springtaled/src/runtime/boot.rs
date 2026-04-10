@@ -34,23 +34,157 @@ pub async fn boot(
         );
     }
 
-    // ── Step 2: Initialize shared runtime (store + engine + registry + AI + sentinel + canvas) ──
+    // Destructure config to avoid partial-move issues (ai/sentinel fields
+    // are moved into RuntimeConfig, the rest stays available by name).
+    let SpringtaleConfig {
+        ephemeral,
+        store: store_config,
+        crypto: crypto_config,
+        transport: transport_config,
+        api: api_config,
+        heartbeat_interval_secs,
+        bot: bot_config,
+        telegram: telegram_config,
+        sentinel,
+        ai_ollama,
+        ai_openai,
+        ai_anthropic,
+        nostr: nostr_config,
+        irc: irc_config,
+        discord: discord_config,
+        slack: slack_config,
+        signal: signal_config,
+    } = config;
+
+    // ── Step 2: Initialize crypto vault (before runtime, no dependencies) ──
+    let (vault, keypair, api_token_hash) = init_crypto(ephemeral, &crypto_config)?;
+
+    // ── Step 3: Initialize shared runtime (store + engine + registry + AI + sentinel + canvas) ──
     let runtime_config = springtale_runtime::RuntimeConfig {
         store: springtale_runtime::config::StoreConfig {
-            path: config.store.path.clone(),
-            ephemeral: config.ephemeral,
+            path: store_config.path.clone(),
+            ephemeral,
         },
-        ai_ollama: config.ai_ollama,
-        ai_openai: config.ai_openai,
-        ai_anthropic: config.ai_anthropic,
-        sentinel: config.sentinel,
+        ai_ollama,
+        ai_openai,
+        ai_anthropic,
+        sentinel,
         connector_configs,
     };
-    let runtime = springtale_runtime::init(&runtime_config).await?;
+    let runtime = init_runtime(runtime_config).await?;
 
-    // ── Step 3: Initialize crypto vault ──
+    // ── Step 4: Initialize transport ──
+    let _transport = init_transport(&transport_config, &keypair).await?;
+
+    // ── Step 5: Start scheduler (cron + file watcher + heartbeat) ──
+    let (trigger_tx, trigger_rx, cron_executor, fs_watcher, heartbeat_monitor) =
+        init_schedulers(&runtime, heartbeat_interval_secs).await?;
+
+    // ── Step 6: Initialize job queue (action execution pipeline) ──
+    let producer = init_job_queue(&runtime).await?;
+
+    // ── Step 7: Initialize bot + connector gateways ──
+    let (bot_msg_tx, bot_msg_rx) = mpsc::channel::<springtale_bot::IncomingMessage>(256);
+    let connector_wiring = ConnectorWiring {
+        telegram: telegram_config,
+        nostr: nostr_config,
+        irc: irc_config,
+        discord: discord_config,
+        slack: slack_config,
+        signal: signal_config,
+    };
+    let (bot_handle, _connector_shutdowns) =
+        init_bot(&runtime, bot_config, &connector_wiring, bot_msg_tx, bot_msg_rx).await?;
+
+    // ── Step 8: Build and start API server ──
+
+    let ready_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+
+    let cron_arc = Arc::new(tokio::sync::Mutex::new(cron_executor));
+    let watcher_arc = Arc::new(tokio::sync::Mutex::new(fs_watcher));
+
+    // Broadcast channel for SSE event streaming to dashboard
+    let (event_tx, _event_rx) = tokio::sync::broadcast::channel(256);
+
+    let state = api::state::AppState {
+        runtime: runtime.clone(),
+        api_token_hash,
+        ready: ready_flag.clone(),
+        trigger_tx: trigger_tx.clone(),
+        scheduler: crate::scheduler::AppScheduler {
+            cron: cron_arc,
+            fs_watcher: watcher_arc,
+        },
+        rate_limit_per_sec: u64::from(api_config.rate_limit_per_sec),
+        event_tx,
+        heartbeat_monitor: Arc::new(tokio::sync::Mutex::new(heartbeat_monitor)),
+    };
+
+    let router = api::build_router(state);
+    let listener = tokio::net::TcpListener::bind(&api_config.bind)
+        .await
+        .with_context(|| format!("failed to bind API to {}", api_config.bind))?;
+    tracing::info!(bind = %api_config.bind, "management API listening");
+
+    // ── Step 9: Signal readiness ──
+    ready_flag.store(true, std::sync::atomic::Ordering::Release);
+    println!("READY");
+
+    // ── Run: API server + trigger event loop ──
+    let engine = runtime.engine.clone();
+    let api_handle = tokio::spawn(async move {
+        if let Err(e) = axum::serve(listener, router)
+            .with_graceful_shutdown(crate::shutdown::shutdown_signal())
+            .await
+        {
+            tracing::error!(error = %e, "API server error");
+        }
+    });
+
+    let event_loop = tokio::spawn(async move {
+        event_loop(trigger_rx, engine, producer).await;
+    });
+
+    // Wait for shutdown
+    tokio::select! {
+        _ = api_handle => tracing::info!("API server stopped"),
+        _ = event_loop => tracing::info!("event loop stopped"),
+        _ = bot_handle => tracing::info!("bot event loop stopped"),
+    }
+
+    // Cleanup
+    drop(vault);
+    tracing::info!("springtaled shutdown complete");
+    Ok(())
+}
+
+/// Holds optional connector configs for wiring during boot.
+/// Avoids partial-move issues with the top-level `SpringtaleConfig`.
+struct ConnectorWiring {
+    telegram: Option<connector_telegram::TelegramConfig>,
+    nostr: Option<connector_nostr::NostrConfig>,
+    irc: Option<connector_irc::IrcConfig>,
+    discord: Option<connector_discord::DiscordConfig>,
+    slack: Option<connector_slack::SlackConfig>,
+    signal: Option<connector_signal::SignalConfig>,
+}
+
+// ── Extracted boot steps ──────────────────────────────────────────────────────
+
+/// Step 2: Initialize shared runtime (store + engine + registry + AI + sentinel + canvas).
+async fn init_runtime(
+    runtime_config: springtale_runtime::RuntimeConfig,
+) -> Result<springtale_runtime::RuntimeState> {
+    springtale_runtime::init(&runtime_config).await.context("failed to initialize runtime")
+}
+
+/// Initialize crypto vault, load identity keypair, derive API token hash.
+fn init_crypto(
+    ephemeral: bool,
+    crypto_config: &crate::config::CryptoConfig,
+) -> Result<(Vault, Keypair, [u8; 32])> {
     let passphrase = get_passphrase()?;
-    let (vault, keypair) = if config.ephemeral {
+    let (vault, keypair) = if ephemeral {
         let mut vault = springtale_crypto::vault::store::Vault::create_ephemeral(&passphrase)
             .context("failed to create ephemeral vault")?;
         let keypair = springtale_crypto::identity::keypair::Keypair::generate()
@@ -61,13 +195,13 @@ pub async fn boot(
             .context("failed to store ephemeral identity")?;
         (vault, keypair)
     } else {
-        tracing::info!(path = %config.crypto.vault_path.display(), "opening crypto vault");
-        if let Some(parent) = config.crypto.vault_path.parent() {
+        tracing::info!(path = %crypto_config.vault_path.display(), "opening crypto vault");
+        if let Some(parent) = crypto_config.vault_path.parent() {
             std::fs::create_dir_all(parent).with_context(|| {
                 format!("failed to create vault directory: {}", parent.display())
             })?;
         }
-        open_or_create_vault(&config.crypto.vault_path, &passphrase)?
+        open_or_create_vault(&crypto_config.vault_path, &passphrase)?
     };
     let node_id = keypair.node_id();
     tracing::info!(node_id = %hex::encode(node_id.as_bytes()), "identity loaded");
@@ -82,14 +216,21 @@ pub async fn boot(
     // Derive API token from passphrase hash (HMAC-SHA256)
     let api_token_hash = springtale_crypto::token::derive_api_token_hash(&passphrase);
 
-    // ── Step 4: Initialize transport ──
-    let _transport: Arc<dyn springtale_transport::Transport> = match config
-        .transport
+    Ok((vault, keypair, api_token_hash))
+}
+
+/// Initialize transport layer (local Unix socket or HTTP with mTLS).
+async fn init_transport(
+    transport_config: &crate::config::TransportConfig,
+    keypair: &Keypair,
+) -> Result<Arc<dyn springtale_transport::Transport>> {
+    let node_id = keypair.node_id();
+    let transport: Arc<dyn springtale_transport::Transport> = match transport_config
         .transport_type
         .as_str()
     {
         "http" => {
-            let http_config = config.transport.http.clone().ok_or_else(|| {
+            let http_config = transport_config.http.clone().ok_or_else(|| {
                 anyhow::anyhow!("transport type is 'http' but [transport.http] config is missing")
             })?;
             tracing::info!(addr = %http_config.listen_addr, "binding HTTP transport (mTLS)");
@@ -100,17 +241,32 @@ pub async fn boot(
             )
         }
         _ => {
-            tracing::info!(path = %config.transport.socket_path.display(), "binding local transport");
+            tracing::info!(path = %transport_config.socket_path.display(), "binding local transport");
             Arc::new(
-                LocalTransport::bind(node_id, &config.transport.socket_path)
+                LocalTransport::bind(node_id, &transport_config.socket_path)
                     .await
                     .context("failed to bind local transport")?,
             )
         }
     };
-    tracing::info!(transport = _transport.name(), "transport initialized");
+    tracing::info!(transport = transport.name(), "transport initialized");
+    Ok(transport)
+}
 
-    // ── Step 5: Start scheduler (cron + file watcher) ──
+/// Start scheduler subsystems (cron executor, filesystem watcher, heartbeat monitor).
+///
+/// Returns the trigger channel pair and the three scheduler components for later
+/// ownership by the API state.
+async fn init_schedulers(
+    runtime: &springtale_runtime::RuntimeState,
+    heartbeat_interval_secs: u64,
+) -> Result<(
+    mpsc::Sender<springtale_core::rule::engine::TriggerEvent>,
+    mpsc::Receiver<springtale_core::rule::engine::TriggerEvent>,
+    CronExecutor,
+    FsWatcher,
+    springtale_scheduler::HeartbeatMonitor,
+)> {
     let (trigger_tx, trigger_rx) = mpsc::channel(256);
 
     let mut cron_executor = CronExecutor::new(trigger_tx.clone());
@@ -140,13 +296,13 @@ pub async fn boot(
 
     // Start heartbeat monitor (periodic rule evaluation)
     let mut heartbeat_monitor = springtale_scheduler::HeartbeatMonitor::new(
-        config.heartbeat_interval_secs,
+        heartbeat_interval_secs,
         trigger_tx.clone(),
     );
-    if config.heartbeat_interval_secs > 0 {
+    if heartbeat_interval_secs > 0 {
         heartbeat_monitor.start();
         tracing::info!(
-            interval_secs = config.heartbeat_interval_secs,
+            interval_secs = heartbeat_interval_secs,
             "heartbeat monitor started"
         );
     }
@@ -157,7 +313,16 @@ pub async fn boot(
         "scheduler started"
     );
 
-    // ── Step 6: Initialize job queue (action execution pipeline) ──
+    Ok((trigger_tx, trigger_rx, cron_executor, fs_watcher, heartbeat_monitor))
+}
+
+/// Step 6: Initialize job queue (producer + consumer with sentinel dispatch).
+///
+/// Spawns the consumer as a background task and returns the producer for
+/// use by the event loop.
+async fn init_job_queue(
+    runtime: &springtale_runtime::RuntimeState,
+) -> Result<Arc<JobProducer>> {
     let (job_tx, job_rx) = mpsc::channel(100);
     let producer = Arc::new(JobProducer::new(job_tx));
     let mut consumer = JobConsumer::new(job_rx, 4);
@@ -215,20 +380,35 @@ pub async fn boot(
     });
     tracing::info!("job queue started (concurrency: 4)");
 
-    // ── Step 7: Initialize bot runtime (if configured) ──
-    let (bot_msg_tx, bot_msg_rx) = mpsc::channel::<springtale_bot::IncomingMessage>(256);
+    Ok(producer)
+}
+
+/// Initialize bot runtime and wire connector gateways.
+///
+/// Spawns the bot event loop, response dispatcher, and all configured connector
+/// gateway loops. Returns the bot task handle and connector shutdown senders.
+async fn init_bot(
+    runtime: &springtale_runtime::RuntimeState,
+    bot_config: Option<springtale_bot::BotConfig>,
+    connectors: &ConnectorWiring,
+    bot_msg_tx: mpsc::Sender<springtale_bot::IncomingMessage>,
+    bot_msg_rx: mpsc::Receiver<springtale_bot::IncomingMessage>,
+) -> Result<(
+    tokio::task::JoinHandle<()>,
+    Vec<tokio::sync::watch::Sender<bool>>,
+)> {
     let (bot_response_tx, mut bot_response_rx) =
         mpsc::channel::<springtale_bot::OutgoingResponse>(256);
     let (_bot_rule_tx, bot_rule_rx) =
         mpsc::channel::<springtale_core::rule::engine::TriggerEvent>(256);
 
-    let bot_config = config.bot.unwrap_or_default();
+    let bot_config = bot_config.unwrap_or_default();
 
     let bot = springtale_bot::BotBuilder::new()
         .store(runtime.store.clone())
         .registry(runtime.registry.clone())
         .engine(runtime.engine.clone())
-        .ai_adapter(runtime.ai_adapter.clone())
+        .ai_adapter((**runtime.ai_adapter.load()).clone())
         .config(bot_config)
         .connector_rx(bot_msg_rx)
         .rule_rx(bot_rule_rx)
@@ -275,7 +455,7 @@ pub async fn boot(
     // incoming messages from chat platforms to the bot runtime.
     let mut _connector_shutdowns: Vec<tokio::sync::watch::Sender<bool>> = Vec::new();
 
-    if let Some(ref tg_config) = config.telegram {
+    if let Some(ref tg_config) = connectors.telegram {
         crate::runtime::connectors::wire_telegram(
             tg_config,
             &runtime.registry,
@@ -284,7 +464,7 @@ pub async fn boot(
         .await
         .context("failed to wire Telegram connector")?;
     }
-    if let Some(ref nostr_config) = config.nostr {
+    if let Some(ref nostr_config) = connectors.nostr {
         let shutdown_tx = crate::runtime::connectors::wire_nostr(
             nostr_config,
             &runtime.registry,
@@ -294,7 +474,7 @@ pub async fn boot(
         .context("failed to wire Nostr connector")?;
         _connector_shutdowns.push(shutdown_tx);
     }
-    if let Some(ref irc_config) = config.irc {
+    if let Some(ref irc_config) = connectors.irc {
         let shutdown_tx = crate::runtime::connectors::wire_irc(
             irc_config,
             &runtime.registry,
@@ -304,7 +484,7 @@ pub async fn boot(
         .context("failed to wire IRC connector")?;
         _connector_shutdowns.push(shutdown_tx);
     }
-    if let Some(ref discord_config) = config.discord {
+    if let Some(ref discord_config) = connectors.discord {
         let shutdown_tx = crate::runtime::connectors::wire_discord(
             discord_config,
             &runtime.registry,
@@ -314,7 +494,7 @@ pub async fn boot(
         .context("failed to wire Discord connector")?;
         _connector_shutdowns.push(shutdown_tx);
     }
-    if let Some(ref slack_config) = config.slack {
+    if let Some(ref slack_config) = connectors.slack {
         let shutdown_tx = crate::runtime::connectors::wire_slack(
             slack_config,
             &runtime.registry,
@@ -324,7 +504,7 @@ pub async fn boot(
         .context("failed to wire Slack connector")?;
         _connector_shutdowns.push(shutdown_tx);
     }
-    if let Some(ref signal_config) = config.signal {
+    if let Some(ref signal_config) = connectors.signal {
         let shutdown_tx = crate::runtime::connectors::wire_signal(
             signal_config,
             &runtime.registry,
@@ -337,65 +517,10 @@ pub async fn boot(
     // connector-matrix: DEFERRED — matrix-sdk 0.16 requires rusqlite 0.37
     // which has CVE-2025-70873 (heap info disclosure). Waiting for update.
 
-    // ── Step 8: Build and start API server ──
-
-    let ready_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-
-    let cron_arc = Arc::new(tokio::sync::Mutex::new(cron_executor));
-    let watcher_arc = Arc::new(tokio::sync::Mutex::new(fs_watcher));
-
-    // Broadcast channel for SSE event streaming to dashboard
-    let (event_tx, _event_rx) = tokio::sync::broadcast::channel(256);
-
-    let state = api::state::AppState {
-        runtime: runtime.clone(),
-        api_token_hash,
-        ready: ready_flag.clone(),
-        trigger_tx: trigger_tx.clone(),
-        cron: cron_arc,
-        fs_watcher: watcher_arc,
-        rate_limit_per_sec: u64::from(config.api.rate_limit_per_sec),
-        event_tx,
-        heartbeat_monitor: Arc::new(tokio::sync::Mutex::new(heartbeat_monitor)),
-    };
-
-    let router = api::build_router(state);
-    let listener = tokio::net::TcpListener::bind(&config.api.bind)
-        .await
-        .with_context(|| format!("failed to bind API to {}", config.api.bind))?;
-    tracing::info!(bind = %config.api.bind, "management API listening");
-
-    // ── Step 9: Signal readiness ──
-    ready_flag.store(true, std::sync::atomic::Ordering::Release);
-    println!("READY");
-
-    // ── Run: API server + trigger event loop ──
-    let engine = runtime.engine.clone();
-    let api_handle = tokio::spawn(async move {
-        if let Err(e) = axum::serve(listener, router)
-            .with_graceful_shutdown(crate::shutdown::shutdown_signal())
-            .await
-        {
-            tracing::error!(error = %e, "API server error");
-        }
-    });
-
-    let event_loop = tokio::spawn(async move {
-        event_loop(trigger_rx, engine, producer).await;
-    });
-
-    // Wait for shutdown
-    tokio::select! {
-        _ = api_handle => tracing::info!("API server stopped"),
-        _ = event_loop => tracing::info!("event loop stopped"),
-        _ = bot_handle => tracing::info!("bot event loop stopped"),
-    }
-
-    // Cleanup
-    drop(vault);
-    tracing::info!("springtaled shutdown complete");
-    Ok(())
+    Ok((bot_handle, _connector_shutdowns))
 }
+
+// ── Existing helpers ──────────────────────────────────────────────────────────
 
 /// Main event loop: receives trigger events, matches rules, enqueues actions.
 async fn event_loop(
@@ -447,13 +572,18 @@ async fn event_loop(
 fn get_passphrase() -> Result<Vec<u8>> {
     // Docker secrets pattern: read from file path in env var
     if let Ok(file_path) = std::env::var("SPRINGTALE_PASSPHRASE_FILE") {
-        let pass = std::fs::read_to_string(&file_path)
+        // Read as bytes and zeroize immediately — passphrase must not
+        // linger in memory (IPV survivor's device may be seized).
+        let mut raw_bytes = std::fs::read(&file_path)
             .with_context(|| format!("failed to read passphrase from {file_path}"))?;
-        let pass = pass.trim_end(); // trim trailing newline from file
-        if pass.is_empty() {
+        // Trim trailing newline/whitespace from file
+        while raw_bytes.last().is_some_and(|b| b.is_ascii_whitespace()) {
+            raw_bytes.pop();
+        }
+        if raw_bytes.is_empty() {
             anyhow::bail!("passphrase file is empty: {file_path}");
         }
-        return Ok(pass.as_bytes().to_vec());
+        return Ok(raw_bytes);
     }
 
     // Direct env var (development convenience, NOT recommended for production)

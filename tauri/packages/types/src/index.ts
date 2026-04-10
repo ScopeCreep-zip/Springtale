@@ -11,6 +11,8 @@ export type { EventEntry, EventFilter } from "./event";
 export type { AuditEntry, AuditFilter } from "./audit";
 export type { Session } from "./session";
 export type { TriggerDecl, ActionDecl, ConnectorSchema } from "./manifest";
+export type { AvailableConnector, ConfigSchema, ConfigSchemaProperty } from "./available-connector";
+export type { AgentState } from "./agent-state";
 export type { CanvasBlock, CanvasState, CanvasUpdate, StatusState } from "./canvas";
 export type {
   MomentumTier,

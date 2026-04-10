@@ -1,8 +1,4 @@
-use std::sync::Arc;
-
-use springtale_connector::registry::store::ConnectorRegistry;
-use springtale_core::rule::action::Action;
-use tokio::sync::{RwLock, mpsc};
+use tokio::sync::mpsc;
 
 use crate::cooperation::cadence::Tick;
 use crate::handler::registry::HandlerContext;
@@ -262,7 +258,7 @@ async fn handle_trigger_event(
         );
 
         for action in rule_match.actions.iter() {
-            match dispatch_bot_action(action, &bot.registry).await {
+            match springtale_runtime::dispatch::dispatch_action(action, &bot.registry).await {
                 Ok(msg) => {
                     tracing::info!(
                         rule = %rule_match.rule_name,
@@ -284,151 +280,8 @@ async fn handle_trigger_event(
     Ok(())
 }
 
-/// Dispatch a single rule action within the bot context.
-///
-/// Unlike the daemon's `dispatch_action` (which enqueues jobs), the bot
-/// dispatches actions directly because it's interactive — users wait for
-/// responses. Handles `RunConnector` through the capability-checked
-/// registry API. Other action types log or pass through for Phase 1b.
-///
-/// Boxed return to support recursive `Chain` dispatch.
-/// Starts at depth 0; `Chain` increments depth and checks
-/// against `MAX_CHAIN_DEPTH` before recursing.
-fn dispatch_bot_action<'a>(
-    action: &'a Action,
-    registry: &'a Arc<RwLock<ConnectorRegistry>>,
-) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>> {
-    dispatch_bot_action_with_depth(action, registry, 0)
-}
-
-fn dispatch_bot_action_with_depth<'a>(
-    action: &'a Action,
-    registry: &'a Arc<RwLock<ConnectorRegistry>>,
-    depth: u32,
-) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>> {
-    Box::pin(dispatch_bot_action_inner(action, registry, depth))
-}
-
-async fn dispatch_bot_action_inner(
-    action: &Action,
-    registry: &Arc<RwLock<ConnectorRegistry>>,
-    depth: u32,
-) -> Result<String, String> {
-    match action {
-        Action::RunConnector {
-            connector,
-            action: action_name,
-            params,
-        } => {
-            let input = serde_json::Value::Object(params.clone());
-
-            // Get Arc'd host + capability checker under lock, then drop
-            // lock before the actual network call.
-            let (host, checker) = {
-                let reg = registry.read().await;
-                reg.get_for_execute(connector).map_err(|e| e.to_string())?
-            };
-
-            match host.execute_checked(action_name, input, &checker).await {
-                Ok(result) => {
-                    tracing::info!(
-                        connector = %connector,
-                        action = %action_name,
-                        success = result.success,
-                        "bot: connector action executed"
-                    );
-                    Ok(result.message)
-                }
-                Err(e) => {
-                    tracing::warn!(
-                        connector = %connector,
-                        action = %action_name,
-                        error = %e,
-                        "bot: connector action failed"
-                    );
-                    Err(e.to_string())
-                }
-            }
-        }
-
-        Action::SendMessage { text } => {
-            // Phase 1b: log only. SendMessage from rules doesn't carry
-            // destination context (user_id, channel_id). Cron/file watch
-            // triggers have no chat context to route to.
-            tracing::info!(text = %text, "bot: SendMessage (no destination context)");
-            Ok(format!("message: {text}"))
-        }
-
-        Action::Delay { seconds } => {
-            tokio::time::sleep(std::time::Duration::from_secs(*seconds)).await;
-            tracing::debug!(seconds = seconds, "bot: delay completed");
-            Ok(format!("delayed {seconds}s"))
-        }
-
-        Action::Notify { title, body } => {
-            // Phase 1b: log only. Phase 2 adds notification channels.
-            tracing::info!(title = %title, body = %body, "bot: NOTIFICATION");
-            Ok(format!("notified: {title}"))
-        }
-
-        Action::WriteFile {
-            destination,
-            content,
-            ..
-        } => {
-            const MAX_WRITE_FILE_BYTES: usize = 10 * 1024 * 1024;
-            if content.len() > MAX_WRITE_FILE_BYTES {
-                return Err(format!(
-                    "file content size ({} bytes) exceeds maximum ({MAX_WRITE_FILE_BYTES} bytes)",
-                    content.len()
-                ));
-            }
-            tokio::fs::write(destination, content)
-                .await
-                .map_err(|e| format!("failed to write file {destination}: {e}"))?;
-            tracing::info!(path = %destination, "bot: file written");
-            Ok(format!("wrote {destination}"))
-        }
-
-        Action::RunShell { command } => {
-            // Phase 1b: log only. ShellExec requires capability approval.
-            tracing::info!(command = %command, "bot: SHELL (not executed — requires approval)");
-            Ok(format!("shell logged: {command}"))
-        }
-
-        Action::Chain { steps } => {
-            let new_depth = depth + 1;
-            if new_depth > springtale_core::rule::action::MAX_CHAIN_DEPTH {
-                return Err(format!(
-                    "chain depth {new_depth} exceeds max {}",
-                    springtale_core::rule::action::MAX_CHAIN_DEPTH
-                ));
-            }
-
-            let mut results = Vec::new();
-            for (i, step) in steps.iter().enumerate() {
-                match dispatch_bot_action_with_depth(step, registry, new_depth).await {
-                    Ok(msg) => results.push(msg),
-                    Err(e) => {
-                        tracing::warn!(step = i, error = %e, "bot: chain step failed");
-                        return Err(format!("chain step {i} failed: {e}"));
-                    }
-                }
-            }
-            Ok(format!("chain completed: {} steps", results.len()))
-        }
-
-        Action::Transform { operation, .. } => {
-            tracing::debug!(operation = %operation, "bot: transform pass-through");
-            Ok(format!("transform: {operation}"))
-        }
-
-        Action::AiComplete { .. } => {
-            tracing::debug!("bot: AI complete pass-through (NoopAdapter)");
-            Ok("ai: noop".to_owned())
-        }
-    }
-}
+// Action dispatch delegated to springtale_runtime::dispatch::dispatch_action
+// — single source of truth shared between daemon and bot.
 
 /// Handle a cadence tick — process all active formations.
 ///
@@ -449,20 +302,77 @@ async fn handle_cadence_tick(bot: &mut Bot, tick: &Tick) {
         "cadence tick processing"
     );
 
-    // Phase 2a: tick processing is a placeholder that logs and updates momentum.
-    // Full tick processing (collect TickReports from each member, detect
-    // interference, trigger recovery) requires agent execution infrastructure
-    // that will be wired when formations actually dispatch actions.
     drop(formations);
 
     let mut formations = bot.formations.write().await;
     for formation in formations.iter_mut() {
-        if formation.is_viable() {
-            // Record successful tick for momentum building
-            formation.momentum.record_success();
+        if !formation.is_viable() {
+            continue;
+        }
+
+        // 1. Record tick success for momentum building
+        formation.momentum.record_success();
+
+        // 2. Persist momentum tier to config store
+        let key = format!("momentum:{}", formation.id.0);
+        let tier_json = serde_json::json!(format!("{:?}", formation.momentum.tier));
+        if let Err(e) = bot
+            .store
+            .set_config(&key, &tier_json.to_string())
+            .await
+        {
+            tracing::warn!(formation_id = %formation.id.0, error = %e, "failed to persist momentum tier");
+        }
+
+        // 3. Orchestrate — decompose intent into subtasks via AI (if available + Fever momentum)
+        if formation.can_orchestrate() {
+            match crate::orchestrator::orchestrate::orchestrate_formation(
+                formation,
+                &bot.store,
+                &bot.registry,
+            )
+            .await
+            {
+                Ok(subtasks) => {
+                    tracing::info!(
+                        formation = %formation.id.0,
+                        subtasks = subtasks.len(),
+                        "orchestrator decomposed intent into subtasks"
+                    );
+                    // Post subtasks to blackboard for members to pull (RimWorld pattern)
+                    let trace_id = uuid::Uuid::new_v4();
+                    for task in &subtasks {
+                        if let Err(e) = formation.environment.write(
+                            &task.id.to_string(),
+                            serde_json::to_value(task).unwrap_or_default(),
+                            trace_id,
+                            &formation.fuel,
+                        ) {
+                            tracing::warn!(task = %task.id, error = %e, "failed to post subtask to blackboard");
+                        }
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!(formation = %formation.id.0, error = %e, "orchestration failed");
+                    formation.momentum.record_failure();
+                }
+            }
         }
     }
 
-    // Remove non-viable formations
+    // Reclaim slots from permanently dead members (L4D pattern:
+    // recoverable-dead stay for peer revive, permanently dead get removed)
+    for formation in formations.iter_mut() {
+        let removed = formation.remove_dead_members();
+        if removed > 0 {
+            tracing::info!(
+                formation = %formation.id.0,
+                removed,
+                "reclaimed slots from dead members"
+            );
+        }
+    }
+
+    // Remove non-viable formations (no operational members left)
     formations.retain(|f| f.is_viable());
 }

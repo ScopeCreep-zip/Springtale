@@ -85,9 +85,20 @@ pub async fn execute(
     let mut cmd = Command::new(command);
     cmd.args(&args);
 
-    // Set working directory if configured
+    // Set working directory if configured — validate against path traversal
     if let Some(ref wd) = config.working_directory {
-        cmd.current_dir(wd);
+        let path = std::path::Path::new(wd);
+        if !path.is_absolute() {
+            return Err(crate::error::ShellError::InvalidConfig(
+                "working_directory must be absolute".into(),
+            ));
+        }
+        if path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+            return Err(crate::error::ShellError::InvalidConfig(
+                "working_directory must not contain '..'".into(),
+            ));
+        }
+        cmd.current_dir(path);
     }
 
     // Capture stdout and stderr

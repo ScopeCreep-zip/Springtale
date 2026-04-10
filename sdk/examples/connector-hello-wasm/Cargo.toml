@@ -1,0 +1,17 @@
+[package]
+name = "connector-hello-wasm"
+version = "0.1.0"
+edition = "2024"
+description = "Example WASM connector for Springtale — hello world."
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+springtale-connector-sdk = { path = "../../connector-sdk" }
+serde_json = "1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true

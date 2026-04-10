@@ -3,12 +3,17 @@
 /// Per ARCHITECTURE.md §9: "Thin layer. Validates inputs.
 /// Delegates to crates. Never contains business logic directly."
 ///
-/// Each command validates inputs, delegates to springtale-* crates,
-/// and returns serializable results across the IPC boundary.
+/// Each module mirrors a springtale-runtime operations module.
+/// No duplication — each command is defined in exactly one module.
+pub mod agent;
+pub mod authors;
 pub mod canvas;
+pub mod config;
 pub mod connectors;
-pub mod formations;
+pub mod data;
 pub mod events;
+pub mod formations;
+pub mod memory;
 pub mod panic;
 pub mod rules;
 pub mod safety;

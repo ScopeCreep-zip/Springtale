@@ -1,10 +1,11 @@
 use axum::Json;
-use axum::extract::{Path, State};
+use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 
 use springtale_runtime::operations;
 
+use super::extractors::ValidatedPath;
 use super::state::AppState;
 
 /// GET /rules/schema — return JSON schemas for trigger, condition, and action types.
@@ -53,7 +54,7 @@ pub async fn create(
         serde_json::from_value(body).map_err(|_| StatusCode::BAD_REQUEST)?;
 
     // Schedule trigger (app-specific: cron/fs_watcher)
-    if let Err(e) = schedule_rule_trigger(&state, &rule).await {
+    if let Err(e) = state.scheduler.schedule(&rule).await {
         tracing::error!(rule = %rule.name, error = %e, "trigger scheduling failed");
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
@@ -75,10 +76,9 @@ pub async fn create(
 /// PUT /rules/{id} — update a rule (replace).
 pub async fn update(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    ValidatedPath(id): ValidatedPath,
     Json(body): Json<serde_json::Value>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    super::validate_path_param(&id)?;
     let uuid = uuid::Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let rule_id = springtale_core::rule::types::RuleId(uuid);
 
@@ -95,7 +95,7 @@ pub async fn update(
             .map(|r| (*r).clone())
     };
     if let Some(ref old) = old_rule {
-        unschedule_rule_trigger(&state, old).await;
+        state.scheduler.unschedule(old).await;
     }
 
     // Delegate store+engine update to operations
@@ -107,7 +107,7 @@ pub async fn update(
         })?;
 
     // Schedule new triggers (app-specific)
-    if let Err(e) = schedule_rule_trigger(&state, &rule).await {
+    if let Err(e) = state.scheduler.schedule(&rule).await {
         tracing::warn!(rule = %rule.name, error = %e, "failed to schedule updated rule trigger");
     }
 
@@ -117,9 +117,8 @@ pub async fn update(
 /// DELETE /rules/{id} — delete a rule.
 pub async fn delete(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    ValidatedPath(id): ValidatedPath,
 ) -> Result<impl IntoResponse, StatusCode> {
-    super::validate_path_param(&id)?;
     let uuid = uuid::Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let rule_id = springtale_core::rule::types::RuleId(uuid);
 
@@ -133,7 +132,7 @@ pub async fn delete(
             .map(|r| (*r).clone())
     };
     if let Some(ref old) = old_rule {
-        unschedule_rule_trigger(&state, old).await;
+        state.scheduler.unschedule(old).await;
     }
 
     // Delegate store+engine deletion to operations
@@ -147,10 +146,9 @@ pub async fn delete(
 /// POST /rules/{id}/toggle — toggle a rule's enabled/disabled status.
 pub async fn toggle(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    ValidatedPath(id): ValidatedPath,
     Json(body): Json<serde_json::Value>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    super::validate_path_param(&id)?;
     let uuid = uuid::Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let rule_id = springtale_core::rule::types::RuleId(uuid);
 
@@ -172,9 +170,8 @@ pub async fn toggle(
 /// POST /rules/{id}/run — manually trigger a rule (dry-run).
 pub async fn run(
     State(state): State<AppState>,
-    Path(id): Path<String>,
+    ValidatedPath(id): ValidatedPath,
 ) -> Result<impl IntoResponse, StatusCode> {
-    super::validate_path_param(&id)?;
     let uuid = uuid::Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let rule_id = springtale_core::rule::types::RuleId(uuid);
 
@@ -192,45 +189,78 @@ pub async fn run(
     ))
 }
 
-/// Schedule a rule's trigger in the cron executor or file watcher.
+/// POST /rules/parse — generate a Rule from natural language intent.
 ///
-/// App-specific: cron and fs_watcher are in AppState, not RuntimeState.
-async fn schedule_rule_trigger(
-    state: &AppState,
-    rule: &springtale_core::rule::types::Rule,
-) -> Result<(), String> {
-    match &rule.trigger {
-        springtale_core::rule::Trigger::Cron { expression } => {
-            let mut cron = state.cron.lock().await;
-            cron.schedule(&rule.name, expression)
-                .map_err(|e| format!("failed to schedule cron trigger: {e}"))?;
-        }
-        springtale_core::rule::Trigger::FileWatch { path, .. } => {
-            let mut watcher = state.fs_watcher.lock().await;
-            watcher
-                .watch(path)
-                .map_err(|e| format!("failed to watch path: {e}"))?;
-        }
-        _ => {}
-    }
-    Ok(())
+/// Returns the generated Rule for preview (not persisted).
+/// The frontend shows the preview and the user calls POST /rules to save.
+pub async fn parse(
+    State(state): State<AppState>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let intent = body
+        .get("intent")
+        .and_then(|v| v.as_str())
+        .ok_or(StatusCode::BAD_REQUEST)?;
+
+    let rule = operations::rules::parse_rule_from_intent(&state.runtime, intent)
+        .await
+        .map_err(|e| {
+            tracing::warn!(error = %e, "parse_rule_from_intent failed");
+            StatusCode::INTERNAL_SERVER_ERROR
+        })?;
+
+    let rule_json = serde_json::to_value(&rule).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+
+    Ok(Json(serde_json::json!({ "rule": rule_json })))
 }
 
-/// Unschedule a rule's trigger from the cron executor or file watcher.
-async fn unschedule_rule_trigger(state: &AppState, rule: &springtale_core::rule::types::Rule) {
-    match &rule.trigger {
-        springtale_core::rule::Trigger::Cron { .. } => {
-            let mut cron = state.cron.lock().await;
-            if cron.cancel(&rule.name) {
-                tracing::info!(rule = %rule.name, "cancelled cron trigger");
-            }
-        }
-        springtale_core::rule::Trigger::FileWatch { path, .. } => {
-            let mut watcher = state.fs_watcher.lock().await;
-            if let Err(e) = watcher.unwatch(path) {
-                tracing::warn!(rule = %rule.name, error = %e, "failed to unwatch path");
-            }
-        }
-        _ => {}
+/// POST /rules/connector — create a connector-event rule from simple fields.
+pub async fn create_connector_rule(
+    State(state): State<AppState>,
+    Json(req): Json<operations::rules::CreateConnectorRuleRequest>,
+) -> impl IntoResponse {
+    match operations::rules::create_connector_rule(&state.runtime, req).await {
+        Ok(id) => (StatusCode::CREATED, Json(serde_json::json!({ "id": id.to_string() }))),
+        Err(e) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": e.to_string() }))),
     }
 }
+
+/// GET /rules/connector/{name} — list rules for a specific connector.
+pub async fn list_for_connector(
+    State(state): State<AppState>,
+    ValidatedPath(name): ValidatedPath,
+) -> Result<impl IntoResponse, StatusCode> {
+    let rules = operations::rules::list_rules_for_connector(&state.runtime, &name).await;
+    Ok(Json(serde_json::json!({ "rules": rules })))
+}
+
+/// POST /connectors/{name}/test — test a connector by dry-running its first rule.
+pub async fn test_connector(
+    State(state): State<AppState>,
+    ValidatedPath(name): ValidatedPath,
+) -> Result<impl IntoResponse, StatusCode> {
+    let result = operations::rules::test_connector(&state.runtime, &name)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+    Ok(Json(serde_json::json!(result)))
+}
+
+/// POST /rules/{id}/reassign — reassign a rule to a new connector.
+pub async fn reassign(
+    State(state): State<AppState>,
+    ValidatedPath(id): ValidatedPath,
+    Json(body): Json<serde_json::Value>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let new_connector = body["new_connector"].as_str().ok_or(StatusCode::BAD_REQUEST)?;
+    let rule_id = id
+        .parse::<uuid::Uuid>()
+        .map(springtale_core::rule::types::RuleId)
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    operations::rules::reassign_rule_connector(&state.runtime, &rule_id, new_connector)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+    Ok(Json(serde_json::json!({ "reassigned": id })))
+}
+
+// Trigger scheduling delegated to crate::scheduler::AppScheduler
+// — reusable across handlers, independently testable.

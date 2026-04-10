@@ -52,7 +52,9 @@ fn build_test_app(ready: bool) -> (Router, String) {
         store.clone(),
     ));
 
-    let ai_adapter: Arc<dyn springtale_ai::AiAdapter> = Arc::new(springtale_ai::NoopAdapter);
+    let ai_adapter = Arc::new(arc_swap::ArcSwap::from(Arc::new(
+        Arc::new(springtale_ai::NoopAdapter) as Arc<dyn springtale_ai::AiAdapter>,
+    )));
 
     let (event_tx, _) = tokio::sync::broadcast::channel(256);
 
@@ -65,12 +67,20 @@ fn build_test_app(ready: bool) -> (Router, String) {
     ));
     let (canvas_tx, _rx) = tokio::sync::broadcast::channel(64);
 
+    let wasm_engine = std::sync::Arc::new(
+        springtale_connector::wasm::WasmEngine::new(
+            springtale_connector::wasm::SandboxLimits::default(),
+        )
+        .expect("WASM engine creation"),
+    );
+
     let runtime = springtale_runtime::RuntimeState {
         store,
         registry,
         engine,
         ai_adapter,
         sentinel,
+        wasm_engine,
         canvas,
         canvas_tx,
     };
@@ -80,8 +90,10 @@ fn build_test_app(ready: bool) -> (Router, String) {
         api_token_hash,
         ready: ready_flag,
         trigger_tx,
-        cron,
-        fs_watcher,
+        scheduler: springtaled::scheduler::AppScheduler {
+            cron,
+            fs_watcher,
+        },
         rate_limit_per_sec: 1000,
         event_tx,
         heartbeat_monitor,

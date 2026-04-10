@@ -8,6 +8,12 @@ pub enum CryptoError {
     #[error("vault decryption failed — wrong passphrase or corrupted data")]
     VaultDecryptionFailed,
 
+    #[error("encryption failed: {0}")]
+    EncryptionFailed(String),
+
+    #[error("decryption failed: {0}")]
+    DecryptionFailed(String),
+
     #[error("invalid signature")]
     InvalidSignature,
 

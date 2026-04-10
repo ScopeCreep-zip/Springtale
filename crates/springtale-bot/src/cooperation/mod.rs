@@ -11,6 +11,7 @@
 //! coordination, role adaptation, information fusion, failure
 //! recovery, and resource allocation within constraints.
 
+pub mod action;
 pub mod cadence;
 pub mod formation;
 pub mod momentum;
@@ -42,4 +43,5 @@ pub use formation::{
 };
 pub use momentum::{MomentumState, MomentumTier};
 pub use awareness::{LocalAwareness, NeighborSnapshot};
+pub use action::{SubTask, SubTaskResult};
 pub use attention::AttentionEconomy;

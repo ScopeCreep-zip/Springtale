@@ -56,4 +56,12 @@ impl Trigger {
             Trigger::SystemEvent { .. } => "SystemEvent",
         }
     }
+
+    /// Returns the connector name if this is a ConnectorEvent trigger.
+    pub fn connector_name(&self) -> Option<String> {
+        match self {
+            Trigger::ConnectorEvent { connector, .. } => Some(connector.clone()),
+            _ => None,
+        }
+    }
 }

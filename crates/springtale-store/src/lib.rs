@@ -17,4 +17,6 @@ pub use schema::connectors::ConnectorRow;
 pub use schema::events::{EventEntry, EventFilter};
 pub use schema::jobs::{JobId, JobRow};
 pub use schema::safety::SafetyConfigRow;
+pub use schema::execution::ExecutionResultRow;
 pub use schema::formations::{FormationMemberRow, FormationRow};
+pub use schema::wasm::WasmBinaryRow;

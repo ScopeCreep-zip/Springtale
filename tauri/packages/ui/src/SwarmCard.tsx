@@ -7,6 +7,7 @@ export interface SwarmInfo {
   intent: string;
   status: string;
   member_count: number;
+  members: string[];
 }
 
 export interface SwarmCardProps {

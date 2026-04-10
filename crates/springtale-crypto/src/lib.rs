@@ -3,6 +3,7 @@
 
 pub mod error;
 pub mod identity;
+pub mod message;
 pub mod signature;
 pub mod token;
 pub mod vault;

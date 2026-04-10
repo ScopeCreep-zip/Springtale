@@ -9,7 +9,7 @@
  * drives the RTS layout (ResourceBar + Roster + Canvas + CommandPanel).
  */
 import { createContext, useContext, createSignal, onCleanup } from "solid-js";
-import type { ConnectorSchema, CanvasState, CanvasUpdate, EventEntry } from "@springtale/types";
+import type { ConnectorSchema, CanvasState, CanvasUpdate, EventEntry, AgentState } from "@springtale/types";
 import type { ConnectorStatus } from "../ResourceBar";
 import type { RuleItem } from "../Roster";
 import type { RuleDetail, EventItem } from "../CommandPanel";
@@ -45,21 +45,6 @@ function applyCanvasUpdate(current: CanvasState | null, update: CanvasUpdate): C
   }
 }
 
-// ── Condition serializer ─────────────────────────────────
-// Extracted from desktop App.tsx handleSaveNewRule
-
-function serializeConditions(conditions: ConditionDef[]): Record<string, unknown>[] {
-  return conditions.map((c) => {
-    switch (c.type) {
-      case "FieldEquals": return { type: "FieldEquals", field: c.field, value: c.value };
-      case "Contains": return { type: "Contains", field: c.field, value: c.value };
-      case "Regex": return { type: "Regex", field: c.field, pattern: c.pattern };
-      case "TimeInRange": return { type: "TimeInRange", start: c.start, end: c.end };
-      case "DayOfWeek": return { type: "DayOfWeek", days: c.days ?? [] };
-      default: return {};
-    }
-  });
-}
 
 // ── Factory ──────────────────────────────────────────────
 
@@ -70,6 +55,7 @@ export function createDashboardState(provider: DataProvider): DashboardState {
   const [rules, setRules] = createSignal<RuleItem[]>([]);
   const [events, setEvents] = createSignal<EventItem[]>([]);
   const [swarms, setSwarms] = createSignal<SwarmInfo[]>([]);
+  const [agentStates, setAgentStates] = createSignal<AgentState[]>([]);
   const [canvasState, setCanvasState] = createSignal<CanvasState | null>(null);
   const [error, setError] = createSignal("");
   const [loading, setLoading] = createSignal(true);
@@ -80,7 +66,6 @@ export function createDashboardState(provider: DataProvider): DashboardState {
 
   // ── UI panel signals ──
   const [showNewRule, setShowNewRule] = createSignal(false);
-  const [showHatchWizard, setShowHatchWizard] = createSignal(false);
 
   // ── Rule builder form signals ──
   const [newRuleName, setNewRuleName] = createSignal("");
@@ -132,12 +117,13 @@ export function createDashboardState(provider: DataProvider): DashboardState {
   const refresh = async () => {
     setLoading(true);
     try {
-      const [c, r, e, s, cs] = await Promise.all([
+      const [c, r, e, s, cs, as_] = await Promise.all([
         provider.listConnectors(),
         provider.listRules(),
         provider.listEvents(20),
         provider.listFormations(),
         provider.getConnectorSchemas(),
+        provider.listAgentStates(),
       ]);
 
       setConnectors(c.map((x) => ({ name: x.name, enabled: x.enabled })));
@@ -147,7 +133,7 @@ export function createDashboardState(provider: DataProvider): DashboardState {
         name: x.name,
         status: x.status,
         triggerType: x.trigger_type,
-        connector: x.trigger_type,
+        connector: x.connector_name ?? x.trigger_type,
       })));
 
       setEvents(e.map((x) => ({
@@ -164,9 +150,11 @@ export function createDashboardState(provider: DataProvider): DashboardState {
         intent: x.intent,
         status: x.status,
         member_count: x.member_count,
+        members: x.members ?? [],
       })));
 
       setSchemas(cs);
+      setAgentStates(as_);
     } catch {
       // First launch — store may be empty
     }
@@ -205,21 +193,13 @@ export function createDashboardState(provider: DataProvider): DashboardState {
   const handleSaveNewRule = async () => {
     if (!newRuleName() || !triggerName() || !actionName()) return;
     try {
-      await provider.createRule({
+      await provider.createConnectorRule({
         name: newRuleName(),
-        status: "disabled",
-        trigger: {
-          type: "ConnectorEvent",
-          connector: triggerConnector(),
-          event: triggerName(),
-        },
-        conditions: serializeConditions(conditions()),
-        actions: [{
-          type: "RunConnector",
-          connector: actionConnector(),
-          action: actionName(),
-          params: {},
-        }],
+        trigger_connector: triggerConnector(),
+        trigger_event: triggerName(),
+        action_connector: actionConnector(),
+        action_name: actionName(),
+        conditions: conditions(),
       });
       setShowNewRule(false);
       setNewRuleName("");
@@ -237,23 +217,24 @@ export function createDashboardState(provider: DataProvider): DashboardState {
   const handleHatch = async (
     name: string,
     intent: string,
-    hatchConnectors: string[],
+    _hatchConnectors: string[],
     trigC: string,
     trigE: string,
     actC: string,
     actN: string,
   ) => {
     try {
-      const id = await provider.createFormation(name, intent, hatchConnectors);
-      await provider.createRule({
+      await provider.deployTeam({
         name,
-        status: "disabled",
-        trigger: { type: "ConnectorEvent", connector: trigC, event: trigE },
-        conditions: [],
-        actions: [{ type: "RunConnector", connector: actC, action: actN, params: {} }],
+        intent,
+        guard_mode: false,
+        agents: [{
+          connector_name: trigC,
+          trigger_name: trigE,
+          action_connector: actC,
+          action_name: actN,
+        }],
       });
-      await provider.deployFormation(id);
-      setShowHatchWizard(false);
       await refresh();
     } catch (e) {
       setError(String(e));
@@ -317,11 +298,11 @@ export function createDashboardState(provider: DataProvider): DashboardState {
 
   return {
     // Core data
-    connectors, schemas, rules, events, swarms, canvasState, error, loading,
+    connectors, schemas, rules, events, swarms, agentStates, canvasState, error, loading,
     // Selection
     selectedRuleId, setSelectedRuleId, selectedSwarmId, setSelectedSwarmId,
     // UI panels
-    showNewRule, setShowNewRule, showHatchWizard, setShowHatchWizard,
+    showNewRule, setShowNewRule,
     // Rule builder form
     newRuleName, setNewRuleName,
     triggerConnector, setTriggerConnector, triggerName, setTriggerName,

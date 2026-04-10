@@ -1,5 +1,6 @@
 use springtale_connector::error::ConnectorError;
 use springtale_connector::factory::{ConnectorFactory, FactoryEntry};
+use springtale_connector::manifest::types::{ActionDecl, TriggerDecl};
 use springtale_connector::Connector;
 
 struct BlueskyFactory;
@@ -11,6 +12,39 @@ impl ConnectorFactory for BlueskyFactory {
     }
     fn config_key(&self) -> &'static str {
         "bluesky"
+    }
+    fn trigger_declarations(&self) -> Vec<TriggerDecl> {
+        crate::triggers::trigger_declarations()
+    }
+    fn action_declarations(&self) -> Vec<ActionDecl> {
+        crate::actions::action_declarations()
+    }
+    fn config_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "identifier": {
+                    "type": "string",
+                    "description": "Bluesky handle or DID (e.g. user.bsky.social)"
+                },
+                "password": {
+                    "type": "string",
+                    "description": "App password (not your main password)",
+                    "x-secret": true
+                },
+                "pds_base": {
+                    "type": "string",
+                    "description": "PDS base URL",
+                    "default": "https://bsky.social"
+                },
+                "jetstream_url": {
+                    "type": "string",
+                    "description": "Jetstream WebSocket URL for firehose",
+                    "default": "wss://jetstream2.us-west.bsky.network/subscribe"
+                }
+            },
+            "required": ["identifier", "password"]
+        }))
     }
     async fn create(
         &self,

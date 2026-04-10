@@ -215,11 +215,35 @@ impl BotBuilder {
             .ai_adapter
             .unwrap_or_else(|| Arc::new(springtale_ai::NoopAdapter));
 
-        // Build conversation context with AI adapter for summarization compaction
+        // Derive or load memory encryption key from config store.
+        // The key persists across restarts so encrypted messages remain readable.
+        let encryption_key = match store.get_config("memory:encryption_key").await {
+            Ok(Some(key_hex)) => {
+                let bytes = hex::decode(key_hex.trim_matches('"'))
+                    .map_err(|e| BotError::Memory(format!("invalid encryption key hex: {e}")))?;
+                let key: [u8; 32] = bytes
+                    .try_into()
+                    .map_err(|_| BotError::Memory("encryption key must be 32 bytes".into()))?;
+                key
+            }
+            _ => {
+                // First run: generate a random key and persist it
+                use rand::RngCore;
+                let mut key = [0u8; 32];
+                rand::thread_rng().fill_bytes(&mut key);
+                let key_hex = hex::encode(key);
+                if let Err(e) = store.set_config("memory:encryption_key", &format!("\"{key_hex}\"")).await {
+                    tracing::warn!(error = %e, "failed to persist memory encryption key");
+                }
+                key
+            }
+        };
+
         let context = ConversationContext::new(
             store.clone(),
             self.config.context_window,
             ai_adapter.clone(),
+            encryption_key,
         );
 
         // Create cadence bus for cooperation (§5)

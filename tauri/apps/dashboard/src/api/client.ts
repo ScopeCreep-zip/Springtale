@@ -74,7 +74,7 @@ export async function put<T>(path: string, body: unknown): Promise<T> {
 }
 
 /** Make an authenticated DELETE request. */
-export async function del(path: string): Promise<void> {
+export async function del<T = void>(path: string): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
@@ -82,4 +82,7 @@ export async function del(path: string): Promise<void> {
   if (!response.ok) {
     throw new Error(`API error: ${response.status} ${response.statusText}`);
   }
+  const text = await response.text();
+  if (!text) return undefined as T;
+  return JSON.parse(text) as T;
 }

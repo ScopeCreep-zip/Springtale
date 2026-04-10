@@ -7,6 +7,7 @@ use crate::schema::bot::{MemoryRow, SessionRow, UserPrefsRow};
 use crate::schema::connectors::ConnectorRow;
 use crate::schema::events::{EventEntry, EventFilter};
 use crate::schema::jobs::{JobId, JobRow};
+use crate::schema::execution::ExecutionResultRow;
 use crate::schema::formations::{FormationMemberRow, FormationRow};
 use crate::schema::safety::SafetyConfigRow;
 use springtale_core::rule::types::{Rule, RuleId};
@@ -198,6 +199,11 @@ pub trait StorageBackend: Send + Sync + 'static {
         Ok(())
     }
 
+    /// Update a formation's intent.
+    async fn update_formation_intent(&self, _id: &str, _intent: &str) -> Result<(), StoreError> {
+        Ok(())
+    }
+
     /// Delete a formation and its members.
     async fn delete_formation(&self, _id: &str) -> Result<(), StoreError> {
         Ok(())
@@ -210,6 +216,88 @@ pub trait StorageBackend: Send + Sync + 'static {
 
     /// List members of a formation.
     async fn list_formation_members(&self, _formation_id: &str) -> Result<Vec<FormationMemberRow>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    // ── Config Store ────────────────────────────────────────────
+
+    /// Get a config value by key.
+    async fn get_config(&self, _key: &str) -> Result<Option<String>, StoreError> {
+        Ok(None)
+    }
+
+    /// Set a config value (upsert).
+    async fn set_config(&self, _key: &str, _value_json: &str) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// List all config entries.
+    async fn list_config(&self) -> Result<Vec<(String, String)>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    /// Delete a config entry by key.
+    async fn delete_config(&self, _key: &str) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    // ── WASM Binaries ──────────────────────────────────────────
+
+    /// Store a WASM connector binary for persistence across restarts.
+    async fn store_wasm_binary(
+        &self,
+        _name: &str,
+        _wasm_bytes: &[u8],
+        _manifest_json: &str,
+        _wasm_hash: &str,
+        _author: &str,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Retrieve a WASM binary by connector name.
+    async fn get_wasm_binary(
+        &self,
+        _name: &str,
+    ) -> Result<Option<crate::schema::wasm::WasmBinaryRow>, StoreError> {
+        Ok(None)
+    }
+
+    /// List all persisted WASM binaries.
+    async fn list_wasm_binaries(
+        &self,
+    ) -> Result<Vec<crate::schema::wasm::WasmBinaryRow>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    /// Delete a persisted WASM binary.
+    async fn delete_wasm_binary(&self, _name: &str) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    // ── Execution Results ──────────────────────────────────────
+
+    /// Store an execution result (output data from a rule/action execution).
+    async fn insert_execution_result(
+        &self,
+        _id: &str,
+        _connector_name: &str,
+        _rule_id: Option<&str>,
+        _rule_name: Option<&str>,
+        _output_json: &str,
+        _success: bool,
+        _error_message: Option<&str>,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// List recent execution results for a connector.
+    /// Returns: (id, connector_name, rule_name, output_json, success, error_message, created_at)
+    async fn list_execution_results(
+        &self,
+        _connector_name: &str,
+        _limit: usize,
+    ) -> Result<Vec<ExecutionResultRow>, StoreError> {
         Ok(Vec::new())
     }
 

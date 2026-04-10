@@ -1,6 +1,9 @@
+use async_trait::async_trait;
+
 use crate::capability::grant::CapabilityChecker;
 use crate::connector::trait_::{ActionResult, Connector, EventHandler};
 use crate::error::ConnectorError;
+use crate::host::ConnectorHost;
 use crate::manifest::types::{ActionDecl, ConnectorManifest, TriggerDecl};
 
 /// Host wrapper for a native (in-process) connector.
@@ -90,5 +93,50 @@ impl NativeConnectorHost {
         body: &[u8],
     ) -> Result<(), ConnectorError> {
         self.inner.verify_webhook(headers, body).await
+    }
+}
+
+#[async_trait]
+impl ConnectorHost for NativeConnectorHost {
+    fn name(&self) -> &str {
+        &self.connector_name
+    }
+
+    async fn execute_checked(
+        &self,
+        action: &str,
+        input: serde_json::Value,
+        checker: &CapabilityChecker,
+    ) -> Result<ActionResult, ConnectorError> {
+        // Delegate to the existing method
+        NativeConnectorHost::execute_checked(self, action, input, checker).await
+    }
+
+    async fn on_event(
+        &self,
+        trigger: &str,
+        handler: EventHandler,
+    ) -> Result<(), ConnectorError> {
+        NativeConnectorHost::on_event(self, trigger, handler).await
+    }
+
+    fn triggers(&self) -> &[TriggerDecl] {
+        NativeConnectorHost::triggers(self)
+    }
+
+    fn actions(&self) -> &[ActionDecl] {
+        NativeConnectorHost::actions(self)
+    }
+
+    fn manifest(&self) -> &ConnectorManifest {
+        NativeConnectorHost::manifest(self)
+    }
+
+    async fn verify_webhook(
+        &self,
+        headers: &std::collections::HashMap<String, String>,
+        body: &[u8],
+    ) -> Result<(), ConnectorError> {
+        NativeConnectorHost::verify_webhook(self, headers, body).await
     }
 }

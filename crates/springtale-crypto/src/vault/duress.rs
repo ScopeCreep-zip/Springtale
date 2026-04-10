@@ -6,7 +6,7 @@ use chacha20poly1305::{
     aead::{Aead, AeadCore, KeyInit},
 };
 use rand::RngCore;
-use zeroize::Zeroize;
+use secrecy::ExposeSecret;
 
 use super::kdf;
 use crate::error::CryptoError;
@@ -34,10 +34,10 @@ pub const REGION_HEADER_SIZE: usize = 16 + 24; // salt + nonce
 pub const DUAL_VAULT_FILE_SIZE: usize = 2 * (REGION_HEADER_SIZE + REGION_SIZE);
 
 /// Result of opening a dual vault region: (entries, salt, derived_key, session).
-pub type DualVaultOpenResult = (HashMap<String, Vec<u8>>, [u8; 16], [u8; 32], VaultSession);
+pub type DualVaultOpenResult = (HashMap<String, Vec<u8>>, [u8; 16], secrecy::SecretBox<[u8; 32]>, VaultSession);
 
 /// Result of decrypting a single region: (entries, salt, derived_key).
-type RegionDecryptResult = (HashMap<String, Vec<u8>>, [u8; 16], [u8; 32]);
+type RegionDecryptResult = (HashMap<String, Vec<u8>>, [u8; 16], secrecy::SecretBox<[u8; 32]>);
 
 /// Create a dual-region vault file with real and decoy data.
 ///
@@ -119,7 +119,7 @@ fn encrypt_region(
     entries: &HashMap<String, Vec<u8>>,
 ) -> Result<Vec<u8>, CryptoError> {
     let salt = kdf::generate_salt();
-    let mut key = kdf::derive_key(passphrase, &salt)?;
+    let key = kdf::derive_key(passphrase, &salt)?;
 
     let plaintext =
         serde_json::to_vec(entries).map_err(|e| CryptoError::Serialization(e.to_string()))?;
@@ -129,7 +129,6 @@ fn encrypt_region(
     let max_plaintext_size = REGION_SIZE - TAG_SIZE;
 
     if plaintext.len() > max_plaintext_size {
-        key.zeroize();
         return Err(CryptoError::Serialization(
             "vault data too large for region".into(),
         ));
@@ -146,15 +145,13 @@ fn encrypt_region(
     padded_plaintext[len_offset..].copy_from_slice(&(plaintext.len() as u64).to_le_bytes());
 
     let nonce = XChaCha20Poly1305::generate_nonce(&mut rand::rngs::OsRng);
-    // SECURITY: key used for AEAD encryption of vault region
-    let cipher = XChaCha20Poly1305::new_from_slice(&key)
+    // SECURITY: expose needed for AEAD encryption of vault region
+    let cipher = XChaCha20Poly1305::new_from_slice(key.expose_secret())
         .map_err(|_| CryptoError::KeyGeneration("invalid key length".into()))?;
 
     let ciphertext = cipher
         .encrypt(&nonce, padded_plaintext.as_slice())
         .map_err(|_| CryptoError::KeyGeneration("region encryption failed".into()))?;
-
-    key.zeroize();
 
     debug_assert_eq!(ciphertext.len(), REGION_SIZE);
 
@@ -228,17 +225,16 @@ fn decrypt_region(region: &[u8], passphrase: &[u8]) -> Result<RegionDecryptResul
         .map_err(|_| CryptoError::VaultDecryptionFailed)?;
     let ciphertext = &region[40..];
 
-    let mut key = kdf::derive_key(passphrase, &salt)?;
+    let key = kdf::derive_key(passphrase, &salt)?;
     let nonce = chacha20poly1305::XNonce::from_slice(&nonce_bytes);
 
-    // SECURITY: key used for AEAD decryption of vault region
-    let cipher =
-        XChaCha20Poly1305::new_from_slice(&key).map_err(|_| CryptoError::VaultDecryptionFailed)?;
+    // SECURITY: expose needed for AEAD decryption of vault region
+    let cipher = XChaCha20Poly1305::new_from_slice(key.expose_secret())
+        .map_err(|_| CryptoError::VaultDecryptionFailed)?;
 
-    let padded_plaintext = cipher.decrypt(nonce, ciphertext).map_err(|_| {
-        key.zeroize();
-        CryptoError::VaultDecryptionFailed
-    })?;
+    let padded_plaintext = cipher
+        .decrypt(nonce, ciphertext)
+        .map_err(|_| CryptoError::VaultDecryptionFailed)?;
 
     // Extract actual data length from last 8 bytes
     const TAG_SIZE: usize = 16;
@@ -246,22 +242,15 @@ fn decrypt_region(region: &[u8], passphrase: &[u8]) -> Result<RegionDecryptResul
     let len_offset = max_plaintext_size - 8;
     let len_bytes: [u8; 8] = padded_plaintext[len_offset..len_offset + 8]
         .try_into()
-        .map_err(|_| {
-            key.zeroize();
-            CryptoError::VaultDecryptionFailed
-        })?;
+        .map_err(|_| CryptoError::VaultDecryptionFailed)?;
     let actual_len = u64::from_le_bytes(len_bytes) as usize;
 
     if actual_len > len_offset {
-        key.zeroize();
         return Err(CryptoError::VaultDecryptionFailed);
     }
 
     let entries: HashMap<String, Vec<u8>> = serde_json::from_slice(&padded_plaintext[..actual_len])
-        .map_err(|e| {
-            key.zeroize();
-            CryptoError::Serialization(e.to_string())
-        })?;
+        .map_err(|e| CryptoError::Serialization(e.to_string()))?;
 
     Ok((entries, salt, key))
 }
@@ -285,8 +274,7 @@ mod tests {
         create_dual_vault(&path, b"real_pass", b"duress_pass", &real, &decoy).unwrap();
 
         let data = std::fs::read(&path).unwrap();
-        let (entries, _, mut key, session) = open_dual_vault(&data, b"real_pass").unwrap();
-        key.zeroize();
+        let (entries, _, _key, session) = open_dual_vault(&data, b"real_pass").unwrap();
 
         assert_eq!(session, VaultSession::Real);
         assert_eq!(entries.get("secret").unwrap(), b"real_data");
@@ -306,8 +294,7 @@ mod tests {
         create_dual_vault(&path, b"real_pass", b"duress_pass", &real, &decoy).unwrap();
 
         let data = std::fs::read(&path).unwrap();
-        let (entries, _, mut key, session) = open_dual_vault(&data, b"duress_pass").unwrap();
-        key.zeroize();
+        let (entries, _, _key, session) = open_dual_vault(&data, b"duress_pass").unwrap();
 
         assert_eq!(session, VaultSession::Duress);
         assert_eq!(entries.get("note").unwrap(), b"shopping list");

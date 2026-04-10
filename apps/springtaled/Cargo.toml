@@ -55,3 +55,4 @@ nostr-sdk = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 http-body-util = "0.1"
+arc-swap = { workspace = true }

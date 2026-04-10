@@ -34,7 +34,8 @@ springtale-connector     (depends on: crypto, store)
 springtale-scheduler     (depends on: core, store)
 springtale-ai            (depends on: core)
 springtale-mcp           (depends on: core, connector)
-springtale-bot           (depends on: core, crypto, connector, store, transport, ai)
+springtale-runtime       (depends on: core, crypto, store, connector, ai, sentinel)
+springtale-bot           (depends on: core, crypto, connector, store, transport, ai, runtime)
 springtale-sentinel      (depends on: core, store)
 ```
 

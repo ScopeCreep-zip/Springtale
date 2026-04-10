@@ -39,6 +39,7 @@ pub struct InMemoryBackend {
     safety_config: RwLock<Option<SafetyConfigRow>>,
     formations: RwLock<Vec<FormationRow>>,
     formation_members: RwLock<Vec<FormationMemberRow>>,
+    config: RwLock<HashMap<String, String>>,
 }
 
 impl InMemoryBackend {
@@ -57,6 +58,7 @@ impl InMemoryBackend {
             safety_config: RwLock::new(None),
             formations: RwLock::new(Vec::new()),
             formation_members: RwLock::new(Vec::new()),
+            config: RwLock::new(HashMap::new()),
         }
     }
 }
@@ -457,6 +459,15 @@ impl StorageBackend for InMemoryBackend {
         Ok(())
     }
 
+    async fn update_formation_intent(&self, id: &str, intent: &str) -> Result<(), StoreError> {
+        let mut formations = self.formations.write().await;
+        if let Some(f) = formations.iter_mut().find(|f| f.id == id) {
+            f.intent = intent.to_owned();
+            f.updated_at = chrono::Utc::now();
+        }
+        Ok(())
+    }
+
     async fn delete_formation(&self, id: &str) -> Result<(), StoreError> {
         self.formations.write().await.retain(|f| f.id != id);
         self.formation_members.write().await.retain(|m| m.formation_id != id);
@@ -470,6 +481,22 @@ impl StorageBackend for InMemoryBackend {
 
     async fn list_formation_members(&self, formation_id: &str) -> Result<Vec<FormationMemberRow>, StoreError> {
         Ok(self.formation_members.read().await.iter().filter(|m| m.formation_id == formation_id).cloned().collect())
+    }
+
+    async fn get_config(&self, key: &str) -> Result<Option<String>, StoreError> {
+        Ok(self.config.read().await.get(key).cloned())
+    }
+
+    async fn set_config(&self, key: &str, value_json: &str) -> Result<(), StoreError> {
+        self.config.write().await.insert(key.to_owned(), value_json.to_owned());
+        Ok(())
+    }
+
+    async fn list_config(&self) -> Result<Vec<(String, String)>, StoreError> {
+        let map = self.config.read().await;
+        let mut entries: Vec<_> = map.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
+        entries.sort_by(|a, b| a.0.cmp(&b.0));
+        Ok(entries)
     }
 
     fn panic_wipe(&self) -> Result<(), StoreError> {

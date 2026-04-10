@@ -1,5 +1,6 @@
 use springtale_connector::error::ConnectorError;
 use springtale_connector::factory::{ConnectorFactory, FactoryEntry};
+use springtale_connector::manifest::types::{ActionDecl, TriggerDecl};
 use springtale_connector::Connector;
 
 struct KickFactory;
@@ -11,6 +12,58 @@ impl ConnectorFactory for KickFactory {
     }
     fn config_key(&self) -> &'static str {
         "kick"
+    }
+    fn trigger_declarations(&self) -> Vec<TriggerDecl> {
+        crate::triggers::trigger_declarations()
+    }
+    fn action_declarations(&self) -> Vec<ActionDecl> {
+        crate::actions::action_declarations()
+    }
+    fn config_schema(&self) -> Option<serde_json::Value> {
+        Some(serde_json::json!({
+            "type": "object",
+            "properties": {
+                "client_id": {
+                    "type": "string",
+                    "description": "Kick OAuth2 client ID"
+                },
+                "client_secret": {
+                    "type": "string",
+                    "description": "Kick OAuth2 client secret",
+                    "x-secret": true
+                },
+                "access_token": {
+                    "type": "string",
+                    "description": "OAuth2 access token (obtained after auth flow)",
+                    "x-secret": true
+                },
+                "redirect_uri": {
+                    "type": "string",
+                    "description": "OAuth2 redirect URI"
+                },
+                "scopes": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "description": "OAuth2 scopes",
+                    "default": ["user:read", "channel:read", "channel:write", "chat:write", "events:subscribe"]
+                },
+                "api_base": {
+                    "type": "string",
+                    "description": "Kick API base URL",
+                    "default": "https://api.kick.com"
+                },
+                "oauth_base": {
+                    "type": "string",
+                    "description": "Kick OAuth base URL",
+                    "default": "https://id.kick.com"
+                },
+                "webhook_callback_url": {
+                    "type": "string",
+                    "description": "Webhook callback URL for event delivery"
+                }
+            },
+            "required": ["client_id", "client_secret", "redirect_uri", "access_token"]
+        }))
     }
     async fn create(
         &self,
