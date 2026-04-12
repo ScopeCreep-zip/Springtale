@@ -5905,6 +5905,7 @@ name = "springtale-runtime"
 version = "0.1.0"
 dependencies = [
  "arc-swap",
+ "cap-std",
  "chrono",
  "connector-bluesky",
  "connector-browser",
@@ -5923,7 +5924,9 @@ dependencies = [
  "ed25519-dalek",
  "hex",
  "inventory",
+ "rand 0.8.5",
  "regex",
+ "secrecy",
  "serde",
  "serde_json",
  "serde_yaml",
@@ -5935,6 +5938,7 @@ dependencies = [
  "springtale-store",
  "thiserror 2.0.18",
  "tokio",
+ "toml 0.8.2",
  "tracing",
  "uuid",
 ]

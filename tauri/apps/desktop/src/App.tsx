@@ -66,6 +66,29 @@ export const App = () => {
     }, 500);
   };
 
+  // ── Data loading (deferred until vault unlocked) ────────
+  const loadColonyData = async () => {
+    try {
+      await db.refresh();
+      setAvailableConnectors(await db.provider.listAvailableConnectors());
+      setIntents(await db.provider.listIntents());
+      const schema = await db.provider.getRuleSchema() as Record<string, Record<string, unknown>>;
+      if (schema.conditions) {
+        setConditionTypes(Object.keys(schema.conditions));
+      }
+      setConnections(await db.provider.getConnections() as import("@springtale/ui").ColonyConnection[]);
+
+      try {
+        const saved = await db.provider.getConfig("canvas:connector_positions");
+        if (saved && typeof saved === "object") {
+          setConnectorPositions(saved as Record<string, { x: number; y: number }>);
+        }
+      } catch { /* No saved positions — seeded defaults */ }
+    } catch (e) {
+      console.warn("loadColonyData:", e);
+    }
+  };
+
   // ── Auto-lock (Rust backend) ───────────────────────────
   const resetTimer = () => { invoke("reset_auto_lock").catch(() => {}); };
 
@@ -108,6 +131,12 @@ export const App = () => {
       setShowVault(true);
     });
 
+    await listen("vault-unlocked", async () => {
+      setVaultLocked(false);
+      setShowVault(false);
+      await loadColonyData();
+    });
+
     try {
       const v = await getVaultStatus();
       setVaultLocked(!v.unlocked);
@@ -120,22 +149,12 @@ export const App = () => {
       }
     }
 
-    await db.refresh();
-    setAvailableConnectors(await db.provider.listAvailableConnectors());
-    setIntents(await db.provider.listIntents());
-    const schema = await db.provider.getRuleSchema() as Record<string, Record<string, unknown>>;
-    if (schema.conditions) {
-      setConditionTypes(Object.keys(schema.conditions));
+    // Only load colony data if the vault is already unlocked.
+    // On fresh start the vault is locked — data loading happens
+    // when the "vault-unlocked" event fires (see listener above).
+    if (!vaultLocked()) {
+      await loadColonyData();
     }
-    setConnections(await db.provider.getConnections() as import("@springtale/ui").ColonyConnection[]);
-
-    // Load saved tree positions from config store
-    try {
-      const saved = await db.provider.getConfig("canvas:connector_positions");
-      if (saved && typeof saved === "object") {
-        setConnectorPositions(saved as Record<string, { x: number; y: number }>);
-      }
-    } catch { /* No saved positions — seeded defaults will be used */ }
   });
 
   onCleanup(() => {

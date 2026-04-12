@@ -2,6 +2,7 @@ use tauri::State;
 
 use springtale_core::rule::types::RuleId;
 
+use crate::runtime_guard::require_runtime;
 use crate::state::AppState;
 
 /// Get rule schema — trigger, condition, and action type definitions.
@@ -15,7 +16,9 @@ pub async fn get_rule_schema() -> serde_json::Value {
 pub async fn list_rules(
     state: State<'_, AppState>,
 ) -> Result<Vec<springtale_runtime::operations::rules::RuleSummary>, String> {
-    Ok(springtale_runtime::operations::rules::list_rules(&state.runtime).await)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    Ok(springtale_runtime::operations::rules::list_rules(rt).await)
 }
 
 /// Create a new automation rule.
@@ -24,10 +27,13 @@ pub async fn create_rule(
     state: State<'_, AppState>,
     rule: serde_json::Value,
 ) -> Result<String, String> {
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+
     let rule: springtale_core::rule::types::Rule =
         serde_json::from_value(rule).map_err(|e| format!("invalid rule: {e}"))?;
 
-    let id = springtale_runtime::operations::rules::create_rule(&state.runtime, rule)
+    let id = springtale_runtime::operations::rules::create_rule(rt, rule)
         .await
         .map_err(|e| e.to_string())?;
 
@@ -41,12 +47,15 @@ pub async fn toggle_rule(
     id: String,
     enabled: bool,
 ) -> Result<(), String> {
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+
     let rule_id: RuleId = id
         .parse::<uuid::Uuid>()
         .map(RuleId)
         .map_err(|e| format!("invalid rule ID: {e}"))?;
 
-    springtale_runtime::operations::rules::toggle_rule(&state.runtime, &rule_id, enabled)
+    springtale_runtime::operations::rules::toggle_rule(rt, &rule_id, enabled)
         .await
         .map_err(|e| e.to_string())
 }
@@ -54,12 +63,15 @@ pub async fn toggle_rule(
 /// Delete a rule.
 #[tauri::command]
 pub async fn delete_rule(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+
     let rule_id: RuleId = id
         .parse::<uuid::Uuid>()
         .map(RuleId)
         .map_err(|e| format!("invalid rule ID: {e}"))?;
 
-    springtale_runtime::operations::rules::delete_rule(&state.runtime, &rule_id)
+    springtale_runtime::operations::rules::delete_rule(rt, &rule_id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -71,6 +83,9 @@ pub async fn update_rule(
     id: String,
     rule: serde_json::Value,
 ) -> Result<(), String> {
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+
     let rule_id: RuleId = id
         .parse::<uuid::Uuid>()
         .map(RuleId)
@@ -79,7 +94,7 @@ pub async fn update_rule(
     let rule: springtale_core::rule::types::Rule =
         serde_json::from_value(rule).map_err(|e| format!("invalid rule: {e}"))?;
 
-    springtale_runtime::operations::rules::update_rule(&state.runtime, &rule_id, rule)
+    springtale_runtime::operations::rules::update_rule(rt, &rule_id, rule)
         .await
         .map_err(|e| e.to_string())
 }
@@ -90,12 +105,15 @@ pub async fn run_rule(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<springtale_runtime::operations::rules::RunResult, String> {
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+
     let rule_id: RuleId = id
         .parse::<uuid::Uuid>()
         .map(RuleId)
         .map_err(|e| format!("invalid rule ID: {e}"))?;
 
-    springtale_runtime::operations::rules::run_rule(&state.runtime, &rule_id)
+    springtale_runtime::operations::rules::run_rule(rt, &rule_id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -106,7 +124,9 @@ pub async fn create_connector_rule(
     state: State<'_, AppState>,
     rule: springtale_runtime::operations::rules::CreateConnectorRuleRequest,
 ) -> Result<String, String> {
-    springtale_runtime::operations::rules::create_connector_rule(&state.runtime, rule)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::rules::create_connector_rule(rt, rule)
         .await
         .map(|id| id.to_string())
         .map_err(|e| e.to_string())
@@ -118,7 +138,9 @@ pub async fn list_rules_for_connector(
     state: State<'_, AppState>,
     connector_name: String,
 ) -> Result<Vec<springtale_runtime::operations::rules::RuleSummary>, String> {
-    Ok(springtale_runtime::operations::rules::list_rules_for_connector(&state.runtime, &connector_name).await)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    Ok(springtale_runtime::operations::rules::list_rules_for_connector(rt, &connector_name).await)
 }
 
 /// Test a connector by dry-running its first rule.
@@ -127,7 +149,9 @@ pub async fn test_connector(
     state: State<'_, AppState>,
     connector_name: String,
 ) -> Result<springtale_runtime::operations::rules::ConnectorTestResult, String> {
-    springtale_runtime::operations::rules::test_connector(&state.runtime, &connector_name)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::rules::test_connector(rt, &connector_name)
         .await
         .map_err(|e| e.to_string())
 }
@@ -139,10 +163,12 @@ pub async fn reassign_rule_connector(
     id: String,
     new_connector: String,
 ) -> Result<(), String> {
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
     let rule_id = id.parse::<uuid::Uuid>()
         .map(springtale_core::rule::types::RuleId)
         .map_err(|e| format!("invalid rule id: {e}"))?;
-    springtale_runtime::operations::rules::reassign_rule_connector(&state.runtime, &rule_id, &new_connector)
+    springtale_runtime::operations::rules::reassign_rule_connector(rt, &rule_id, &new_connector)
         .await
         .map_err(|e| e.to_string())
 }
@@ -153,8 +179,10 @@ pub async fn parse_rule(
     state: State<'_, AppState>,
     intent: String,
 ) -> Result<serde_json::Value, String> {
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
     let rule =
-        springtale_runtime::operations::rules::parse_rule_from_intent(&state.runtime, &intent)
+        springtale_runtime::operations::rules::parse_rule_from_intent(rt, &intent)
             .await
             .map_err(|e| e.to_string())?;
     serde_json::to_value(&rule).map_err(|e| e.to_string())

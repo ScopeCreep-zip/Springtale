@@ -1,11 +1,16 @@
-use tauri::State;
+use tauri::{Emitter, State};
 
 use crate::state::AppState;
 
 /// Create a new vault with a passphrase.
+///
+/// After creating the vault file and identity keypair, derives the DB
+/// encryption key from the passphrase and initializes the full runtime.
+/// The frontend's vault overlay closes on success.
 #[tauri::command]
 pub async fn create_vault(
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
     passphrase: String,
 ) -> Result<springtale_runtime::operations::vault::VaultStatus, String> {
     let vault_path = springtale_store::paths::default_vault_path();
@@ -16,17 +21,36 @@ pub async fn create_vault(
     )
     .map_err(|e| e.to_string())?;
 
-    let mut vault_guard = state.vault.lock().await;
-    *vault_guard = Some(vault);
+    // Derive the DB encryption key from the same passphrase, then
+    // initialize the runtime (opens DB, loads rules, connectors, etc.).
+    let db_key = if crate::state::detect_encryption_needed() {
+        Some(springtale_crypto::token::derive_db_encryption_key_hex(
+            passphrase.as_bytes(),
+        ))
+    } else {
+        None
+    };
+    // Zeroize passphrase — we have the derived key and the Vault object
     drop(passphrase);
 
+    crate::state::init_runtime(&state.runtime, db_key).await?;
+
+    let mut vault_guard = state.vault.lock().await;
+    *vault_guard = Some(vault);
+
+    let _ = app.emit("vault-unlocked", ());
     Ok(status)
 }
 
 /// Unlock the vault with a passphrase.
+///
+/// Opens the vault file, derives the DB encryption key, and initializes
+/// the full runtime. If the runtime was previously torn down by
+/// `lock_vault`, this re-creates it with a fresh DB connection.
 #[tauri::command]
 pub async fn unlock_vault(
     state: State<'_, AppState>,
+    app: tauri::AppHandle,
     passphrase: String,
 ) -> Result<springtale_runtime::operations::vault::VaultStatus, String> {
     let vault_path = springtale_store::paths::default_vault_path();
@@ -37,21 +61,63 @@ pub async fn unlock_vault(
     )
     .map_err(|e| e.to_string())?;
 
-    let mut vault_guard = state.vault.lock().await;
-    *vault_guard = Some(vault);
+    // Derive the DB key from the same passphrase, then init the runtime.
+    let db_key = if crate::state::detect_encryption_needed() {
+        Some(springtale_crypto::token::derive_db_encryption_key_hex(
+            passphrase.as_bytes(),
+        ))
+    } else {
+        None
+    };
     drop(passphrase);
 
+    // Only init if runtime isn't already running (avoid double-init on
+    // repeated unlock attempts before the frontend closes the overlay).
+    {
+        let guard = state.runtime.read().await;
+        if guard.is_some() {
+            // Already initialized — just store the vault and return.
+            drop(guard);
+            let mut vault_guard = state.vault.lock().await;
+            *vault_guard = Some(vault);
+            let _ = app.emit("vault-unlocked", ());
+            return Ok(status);
+        }
+    }
+
+    crate::state::init_runtime(&state.runtime, db_key).await?;
+
+    let mut vault_guard = state.vault.lock().await;
+    *vault_guard = Some(vault);
+
+    let _ = app.emit("vault-unlocked", ());
     Ok(status)
 }
 
-/// Lock the vault — zeroes key material in memory.
+/// Lock the vault — zeroes key material in memory and tears down the
+/// runtime so no DB access is possible until re-unlock.
 #[tauri::command]
-pub async fn lock_vault(state: State<'_, AppState>) -> Result<(), String> {
-    let mut vault_guard = state.vault.lock().await;
-    if let Some(ref mut vault) = *vault_guard {
-        springtale_runtime::operations::vault::lock_vault(vault);
+pub async fn lock_vault(
+    state: State<'_, AppState>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
+    // Zero vault key material
+    {
+        let mut vault_guard = state.vault.lock().await;
+        if let Some(ref mut vault) = *vault_guard {
+            springtale_runtime::operations::vault::lock_vault(vault);
+        }
+        *vault_guard = None;
     }
-    *vault_guard = None;
+
+    // Tear down runtime — closes DB handle, drops connectors.
+    // Next unlock re-creates everything from scratch.
+    {
+        let mut rt = state.runtime.write().await;
+        *rt = None;
+    }
+
+    let _ = app.emit("vault-locked", ());
     Ok(())
 }
 
@@ -61,5 +127,7 @@ pub async fn get_vault_status(
     state: State<'_, AppState>,
 ) -> Result<springtale_runtime::operations::vault::VaultStatus, String> {
     let vault_guard = state.vault.lock().await;
-    Ok(springtale_runtime::operations::vault::get_vault_status(&*vault_guard))
+    Ok(springtale_runtime::operations::vault::get_vault_status(
+        &*vault_guard,
+    ))
 }

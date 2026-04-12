@@ -33,6 +33,11 @@ import {
 } from "./ipc/config";
 import { listAgentStates, getAutonomy, setAutonomy, stepAutonomy } from "./ipc/agents";
 import { listAuthors, addAuthor, removeAuthor } from "./ipc/authors";
+import { runDiagnostics } from "./ipc/diagnostics";
+import { listOnboardingPlatforms, applyOnboarding } from "./ipc/onboarding";
+import { listTemplates, writeTemplate } from "./ipc/templates";
+import { listFixes, getFix, applyFix } from "./ipc/fixes";
+import { sendMessage } from "./ipc/send";
 
 export function createDesktopProvider(): DataProvider {
   return {
@@ -124,5 +129,24 @@ export function createDesktopProvider(): DataProvider {
         .catch(() => {});
       return () => unlisten?.();
     },
+
+    // Diagnostics
+    runDiagnostics,
+
+    // Onboarding
+    listOnboardingPlatforms,
+    applyOnboarding,
+
+    // Templates
+    listTemplates,
+    writeTemplate,
+
+    // Error fixes
+    listFixes,
+    getFix,
+    applyFix,
+
+    // Cross-channel send
+    sendMessage,
   };
 }

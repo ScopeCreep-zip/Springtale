@@ -23,3 +23,18 @@ export type {
   FormationDetail,
   IntentPattern,
 } from "./formation";
+export type {
+  Severity,
+  Check,
+  Report,
+  FixGuide,
+  FixOutcome,
+  FormField,
+  PlatformForm,
+  ApplyReport,
+  TemplateFile,
+  Template,
+  WriteReport,
+  SendRequest,
+  SendOutcome,
+} from "./operations";

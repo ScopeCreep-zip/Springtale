@@ -1,5 +1,6 @@
 use tauri::State;
 
+use crate::runtime_guard::require_runtime;
 use crate::state::AppState;
 
 /// Get a config value by key.
@@ -8,7 +9,9 @@ pub async fn get_config(
     state: State<'_, AppState>,
     key: String,
 ) -> Result<serde_json::Value, String> {
-    springtale_runtime::operations::config::get_config(&*state.runtime.store, &key)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::config::get_config(&*rt.store, &key)
         .await
         .map_err(|e| e.to_string())
 }
@@ -20,7 +23,9 @@ pub async fn set_config(
     key: String,
     value: serde_json::Value,
 ) -> Result<(), String> {
-    springtale_runtime::operations::config::set_config(&*state.runtime.store, &key, value)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::config::set_config(&*rt.store, &key, value)
         .await
         .map_err(|e| e.to_string())
 }
@@ -30,7 +35,9 @@ pub async fn set_config(
 pub async fn list_config(
     state: State<'_, AppState>,
 ) -> Result<Vec<(String, serde_json::Value)>, String> {
-    springtale_runtime::operations::config::list_config(&*state.runtime.store)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::config::list_config(&*rt.store)
         .await
         .map_err(|e| e.to_string())
 }
@@ -41,7 +48,9 @@ pub async fn set_ai_adapter(
     state: State<'_, AppState>,
     config: serde_json::Value,
 ) -> Result<(), String> {
-    springtale_runtime::operations::config::set_ai_adapter(&state.runtime, config)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::config::set_ai_adapter(rt, config)
         .await
         .map_err(|e| e.to_string())
 }
@@ -53,7 +62,9 @@ pub async fn set_connector_config(
     name: String,
     config: serde_json::Value,
 ) -> Result<(), String> {
-    springtale_runtime::operations::config::set_connector_config(&state.runtime, &name, config)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::config::set_connector_config(rt, &name, config)
         .await
         .map_err(|e| e.to_string())
 }
@@ -65,7 +76,9 @@ pub async fn configure_ai_adapter(
     target: String,
     config: serde_json::Value,
 ) -> Result<(), String> {
-    springtale_runtime::operations::config::configure_ai_adapter(&state.runtime, &target, config)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::config::configure_ai_adapter(rt, &target, config)
         .await
         .map_err(|e| e.to_string())
 }
@@ -77,7 +90,9 @@ pub async fn upsert_connector_config(
     name: String,
     config: serde_json::Value,
 ) -> Result<bool, String> {
-    springtale_runtime::operations::config::upsert_connector_config(&state.runtime, &name, config)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::config::upsert_connector_config(rt, &name, config)
         .await
         .map_err(|e| e.to_string())
 }
@@ -88,7 +103,9 @@ pub async fn toggle_formation_guard(
     state: State<'_, AppState>,
     formation_id: String,
 ) -> Result<bool, String> {
-    springtale_runtime::operations::config::toggle_formation_guard(&state.runtime, &formation_id)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::config::toggle_formation_guard(rt, &formation_id)
         .await
         .map_err(|e| e.to_string())
 }

@@ -1,18 +1,14 @@
 use tauri::State;
 
+use crate::runtime_guard::require_runtime;
 use crate::state::AppState;
 
 /// List all trusted authors.
 #[tauri::command]
-pub async fn list_authors(
-    state: State<'_, AppState>,
-) -> Result<serde_json::Value, String> {
-    let configs = state
-        .runtime
-        .store
-        .list_config()
-        .await
-        .map_err(|e| e.to_string())?;
+pub async fn list_authors(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    let configs = rt.store.list_config().await.map_err(|e| e.to_string())?;
 
     let authors: Vec<serde_json::Value> = configs
         .into_iter()
@@ -36,7 +32,9 @@ pub async fn add_author(
     name: String,
     pubkey: String,
 ) -> Result<(), String> {
-    // Validate pubkey is valid hex and 32 bytes
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+
     let bytes = hex::decode(&pubkey).map_err(|e| format!("invalid pubkey hex: {e}"))?;
     if bytes.len() != 32 {
         return Err("pubkey must be 32 bytes (64 hex chars)".into());
@@ -44,9 +42,7 @@ pub async fn add_author(
 
     let key = format!("trusted-author:{name}");
     let value = serde_json::json!({ "pubkey": pubkey }).to_string();
-    state
-        .runtime
-        .store
+    rt.store
         .set_config(&key, &value)
         .await
         .map_err(|e| e.to_string())
@@ -54,14 +50,11 @@ pub async fn add_author(
 
 /// Remove a trusted author.
 #[tauri::command]
-pub async fn remove_author(
-    state: State<'_, AppState>,
-    name: String,
-) -> Result<(), String> {
+pub async fn remove_author(state: State<'_, AppState>, name: String) -> Result<(), String> {
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
     let key = format!("trusted-author:{name}");
-    state
-        .runtime
-        .store
+    rt.store
         .delete_config(&key)
         .await
         .map_err(|e| e.to_string())

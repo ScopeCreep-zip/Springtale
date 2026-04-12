@@ -1,5 +1,6 @@
 mod autolock;
 mod commands;
+pub mod runtime_guard;
 mod state;
 
 use tracing_subscriber::EnvFilter;
@@ -23,18 +24,14 @@ pub fn run() {
         )
         .init();
 
-    // Initialize shared runtime (same boot as springtaled)
-    let rt = tokio::runtime::Runtime::new().expect("failed to create tokio runtime");
-    let app_state = match rt.block_on(state::AppState::init()) {
-        Ok(s) => s,
-        Err(e) => {
-            tracing::error!(error = %e, "failed to initialize app state");
-            eprintln!("Failed to initialize Springtale: {e}");
-            std::process::exit(1);
-        }
-    };
+    // Create the app shell — instant, no DB access. The runtime is
+    // populated after the user unlocks the vault via the frontend
+    // overlay (see commands/vault.rs). This matches the
+    // tauri-plugin-stronghold pattern: state exists but is empty
+    // until initialize() is called with a password.
+    let app_state = state::AppState::shell();
 
-    tracing::info!("Springtale desktop starting (full runtime)");
+    tracing::info!("Springtale desktop starting (deferred runtime)");
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
@@ -114,6 +111,28 @@ pub fn run() {
             // Memory
             commands::memory::audit_memory,
             commands::memory::compact_memory,
+            // Diagnostics
+            commands::diagnostics::run_diagnostics,
+            // Onboarding
+            commands::onboarding::list_onboarding_platforms,
+            commands::onboarding::apply_onboarding,
+            // Templates
+            commands::templates::list_templates,
+            commands::templates::write_template,
+            // Fixes
+            commands::fixes::list_fixes,
+            commands::fixes::get_fix,
+            commands::fixes::apply_fix,
+            // Send
+            commands::send::send_message,
+            // Bot
+            commands::bot::bot_status,
+            commands::bot::bot_memory,
+            // Sessions
+            commands::sessions::list_sessions,
+            // Heartbeat
+            commands::heartbeat::get_heartbeat,
+            commands::heartbeat::set_heartbeat,
         ])
         .run(tauri::generate_context!())
         .expect("error while running springtale desktop");

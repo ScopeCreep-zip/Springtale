@@ -1,5 +1,6 @@
 use tauri::State;
 
+use crate::runtime_guard::require_runtime;
 use crate::state::AppState;
 
 /// Create a new formation (swarm).
@@ -10,7 +11,9 @@ pub async fn create_formation(
     intent: String,
     connectors: Vec<String>,
 ) -> Result<String, String> {
-    springtale_runtime::operations::formations::create_formation(&state.runtime, name, intent, connectors)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::formations::create_formation(rt, name, intent, connectors)
         .await
         .map_err(|e| e.to_string())
 }
@@ -18,7 +21,9 @@ pub async fn create_formation(
 /// Deploy a formation.
 #[tauri::command]
 pub async fn deploy_formation(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    springtale_runtime::operations::formations::deploy_formation(&state.runtime, &id)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::formations::deploy_formation(rt, &id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -26,7 +31,9 @@ pub async fn deploy_formation(state: State<'_, AppState>, id: String) -> Result<
 /// Pause a formation.
 #[tauri::command]
 pub async fn pause_formation(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    springtale_runtime::operations::formations::pause_formation(&state.runtime, &id)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::formations::pause_formation(rt, &id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -34,7 +41,9 @@ pub async fn pause_formation(state: State<'_, AppState>, id: String) -> Result<(
 /// Resume a paused formation.
 #[tauri::command]
 pub async fn resume_formation(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    springtale_runtime::operations::formations::resume_formation(&state.runtime, &id)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::formations::resume_formation(rt, &id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -42,7 +51,9 @@ pub async fn resume_formation(state: State<'_, AppState>, id: String) -> Result<
 /// Dissolve a formation.
 #[tauri::command]
 pub async fn dissolve_formation(state: State<'_, AppState>, id: String) -> Result<(), String> {
-    springtale_runtime::operations::formations::dissolve_formation(&state.runtime, &id)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::formations::dissolve_formation(rt, &id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -50,7 +61,9 @@ pub async fn dissolve_formation(state: State<'_, AppState>, id: String) -> Resul
 /// Update formation intent.
 #[tauri::command]
 pub async fn update_formation_intent(state: State<'_, AppState>, id: String, intent: String) -> Result<(), String> {
-    springtale_runtime::operations::formations::update_intent(&state.runtime, &id, &intent)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::formations::update_intent(rt, &id, &intent)
         .await
         .map_err(|e| e.to_string())
 }
@@ -58,7 +71,9 @@ pub async fn update_formation_intent(state: State<'_, AppState>, id: String, int
 /// Add a member to a formation.
 #[tauri::command]
 pub async fn add_formation_member(state: State<'_, AppState>, formation_id: String, connector_name: String) -> Result<(), String> {
-    springtale_runtime::operations::formations::add_member(&state.runtime, &formation_id, &connector_name)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::formations::add_member(rt, &formation_id, &connector_name)
         .await
         .map_err(|e| e.to_string())
 }
@@ -68,7 +83,9 @@ pub async fn add_formation_member(state: State<'_, AppState>, formation_id: Stri
 pub async fn list_formations(
     state: State<'_, AppState>,
 ) -> Result<Vec<springtale_runtime::operations::formations::FormationInfo>, String> {
-    springtale_runtime::operations::formations::list_formations(&state.runtime)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::formations::list_formations(rt)
         .await
         .map_err(|e| e.to_string())
 }
@@ -85,7 +102,9 @@ pub async fn deploy_team(
     state: State<'_, AppState>,
     team: springtale_runtime::operations::formations::TeamDeployRequest,
 ) -> Result<springtale_runtime::operations::formations::TeamDeployResult, String> {
-    springtale_runtime::operations::formations::deploy_team(&state.runtime, team)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::formations::deploy_team(rt, team)
         .await
         .map_err(|e| e.to_string())
 }
@@ -96,7 +115,9 @@ pub async fn cycle_formation_intent(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<String, String> {
-    springtale_runtime::operations::formations::cycle_intent(&state.runtime, &id)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::formations::cycle_intent(rt, &id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -107,7 +128,9 @@ pub async fn cycle_formation_autonomy(
     state: State<'_, AppState>,
     id: String,
 ) -> Result<String, String> {
-    springtale_runtime::operations::formations::cycle_autonomy(&state.runtime, &id)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::formations::cycle_autonomy(rt, &id)
         .await
         .map_err(|e| e.to_string())
 }

@@ -7,15 +7,23 @@
 /// No duplication — each command is defined in exactly one module.
 pub mod agent;
 pub mod authors;
+pub mod bot;
 pub mod canvas;
 pub mod config;
 pub mod connectors;
 pub mod data;
+pub mod diagnostics;
 pub mod events;
+pub mod fixes;
 pub mod formations;
+pub mod heartbeat;
 pub mod memory;
+pub mod onboarding;
 pub mod panic;
 pub mod rules;
 pub mod safety;
+pub mod send;
+pub mod sessions;
+pub mod templates;
 pub mod travel;
 pub mod vault;

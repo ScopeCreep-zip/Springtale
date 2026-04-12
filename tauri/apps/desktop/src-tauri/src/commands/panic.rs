@@ -1,5 +1,6 @@
 use tauri::State;
 
+use crate::runtime_guard::require_runtime;
 use crate::state::AppState;
 
 /// Emergency data destruction — panic wipe.
@@ -8,7 +9,12 @@ use crate::state::AppState;
 /// Delegates to shared runtime operation, then exits process.
 #[tauri::command]
 pub async fn panic_wipe(state: State<'_, AppState>) -> Result<(), String> {
-    let store = state.runtime.store.clone();
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    let store = rt.store.clone();
+    // Drop the guard before spawning blocking work to avoid holding
+    // the read lock across the spawn_blocking boundary.
+    drop(guard);
 
     tokio::task::spawn_blocking(move || {
         // Use the shared panic_wipe operation (sync internally)

@@ -5,7 +5,11 @@
  * response envelopes ({ connectors: [...] } → [...]).
  */
 import type { DataProvider } from "@springtale/ui";
-import type { ConnectorSchema, EventEntry, AvailableConnector } from "@springtale/types";
+import type {
+  ConnectorSchema, EventEntry, AvailableConnector,
+  Report, PlatformForm, ApplyReport, Template, WriteReport,
+  FixGuide, FixOutcome, SendRequest, SendOutcome,
+} from "@springtale/types";
 import type { RuleSummary, FormationInfo } from "@springtale/ui";
 import { get, post, put, del, getBaseUrl, getToken } from "./api/client";
 import { subscribeToEvents } from "./api/events";
@@ -148,6 +152,46 @@ export function createWebProvider(): DataProvider {
       const token = getToken();
       if (!token) return () => {};
       return subscribeToCanvasUpdates(getBaseUrl(), token, callback);
+    },
+
+    // Diagnostics
+    async runDiagnostics() {
+      return get<Report>("/diagnostics");
+    },
+
+    // Onboarding
+    async listOnboardingPlatforms() {
+      const data = await get<{ platforms: PlatformForm[] }>("/onboarding/platforms");
+      return data.platforms ?? [];
+    },
+    async applyOnboarding(platform, answers) {
+      return post<ApplyReport>("/onboarding/apply", { platform, answers });
+    },
+
+    // Templates
+    async listTemplates() {
+      const data = await get<{ templates: Template[] }>("/templates");
+      return data.templates ?? [];
+    },
+    async writeTemplate(name) {
+      return post<WriteReport>("/templates/write", { name });
+    },
+
+    // Error fixes
+    async listFixes() {
+      const data = await get<{ guides: FixGuide[] }>("/fixes");
+      return data.guides ?? [];
+    },
+    async getFix(id) {
+      return get<FixGuide>(`/fixes/${id}`);
+    },
+    async applyFix(id) {
+      return post<FixOutcome>(`/fixes/${id}/apply`);
+    },
+
+    // Cross-channel send
+    async sendMessage(req) {
+      return post<SendOutcome>("/send", req);
     },
   };
 }

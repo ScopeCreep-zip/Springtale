@@ -5,7 +5,12 @@
  * Web implements via HTTP fetch + SSE.
  * Both feed the same createDashboardState() factory.
  */
-import type { ConnectorSchema, EventEntry, CanvasState, CanvasUpdate, AvailableConnector, ConfigSchema, ConfigSchemaProperty, AgentState } from "@springtale/types";
+import type {
+  ConnectorSchema, EventEntry, CanvasState, CanvasUpdate, AvailableConnector,
+  ConfigSchema, ConfigSchemaProperty, AgentState,
+  Report, PlatformForm, ApplyReport, Template, WriteReport,
+  FixGuide, FixOutcome, SendRequest, SendOutcome,
+} from "@springtale/types";
 import type { ConnectorStatus } from "../ResourceBar";
 import type { RuleItem } from "../Roster";
 import type { RuleDetail, EventItem } from "../CommandPanel";
@@ -132,6 +137,25 @@ export interface DataProvider {
   getConnections(): Promise<Array<{ a: string; b: string; pipes: Array<{ id: string; dir: 1 | -1; status: string }> }>>;
   getCanvasState(): Promise<CanvasState>;
   subscribeToCanvasUpdates(callback: (update: CanvasUpdate) => void): () => void;
+
+  // Diagnostics
+  runDiagnostics(): Promise<Report>;
+
+  // Onboarding
+  listOnboardingPlatforms(): Promise<PlatformForm[]>;
+  applyOnboarding(platform: string, answers: Record<string, string>): Promise<ApplyReport>;
+
+  // Templates
+  listTemplates(): Promise<Template[]>;
+  writeTemplate(name: string): Promise<WriteReport>;
+
+  // Error fixes
+  listFixes(): Promise<FixGuide[]>;
+  getFix(id: string): Promise<FixGuide>;
+  applyFix(id: string): Promise<FixOutcome>;
+
+  // Cross-channel send
+  sendMessage(req: SendRequest): Promise<SendOutcome>;
 }
 
 /**

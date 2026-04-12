@@ -1,6 +1,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::runtime_guard::require_runtime;
 use crate::state::AppState;
 
 /// Safety configuration — IPC presentation type.
@@ -39,7 +40,9 @@ impl From<springtale_store::SafetyConfigRow> for SafetyConfig {
 pub async fn get_safety_config(
     state: State<'_, AppState>,
 ) -> Result<SafetyConfig, String> {
-    let row = springtale_runtime::operations::safety::get_safety_config(&state.runtime)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    let row = springtale_runtime::operations::safety::get_safety_config(rt)
         .await
         .map_err(|e| e.to_string())?;
     Ok(SafetyConfig::from(row))
@@ -51,6 +54,8 @@ pub async fn save_safety_config(
     state: State<'_, AppState>,
     config: SafetyConfig,
 ) -> Result<(), String> {
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
     let row = springtale_store::SafetyConfigRow {
         window_title: config.window_title,
         auto_lock_minutes: config.auto_lock_minutes,
@@ -58,7 +63,7 @@ pub async fn save_safety_config(
         quick_hide_shortcut: config.quick_hide_shortcut,
         updated_at: chrono::Utc::now(),
     };
-    springtale_runtime::operations::safety::save_safety_config(&state.runtime, row)
+    springtale_runtime::operations::safety::save_safety_config(rt, row)
         .await
         .map_err(|e| e.to_string())
 }
@@ -75,7 +80,9 @@ pub async fn reset_auto_lock(
     state: State<'_, AppState>,
     app: tauri::AppHandle,
 ) -> Result<(), String> {
-    let config = springtale_runtime::operations::safety::get_safety_config(&state.runtime)
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    let config = springtale_runtime::operations::safety::get_safety_config(rt)
         .await
         .map_err(|e| e.to_string())?;
 

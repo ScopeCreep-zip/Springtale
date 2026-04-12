@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use tauri::State;
 
+use crate::runtime_guard::require_runtime;
 use crate::state::AppState;
 
 /// Prepare for travel — create encrypted backup then wipe local data.
@@ -20,7 +21,12 @@ pub async fn travel_prepare(
     passphrase: String,
     backup_path: String,
 ) -> Result<(), String> {
-    let store = Arc::clone(&state.runtime.store);
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    let store = Arc::clone(&rt.store);
+    // Drop the guard before spawning blocking work to avoid holding
+    // the read lock across the spawn_blocking boundary.
+    drop(guard);
 
     tokio::task::spawn_blocking(move || {
         let vault_path = springtale_store::paths::default_vault_path();
