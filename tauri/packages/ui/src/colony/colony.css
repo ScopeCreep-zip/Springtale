@@ -393,6 +393,92 @@
     padding: 3px 6px;
   }
 
+  /* ── Utility classes ── */
+
+  /* Modal container — shared by all overlay panels */
+  .colony-modal {
+    max-height: 80vh;
+  }
+
+  /* Monospace textarea (JSON editors, config fields) */
+  .colony-textarea {
+    font-family: monospace;
+    resize: vertical;
+  }
+
+  /* Thin scrollbar for detail panels */
+  .colony-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-bark) transparent;
+  }
+
+  /* Stat bar grid (fuel/hp in detail panel) */
+  .colony-stat-grid {
+    display: grid;
+    grid-template-columns: 24px 1fr 20px;
+    align-items: center;
+    gap: 2px 4px;
+  }
+
+  /* Tiny text below the text-4xs tier */
+  .colony-text-5xs { font-size: 6px; }
+  .colony-text-6xs { font-size: 5px; }
+
+  /* Card strip — horizontal RTS scroll (connectors + bots) */
+  .colony-card-strip {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-bark) transparent;
+    padding-bottom: 4px;
+    scroll-snap-type: x mandatory;
+  }
+
+  /* Base card for strip items */
+  .colony-card {
+    flex: 0 0 auto;
+    width: 100px;
+    min-height: 72px;
+    border: 2px solid var(--color-bark);
+    border-radius: 4px;
+    background: var(--color-soil-deep);
+    padding: 6px;
+    cursor: pointer;
+    scroll-snap-align: start;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    text-align: center;
+    transition: border-color 0.15s;
+  }
+  .colony-card:hover {
+    border-color: var(--color-bark-light);
+  }
+  .colony-card.is-active {
+    border-color: var(--color-status-ok);
+  }
+  .colony-card.is-selected {
+    border-color: var(--color-status-ok);
+    background: rgba(61, 184, 160, 0.08);
+  }
+  .colony-card.is-available {
+    border-style: dashed;
+    opacity: 0.7;
+  }
+  .colony-card.is-available:hover {
+    border-color: var(--color-status-ok);
+    opacity: 1;
+  }
+  .colony-card.is-warn {
+    border-color: var(--color-status-warn);
+  }
+  .colony-card.is-error {
+    border-color: var(--color-status-error);
+  }
+
   /* Underground mode */
   .colony-underground .colony-tree .pixel-sprite { opacity: .15 !important; }
   .colony-underground .colony-tree .colony-tree-label { opacity: .3; }

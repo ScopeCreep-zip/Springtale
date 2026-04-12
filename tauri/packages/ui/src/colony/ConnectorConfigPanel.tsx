@@ -157,7 +157,7 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
   };
 
   return (
-    <div class="mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6" style={{ "max-height": "80vh" }}>
+    <div class="colony-modal mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6">
       <div class="mb-4 flex items-center justify-between">
         <h2 class="colony-text-md font-bold text-text-primary">{props.connectorId}</h2>
         <button onClick={props.onClose} class="colony-close-btn">✕</button>
@@ -196,8 +196,7 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
             value={configText()}
             onInput={(e) => setConfigText(e.currentTarget.value)}
             rows={6}
-            class="colony-text-2xs w-full border-2 border-bark bg-soil-deep p-2 text-text-primary focus:border-accent focus:outline-none"
-            style={{ "font-family": "monospace", resize: "vertical" }}
+            class="colony-textarea colony-text-2xs w-full border-2 border-bark bg-soil-deep p-2 text-text-primary focus:border-accent focus:outline-none"
           />
         }>
           <div class="space-y-3">
@@ -303,8 +302,7 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
                           catch { /* let them keep typing */ }
                         }}
                         rows={3}
-                        class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-deep p-2 text-text-primary focus:border-accent focus:outline-none"
-                        style={{ "font-family": "monospace", resize: "vertical" }}
+                        class="colony-textarea colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-deep p-2 text-text-primary focus:border-accent focus:outline-none"
                       />
                     </Show>
                   </div>

@@ -52,7 +52,7 @@ export const AiConfigPanel: Component<AiConfigPanelProps> = (props) => {
   const inputClass = "colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-deep px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none";
 
   return (
-    <div class="mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6" style={{ "max-height": "80vh" }}>
+    <div class="colony-modal mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6">
       <div class="mb-4 flex items-center justify-between">
         <h2 class="colony-text-md font-bold text-text-primary">
           AI Adapter — {props.agentName}

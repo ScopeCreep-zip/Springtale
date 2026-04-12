@@ -30,7 +30,7 @@ export const AppSettingsPanel: Component<AppSettingsPanelProps> = (props) => {
   const [error, setError] = createSignal("");
 
   return (
-    <div class="mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6" style={{ "max-height": "80vh" }}>
+    <div class="colony-modal mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6">
       <div class="mb-4 flex items-center justify-between">
         <h2 class="colony-text-md font-bold text-text-primary">Settings</h2>
         <button onClick={props.onClose} class="colony-close-btn">✕</button>

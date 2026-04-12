@@ -55,3 +55,8 @@ import type { ConnectorSchema } from "@springtale/types";
 export async function getConnectorSchemas(): Promise<ConnectorSchema[]> {
   return invoke<ConnectorSchema[]>("get_connector_schemas");
 }
+
+/** Install a WASM connector from its manifest. */
+export async function installConnector(manifest: unknown): Promise<string> {
+  return invoke("install_connector", { manifest });
+}

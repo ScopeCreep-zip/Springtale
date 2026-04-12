@@ -1,4 +1,4 @@
-import { createSignal, onMount, onCleanup, Show } from "solid-js";
+import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
 import {
   ColonyShell,
   TopBar,
@@ -15,6 +15,7 @@ import {
   mapFormations,
 } from "@springtale/ui";
 import type { ColonySelection, TeamConfig } from "@springtale/ui";
+import { COMMANDS } from "@springtale/ui";
 import { configure } from "./api/client";
 import { SettingsPage } from "./pages/Settings";
 import { SessionsPage } from "./pages/Sessions";
@@ -27,7 +28,7 @@ import { SessionsPage } from "./pages/Sessions";
  */
 export const App = () => {
   const db = useDashboard();
-  const { t } = useI18n();
+  const { t, locale, setLocale } = useI18n();
 
   // ── Colony state ────────────────────────────────────────
   const [selection, setSelection] = createSignal<ColonySelection>({ id: null, type: null });
@@ -59,6 +60,14 @@ export const App = () => {
     }, 500);
   };
 
+  // ── Persist locale changes to config store ──────────────
+  let localeInitialized = false;
+  createEffect(() => {
+    const loc = locale();
+    if (!localeInitialized) { localeInitialized = true; return; }
+    db.provider.setConfig("locale", loc).catch(() => {});
+  });
+
   const handleSettingsSaved = async () => {
     setConnected(true);
     db.resubscribe();
@@ -78,6 +87,14 @@ export const App = () => {
         setConnectorPositions(saved as Record<string, { x: number; y: number }>);
       }
     } catch { /* seeded defaults will be used */ }
+
+    // Restore persisted locale
+    try {
+      const savedLocale = await db.provider.getConfig("locale");
+      if (savedLocale && typeof savedLocale === "string") {
+        setLocale(savedLocale as "en");
+      }
+    } catch { /* Default locale is fine */ }
   };
 
   // ── Keyboard shortcuts ─────────────────────────────────
@@ -85,12 +102,17 @@ export const App = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
       const key = e.key.toLowerCase();
+
+      // 1-9: select agent by index
       if (key >= "1" && key <= "9") {
         const idx = parseInt(key) - 1;
         const a = agents();
         const agent = a[idx];
         if (agent) setSelection({ id: agent.id, type: "agent" });
+        return;
       }
+
+      // Escape: clear selection and close overlays
       if (key === "escape") {
         setSelection({ id: null, type: null });
         setConfirmAction(null);
@@ -99,6 +121,19 @@ export const App = () => {
         setShowTeamBuilder(false);
         setAiConfigAgent(null);
         setConnectorConfigData(null);
+        return;
+      }
+
+      // Skip command shortcuts when any modal is open
+      if (showSettings() || showSessions() || showTeamBuilder() || confirmAction() || aiConfigAgent() || connectorConfigData()) return;
+
+      // Command grid shortcuts: match key to current selection context
+      const context = selection().type ?? "none";
+      const commandList = COMMANDS[context] ?? COMMANDS.none;
+      const cmd = commandList.find((c) => c?.key.toLowerCase() === key);
+      if (cmd) {
+        e.preventDefault();
+        handleCommand(cmd.action);
       }
     };
     document.addEventListener("keydown", handleKeyDown);
@@ -263,7 +298,7 @@ export const App = () => {
   const shellOverlay = () => {
     if (showSettings()) {
       return (
-        <div class="mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6" style={{ "max-height": "80vh" }}>
+        <div class="colony-modal mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6">
           <div class="mb-4 flex items-center justify-between">
             <h2 class="colony-text-md font-bold text-text-primary">{t("settings.title")}</h2>
             <Show when={connected()}>
@@ -356,7 +391,7 @@ export const App = () => {
     // TeamBuilder OOBE — full-panel overlay like settings
     if (showTeamBuilder()) {
       return (
-        <div class="mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6" style={{ "max-height": "80vh" }}>
+        <div class="colony-modal mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6">
           <div class="mb-4 flex items-center justify-between">
             <h2 class="colony-text-md font-bold text-text-primary">Build Your Team</h2>
             <button onClick={() => setShowTeamBuilder(false)} class="colony-close-btn">✕</button>
@@ -397,7 +432,7 @@ export const App = () => {
 
     if (showSessions()) {
       return (
-        <div class="mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6" style={{ "max-height": "80vh" }}>
+        <div class="colony-modal mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6">
           <div class="mb-4 flex items-center justify-between">
             <h2 class="colony-text-md font-bold text-text-primary">{t("sessions.title")}</h2>
             <button onClick={() => setShowSessions(false)} class="colony-close-btn">✕</button>

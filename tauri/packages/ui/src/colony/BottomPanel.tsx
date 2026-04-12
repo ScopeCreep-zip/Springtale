@@ -8,6 +8,7 @@ import { getAgentPosition, getFormationBounds, type ConnectorPositions } from ".
 import {
   COMMANDS, ROLE_SPRITES, ROLE_COLORS, AUTONOMY_LABELS,
   MOMENTUM_NAMES, MOMENTUM_COLORS, MOMENTUM_UNLOCKS,
+  TREE_SPRITES, seeded,
 } from "./types";
 
 export interface BottomPanelProps {
@@ -55,7 +56,7 @@ export const BottomPanel: Component<BottomPanelProps> = (props) => {
       </div>
 
       {/* Zone 2: Detail Panel — view-mode driven */}
-      <div class="overflow-y-auto p-1.5 px-2.5" style={{ "scrollbar-width": "thin", "scrollbar-color": "var(--color-bark) transparent" }}>
+      <div class="colony-scrollbar overflow-y-auto p-1.5 px-2.5">
         <Switch>
           <Match when={props.detailView.mode === "entity" && props.selection.type}>
             <DetailPanel
@@ -270,12 +271,12 @@ const DetailPanel: Component<{
                     {a.task}
                   </div>
                   {/* Stat bars */}
-                  <div class="mt-1 grid items-center gap-x-1 gap-y-px" style={{ "grid-template-columns": "24px 1fr 20px" }}>
+                  <div class="colony-stat-grid mt-1">
                     <span class="colony-text-3xs text-text-dim">FUEL</span>
                     <div class="colony-stat-bar">
                       <div class="colony-stat-fill" style={{ width: `${a.fuel}%`, background: fuelColor }} />
                     </div>
-                    <span class="text-right" style={{ "font-size": "6px", color: fuelColor }}>{a.fuel}</span>
+                    <span class="colony-text-5xs text-right" style={{ color: fuelColor }}>{a.fuel}</span>
                     <span class="colony-text-3xs text-text-dim">HP</span>
                     <div class="colony-stat-bar">
                       <div class="colony-stat-fill" style={{ width: `${a.hp}%`, background: "var(--color-role-scout)" }} />
@@ -332,7 +333,7 @@ const DetailPanel: Component<{
             <div>
               <div class="colony-label mb-1 text-text-dim">CONNECTOR</div>
               <div class="colony-text-md font-bold">{t.label}</div>
-              <div class="uppercase" style={{ "font-size": "6px", "letter-spacing": "1px", color: statusColor }}>
+              <div class="colony-text-5xs uppercase tracking-wider" style={{ color: statusColor }}>
                 {t.status.toUpperCase()} {t.type.toUpperCase()}
               </div>
               <div class="colony-text-2xs mt-1.5 text-text-dim">MYCELIUM</div>
@@ -392,7 +393,7 @@ const DetailPanel: Component<{
                   )}
                 </For>
               </div>
-              <div class="mb-1" style={{ "font-size": "6px", color: f.color }}>
+              <div class="colony-text-5xs mb-1" style={{ color: f.color }}>
                 {f.momentumLabel} — {MOMENTUM_UNLOCKS[f.momentum]}
               </div>
               <For each={members()}>
@@ -451,37 +452,48 @@ const BotsListView: Component<{
   onCreateNew?: () => void;
 }> = (props) => (
   <div>
-    <div class="mb-1 flex items-center justify-between">
-      <span class="colony-label">BOTS ({props.agents.length})</span>
-      <button
-        onClick={() => props.onCreateNew?.()}
-        class="colony-text-3xs border border-bark bg-soil-light px-2 py-0.5 text-status-ok hover:border-status-ok"
-      >
-        + New Bot
-      </button>
-    </div>
-    <Show when={props.agents.length > 0} fallback={
-      <p class="colony-text-xs py-2 text-text-dim">No bots yet. Click + New Bot to hatch one.</p>
+    <div class="colony-label mb-1">BOTS ({props.agents.length})</div>
+    <Show when={props.agents.length > 0 || props.onCreateNew} fallback={
+      <p class="colony-text-xs py-2 text-text-dim">No bots yet.</p>
     }>
-      <div class="space-y-1">
+      <div class="colony-card-strip">
         <For each={props.agents}>
-          {(agent) => (
-            <button
-              class="flex w-full items-center gap-2 rounded border border-bark p-2 text-start hover:border-bark-light"
-              onClick={() => props.onSelect?.(agent.id)}
-            >
-              <span class={`inline-block h-2 w-2 rounded-full ${
-                agent.status === "ok" ? "bg-status-ok" : agent.status === "warn" ? "bg-status-warn" : "bg-status-idle"
-              }`} />
-              <div class="min-w-0 flex-1">
-                <span class="colony-text-xs font-bold text-text-primary">{agent.name}</span>
-                <span class="colony-text-3xs ml-2 uppercase text-text-dim">{agent.role}</span>
-              </div>
-              <span class="colony-text-3xs text-text-dim">{agent.connectorId ?? "roaming"}</span>
-              <span class="colony-text-3xs text-text-dim">fuel:{agent.fuel}</span>
-            </button>
-          )}
+          {(agent) => {
+            const statusClass = () =>
+              agent.status === "ok" ? "is-active" : agent.status === "warn" ? "is-warn" : "";
+            const roleColor = () => ROLE_COLORS[agent.role] ?? "var(--color-text-dim)";
+            return (
+              <button
+                class={`colony-card ${statusClass()}`}
+                onClick={() => props.onSelect?.(agent.id)}
+              >
+                <div class={`pixel-sprite ${ROLE_SPRITES[agent.role] ?? "sprite-worker"}`} style={{ transform: "scale(2)" }} />
+                <div class="colony-text-3xs font-bold text-text-primary truncate w-full">{agent.name}</div>
+                <div class="colony-text-5xs uppercase" style={{ color: roleColor() }}>{agent.role}</div>
+                <div class="colony-text-5xs text-text-dim truncate w-full">{agent.connectorId ?? "roaming"}</div>
+                {/* Fuel bar */}
+                <div class="mt-auto w-full">
+                  <div class="colony-stat-bar" style={{ height: "3px" }}>
+                    <div class="colony-stat-fill" style={{
+                      width: `${agent.fuel}%`,
+                      background: agent.fuel > 50 ? "var(--color-status-ok)" : "var(--color-status-warn)",
+                    }} />
+                  </div>
+                </div>
+              </button>
+            );
+          }}
         </For>
+        {/* + New Bot card */}
+        <Show when={props.onCreateNew}>
+          <button
+            class="colony-card is-available"
+            onClick={() => props.onCreateNew?.()}
+          >
+            <div class="colony-text-md text-status-ok">+</div>
+            <div class="colony-text-3xs text-status-ok">New Bot</div>
+          </button>
+        </Show>
       </div>
     </Show>
   </div>
@@ -502,20 +514,29 @@ const ConnectorsListView: Component<{
       <Show when={props.trees.length > 0} fallback={
         <p class="colony-text-2xs py-1 text-text-dim">No connectors loaded yet.</p>
       }>
-        <div class="mb-3 space-y-1">
+        <div class="colony-card-strip mb-3">
           <For each={props.trees}>
-            {(tree) => (
-              <button
-                class="flex w-full items-center gap-2 rounded border border-bark p-2 text-start hover:border-bark-light"
-                onClick={() => props.onSelect?.(tree.id)}
-              >
-                <span class={`inline-block h-2 w-2 rounded-full ${
-                  tree.status === "active" ? "bg-status-ok" : tree.status === "paused" ? "bg-status-warn" : "bg-status-idle"
-                }`} />
-                <span class="colony-text-xs font-bold text-text-primary">{tree.label}</span>
-                <span class="colony-text-3xs ml-auto uppercase text-text-dim">{tree.status}</span>
-              </button>
-            )}
+            {(tree) => {
+              const spriteClass = TREE_SPRITES[tree.type] ?? "sprite-tree-deciduous";
+              const statusClass = () =>
+                tree.status === "active" ? "is-active" : tree.status === "paused" ? "is-warn" : "";
+              return (
+                <button
+                  class={`colony-card ${statusClass()}`}
+                  onClick={() => props.onSelect?.(tree.id)}
+                >
+                  <div class={`pixel-sprite ${spriteClass}`} style={{ transform: "scale(2)" }} />
+                  <div class="colony-text-3xs font-bold text-text-primary truncate w-full">
+                    {tree.label.replace("connector-", "")}
+                  </div>
+                  <div class={`colony-text-5xs uppercase ${
+                    tree.status === "active" ? "text-status-ok" : tree.status === "paused" ? "text-status-warn" : "text-text-dim"
+                  }`}>
+                    {tree.status}
+                  </div>
+                </button>
+              );
+            }}
           </For>
         </div>
       </Show>
@@ -523,20 +544,26 @@ const ConnectorsListView: Component<{
       {/* Available but not loaded */}
       <Show when={notLoaded().length > 0}>
         <div class="colony-label mb-1">AVAILABLE ({notLoaded().length})</div>
-        <div class="space-y-1">
+        <div class="colony-card-strip">
           <For each={notLoaded()}>
-            {(connector) => (
-              <button
-                class="flex w-full items-center gap-2 rounded border border-bark-light border-dashed p-2 text-start hover:border-status-ok"
-                onClick={() => props.onSetup?.(connector.name)}
-              >
-                <span class="inline-block h-2 w-2 rounded-full bg-status-idle" />
-                <span class="colony-text-xs text-text-secondary">{connector.name.replace("connector-", "")}</span>
-                <span class="colony-text-3xs ml-auto text-status-ok">
-                  {connector.requires_config ? "Configure" : "Enable"}
-                </span>
-              </button>
-            )}
+            {(connector) => {
+              const treeType = ["conifer", "deciduous", "shrub"][seeded(connector.name + "type", 0, 3)] ?? "deciduous";
+              const spriteClass = TREE_SPRITES[treeType as keyof typeof TREE_SPRITES] ?? "sprite-tree-deciduous";
+              return (
+                <button
+                  class="colony-card is-available"
+                  onClick={() => props.onSetup?.(connector.name)}
+                >
+                  <div class={`pixel-sprite ${spriteClass}`} style={{ transform: "scale(2)", opacity: 0.5 }} />
+                  <div class="colony-text-3xs text-text-secondary truncate w-full">
+                    {connector.name.replace("connector-", "")}
+                  </div>
+                  <div class="colony-text-5xs text-status-ok">
+                    {connector.requires_config ? "Configure" : "Enable"}
+                  </div>
+                </button>
+              );
+            }}
           </For>
         </div>
       </Show>

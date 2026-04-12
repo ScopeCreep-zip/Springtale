@@ -1,4 +1,4 @@
-import { createSignal, onMount, onCleanup, Show } from "solid-js";
+import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
 import {
   ColonyShell,
   TopBar,
@@ -15,11 +15,13 @@ import {
   mapFormations,
 } from "@springtale/ui";
 import type { ColonySelection, TeamConfig } from "@springtale/ui";
+import { COMMANDS } from "@springtale/ui";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 import { getVaultStatus, unlockVault, createVault } from "./ipc/vault";
 import { panicWipe } from "./ipc/panic";
+import { resetAutoLock } from "./ipc/autolock";
 
 /**
  * Springtale Desktop — colony ecosystem dashboard.
@@ -29,7 +31,7 @@ import { panicWipe } from "./ipc/panic";
  */
 export const App = () => {
   const db = useDashboard();
-  const { t } = useI18n();
+  const { t, locale, setLocale } = useI18n();
 
   // ── Desktop-only: vault + settings state ────────────────
   const [vaultLocked, setVaultLocked] = createSignal(true);
@@ -66,6 +68,14 @@ export const App = () => {
     }, 500);
   };
 
+  // ── Persist locale changes to config store ──────────────
+  let localeInitialized = false;
+  createEffect(() => {
+    const loc = locale();
+    if (!localeInitialized) { localeInitialized = true; return; }
+    db.provider.setConfig("locale", loc).catch(() => {});
+  });
+
   // ── Data loading (deferred until vault unlocked) ────────
   const loadColonyData = async () => {
     try {
@@ -84,13 +94,21 @@ export const App = () => {
           setConnectorPositions(saved as Record<string, { x: number; y: number }>);
         }
       } catch { /* No saved positions — seeded defaults */ }
+
+      // Restore persisted locale
+      try {
+        const savedLocale = await db.provider.getConfig("locale");
+        if (savedLocale && typeof savedLocale === "string") {
+          setLocale(savedLocale as "en");
+        }
+      } catch { /* Default locale is fine */ }
     } catch (e) {
       console.warn("loadColonyData:", e);
     }
   };
 
   // ── Auto-lock (Rust backend) ───────────────────────────
-  const resetTimer = () => { invoke("reset_auto_lock").catch(() => {}); };
+  const resetTimer = () => { resetAutoLock().catch(() => {}); };
 
   onMount(async () => {
     document.addEventListener("mousemove", resetTimer);
@@ -102,12 +120,26 @@ export const App = () => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
       const key = e.key.toLowerCase();
+
+      // Quick-exit: Ctrl+Shift+Q — instant hide + auto-lock
+      // For IPV survivors who need to hide the app immediately
+      if (key === "q" && e.ctrlKey && e.shiftKey) {
+        e.preventDefault();
+        invoke("lock_vault").catch(() => {});
+        invoke("plugin:window|hide").catch(() => {});
+        return;
+      }
+
+      // 1-9: select agent by index
       if (key >= "1" && key <= "9") {
         const idx = parseInt(key) - 1;
         const a = agents();
         const agent = a[idx];
         if (agent) setSelection({ id: agent.id, type: "agent" });
+        return;
       }
+
+      // Escape: clear selection and close overlays
       if (key === "escape") {
         setSelection({ id: null, type: null });
         setConfirmAction(null);
@@ -115,13 +147,19 @@ export const App = () => {
         setShowTeamBuilder(false);
         setAiConfigAgent(null);
         setConnectorConfigData(null);
+        return;
       }
-      // Quick-exit: Ctrl+Shift+Q — instant hide + auto-lock
-      // For IPV survivors who need to hide the app immediately
-      if (key === "q" && e.ctrlKey && e.shiftKey) {
+
+      // Skip command shortcuts when any modal is open
+      if (showVault() || showDesktopSettings() || showTeamBuilder() || confirmAction() || aiConfigAgent() || connectorConfigData()) return;
+
+      // Command grid shortcuts: match key to current selection context
+      const context = selection().type ?? "none";
+      const commandList = COMMANDS[context] ?? COMMANDS.none;
+      const cmd = commandList.find((c) => c?.key.toLowerCase() === key);
+      if (cmd) {
         e.preventDefault();
-        invoke("lock_vault").catch(() => {});
-        invoke("plugin:window|hide").catch(() => {});
+        handleCommand(cmd.action);
       }
     };
     document.addEventListener("keydown", handleKeyDown);
@@ -379,7 +417,7 @@ export const App = () => {
     // 1. Vault (security — blocks everything else)
     if (showVault()) {
       return (
-        <div class="mx-auto max-w-lg space-y-5 overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6" style={{ "max-height": "80vh" }}>
+        <div class="colony-modal mx-auto max-w-lg space-y-5 overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6">
           <h2 class="colony-text-md font-bold text-text-primary">{t("vault.title")}</h2>
           <p class="colony-text-xs text-text-dim">{vaultLocked() ? t("vault.createDesc") : ""}</p>
           {vaultError() && <div class="colony-text-2xs border border-status-error bg-status-error/10 p-2 text-status-error">{vaultError()}</div>}
@@ -503,7 +541,7 @@ export const App = () => {
     // 6. TeamBuilder OOBE — full-panel overlay like settings
     if (showTeamBuilder()) {
       return (
-        <div class="mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6" style={{ "max-height": "80vh" }}>
+        <div class="colony-modal mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6">
           <TeamBuilder
             availableConnectors={availableConnectors()}
             connectors={db.schemas()}
