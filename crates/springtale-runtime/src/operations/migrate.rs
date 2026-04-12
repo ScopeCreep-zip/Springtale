@@ -100,62 +100,58 @@ pub fn parse_openclaw_skill(skill_md: &str) -> Result<MigratedSkill, OperationEr
     let mut config_properties = serde_json::Map::new();
     let mut required_fields = Vec::new();
 
-    if let Some(ref metadata) = frontmatter.metadata {
-        if let Some(ref oc) = metadata.openclaw {
-            if let Some(ref requires) = oc.requires {
-                // Environment variables → KeychainRead capabilities + config schema
-                for env_var in &requires.env {
-                    capabilities.push(Capability::KeychainRead {
-                        key: env_var.clone(),
-                    });
+    if let Some(ref metadata) = frontmatter.metadata
+        && let Some(ref oc) = metadata.openclaw
+    {
+        if let Some(ref requires) = oc.requires {
+            // Environment variables → KeychainRead capabilities + config schema
+            for env_var in &requires.env {
+                capabilities.push(Capability::KeychainRead {
+                    key: env_var.clone(),
+                });
 
-                    // Add to config schema as a secret field
-                    config_properties.insert(
-                        env_var.clone(),
-                        serde_json::json!({
-                            "type": "string",
-                            "description": format!("Environment variable: {env_var}"),
-                            "x-secret": true,
-                        }),
-                    );
-                    required_fields.push(serde_json::Value::String(env_var.clone()));
-                }
-
-                // Binary requirements → ShellExec capability + warning
-                if !requires.bins.is_empty() || !requires.any_bins.is_empty() {
-                    capabilities.push(Capability::ShellExec);
-                    let bins: Vec<&str> = requires
-                        .bins
-                        .iter()
-                        .chain(requires.any_bins.iter())
-                        .map(|s| s.as_str())
-                        .collect();
-                    warnings.push(format!(
-                        "Skill requires shell binaries: {}. ShellExec capability requires blocking user approval in Springtale.",
-                        bins.join(", ")
-                    ));
-                }
-
-                // Config file paths → informational warning
-                if !requires.config.is_empty() {
-                    warnings.push(format!(
-                        "Skill reads config files: {}. These must be mapped to Springtale config fields.",
-                        requires.config.join(", ")
-                    ));
-                }
+                // Add to config schema as a secret field
+                config_properties.insert(
+                    env_var.clone(),
+                    serde_json::json!({
+                        "type": "string",
+                        "description": format!("Environment variable: {env_var}"),
+                        "x-secret": true,
+                    }),
+                );
+                required_fields.push(serde_json::Value::String(env_var.clone()));
             }
 
-            // Primary env var → mark as primary in config schema
-            if let Some(ref primary) = oc.primary_env {
-                if let Some(prop) = config_properties.get_mut(primary) {
-                    if let Some(obj) = prop.as_object_mut() {
-                        obj.insert(
-                            "x-primary".into(),
-                            serde_json::Value::Bool(true),
-                        );
-                    }
-                }
+            // Binary requirements → ShellExec capability + warning
+            if !requires.bins.is_empty() || !requires.any_bins.is_empty() {
+                capabilities.push(Capability::ShellExec);
+                let bins: Vec<&str> = requires
+                    .bins
+                    .iter()
+                    .chain(requires.any_bins.iter())
+                    .map(|s| s.as_str())
+                    .collect();
+                warnings.push(format!(
+                    "Skill requires shell binaries: {}. ShellExec capability requires blocking user approval in Springtale.",
+                    bins.join(", ")
+                ));
             }
+
+            // Config file paths → informational warning
+            if !requires.config.is_empty() {
+                warnings.push(format!(
+                    "Skill reads config files: {}. These must be mapped to Springtale config fields.",
+                    requires.config.join(", ")
+                ));
+            }
+        }
+
+        // Primary env var → mark as primary in config schema
+        if let Some(ref primary) = oc.primary_env
+            && let Some(prop) = config_properties.get_mut(primary)
+            && let Some(obj) = prop.as_object_mut()
+        {
+            obj.insert("x-primary".into(), serde_json::Value::Bool(true));
         }
     }
 
@@ -314,17 +310,16 @@ metadata:
         let result = parse_openclaw_skill(skill).unwrap();
 
         // Should have ShellExec capability
-        assert!(result
-            .manifest
-            .capabilities
-            .iter()
-            .any(|c| matches!(c, Capability::ShellExec)));
+        assert!(
+            result
+                .manifest
+                .capabilities
+                .iter()
+                .any(|c| matches!(c, Capability::ShellExec))
+        );
 
         // Should have a warning about ShellExec
-        assert!(result
-            .warnings
-            .iter()
-            .any(|w| w.contains("ShellExec")));
+        assert!(result.warnings.iter().any(|w| w.contains("ShellExec")));
     }
 
     #[test]

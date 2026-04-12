@@ -94,10 +94,14 @@ async fn init_store(
                 ))
             })?;
         }
-        Ok(Arc::new(
+        let backend = if let Some(ref key) = config.encryption_key_hex {
+            SqliteBackend::open_encrypted(&config.path, key)
+                .map_err(|e| OperationError::Init(format!("failed to open encrypted store: {e}")))?
+        } else {
             SqliteBackend::open(&config.path)
-                .map_err(|e| OperationError::Init(format!("failed to open SQLite store: {e}")))?,
-        ))
+                .map_err(|e| OperationError::Init(format!("failed to open SQLite store: {e}")))?
+        };
+        Ok(Arc::new(backend))
     }
 }
 
@@ -277,14 +281,15 @@ async fn init_registry(
                     tracing::debug!(connector = %bin.name, "skipping removed WASM connector");
                     continue;
                 }
-                let manifest: springtale_connector::ConnectorManifest =
-                    match serde_json::from_str(&bin.manifest_json) {
-                        Ok(m) => m,
-                        Err(e) => {
-                            tracing::warn!(connector = %bin.name, error = %e, "invalid WASM manifest JSON");
-                            continue;
-                        }
-                    };
+                let manifest: springtale_connector::ConnectorManifest = match serde_json::from_str(
+                    &bin.manifest_json,
+                ) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        tracing::warn!(connector = %bin.name, error = %e, "invalid WASM manifest JSON");
+                        continue;
+                    }
+                };
                 match registry.install_wasm(
                     shared_wasm_engine.clone(),
                     &bin.wasm_bytes,
@@ -308,7 +313,9 @@ async fn init_registry(
 }
 
 /// Create an AI adapter from config. Uses the factory from springtale-ai.
-fn init_adapter(config: &RuntimeConfig) -> Result<Arc<dyn springtale_ai::AiAdapter>, OperationError> {
+fn init_adapter(
+    config: &RuntimeConfig,
+) -> Result<Arc<dyn springtale_ai::AiAdapter>, OperationError> {
     springtale_ai::create_adapter(
         config.ai_ollama.as_ref(),
         config.ai_openai.as_ref(),

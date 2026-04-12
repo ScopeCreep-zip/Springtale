@@ -96,7 +96,11 @@ pub async fn remove_connector_cascade(
     name: &str,
 ) -> Result<Vec<String>, OperationError> {
     // Find rules whose trigger references this connector
-    let all_rules = state.store.list_rules().await.map_err(OperationError::Store)?;
+    let all_rules = state
+        .store
+        .list_rules()
+        .await
+        .map_err(OperationError::Store)?;
     let mut deleted_ids = Vec::new();
 
     for rule in &all_rules {

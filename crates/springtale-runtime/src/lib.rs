@@ -15,21 +15,22 @@
 // registrations are discovered by init_registry(). Without this, the
 // linker dead-code-eliminates them because no symbol from these crates
 // is directly referenced. See: dtolnay/inventory#7, rust-lang/rust#47384.
-extern crate connector_kick;
-extern crate connector_presearch;
 extern crate connector_bluesky;
-extern crate connector_github;
-extern crate connector_filesystem;
-extern crate connector_shell;
-extern crate connector_http;
-extern crate connector_telegram;
-extern crate connector_nostr;
-extern crate connector_irc;
-extern crate connector_discord;
-extern crate connector_slack;
-extern crate connector_signal;
 extern crate connector_browser;
+extern crate connector_discord;
+extern crate connector_filesystem;
+extern crate connector_github;
+extern crate connector_http;
+extern crate connector_irc;
+extern crate connector_kick;
+extern crate connector_nostr;
+extern crate connector_presearch;
+extern crate connector_shell;
+extern crate connector_signal;
+extern crate connector_slack;
+extern crate connector_telegram;
 
+pub mod client_config;
 pub mod config;
 pub mod dispatch;
 pub mod error;
@@ -37,6 +38,7 @@ pub mod init;
 pub mod operations;
 pub mod state;
 
+pub use client_config::{ClientConfig, ClientConfigError};
 pub use config::{RuntimeConfig, StoreConfig};
 pub use error::OperationError;
 pub use init::init;

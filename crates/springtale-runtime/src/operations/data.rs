@@ -78,3 +78,30 @@ pub async fn purge_data(store: &dyn StorageBackend) -> Result<(), OperationError
     }
     Ok(())
 }
+
+/// Purge expired events and audit logs based on retention policy.
+///
+/// Called periodically (hourly) when `retention_days` is configured.
+/// For IPV survivors: automatic data minimization reduces what an
+/// adversary can recover from a seized device.
+pub async fn purge_expired_data(
+    store: &dyn StorageBackend,
+    retention_days: u32,
+) -> Result<u64, OperationError> {
+    let cutoff = chrono::Utc::now() - chrono::TimeDelta::days(i64::from(retention_days));
+    let events_deleted = store
+        .delete_events_before(&cutoff)
+        .await
+        .map_err(OperationError::Store)?;
+    let audit_deleted = store
+        .delete_audit_before(&cutoff)
+        .await
+        .map_err(OperationError::Store)?;
+    tracing::info!(
+        events = events_deleted,
+        audit = audit_deleted,
+        retention_days,
+        "expired data purged"
+    );
+    Ok(events_deleted + audit_deleted)
+}

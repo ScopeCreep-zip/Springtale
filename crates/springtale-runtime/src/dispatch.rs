@@ -5,43 +5,73 @@
 //! WriteFile (with path validation), Chain (with depth limits),
 //! SendMessage, Notify, RunShell, Delay, Transform, AiComplete.
 //!
-//! Per architecture doc §6: "Build pipeline from Rule.actions,
-//! each action becomes a pipeline Stage."
+//! Per ARCHITECTURE.md §6.10: sentinel.evaluate() is called before
+//! every action. This is the single enforcement point — all apps
+//! (daemon, desktop, bot) flow through here.
 
 use std::sync::Arc;
 
 use springtale_connector::registry::store::ConnectorRegistry;
 use springtale_core::rule::action::Action;
+use springtale_sentinel::Sentinel;
 use tokio::sync::RwLock;
 
 /// Maximum size for WriteFile action content (10 MiB).
 const MAX_WRITE_FILE_BYTES: usize = 10 * 1024 * 1024;
 
-/// Dispatch a single action (entry point).
+/// Dispatch a single action with sentinel behavioral monitoring.
 ///
+/// Sentinel evaluates every action before execution (rate limiter,
+/// circuit breaker, dead-man switch, destructive action gate).
 /// Boxed future for recursion support in Chain actions.
-/// Depth tracking prevents infinite Chain recursion (max: `MAX_CHAIN_DEPTH`).
 pub fn dispatch_action<'a>(
     action: &'a Action,
     registry: &'a Arc<RwLock<ConnectorRegistry>>,
+    sentinel: &'a Arc<Sentinel>,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>> {
-    dispatch_with_depth(action, registry, 0)
+    dispatch_with_depth(action, registry, sentinel, 0)
 }
 
 fn dispatch_with_depth<'a>(
     action: &'a Action,
     registry: &'a Arc<RwLock<ConnectorRegistry>>,
+    sentinel: &'a Arc<Sentinel>,
     depth: u32,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>> {
-    Box::pin(dispatch_inner(action, registry, depth))
+    Box::pin(dispatch_inner(action, registry, sentinel, depth))
 }
 
 async fn dispatch_inner(
     action: &Action,
     registry: &Arc<RwLock<ConnectorRegistry>>,
+    sentinel: &Arc<Sentinel>,
     depth: u32,
 ) -> Result<String, String> {
-    match action {
+    // Sentinel evaluation — before every action (ARCHITECTURE.md §6.10)
+    let connector_name = match action {
+        Action::RunConnector { connector, .. } => connector.as_str(),
+        _ => "system",
+    };
+    let verdict = sentinel.evaluate(action, connector_name).await;
+    match verdict {
+        springtale_sentinel::Verdict::Go => {}
+        springtale_sentinel::Verdict::Throttle(duration) => {
+            tracing::info!(
+                connector = connector_name,
+                delay_ms = duration.as_millis() as u64,
+                "sentinel: throttling action"
+            );
+            tokio::time::sleep(duration).await;
+        }
+        springtale_sentinel::Verdict::Pause(reason) => {
+            return Err(format!("sentinel paused: {reason}"));
+        }
+        springtale_sentinel::Verdict::Quarantine(reason) => {
+            return Err(format!("sentinel quarantined: {reason}"));
+        }
+    }
+
+    let result = match action {
         Action::RunConnector {
             connector,
             action: action_name,
@@ -140,7 +170,7 @@ async fn dispatch_inner(
 
             let mut results = Vec::new();
             for (i, step) in steps.iter().enumerate() {
-                match dispatch_with_depth(step, registry, new_depth).await {
+                match dispatch_with_depth(step, registry, sentinel, new_depth).await {
                     Ok(msg) => results.push(msg),
                     Err(e) => {
                         tracing::warn!(step = i, error = %e, "chain step failed");
@@ -163,5 +193,13 @@ async fn dispatch_inner(
             );
             Ok("ai: noop".to_owned())
         }
+    };
+
+    // Report outcome to sentinel (circuit breaker + audit trail)
+    match &result {
+        Ok(_) => sentinel.report_success(connector_name),
+        Err(_) => sentinel.report_failure(connector_name),
     }
+
+    result
 }

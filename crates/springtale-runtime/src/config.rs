@@ -53,6 +53,17 @@ pub struct StoreConfig {
     /// Use in-memory backend (lost on exit).
     #[serde(default)]
     pub ephemeral: bool,
+
+    /// Hex-encoded 32-byte encryption key for SQLite encryption at rest.
+    /// When set, the database is encrypted with ChaCha20-Poly1305 via
+    /// SQLite3MultipleCiphers. Derived from vault passphrase.
+    #[serde(default)]
+    pub encryption_key_hex: Option<String>,
+
+    /// Days to retain events and audit logs. None = keep forever.
+    /// When set, a background task purges expired data hourly.
+    #[serde(default)]
+    pub retention_days: Option<u32>,
 }
 
 impl Default for StoreConfig {
@@ -60,6 +71,8 @@ impl Default for StoreConfig {
         Self {
             path: default_store_path(),
             ephemeral: false,
+            encryption_key_hex: None,
+            retention_days: None,
         }
     }
 }

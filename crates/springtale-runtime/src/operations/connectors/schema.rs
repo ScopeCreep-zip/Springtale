@@ -62,13 +62,15 @@ pub struct ActionSchemaInfo {
 /// Returns both loaded and unloaded connectors. Unloaded ones need
 /// config before they can be instantiated. The UI uses this to show
 /// "add new connector" options.
-pub async fn list_available_connectors(
-    state: &RuntimeState,
-) -> Vec<AvailableConnectorInfo> {
+pub async fn list_available_connectors(state: &RuntimeState) -> Vec<AvailableConnectorInfo> {
     use springtale_connector::factory::FactoryEntry;
 
     let registry = state.registry.read().await;
-    let loaded_names: Vec<String> = registry.list().into_iter().map(|(n, _)| n.to_owned()).collect();
+    let loaded_names: Vec<String> = registry
+        .list()
+        .into_iter()
+        .map(|(n, _)| n.to_owned())
+        .collect();
 
     inventory::iter::<FactoryEntry>
         .into_iter()
@@ -80,17 +82,25 @@ pub async fn list_available_connectors(
                 requires_config: factory.requires_config(),
                 loaded: loaded_names.iter().any(|n| n == factory.name()),
                 config_schema: factory.config_schema(),
-                triggers: factory.trigger_declarations().into_iter().map(|t| TriggerSchemaInfo {
-                    name: t.name,
-                    description: t.description,
-                    schema: t.schema,
-                }).collect(),
-                actions: factory.action_declarations().into_iter().map(|a| ActionSchemaInfo {
-                    name: a.name,
-                    description: a.description,
-                    input_schema: a.input_schema,
-                    output_schema: a.output_schema,
-                }).collect(),
+                triggers: factory
+                    .trigger_declarations()
+                    .into_iter()
+                    .map(|t| TriggerSchemaInfo {
+                        name: t.name,
+                        description: t.description,
+                        schema: t.schema,
+                    })
+                    .collect(),
+                actions: factory
+                    .action_declarations()
+                    .into_iter()
+                    .map(|a| ActionSchemaInfo {
+                        name: a.name,
+                        description: a.description,
+                        input_schema: a.input_schema,
+                        output_schema: a.output_schema,
+                    })
+                    .collect(),
             }
         })
         .collect()

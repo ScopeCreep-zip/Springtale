@@ -20,7 +20,9 @@ pub async fn setup_connector(
         .into_iter()
         .find(|e| e.factory.name() == name || e.factory.config_key() == name)
         .map(|e| e.factory)
-        .ok_or_else(|| OperationError::Validation(format!("no factory found for connector '{name}'")))?;
+        .ok_or_else(|| {
+            OperationError::Validation(format!("no factory found for connector '{name}'"))
+        })?;
 
     // Create the connector instance
     let connector = factory
@@ -48,4 +50,3 @@ pub async fn setup_connector(
     tracing::info!(connector = %registered_name, "connector configured and loaded");
     Ok(registered_name)
 }
-

@@ -84,13 +84,21 @@ pub async fn dissolve_formation(state: &RuntimeState, id: &str) -> Result<(), Op
 }
 
 /// Update a formation's intent.
-pub async fn update_intent(state: &RuntimeState, id: &str, intent: &str) -> Result<(), OperationError> {
+pub async fn update_intent(
+    state: &RuntimeState,
+    id: &str,
+    intent: &str,
+) -> Result<(), OperationError> {
     state.store.update_formation_intent(id, intent).await?;
     Ok(())
 }
 
 /// Add a member (connector) to a formation.
-pub async fn add_member(state: &RuntimeState, formation_id: &str, connector_name: &str) -> Result<(), OperationError> {
+pub async fn add_member(
+    state: &RuntimeState,
+    formation_id: &str,
+    connector_name: &str,
+) -> Result<(), OperationError> {
     let member = springtale_store::FormationMemberRow {
         id: uuid::Uuid::new_v4().to_string(),
         formation_id: formation_id.to_owned(),
@@ -136,6 +144,7 @@ pub async fn list_formations(state: &RuntimeState) -> Result<Vec<FormationInfo>,
 
 /// Single agent slot in a team deploy request.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TeamAgentSlot {
     pub connector_name: String,
     pub trigger_name: String,
@@ -145,6 +154,7 @@ pub struct TeamAgentSlot {
 
 /// Request to deploy a complete team — creates rules + formation atomically.
 #[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct TeamDeployRequest {
     pub name: String,
     pub intent: String,
@@ -172,7 +182,9 @@ pub async fn deploy_team(
         return Err(OperationError::Validation("team name is required".into()));
     }
     if team.agents.is_empty() {
-        return Err(OperationError::Validation("team must have at least one agent".into()));
+        return Err(OperationError::Validation(
+            "team must have at least one agent".into(),
+        ));
     }
 
     // 1. Create rules (with rollback on failure)
@@ -242,7 +254,12 @@ pub async fn deploy_team(
     deploy_formation(state, &formation_id).await?;
 
     // 4. Mark onboarding complete
-    super::config::set_config(&*state.store, "onboarding:completed", serde_json::Value::Bool(true)).await?;
+    super::config::set_config(
+        &*state.store,
+        "onboarding:completed",
+        serde_json::Value::Bool(true),
+    )
+    .await?;
 
     Ok(TeamDeployResult {
         formation_id,
@@ -322,7 +339,12 @@ pub async fn cycle_autonomy(
     let key = format!("formation:{formation_id}");
     let current = super::agent::get_autonomy(&*state.store, &key).await?;
 
-    let levels = ["observe", "suggest", "act-with-approval", "act-autonomously"];
+    let levels = [
+        "observe",
+        "suggest",
+        "act-with-approval",
+        "act-autonomously",
+    ];
     let idx = levels.iter().position(|l| *l == current).unwrap_or(0);
     let next = levels[(idx + 1) % levels.len()];
 

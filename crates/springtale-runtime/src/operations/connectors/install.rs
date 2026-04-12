@@ -16,6 +16,10 @@ pub async fn install_connector(
     springtale_connector::manifest::verify::verify_manifest(&manifest)
         .map_err(|e| OperationError::Validation(format!("manifest invalid: {e}")))?;
 
+    // Check for toxic capability pairs (e.g., KeychainRead + NetworkOutbound)
+    springtale_sentinel::Sentinel::check_toxic_pairs(&manifest.capabilities)
+        .map_err(|e| OperationError::Validation(format!("toxic capability pair: {e}")))?;
+
     // Verify Ed25519 signature if present using trusted author registry
     verify_manifest_sig_if_present(&manifest, &*state.store).await?;
 
@@ -52,6 +56,10 @@ pub async fn install_wasm_connector(
     // Validate manifest structure
     springtale_connector::manifest::verify::verify_manifest(&manifest)
         .map_err(|e| OperationError::Validation(format!("manifest invalid: {e}")))?;
+
+    // Check for toxic capability pairs (e.g., FilesystemRead + NetworkOutbound)
+    springtale_sentinel::Sentinel::check_toxic_pairs(&manifest.capabilities)
+        .map_err(|e| OperationError::Validation(format!("toxic capability pair: {e}")))?;
 
     // Verify signature if present
     verify_manifest_sig_if_present(&manifest, &*state.store).await?;
@@ -129,10 +137,13 @@ pub(super) async fn verify_manifest_sig_if_present(
             let pubkey_hex = key_data
                 .get("pubkey")
                 .and_then(|v| v.as_str())
-                .ok_or_else(|| OperationError::Validation("author key entry missing 'pubkey' field".into()))?;
+                .ok_or_else(|| {
+                    OperationError::Validation("author key entry missing 'pubkey' field".into())
+                })?;
 
-            let pubkey_bytes = hex::decode(pubkey_hex)
-                .map_err(|e| OperationError::Validation(format!("invalid author pubkey hex: {e}")))?;
+            let pubkey_bytes = hex::decode(pubkey_hex).map_err(|e| {
+                OperationError::Validation(format!("invalid author pubkey hex: {e}"))
+            })?;
 
             let pubkey_arr: [u8; 32] = pubkey_bytes
                 .try_into()
@@ -145,7 +156,9 @@ pub(super) async fn verify_manifest_sig_if_present(
                 manifest,
                 &verifying_key,
             )
-            .map_err(|e| OperationError::Validation(format!("signature verification failed: {e}")))?;
+            .map_err(|e| {
+                OperationError::Validation(format!("signature verification failed: {e}"))
+            })?;
 
             tracing::info!(
                 connector = %manifest.name,

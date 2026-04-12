@@ -70,17 +70,22 @@ pub async fn step_autonomy(
     direction: AutonomyDirection,
 ) -> Result<String, OperationError> {
     let current = get_autonomy(store, agent_name).await?;
-    let idx = VALID_LEVELS
-        .iter()
-        .position(|l| *l == current)
-        .unwrap_or(1); // default to "suggest" index
+    let idx = VALID_LEVELS.iter().position(|l| *l == current).unwrap_or(1); // default to "suggest" index
 
     let new_idx = match direction {
         AutonomyDirection::Up => {
-            if idx < VALID_LEVELS.len() - 1 { idx + 1 } else { idx }
+            if idx < VALID_LEVELS.len() - 1 {
+                idx + 1
+            } else {
+                idx
+            }
         }
         AutonomyDirection::Down => {
-            if idx > 0 { idx - 1 } else { idx }
+            if idx > 0 {
+                idx - 1
+            } else {
+                idx
+            }
         }
     };
 
@@ -121,6 +126,8 @@ pub struct AgentState {
     pub activity: String,
     /// Autonomy level index (0=observe, 1=suggest, 2=approve, 3=autonomous).
     pub autonomy: u8,
+    /// Pre-formatted task description for display.
+    pub task_display: String,
 }
 
 /// Infer an agent's role from its trigger type.
@@ -158,7 +165,7 @@ fn compute_activity(
     let latest = events.iter().find(|e| {
         connector_name
             .as_ref()
-            .map_or(false, |cn| e.connector_name == *cn)
+            .is_some_and(|cn| e.connector_name == *cn)
             || e.trigger_type == trigger_type
     });
 
@@ -200,9 +207,7 @@ fn autonomy_to_index(level: &str) -> u8 {
 /// Joins rule data (from engine) with recent events (from store)
 /// and autonomy levels (from alias table) into a single response
 /// the frontend can render without computing any business logic.
-pub async fn list_agent_states(
-    state: &RuntimeState,
-) -> Result<Vec<AgentState>, OperationError> {
+pub async fn list_agent_states(state: &RuntimeState) -> Result<Vec<AgentState>, OperationError> {
     // Gather rules from engine
     let rules = super::rules::list_rules(state).await;
 
@@ -233,6 +238,13 @@ pub async fn list_agent_states(
                 .map(|(_, v)| v.as_str())
                 .unwrap_or("suggest");
 
+            let activity = compute_activity(&r.connector_name, &r.trigger_type, &r.status, &events);
+            let task_display = if activity == "idle" {
+                "Idle".to_owned()
+            } else {
+                format!("{} → {}", r.trigger_type, activity)
+            };
+
             AgentState {
                 rule_id: r.id.clone(),
                 name: r.name.clone(),
@@ -241,14 +253,9 @@ pub async fn list_agent_states(
                 connector_name: r.connector_name.clone(),
                 role: infer_role(&r.trigger_type).to_owned(),
                 fuel: if r.status == "enabled" { 100 } else { 0 },
-                activity: compute_activity(
-                    &r.connector_name,
-                    &r.trigger_type,
-                    &r.status,
-                    &events,
-                )
-                .to_owned(),
+                activity: activity.to_owned(),
                 autonomy: autonomy_to_index(autonomy_str),
+                task_display,
             }
         })
         .collect();

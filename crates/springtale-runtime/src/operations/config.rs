@@ -15,14 +15,8 @@ use crate::error::OperationError;
 use crate::state::RuntimeState;
 
 /// Get a config value by key.
-pub async fn get_config(
-    store: &dyn StorageBackend,
-    key: &str,
-) -> Result<Value, OperationError> {
-    let raw = store
-        .get_config(key)
-        .await
-        .map_err(OperationError::Store)?;
+pub async fn get_config(store: &dyn StorageBackend, key: &str) -> Result<Value, OperationError> {
+    let raw = store.get_config(key).await.map_err(OperationError::Store)?;
 
     match raw {
         Some(json_str) => serde_json::from_str(&json_str)
@@ -53,10 +47,7 @@ pub async fn set_config(
 pub async fn list_config(
     store: &dyn StorageBackend,
 ) -> Result<Vec<(String, Value)>, OperationError> {
-    let raw = store
-        .list_config()
-        .await
-        .map_err(OperationError::Store)?;
+    let raw = store.list_config().await.map_err(OperationError::Store)?;
 
     let mut entries = Vec::new();
     for (key, json_str) in raw {
@@ -70,10 +61,7 @@ pub async fn list_config(
 ///
 /// Config JSON must have a "type" field: "noop", "ollama", "openai", "anthropic".
 /// On success, the new adapter is atomically swapped into RuntimeState.
-pub async fn set_ai_adapter(
-    state: &RuntimeState,
-    config: Value,
-) -> Result<(), OperationError> {
+pub async fn set_ai_adapter(state: &RuntimeState, config: Value) -> Result<(), OperationError> {
     let adapter_type = config
         .get("type")
         .and_then(|v| v.as_str())
@@ -88,25 +76,29 @@ pub async fn set_ai_adapter(
         "ollama" => {
             let cfg: springtale_ai::OllamaConfig = serde_json::from_value(config)
                 .map_err(|e| OperationError::Validation(format!("invalid ollama config: {e}")))?;
-            springtale_ai::create_adapter(Some(&cfg), None, None)
-                .map_err(|e| OperationError::Validation(format!("failed to create ollama adapter: {e}")))?
+            springtale_ai::create_adapter(Some(&cfg), None, None).map_err(|e| {
+                OperationError::Validation(format!("failed to create ollama adapter: {e}"))
+            })?
         }
         "openai" => {
             let cfg: springtale_ai::OpenAiConfig = serde_json::from_value(config)
                 .map_err(|e| OperationError::Validation(format!("invalid openai config: {e}")))?;
-            springtale_ai::create_adapter(None, Some(&cfg), None)
-                .map_err(|e| OperationError::Validation(format!("failed to create openai adapter: {e}")))?
+            springtale_ai::create_adapter(None, Some(&cfg), None).map_err(|e| {
+                OperationError::Validation(format!("failed to create openai adapter: {e}"))
+            })?
         }
         "anthropic" => {
-            let cfg: springtale_ai::AnthropicConfig = serde_json::from_value(config)
-                .map_err(|e| OperationError::Validation(format!("invalid anthropic config: {e}")))?;
-            springtale_ai::create_adapter(None, None, Some(&cfg))
-                .map_err(|e| OperationError::Validation(format!("failed to create anthropic adapter: {e}")))?
+            let cfg: springtale_ai::AnthropicConfig =
+                serde_json::from_value(config).map_err(|e| {
+                    OperationError::Validation(format!("invalid anthropic config: {e}"))
+                })?;
+            springtale_ai::create_adapter(None, None, Some(&cfg)).map_err(|e| {
+                OperationError::Validation(format!("failed to create anthropic adapter: {e}"))
+            })?
         }
-        "noop" | _ => {
-            springtale_ai::create_adapter(None, None, None)
-                .map_err(|e| OperationError::Validation(format!("failed to create noop adapter: {e}")))?
-        }
+        _ => springtale_ai::create_adapter(None, None, None).map_err(|e| {
+            OperationError::Validation(format!("failed to create noop adapter: {e}"))
+        })?,
     };
 
     // Hot-swap: atomic, lock-free
@@ -133,17 +125,51 @@ pub async fn set_connector_config(
 
 /// Configure AI adapter — persists config under a target key and hot-swaps.
 ///
-/// Replaces the frontend two-call pattern (setConfig + setAiAdapter).
-/// Backend applies adapter-type-specific defaults (base URLs, model names).
+/// Supports multi-level AI config (RTS-style stance inheritance):
+/// - `"ai:global"` — canvas-level default for all agents
+/// - `"ai:formation:{id}"` — formation-level override
+/// - `"ai:{agentId}"` — individual agent override
+///
+/// Only hot-swaps the global adapter when target is `"ai:global"`.
+/// Per-agent/formation configs are resolved at dispatch time via `resolve_ai_config`.
 pub async fn configure_ai_adapter(
     state: &RuntimeState,
     target: &str,
     config: Value,
 ) -> Result<(), OperationError> {
-    // Persist under the target key (e.g., "ai:global", "ai:{agentId}")
     set_config(&*state.store, target, config.clone()).await?;
-    // Hot-swap the global adapter
-    set_ai_adapter(state, config).await
+    // Only hot-swap global adapter if target is canvas-level
+    if target == "ai:global" {
+        set_ai_adapter(state, config).await?;
+    }
+    Ok(())
+}
+
+/// Resolve AI config: agent → formation → canvas, first non-null wins.
+///
+/// RTS pattern: individual stance overrides group stance overrides global.
+/// Each level stores config in the config store; `None`/null means "inherit."
+pub async fn resolve_ai_config(
+    store: &dyn springtale_store::StorageBackend,
+    agent_id: &str,
+    formation_id: Option<&str>,
+) -> Result<Value, OperationError> {
+    // Agent level
+    let agent_config = get_config(store, &format!("ai:{agent_id}")).await?;
+    if !agent_config.is_null() {
+        return Ok(agent_config);
+    }
+
+    // Formation level
+    if let Some(fid) = formation_id {
+        let formation_config = get_config(store, &format!("ai:formation:{fid}")).await?;
+        if !formation_config.is_null() {
+            return Ok(formation_config);
+        }
+    }
+
+    // Canvas (global) level
+    get_config(store, "ai:global").await
 }
 
 /// Upsert connector config — setup if new, update config if already loaded.
@@ -184,12 +210,7 @@ pub async fn toggle_formation_guard(
     if is_enabled {
         set_config(&*state.store, &key, Value::Null).await?;
     } else {
-        set_config(
-            &*state.store,
-            &key,
-            serde_json::json!({ "enabled": true }),
-        )
-        .await?;
+        set_config(&*state.store, &key, serde_json::json!({ "enabled": true })).await?;
     }
     Ok(!is_enabled) // returns new state
 }
