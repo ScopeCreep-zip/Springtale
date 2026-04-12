@@ -85,12 +85,18 @@ garde            = { version = "0.22", features = ["derive", "full"] }
 # ── Security / Secrets ─────────────────────────────────────────────────────────
 secrecy          = { version = "0.10", features = ["serde"] }
 zeroize          = { version = "1",    features = ["derive"] }
+memsec           = { version = "0.7",  features = ["use_os"] }
+libc             = "0.2"
 
 # ── Cryptography ───────────────────────────────────────────────────────────────
 ed25519-dalek    = { version = "2",    features = ["rand_core", "serde"] }
 chacha20poly1305 = { version = "0.10", features = ["rand_core", "getrandom"] }
 argon2           = "0.5"
-rand             = { version = "0.8",  features = ["getrandom", "std_rng"] }
+# SECURITY: default-features=false prevents `log` feature from being pulled in.
+# RUSTSEC-2026-0097 unsoundness requires `log` feature — without it, the UB
+# code path is absent from the binary. Cannot upgrade to 0.9 until RustCrypto
+# ships stable releases with rand_core 0.9 (ed25519-dalek 3.x, chacha20poly1305 0.11.x).
+rand             = { version = "0.8",  default-features = false, features = ["std", "std_rng", "getrandom"] }
 sha2             = "0.10"
 hmac             = "0.12"
 subtle           = "2"
@@ -220,3 +226,18 @@ tokio-tungstenite    = { version = "0.26", default-features = false, features = 
 # No TLS dependency — connects to pre-installed Chrome via DevTools Protocol.
 # Domain allow-list enforced per connector capability model.
 chromiumoxide        = { version = "0.9", default-features = false }
+
+# ── SQLite Encryption at Rest ─────────────────────────────────────────────────
+# Patch libsqlite3-sys to use SQLite3MultipleCiphers (sqlite3mc) amalgamation.
+# Provides full-database ChaCha20-Poly1305 encryption with no OpenSSL dependency.
+# Same approach as Signal (SQLCipher) but with pure-C crypto (no external libs).
+# https://github.com/utelle/SQLite3MultipleCiphers
+# ── Release Profile ────────────────────────────────────────────────────────────
+# overflow-checks: prevent silent integer wrapping in release builds.
+# Critical for fuel metering, size limits, and event query bounds —
+# silent overflow is exploitable in resource accounting.
+[profile.release]
+overflow-checks = true
+
+[patch.crates-io]
+libsqlite3-sys = { path = "crates/libsqlite3-sys-mc" }

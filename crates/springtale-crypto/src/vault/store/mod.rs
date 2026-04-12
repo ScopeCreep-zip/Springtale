@@ -1,13 +1,13 @@
+mod access;
+mod create;
+mod open;
+mod save;
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use chacha20poly1305::{
-    XChaCha20Poly1305, XNonce,
-    aead::{Aead, AeadCore, KeyInit},
-};
-use secrecy::{ExposeSecret, SecretBox};
+use secrecy::SecretBox;
 
-use super::kdf;
 use crate::error::CryptoError;
 
 /// Encrypted key-value store for secrets at rest.
@@ -39,224 +39,6 @@ pub struct Vault {
 }
 
 impl Vault {
-    /// Create a new vault at the given path.
-    ///
-    /// Does not write to disk until `save()` is called.
-    pub fn create(path: impl Into<PathBuf>, passphrase: &[u8]) -> Result<Self, CryptoError> {
-        let path = path.into();
-        let salt = kdf::generate_salt();
-        let key = kdf::derive_key(passphrase, &salt)?;
-
-        Ok(Self {
-            path,
-            entries: Some(HashMap::new()),
-            encryption_key: Some(key),
-            salt,
-            session: super::duress::VaultSession::Real,
-            inactive_region_bytes: None,
-            active_region_index: 0,
-        })
-    }
-
-    /// Create an ephemeral vault (memory-only, no file I/O).
-    ///
-    /// All state is lost on exit. `save()` is a no-op.
-    /// Used with `--ephemeral` flag for travel mode / device seizure protection.
-    pub fn create_ephemeral(passphrase: &[u8]) -> Result<Self, CryptoError> {
-        let salt = kdf::generate_salt();
-        let key = kdf::derive_key(passphrase, &salt)?;
-
-        Ok(Self {
-            path: PathBuf::new(), // empty path signals ephemeral
-            entries: Some(HashMap::new()),
-            encryption_key: Some(key),
-            salt,
-            session: super::duress::VaultSession::Real,
-            inactive_region_bytes: None,
-            active_region_index: 0,
-        })
-    }
-
-    /// Returns true if this vault is ephemeral (no file backing).
-    pub fn is_ephemeral(&self) -> bool {
-        self.path.as_os_str().is_empty()
-    }
-
-    /// Open an existing vault file and decrypt it.
-    ///
-    /// Automatically detects dual-region (duress) vaults by file size.
-    /// For dual vaults, tries the passphrase against both regions.
-    /// Returns `is_duress_session() == true` if the duress region was unlocked.
-    pub fn open(path: impl Into<PathBuf>, passphrase: &[u8]) -> Result<Self, CryptoError> {
-        let path = path.into();
-
-        // Open the file FIRST, then check permissions on the file descriptor.
-        // This eliminates the TOCTOU race between permission check and read.
-        let mut file = std::fs::File::open(&path)?;
-
-        #[cfg(unix)]
-        check_fd_permissions(&file)?;
-
-        let mut data = Vec::new();
-        std::io::Read::read_to_end(&mut file, &mut data)?;
-
-        // Detect dual-region (duress) vault by constant file size
-        if super::duress::is_dual_vault(data.len()) {
-            let region_total = super::duress::REGION_HEADER_SIZE + super::duress::REGION_SIZE;
-            let (entries, salt, key, session) =
-                super::duress::open_dual_vault(&data, passphrase)?;
-
-            // Determine which region was active and preserve the other's raw bytes
-            let (active_index, inactive_bytes) = match session {
-                super::duress::VaultSession::Real => {
-                    // Region 0 decrypted → preserve region 1
-                    (0u8, data[region_total..].to_vec())
-                }
-                super::duress::VaultSession::Duress => {
-                    // Region 1 decrypted → preserve region 0
-                    (1u8, data[..region_total].to_vec())
-                }
-            };
-
-            return Ok(Self {
-                path,
-                entries: Some(entries),
-                encryption_key: Some(key),
-                salt,
-                session,
-                inactive_region_bytes: Some(inactive_bytes),
-                active_region_index: active_index,
-            });
-        }
-
-        // Legacy single-region format
-        if data.len() < 16 + 24 + 16 {
-            return Err(CryptoError::VaultDecryptionFailed);
-        }
-
-        let salt: [u8; 16] = data[..16]
-            .try_into()
-            .map_err(|_| CryptoError::VaultDecryptionFailed)?;
-        let nonce_bytes: [u8; 24] = data[16..40]
-            .try_into()
-            .map_err(|_| CryptoError::VaultDecryptionFailed)?;
-        let ciphertext = &data[40..];
-
-        let key = kdf::derive_key(passphrase, &salt)?;
-        let nonce = XNonce::from_slice(&nonce_bytes);
-
-        // SECURITY: expose needed for AEAD decryption
-        let cipher = XChaCha20Poly1305::new_from_slice(key.expose_secret())
-            .map_err(|_| CryptoError::VaultDecryptionFailed)?;
-
-        let plaintext = cipher
-            .decrypt(nonce, ciphertext)
-            .map_err(|_| CryptoError::VaultDecryptionFailed)?;
-
-        let entries: HashMap<String, Vec<u8>> = serde_json::from_slice(&plaintext)
-            .map_err(|e| CryptoError::Serialization(e.to_string()))?;
-
-        Ok(Self {
-            path,
-            entries: Some(entries),
-            encryption_key: Some(key),
-            salt,
-            session: super::duress::VaultSession::Real,
-            inactive_region_bytes: None,
-            active_region_index: 0,
-        })
-    }
-
-    /// Save the vault to disk (encrypted).
-    ///
-    /// No-op for ephemeral vaults — data stays in memory only.
-    ///
-    /// For dual (duress) vaults: re-encrypts ONLY the active region.
-    /// The inactive region's raw ciphertext is preserved unchanged
-    /// (asymmetric save — VeraCrypt model).
-    pub fn save(&self) -> Result<(), CryptoError> {
-        if self.is_ephemeral() {
-            return Ok(());
-        }
-        let entries = self.entries.as_ref().ok_or(CryptoError::VaultLocked)?;
-        let key_box = self
-            .encryption_key
-            .as_ref()
-            .ok_or(CryptoError::VaultLocked)?;
-
-        // SECURITY: expose needed for AEAD encryption
-        let key = key_box.expose_secret();
-
-        let file_data = if let Some(ref inactive_bytes) = self.inactive_region_bytes {
-            // Dual vault: re-encrypt active region, preserve inactive region
-            let active_region = super::duress::encrypt_region_with_key(key, &self.salt, entries)?;
-
-            let mut data = Vec::with_capacity(super::duress::DUAL_VAULT_FILE_SIZE);
-            if self.active_region_index == 0 {
-                data.extend_from_slice(&active_region);
-                data.extend_from_slice(inactive_bytes);
-            } else {
-                data.extend_from_slice(inactive_bytes);
-                data.extend_from_slice(&active_region);
-            }
-            data
-        } else {
-            // Legacy single-region format
-            let plaintext = serde_json::to_vec(entries)
-                .map_err(|e| CryptoError::Serialization(e.to_string()))?;
-
-            let nonce = XChaCha20Poly1305::generate_nonce(&mut rand::rngs::OsRng);
-            let cipher = XChaCha20Poly1305::new_from_slice(key)
-                .map_err(|_| CryptoError::KeyGeneration("invalid key length".into()))?;
-
-            let ciphertext = cipher
-                .encrypt(&nonce, plaintext.as_slice())
-                .map_err(|_| CryptoError::KeyGeneration("encryption failed".into()))?;
-
-            let mut data = Vec::with_capacity(16 + 24 + ciphertext.len());
-            data.extend_from_slice(&self.salt);
-            data.extend_from_slice(nonce.as_slice());
-            data.extend_from_slice(&ciphertext);
-            data
-        };
-
-        // Write atomically: write to temp file then rename
-        let tmp_path = self.path.with_extension("bin.tmp");
-        std::fs::write(&tmp_path, &file_data)?;
-
-        #[cfg(unix)]
-        set_permissions(&tmp_path)?;
-
-        std::fs::rename(&tmp_path, &self.path)?;
-
-        Ok(())
-    }
-
-    /// Store a value in the vault.
-    pub fn set(&mut self, key: impl Into<String>, value: Vec<u8>) -> Result<(), CryptoError> {
-        let entries = self.entries.as_mut().ok_or(CryptoError::VaultLocked)?;
-        entries.insert(key.into(), value);
-        Ok(())
-    }
-
-    /// Retrieve a value from the vault.
-    pub fn get(&self, key: &str) -> Result<Option<&Vec<u8>>, CryptoError> {
-        let entries = self.entries.as_ref().ok_or(CryptoError::VaultLocked)?;
-        Ok(entries.get(key))
-    }
-
-    /// Remove a value from the vault.
-    pub fn remove(&mut self, key: &str) -> Result<Option<Vec<u8>>, CryptoError> {
-        let entries = self.entries.as_mut().ok_or(CryptoError::VaultLocked)?;
-        Ok(entries.remove(key))
-    }
-
-    /// List all keys in the vault.
-    pub fn keys(&self) -> Result<Vec<&String>, CryptoError> {
-        let entries = self.entries.as_ref().ok_or(CryptoError::VaultLocked)?;
-        Ok(entries.keys().collect())
-    }
-
     /// Lock the vault — zeroize the encryption key and clear entries.
     pub fn lock(&mut self) {
         self.entries = None;
@@ -267,6 +49,16 @@ impl Vault {
     /// Check if the vault is currently unlocked.
     pub fn is_unlocked(&self) -> bool {
         self.entries.is_some()
+    }
+
+    /// Returns true if this vault is ephemeral (no file backing).
+    pub fn is_ephemeral(&self) -> bool {
+        self.path.as_os_str().is_empty()
+    }
+
+    /// Get the vault file path.
+    pub fn path(&self) -> &Path {
+        &self.path
     }
 
     /// Check if this session was unlocked with a duress passphrase.
@@ -299,42 +91,10 @@ impl Vault {
 
         Ok(())
     }
-
-    /// Get the vault file path.
-    pub fn path(&self) -> &Path {
-        &self.path
-    }
-}
-
-/// Set file permissions to 0o600 (owner read/write only).
-#[cfg(unix)]
-fn set_permissions(path: &Path) -> Result<(), CryptoError> {
-    use std::os::unix::fs::PermissionsExt;
-    let perms = std::fs::Permissions::from_mode(0o600);
-    std::fs::set_permissions(path, perms)?;
-    Ok(())
-}
-
-/// Check that an open vault file has secure permissions (0o600).
-///
-/// Uses fstat on the file descriptor to avoid TOCTOU race conditions —
-/// the permission check operates on the same file handle we'll read from.
-#[cfg(unix)]
-fn check_fd_permissions(file: &std::fs::File) -> Result<(), CryptoError> {
-    use std::os::unix::fs::MetadataExt;
-    let metadata = file.metadata()?;
-    let mode = metadata.mode() & 0o777;
-    if mode & 0o077 != 0 {
-        tracing::warn!(
-            mode = format!("{mode:04o}"),
-            "vault file has insecure permissions (should be 0600)"
-        );
-        return Err(CryptoError::InsecurePermissions);
-    }
-    Ok(())
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
     use std::fs;
@@ -430,7 +190,7 @@ mod tests {
         // Open the vault and reconstruct the keypair
         let vault2 = Vault::open(&path, b"testpass").unwrap();
         let stored = vault2.get("identity").unwrap().cloned().unwrap();
-        let restored_bytes: [u8; 32] = stored.try_into().ok().expect("stored bytes should be 32");
+        let restored_bytes: [u8; 32] = stored.try_into().expect("stored bytes should be 32");
         let restored = Keypair::from_secret_bytes(restored_bytes).unwrap();
 
         // Same identity

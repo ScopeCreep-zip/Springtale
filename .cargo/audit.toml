@@ -1,0 +1,27 @@
+[advisories]
+ignore = [
+    # rsa 0.9.10 Marvin Attack (CVSS 5.9) — only used for signature VERIFICATION
+    # (public key) in connector-kick, not RSA decryption. Not exploitable.
+    "RUSTSEC-2023-0071",
+
+    # atomic-polyfill 1.0.3 unmaintained — transitive via garde -> phonenumber ->
+    # postcard 1.x -> heapless 0.7. No-op passthrough on x86_64/aarch64.
+    # Waiting for postcard 2.0.
+    "RUSTSEC-2023-0089",
+
+    # number_prefix 0.4.0 unmaintained — transitive via indicatif (CLI only).
+    # No vulnerability, purely cosmetic dep for progress bar formatting.
+    "RUSTSEC-2025-0119",
+
+    # rustls-pemfile 2.2.0 unmaintained — functionality merged into rustls.
+    # Transitive via irc crate and springtale-transport. No vulnerability.
+    "RUSTSEC-2025-0134",
+
+    # rand 0.8.5 unsoundness — requires `log` feature + custom logger calling
+    # thread_rng() during reseed. We pin default-features=false in workspace
+    # Cargo.toml, so the `log` feature is absent from the binary. The UB code
+    # path does not exist. Cannot upgrade to 0.9.3+ until RustCrypto ships
+    # stable releases with rand_core 0.9 (ed25519-dalek 3.x, chacha20poly1305
+    # 0.11.x). Mitigated by feature exclusion, not accepted risk.
+    "RUSTSEC-2026-0097",
+]

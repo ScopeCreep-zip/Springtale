@@ -82,7 +82,10 @@ mod tests {
         let plaintext = b"Hello from the springtale bot memory";
 
         let ciphertext = encrypt_message(plaintext, &nonce, &key).unwrap();
-        assert_ne!(&ciphertext, plaintext, "ciphertext must differ from plaintext");
+        assert_ne!(
+            &ciphertext, plaintext,
+            "ciphertext must differ from plaintext"
+        );
 
         let decrypted = decrypt_message(&ciphertext, &nonce, &key).unwrap();
         assert_eq!(&decrypted, plaintext);
@@ -122,7 +125,10 @@ mod tests {
         }
 
         let result = decrypt_message(&ciphertext, &nonce, &key);
-        assert!(result.is_err(), "tampered ciphertext must fail authentication");
+        assert!(
+            result.is_err(),
+            "tampered ciphertext must fail authentication"
+        );
     }
 
     #[test]

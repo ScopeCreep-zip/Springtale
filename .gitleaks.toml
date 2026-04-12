@@ -1,0 +1,13 @@
+title = "Springtale gitleaks config"
+
+[allowlist]
+description = "Known false positives"
+stopwords = ["abc123", "XChaCha20-Poly1305"]
+paths = ['''docs/guide/.*''']
+
+[[rules]]
+id = "discord-token-format"
+description = "Discord token format example in config docs"
+regex = '''NDcyNTk2MDcwMzU1MzE2NzQ2'''
+[rules.allowlist]
+paths = ['''connectors/connector-discord/src/config\.rs''']

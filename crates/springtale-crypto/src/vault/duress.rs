@@ -34,10 +34,19 @@ pub const REGION_HEADER_SIZE: usize = 16 + 24; // salt + nonce
 pub const DUAL_VAULT_FILE_SIZE: usize = 2 * (REGION_HEADER_SIZE + REGION_SIZE);
 
 /// Result of opening a dual vault region: (entries, salt, derived_key, session).
-pub type DualVaultOpenResult = (HashMap<String, Vec<u8>>, [u8; 16], secrecy::SecretBox<[u8; 32]>, VaultSession);
+pub type DualVaultOpenResult = (
+    HashMap<String, Vec<u8>>,
+    [u8; 16],
+    secrecy::SecretBox<[u8; 32]>,
+    VaultSession,
+);
 
 /// Result of decrypting a single region: (entries, salt, derived_key).
-type RegionDecryptResult = (HashMap<String, Vec<u8>>, [u8; 16], secrecy::SecretBox<[u8; 32]>);
+type RegionDecryptResult = (
+    HashMap<String, Vec<u8>>,
+    [u8; 16],
+    secrecy::SecretBox<[u8; 32]>,
+);
 
 /// Create a dual-region vault file with real and decoy data.
 ///
@@ -298,7 +307,7 @@ mod tests {
 
         assert_eq!(session, VaultSession::Duress);
         assert_eq!(entries.get("note").unwrap(), b"shopping list");
-        assert!(entries.get("secret").is_none()); // Real data NOT visible
+        assert!(!entries.contains_key("secret")); // Real data NOT visible
     }
 
     #[test]

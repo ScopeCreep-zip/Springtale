@@ -39,6 +39,13 @@ pub fn derive_key(passphrase: &[u8], salt: &[u8; 16]) -> Result<SecretBox<[u8; 3
     let secret = SecretBox::new(Box::new(key));
     // Zeroize the stack copy — SecretBox owns the heap copy now
     key.zeroize();
+
+    // Lock key material into RAM — prevents swap to disk.
+    // Non-fatal if OS refuses (macOS may silently fail for unprivileged processes).
+    if !crate::mlock::lock_key(&secret) {
+        tracing::warn!("mlock failed for derived key — key material may be swappable to disk");
+    }
+
     Ok(secret)
 }
 
@@ -51,6 +58,7 @@ pub fn generate_salt() -> [u8; 16] {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 
