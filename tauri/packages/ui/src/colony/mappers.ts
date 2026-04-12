@@ -8,19 +8,19 @@
 import type { ConnectorSchema, AgentState } from "@springtale/types";
 import type { ConnectorStatus, RuleItem, SwarmInfo } from "../dashboard/model";
 import type {
-  ColonyTree, ColonyAgent, ColonyConnection, ColonyFormation, ColonyPipe,
+  ColonyNode, ColonyAgent, ColonyConnection, ColonyFormation, ColonyPipe,
 } from "./types";
 import { seeded, MOMENTUM_COLORS } from "./types";
 
-const TREE_TYPES = ["conifer", "deciduous", "shrub"] as const;
+const NODE_TYPES = ["conifer", "deciduous", "shrub"] as const;
 const MOMENTUM_LABELS = ["COLD", "WARM", "HOT", "FEVER"];
 
-/** Map connectors to trees with deterministic positions. */
-export function mapTrees(connectors: ConnectorStatus[]): ColonyTree[] {
+/** Map connectors to nodes with deterministic positions. */
+export function mapNodes(connectors: ConnectorStatus[]): ColonyNode[] {
   return connectors.map((c) => ({
     id: c.name,
     label: c.name,
-    type: TREE_TYPES[seeded(c.name + "type", 0, 3)] ?? "deciduous",
+    type: NODE_TYPES[seeded(c.name + "type", 0, 3)] ?? "deciduous",
     x: seeded(c.name + "x", 8, 92),
     y: seeded(c.name + "y", 15, 70),
     status: c.enabled ? "active" as const : "idle" as const,

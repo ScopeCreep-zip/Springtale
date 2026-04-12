@@ -80,8 +80,8 @@ export const AppSettingsPanel: Component<AppSettingsPanelProps> = (props) => {
               onChange={(e) => props.onThemeChange?.(e.currentTarget.value)}
               class="colony-text-2xs w-full border-2 border-bark bg-soil-deep px-2 py-1.5 text-text-primary"
             >
-              <option value="colony">Colony (default)</option>
-              <option value="rekindle">Rekindle</option>
+              <option value="springtale">Springtale (default)</option>
+              <option value="colony">Colony</option>
             </select>
           </section>
         </Show>

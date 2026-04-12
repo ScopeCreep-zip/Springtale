@@ -1,12 +1,12 @@
 import { createSignal, For, Show } from "solid-js";
 import type { Component, JSX } from "solid-js";
-import type { ColonyTree, ColonyAgent, ColonyConnection, ColonyFormation, ColonySelection } from "./types";
+import type { ColonyNode, ColonyAgent, ColonyConnection, ColonyFormation, ColonySelection } from "./types";
 import type { EventItem } from "../dashboard/model";
 import type { AvailableConnector, ConnectorSchema } from "@springtale/types";
 import { ColonyCanvas } from "./ColonyCanvas";
 
 export interface ViewportProps {
-  trees: ColonyTree[];
+  nodes: ColonyNode[];
   agents: ColonyAgent[];
   connections: ColonyConnection[];
   formations: ColonyFormation[];
@@ -40,7 +40,7 @@ export const Viewport: Component<ViewportProps> = (props) => {
     <div class="relative h-full w-full">
       {/* Colony Canvas */}
       <ColonyCanvas
-        trees={props.trees}
+        nodes={props.nodes}
         agents={props.agents}
         connections={props.connections}
         formations={props.formations}
@@ -66,13 +66,13 @@ export const Viewport: Component<ViewportProps> = (props) => {
           class={`colony-layer-btn ${!underground() ? "is-active" : ""}`}
           onClick={() => setUnderground(false)}
         >
-          SURFACE
+          NETWORK
         </button>
         <button
           class={`colony-layer-btn ${underground() ? "is-active" : ""}`}
           onClick={() => setUnderground(true)}
         >
-          UNDERGROUND
+          DEPTH
         </button>
       </div>
 

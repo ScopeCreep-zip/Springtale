@@ -1,11 +1,11 @@
 import { For, createSignal, createEffect } from "solid-js";
 import type { Component } from "solid-js";
-import type { ColonyAgent, ColonyTree, ColonyFormation, ColonySelection } from "./types";
+import type { ColonyAgent, ColonyNode, ColonyFormation, ColonySelection } from "./types";
 import type { EventItem } from "../dashboard/model";
 
 export interface TopBarProps {
   agents: ColonyAgent[];
-  trees: ColonyTree[];
+  nodes: ColonyNode[];
   formations: ColonyFormation[];
   events: EventItem[];
   selection: ColonySelection;
@@ -38,7 +38,7 @@ export const TopBar: Component<TopBarProps> = (props) => {
   });
 
   const liveCount = () => props.agents.filter((a) => a.status !== "idle").length;
-  const treeCount = () => props.trees.length;
+  const nodeCount = () => props.nodes.length;
   const guardStatus = () => {
     const hasActive = props.agents.some((a) => a.status === "ok");
     return hasActive ? "OK" : "--";
@@ -103,8 +103,8 @@ export const TopBar: Component<TopBarProps> = (props) => {
         </div>
         <div class="flex items-center gap-0.5">
           <span class="text-canopy">^</span>
-          <span class="colony-value">{treeCount()}</span>
-          <span class="text-text-dim">TREES</span>
+          <span class="colony-value">{nodeCount()}</span>
+          <span class="text-text-dim">NODES</span>
         </div>
         <div class="flex items-center gap-0.5">
           <span class="text-status-ok">+</span>

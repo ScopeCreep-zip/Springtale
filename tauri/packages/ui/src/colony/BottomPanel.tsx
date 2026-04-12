@@ -1,18 +1,18 @@
 import { For, Show, Switch, Match } from "solid-js";
 import type { Component } from "solid-js";
 import type {
-  ColonyTree, ColonyAgent, ColonyConnection, ColonyFormation, ColonySelection, ColonyCommand, DetailView,
+  ColonyNode, ColonyAgent, ColonyConnection, ColonyFormation, ColonySelection, ColonyCommand, DetailView,
 } from "./types";
 import type { EventItem } from "../dashboard/model";
 import { getAgentPosition, getFormationBounds, type ConnectorPositions } from "./geometry";
 import {
   COMMANDS, ROLE_SPRITES, ROLE_COLORS,
   MOMENTUM_NAMES, MOMENTUM_COLORS, MOMENTUM_UNLOCKS, TIER_CAPABILITIES,
-  TREE_SPRITES, seeded,
+  NODE_SPRITES, seeded,
 } from "./types";
 
 export interface BottomPanelProps {
-  trees: ColonyTree[];
+  nodes: ColonyNode[];
   agents: ColonyAgent[];
   connections: ColonyConnection[];
   formations: ColonyFormation[];
@@ -43,10 +43,10 @@ export const BottomPanel: Component<BottomPanelProps> = (props) => {
       {/* Zone 1: Minimap */}
       <div class="border-r-2 border-bark p-1.5">
         <div class="colony-label text-text-dim">
-          COLONY MAP
+          NETWORK MAP
         </div>
         <Minimap
-          trees={props.trees}
+          nodes={props.nodes}
           agents={props.agents}
           connections={props.connections}
           formations={props.formations}
@@ -60,7 +60,7 @@ export const BottomPanel: Component<BottomPanelProps> = (props) => {
         <Switch>
           <Match when={props.detailView.mode === "entity" && props.selection.type}>
             <DetailPanel
-              trees={props.trees}
+              nodes={props.nodes}
               agents={props.agents}
               connections={props.connections}
               formations={props.formations}
@@ -72,7 +72,7 @@ export const BottomPanel: Component<BottomPanelProps> = (props) => {
           </Match>
           <Match when={props.detailView.mode === "connectors"}>
             <ConnectorsListView
-              trees={props.trees}
+              nodes={props.nodes}
               available={props.availableConnectors ?? []}
               onSelect={props.onSelectConnector}
               onSetup={props.onSetupConnector}
@@ -100,7 +100,7 @@ export const BottomPanel: Component<BottomPanelProps> = (props) => {
           </Match>
           <Match when={true}>
             <DetailPanel
-              trees={props.trees}
+              nodes={props.nodes}
               agents={props.agents}
               connections={props.connections}
               formations={props.formations}
@@ -127,7 +127,7 @@ export const BottomPanel: Component<BottomPanelProps> = (props) => {
 // ── Minimap ──────────────────────────────────────────────
 
 const Minimap: Component<{
-  trees: ColonyTree[];
+  nodes: ColonyNode[];
   agents: ColonyAgent[];
   connections: ColonyConnection[];
   formations: ColonyFormation[];
@@ -135,7 +135,7 @@ const Minimap: Component<{
   connectorPositions: ConnectorPositions;
 }> = (props) => {
   const connectorPos = (id: string) => {
-    const tree = props.trees.find((t) => t.id === id);
+    const tree = props.nodes.find((t) => t.id === id);
     if (!tree) return { x: 50, y: 50 };
     return props.connectorPositions[id] ?? { x: tree.x, y: tree.y };
   };
@@ -145,7 +145,7 @@ const Minimap: Component<{
       {/* Formation zones — computed from member positions via shared geometry */}
       <For each={props.formations}>
         {(f) => {
-          const bounds = () => getFormationBounds(f, props.agents, props.trees, props.connectorPositions);
+          const bounds = () => getFormationBounds(f, props.agents, props.nodes, props.connectorPositions);
           return (
             <div
               class="absolute rounded-[40%] opacity-30"
@@ -162,7 +162,7 @@ const Minimap: Component<{
       </For>
 
       {/* Trees — respect drag positions */}
-      <For each={props.trees}>
+      <For each={props.nodes}>
         {(tree) => {
           const pos = () => connectorPos(tree.id);
           return (
@@ -206,7 +206,7 @@ const Minimap: Component<{
       {/* Agents — via shared geometry, respects drag positions */}
       <For each={props.agents}>
         {(agent) => {
-          const pos = () => getAgentPosition(agent, props.trees, props.connectorPositions);
+          const pos = () => getAgentPosition(agent, props.nodes, props.connectorPositions);
           const isSelected = () => props.selection.id === agent.id;
           return (
             <div
@@ -227,7 +227,7 @@ const Minimap: Component<{
 // ── Detail Panel ─────────────────────────────────────────
 
 const DetailPanel: Component<{
-  trees: ColonyTree[];
+  nodes: ColonyNode[];
   agents: ColonyAgent[];
   connections: ColonyConnection[];
   formations: ColonyFormation[];
@@ -238,7 +238,7 @@ const DetailPanel: Component<{
       <div>
         <div class="colony-label mb-1 text-text-dim">COLONY</div>
         <div class="colony-text-xs py-3 text-center text-text-dim">
-          Click a tree, springtail, or formation
+          Click a node, agent, or formation
         </div>
       </div>
     }>
@@ -256,7 +256,7 @@ const DetailPanel: Component<{
 
           return (
             <div>
-              <div class="colony-label mb-1 text-text-dim">SPRINGTAIL</div>
+              <div class="colony-label mb-1 text-text-dim">AGENT</div>
               <div class="flex items-start gap-2">
                 <div class="colony-portrait-frame">
                   <div class={`pixel-sprite ${ROLE_SPRITES[a.role]}`} style={{ transform: "scale(3)" }} />
@@ -322,7 +322,7 @@ const DetailPanel: Component<{
       {/* Tree detail */}
       <Match when={props.selection.type === "connector"}>
         {(() => {
-          const tree = () => props.trees.find((t) => t.id === props.selection.id);
+          const tree = () => props.nodes.find((t) => t.id === props.selection.id);
           if (!tree()) return null;
           const t = tree()!;
           const relatedConns = () => props.connections.filter((c) => c.a === t.id || c.b === t.id);
@@ -336,7 +336,7 @@ const DetailPanel: Component<{
               <div class="colony-text-5xs uppercase tracking-wider" style={{ color: statusColor }}>
                 {t.status.toUpperCase()} {t.type.toUpperCase()}
               </div>
-              <div class="colony-text-2xs mt-1.5 text-text-dim">MYCELIUM</div>
+              <div class="colony-text-2xs mt-1.5 text-text-dim">CONNECTIONS</div>
               <For each={relatedConns()}>
                 {(conn) => (
                   <For each={conn.pipes}>
@@ -353,7 +353,7 @@ const DetailPanel: Component<{
                   </For>
                 )}
               </For>
-              <div class="colony-text-2xs mt-1.5 text-text-dim">NEARBY SPRINGTAILS</div>
+              <div class="colony-text-2xs mt-1.5 text-text-dim">NEARBY AGENTS</div>
               <For each={nearbyAgents()}>
                 {(a) => (
                   <div class="colony-text-2xs flex justify-between border-b border-bark py-0.5">
@@ -517,7 +517,7 @@ const BotsListView: Component<{
 );
 
 const ConnectorsListView: Component<{
-  trees: ColonyTree[];
+  nodes: ColonyNode[];
   available: import("@springtale/types").AvailableConnector[];
   onSelect?: (id: string) => void;
   onSetup?: (name: string) => void;
@@ -527,14 +527,14 @@ const ConnectorsListView: Component<{
   return (
     <div>
       {/* Loaded connectors */}
-      <div class="colony-label mb-1">LOADED ({props.trees.length})</div>
-      <Show when={props.trees.length > 0} fallback={
+      <div class="colony-label mb-1">LOADED ({props.nodes.length})</div>
+      <Show when={props.nodes.length > 0} fallback={
         <p class="colony-text-2xs py-1 text-text-dim">No connectors loaded yet.</p>
       }>
         <div class="colony-card-strip mb-3">
-          <For each={props.trees}>
+          <For each={props.nodes}>
             {(tree) => {
-              const spriteClass = TREE_SPRITES[tree.type] ?? "sprite-tree-deciduous";
+              const spriteClass = NODE_SPRITES[tree.type] ?? "sprite-tree-deciduous";
               const statusClass = () =>
                 tree.status === "active" ? "is-active" : tree.status === "paused" ? "is-warn" : "";
               return (
@@ -565,7 +565,7 @@ const ConnectorsListView: Component<{
           <For each={notLoaded()}>
             {(connector) => {
               const treeType = ["conifer", "deciduous", "shrub"][seeded(connector.name + "type", 0, 3)] ?? "deciduous";
-              const spriteClass = TREE_SPRITES[treeType as keyof typeof TREE_SPRITES] ?? "sprite-tree-deciduous";
+              const spriteClass = NODE_SPRITES[treeType as keyof typeof NODE_SPRITES] ?? "sprite-tree-deciduous";
               return (
                 <button
                   class="colony-card is-available"

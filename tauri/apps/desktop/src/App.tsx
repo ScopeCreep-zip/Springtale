@@ -10,7 +10,7 @@ import {
   ConnectorConfigPanel,
   useDashboard,
   useI18n,
-  mapTrees,
+  mapNodes,
   mapAgents,
   mapFormations,
 } from "@springtale/ui";
@@ -42,13 +42,9 @@ export const App = () => {
   const [vaultError, setVaultError] = createSignal("");
 
   // ── Theme ────────────────────────────────────────────────
-  const [theme, setTheme] = createSignal("colony");
+  const [theme, setTheme] = createSignal("springtale");
   const applyTheme = (t: string) => {
-    if (t === "colony") {
-      delete document.documentElement.dataset.theme;
-    } else {
-      document.documentElement.dataset.theme = t;
-    }
+    document.documentElement.dataset.theme = t;
   };
 
   // ── Colony state ────────────────────────────────────────
@@ -256,7 +252,7 @@ export const App = () => {
   };
 
   // ── Data → Colony visual model (real data, no fakes) ───
-  const trees = () => mapTrees(db.connectors());
+  const nodes = () => mapNodes(db.connectors());
   const agents = () => mapAgents(db.rules(), db.agentStates());
   const [connections, setConnections] = createSignal<import("@springtale/ui").ColonyConnection[]>([]);
   const formations = () => mapFormations(db.swarms());
@@ -614,7 +610,7 @@ export const App = () => {
       topBar={
         <TopBar
           agents={agents()}
-          trees={trees()}
+          nodes={nodes()}
           formations={formations()}
           events={db.events()}
           selection={selection()}
@@ -624,7 +620,7 @@ export const App = () => {
       }
       viewport={
         <Viewport
-          trees={trees()}
+          nodes={nodes()}
           agents={agents()}
           connections={connections()}
           formations={formations()}
@@ -648,7 +644,7 @@ export const App = () => {
       }
       bottomPanel={
         <BottomPanel
-          trees={trees()}
+          nodes={nodes()}
           agents={agents()}
           connections={connections()}
           formations={formations()}

@@ -594,3 +594,144 @@
 .colony-portrait-frame {
   border-width: var(--border-panel);
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   CHIRAL DIORAMA — Rekindle theme visual overrides
+   Unlayered + [data-theme="springtale"] scoped so they beat @layer
+   components specificity only when Rekindle is active.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* ── Default ground texture (colony) ── */
+.colony-ground {
+  background: repeating-conic-gradient(
+    from 0deg, transparent 0 89deg,
+    var(--color-ground-texture) 89deg 90deg
+  ) 0 0 / 20px 20px;
+}
+
+/* ── Rekindle: tabletop grid ── */
+[data-theme="springtale"] .colony-ground {
+  background:
+    linear-gradient(color-mix(in srgb, var(--color-accent) 6%, transparent) 1px, transparent 1px),
+    linear-gradient(90deg, color-mix(in srgb, var(--color-accent) 6%, transparent) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* ── Rekindle: diorama elevation shadows ── */
+[data-theme="springtale"] .colony-tree {
+  box-shadow:
+    3px 3px 0 rgba(0, 0, 0, 0.25),
+    5px 5px 0 rgba(0, 0, 0, 0.1);
+}
+[data-theme="springtale"] .colony-agent {
+  box-shadow:
+    2px 2px 0 rgba(0, 0, 0, 0.2),
+    3px 3px 0 rgba(0, 0, 0, 0.08);
+}
+
+/* ── Rekindle: node hover/select glow ── */
+[data-theme="springtale"] .colony-tree:hover {
+  filter: none;
+  box-shadow:
+    0 0 6px var(--color-accent),
+    0 0 12px color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+[data-theme="springtale"] .colony-tree.is-selected {
+  filter: none;
+  box-shadow:
+    0 0 8px var(--color-accent),
+    0 0 18px color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
+
+/* ── Rekindle: agent hover glow ── */
+[data-theme="springtale"] .colony-agent:hover {
+  filter: none !important;
+  box-shadow: 0 0 6px var(--color-accent);
+  z-index: 10;
+}
+
+/* ── Rekindle: solid glowing strands ── */
+[data-theme="springtale"] .mycelium-path {
+  stroke-dasharray: none;
+  stroke-linecap: round;
+  filter: url(#strand-glow);
+}
+[data-theme="springtale"] .mycelium-path.is-active {
+  animation: strand-pulse 2s ease-in-out infinite;
+}
+@keyframes strand-pulse {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 0.7; }
+}
+
+/* ── Rekindle: formation glow ring ── */
+[data-theme="springtale"] .colony-formation ellipse {
+  filter: drop-shadow(0 0 3px currentColor);
+}
+
+/* ── Rekindle: round litter dots ── */
+[data-theme="springtale"] .colony-litter { border-radius: 50%; }
+
+/* ── Rekindle: translucent bubble ── */
+[data-theme="springtale"] .colony-bubble.is-normal {
+  background: color-mix(in srgb, var(--color-soil-deep) 90%, transparent);
+  border: 1px solid var(--color-bark-light);
+  box-shadow: 0 0 4px color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+
+/* ── Rekindle: round minimap dots ── */
+[data-theme="springtale"] .colony-minimap-tree { border-radius: 50%; }
+
+/* ── Rekindle: cadence bar glow ── */
+[data-theme="springtale"] .colony-cadence-bar { box-shadow: 0 0 3px var(--color-mycelium-active); }
+
+/* ── Rekindle: circular roster slots ── */
+[data-theme="springtale"] .colony-roster-slot { border-radius: 50%; }
+
+/* ── Rekindle: command button glow ── */
+[data-theme="springtale"] .colony-command-btn:hover {
+  box-shadow: 0 0 6px color-mix(in srgb, var(--color-accent) 30%, transparent);
+}
+
+/* ── Rekindle: depth mode scanline overlay ── */
+[data-theme="springtale"] .colony-underground::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(0deg, transparent 50%, color-mix(in srgb, var(--color-accent) 10%, transparent) 50%);
+  background-size: 100% 4px;
+  pointer-events: none;
+  z-index: 100;
+}
+
+/* ── Rekindle: depth mode node glow ── */
+[data-theme="springtale"] .colony-underground .colony-tree {
+  box-shadow:
+    0 0 8px var(--color-accent),
+    3px 3px 0 rgba(0, 0, 0, 0.25);
+}
+
+/* ── Rekindle: agent activity overrides (box-shadow instead of filter) ── */
+[data-theme="springtale"] .colony-agent.is-firing {
+  filter: none;
+  box-shadow: 2px 2px 0 rgba(0,0,0,0.2), 0 0 8px var(--color-status-ok);
+}
+[data-theme="springtale"] .colony-agent.is-error {
+  filter: none;
+  box-shadow: 2px 2px 0 rgba(0,0,0,0.2), 0 0 6px var(--color-status-error);
+}
+[data-theme="springtale"] .colony-agent.is-waiting {
+  animation: agent-glow-idle 3s ease-in-out infinite;
+}
+@keyframes agent-glow-idle {
+  0%, 100% { opacity: 0.6; box-shadow: 2px 2px 0 rgba(0,0,0,0.2), 0 0 2px var(--color-accent); }
+  50% { opacity: 0.85; box-shadow: 2px 2px 0 rgba(0,0,0,0.2), 0 0 6px var(--color-accent); }
+}
+[data-theme="springtale"] .colony-agent.is-active {
+  filter: none;
+  box-shadow: 2px 2px 0 rgba(0,0,0,0.2), 0 0 3px var(--color-status-ok);
+}
+[data-theme="springtale"] .colony-agent.is-selected {
+  filter: none !important;
+  box-shadow: 2px 2px 0 rgba(0,0,0,0.2), 0 0 6px var(--color-status-ok);
+}

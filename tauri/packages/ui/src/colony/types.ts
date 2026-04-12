@@ -2,10 +2,10 @@
  * Colony visual model types.
  *
  * These map from DashboardState (abstract data) to the colony
- * ecosystem visualization (spatial, visual, game-inspired).
+ * network visualization (spatial, visual, game-inspired diorama).
  */
 
-export interface ColonyTree {
+export interface ColonyNode {
   id: string;
   label: string;
   type: "conifer" | "deciduous" | "shrub";
@@ -149,13 +149,13 @@ export const COMMANDS: Record<string, (ColonyCommand | null)[]> = {
   ],
 };
 
-export const TREE_TYPES = ["conifer", "deciduous", "shrub"] as const;
-export const TREE_SPRITES: Record<string, string> = {
+export const NODE_TYPES = ["conifer", "deciduous", "shrub"] as const;
+export const NODE_SPRITES: Record<string, string> = {
   conifer: "sprite-tree-conifer",
   deciduous: "sprite-tree-deciduous",
   shrub: "sprite-tree-shrub",
 };
-export const TREE_SIZES: Record<string, { width: number; height: number }> = {
+export const NODE_SIZES: Record<string, { width: number; height: number }> = {
   conifer: { width: 36, height: 52 },
   deciduous: { width: 36, height: 44 },
   shrub: { width: 28, height: 20 },

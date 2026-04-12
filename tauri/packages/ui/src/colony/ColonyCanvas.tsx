@@ -2,15 +2,15 @@ import { For, Show, createSignal, createEffect } from "solid-js";
 import { createElementSize } from "@solid-primitives/resize-observer";
 import type { Component } from "solid-js";
 import type {
-  ColonyTree, ColonyAgent, ColonyConnection, ColonyFormation, ColonySelection,
+  ColonyNode, ColonyAgent, ColonyConnection, ColonyFormation, ColonySelection,
 } from "./types";
 import type { EventItem } from "../dashboard/model";
-import { TREE_SPRITES, TREE_SIZES, ROLE_SPRITES, MUSHROOM_SPRITES, seeded } from "./types";
+import { NODE_SPRITES, NODE_SIZES, ROLE_SPRITES, MUSHROOM_SPRITES, seeded } from "./types";
 import { getConnectorPosition, getAgentPosition, getFormationAgents, getFormationBounds } from "./geometry";
 import type { AvailableConnector, ConnectorSchema } from "@springtale/types";
 
 export interface ColonyCanvasProps {
-  trees: ColonyTree[];
+  nodes: ColonyNode[];
   agents: ColonyAgent[];
   connections: ColonyConnection[];
   formations: ColonyFormation[];
@@ -48,19 +48,19 @@ function getSimlish(activity: string): { text: string; type: "normal" | "urgent"
 }
 
 /**
- * Colony Canvas — spatial ecosystem rendering.
+ * Colony Canvas — spatial diorama rendering.
  *
- * Trees=connectors, springtails=agents, mycelium=pipelines.
- * Click to select, drag to reposition trees.
+ * Nodes=connectors, agents=porters, strands=pipelines.
+ * Click to select, drag to reposition nodes.
  * Agent simlish bubbles reflect real activity state.
  */
 export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
   // ── Position helpers (delegate to shared geometry module) ──
   const getConnectorPos = (id: string) =>
-    getConnectorPosition(id, props.trees, props.connectorPositions);
+    getConnectorPosition(id, props.nodes, props.connectorPositions);
 
   const agentPos = (agent: ColonyAgent) =>
-    getAgentPosition(agent, props.trees, props.connectorPositions);
+    getAgentPosition(agent, props.nodes, props.connectorPositions);
 
   const getMyceliumPath = (conn: ColonyConnection, width: number, height: number) => {
     const posA = getConnectorPos(conn.a);
@@ -170,7 +170,7 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
           const pctX = ((e.clientX - rect.left) / rect.width) * 100;
           const pctY = ((e.clientY - rect.top) / rect.height) * 100;
           for (const f of props.formations) {
-            const b = getFormationBounds(f, props.agents, props.trees, props.connectorPositions);
+            const b = getFormationBounds(f, props.agents, props.nodes, props.connectorPositions);
             if (pctX >= b.cx - b.rx && pctX <= b.cx + b.rx &&
                 pctY >= b.cy - b.ry && pctY <= b.cy + b.ry) {
               props.onSelectFormation(f.id);
@@ -182,20 +182,17 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
       }}
     >
       {/* Ground texture */}
-      <div
-        class="pointer-events-none absolute inset-0 z-0"
-        style={{
-          background: "repeating-conic-gradient(from 0deg, transparent 0 89deg, var(--color-ground-texture) 89deg 90deg) 0 0 / 20px 20px",
-        }}
-      />
+      <div class="colony-ground pointer-events-none absolute inset-0 z-0" />
 
       {/* OOBE — minimal hint when canvas is empty. The TeamBuilder
           renders as a shell overlay (same layer as settings/vault),
           not inside the canvas. */}
-      <Show when={props.trees.length === 0 && props.agents.length === 0}>
+      <Show when={props.nodes.length === 0 && props.agents.length === 0}>
         <div class="absolute inset-0 z-10 flex flex-col items-center justify-center text-center">
-          <div class="pixel-sprite sprite-tree-shrub" style={{ transform: "scale(6)", position: "relative" }} />
-          <p class="colony-text-md mt-12 font-bold text-text-primary">Your colony awaits</p>
+          <div style={{ width: "42px", height: "30px", position: "relative" }}>
+            <div class="pixel-sprite sprite-tree-shrub" style={{ transform: "scale(6)" }} />
+          </div>
+          <p class="colony-text-md mt-12 font-bold text-text-primary">Your network awaits</p>
           <p class="colony-text-xs mt-2 text-text-secondary">
             Press BUILD BOT/TEAM or click below to begin
           </p>
@@ -209,7 +206,7 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
         </div>
       </Show>
 
-      {/* Leaf litter — decorative ground scatter */}
+      {/* Board texture — decorative ground scatter */}
       <For each={Array.from({ length: 45 }, (_, i) => i)}>
         {(i) => {
           const x = seeded("litter" + i + "x", 3, 97);
@@ -234,13 +231,22 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
         }}
       </For>
 
-      {/* Mycelium layer — SVG pipeline paths */}
+      {/* Strand layer — SVG pipeline paths */}
       <div class="pointer-events-none absolute inset-0 z-[2]">
         <svg
           viewBox={`0 0 ${canvasWidth()} ${canvasHeight()}`}
           class="h-full w-full"
           preserveAspectRatio="none"
         >
+          <defs>
+            <filter id="strand-glow">
+              <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur"/>
+              <feMerge>
+                <feMergeNode in="blur"/>
+                <feMergeNode in="SourceGraphic"/>
+              </feMerge>
+            </filter>
+          </defs>
           <For each={props.connections}>
             {(conn) => {
               const pathData = () => getMyceliumPath(conn, canvasWidth(), canvasHeight());
@@ -280,11 +286,11 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
       {/* Formation zones — SVG ellipse with pointer-events: stroke.
           Per MDN: HTML divs can only do pointer-events auto/none (whole element).
           SVG supports pointer-events: stroke — only the ring border is clickable,
-          clicks on the interior pass through to agents/trees underneath. */}
+          clicks on the interior pass through to agents/nodes underneath. */}
       <For each={props.formations}>
         {(formation) => {
           const bounds = () => getFormationBounds(
-            formation, props.agents, props.trees, props.connectorPositions,
+            formation, props.agents, props.nodes, props.connectorPositions,
           );
           const isSelected = () => props.selection.id === formation.id && props.selection.type === "formation";
           return (
@@ -340,12 +346,12 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
         }}
       </For>
 
-      {/* Trees (connectors) — click to select, drag to reposition */}
-      <For each={props.trees}>
-        {(tree) => {
-          const size = TREE_SIZES[tree.type] ?? { width: 36, height: 44 };
-          const spriteClass = TREE_SPRITES[tree.type] ?? "sprite-tree-deciduous";
-          const pos = () => getConnectorPos(tree.id);
+      {/* Nodes (connectors) — click to select, drag to reposition */}
+      <For each={props.nodes}>
+        {(node) => {
+          const size = NODE_SIZES[node.type] ?? { width: 36, height: 44 };
+          const spriteClass = NODE_SPRITES[node.type] ?? "sprite-tree-deciduous";
+          const pos = () => getConnectorPos(node.id);
 
           let dragStart: { cx: number; cy: number; ox: number; oy: number } | null = null;
           let wasDragged = false;
@@ -368,17 +374,17 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
             const rect = parent.getBoundingClientRect();
             const pctX = ((e.clientX - dragStart.cx) / rect.width) * 100;
             const pctY = ((e.clientY - dragStart.cy) / rect.height) * 100;
-            props.onConnectorDrag(tree.id, Math.max(3, Math.min(97, dragStart.ox + pctX)), Math.max(3, Math.min(97, dragStart.oy + pctY)));
+            props.onConnectorDrag(node.id, Math.max(3, Math.min(97, dragStart.ox + pctX)), Math.max(3, Math.min(97, dragStart.oy + pctY)));
           };
           const onPointerUp = (e: PointerEvent) => {
             (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
-            if (!wasDragged) props.onSelectConnector(tree.id);
+            if (!wasDragged) props.onSelectConnector(node.id);
             dragStart = null;
           };
 
           return (
             <div
-              class={`colony-tree ${props.selection.id === tree.id && props.selection.type === "connector" ? "is-selected" : ""}`}
+              class={`colony-tree ${props.selection.id === node.id && props.selection.type === "connector" ? "is-selected" : ""}`}
               style={{
                 left: `calc(${pos().x}% - ${size.width / 2}px)`,
                 top: `calc(${pos().y}% - ${size.height}px)`,
@@ -386,7 +392,7 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                 height: `${size.height + 16}px`,
                 cursor: "grab",
               }}
-              data-connector-id={tree.id}
+              data-connector-id={node.id}
               onPointerDown={onPointerDown}
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
@@ -398,8 +404,8 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                 style={{
                   bottom: "-4px", left: "50%", transform: "translateX(-50%)",
                   width: "5px", height: "5px",
-                  background: tree.status === "active" ? "var(--color-status-ok)"
-                    : tree.status === "paused" ? "var(--color-status-warn)"
+                  background: node.status === "active" ? "var(--color-status-ok)"
+                    : node.status === "paused" ? "var(--color-status-warn)"
                     : "var(--color-status-idle)",
                 }}
               />
@@ -407,23 +413,23 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                 class="colony-text-3xs absolute whitespace-nowrap text-text-dim"
                 style={{ bottom: "-18px", left: "50%", transform: "translateX(-50%)" }}
               >
-                {tree.label}
+                {node.label}
               </div>
             </div>
           );
         }}
       </For>
 
-      {/* Mushrooms near active trees */}
-      <For each={props.trees.filter((t) => t.status === "active")}>
-        {(tree) => {
-          const connectorPos = () => getConnectorPos(tree.id);
+      {/* Output indicators near active nodes */}
+      <For each={props.nodes.filter((n) => n.status === "active")}>
+        {(node) => {
+          const connectorPos = () => getConnectorPos(node.id);
           return (
-            <For each={Array.from({ length: seeded(tree.id + "mushcount", 1, 3) }, (_, i) => i)}>
+            <For each={Array.from({ length: seeded(node.id + "mushcount", 1, 3) }, (_, i) => i)}>
               {(i) => {
-                const spriteClass = MUSHROOM_SPRITES[seeded(tree.id + "mt" + i, 0, 3)];
-                const ox = seeded(tree.id + "mx" + i, -4, 5);
-                const oy = seeded(tree.id + "my" + i, 5, 12);
+                const spriteClass = MUSHROOM_SPRITES[seeded(node.id + "mt" + i, 0, 3)];
+                const ox = seeded(node.id + "mx" + i, -4, 5);
+                const oy = seeded(node.id + "my" + i, 5, 12);
                 return (
                   <div
                     class="colony-mushroom"
@@ -438,7 +444,7 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
         }}
       </For>
 
-      {/* Agents (springtails) — with activity states + simlish */}
+      {/* Agents (porters) — with activity states + simlish */}
       <For each={props.agents}>
         {(agent) => {
           const pos = () => agentPos(agent);

@@ -4,7 +4,7 @@
 @import "../../../packages/ui/src/colony/colony.css";
 
 @theme {
-  /* Structural — overridden by theme */
+  /* Structural */
   --border-panel: 2px;
   --border-input: 2px;
   --border-divider: 2px;
@@ -15,6 +15,8 @@
   --color-soil-deep: #0e0c08;
   --color-soil-mid: #1a1710;
   --color-soil-light: #252118;
+  --color-soil-deepest: #080604;
+  --color-soil-darker: #120f08;
   --color-bark: #2a2520;
   --color-bark-light: #3a3530;
   --color-trunk: #5a4030;
@@ -34,8 +36,12 @@
 
   /* Mushroom caps */
   --color-mushroom-gold: #c8a050;
+  --color-mushroom-gold-highlight: #dab860;
   --color-mushroom-purple: #a868a0;
+  --color-mushroom-purple-highlight: #c088c0;
   --color-mushroom-teal: #68a8a0;
+  --color-mushroom-teal-highlight: #88c8c0;
+  --color-mushroom-stem: #d8d0b0;
 
   /* Agent roles */
   --color-role-scout: #4d9de8;
@@ -61,10 +67,6 @@
   --color-text-secondary: #8a8478;
   --color-text-dim: #5a564e;
 
-  /* Deep backgrounds */
-  --color-soil-deepest: #080604;
-  --color-soil-darker: #120f08;
-
   /* Sprite pixel art details */
   --color-sprite-eye: #111111;
   --color-sprite-shadow-scout: #1e3d5a;
@@ -83,19 +85,13 @@
   --color-sentinel-deep: #777777;
   --color-sentinel-eye: #ee4444;
 
-  /* Mushroom accents */
-  --color-mushroom-gold-highlight: #dab860;
-  --color-mushroom-purple-highlight: #c088c0;
-  --color-mushroom-teal-highlight: #88c8c0;
-  --color-mushroom-stem: #d8d0b0;
-
   /* UI accents */
   --color-bubble-urgent-bg: #2a1510;
   --color-ground-texture: rgba(50, 42, 25, 0.035);
   --color-shadow-deep: #000000;
   --color-minimap-idle: #333333;
 
-  /* Backwards compat for existing components */
+  /* Backwards compat */
   --color-surface-primary: #0e0c08;
   --color-surface-secondary: #1a1710;
   --color-surface-elevated: #252118;
@@ -107,105 +103,110 @@
   --color-warning: #d4a030;
 }
 
-/* ── Rekindle theme (ScopeCreep-zip consistency) ── */
-[data-theme="rekindle"] {
-  /* Structural */
+/* ── Rekindle theme — DS diorama meld ──
+   Rekindle structural (1px, Segoe UI, auto rendering) +
+   chiral diorama palette (slate-blue, cyan accent) +
+   DS behaviors via colony.css/sprites.css [data-theme="springtale"] rules */
+[data-theme="springtale"] {
+  /* Structural — ScopeCreep-zip consistency */
   --border-panel: 1px;
   --border-input: 1px;
   --border-divider: 1px;
   --font-colony: "Segoe UI", "Tahoma", sans-serif;
   --rendering-mode: auto;
 
-  /* Backgrounds — neutral dark, no warm tint */
-  --color-soil-deep: #0a0a0a;
-  --color-soil-mid: #1e1e1e;
-  --color-soil-light: #252525;
-  --color-soil-deepest: #050505;
-  --color-soil-darker: #0e0e0e;
-  --color-bark: #2a2a2a;
-  --color-bark-light: #353535;
-  --color-trunk: #3a3a3a;
-  --color-trunk-dark: #282828;
+  /* Tabletop surface — dark slate-blue */
+  --color-soil-deep: #080f16;
+  --color-soil-mid: #0e1820;
+  --color-soil-light: #1b2d3d;
+  --color-soil-deepest: #040a10;
+  --color-soil-darker: #060e16;
+  --color-bark: #1e3345;
+  --color-bark-light: #2a4560;
 
-  /* Text — cool neutral */
-  --color-text-primary: #e7e7e7;
-  --color-text-secondary: #a0a0a0;
-  --color-text-dim: #646464;
+  /* Node glow — cyan holographic */
+  --color-canopy: #00d4ff;
+  --color-canopy-shadow: #0090b8;
+  --color-canopy-highlight: #40e8ff;
+  --color-canopy-degraded: #d4a030;
 
-  /* Interactive = BLUE (Rekindle accent). NOT green. */
-  --color-status-ok: #177cc1;
-  --color-accent: #177cc1;
+  /* Node base/pedestal */
+  --color-trunk: #1a5570;
+  --color-trunk-dark: #0d3545;
 
-  /* Status indicators */
-  --color-status-warn: #ffcc00;
-  --color-status-error: #ef4444;
-  --color-status-idle: #7d7d7d;
+  /* Strand connections */
+  --color-mycelium: #1a4a5a;
+  --color-mycelium-active: #00d4ff;
+  --color-mycelium-warning: #ff8c00;
+  --color-mycelium-error: #ff3333;
 
-  /* Canopy = tree health = green */
-  --color-canopy: #53d769;
-  --color-canopy-shadow: #3aad4e;
-  --color-canopy-highlight: #6ae87e;
-  --color-canopy-degraded: #ffcc00;
-
-  /* Mycelium */
-  --color-mycelium: #a0a0a0;
-  --color-mycelium-active: #4fc3f7;
-  --color-mycelium-warning: #ffcc00;
-  --color-mycelium-error: #ef4444;
-
-  /* Roles */
-  --color-role-scout: #4fc3f7;
-  --color-role-worker: #53d769;
-  --color-role-guard: #ffcc00;
-  --color-role-analyst: #a78bfa;
-  --color-role-sentinel: #7d7d7d;
-
-  /* Mushrooms */
-  --color-mushroom-gold: #ffcc00;
+  /* Data output indicators */
+  --color-mushroom-gold: #00d4ff;
+  --color-mushroom-gold-highlight: #40e8ff;
   --color-mushroom-purple: #a78bfa;
-  --color-mushroom-teal: #4fc3f7;
-  --color-mushroom-stem: #a0a0a0;
-  --color-mushroom-gold-highlight: #ffe066;
   --color-mushroom-purple-highlight: #c4b5fd;
-  --color-mushroom-teal-highlight: #67e8f9;
+  --color-mushroom-teal: #00ffaa;
+  --color-mushroom-teal-highlight: #40ffbb;
+  --color-mushroom-stem: #4a7088;
 
-  /* Momentum */
-  --color-momentum-cold: #7d7d7d;
-  --color-momentum-warm: #4fc3f7;
-  --color-momentum-hot: #ffcc00;
-  --color-momentum-fever: #ef4444;
+  /* Agent/porter roles */
+  --color-role-scout: #00d4ff;
+  --color-role-worker: #00ffaa;
+  --color-role-guard: #ff8c00;
+  --color-role-analyst: #a78bfa;
+  --color-role-sentinel: #8899aa;
 
-  /* Sprites */
-  --color-sprite-eye: #222222;
-  --color-sprite-shadow-scout: #1a3a5a;
-  --color-sprite-shadow-worker: #1a4a1a;
-  --color-sprite-shadow-guard: #5a4518;
-  --color-sprite-shadow-analyst: #3d1e5a;
-  --color-sentinel-body: #aaaaaa;
-  --color-sentinel-light: #cccccc;
-  --color-sentinel-highlight: #dddddd;
-  --color-sentinel-shade: #999999;
-  --color-sentinel-mid: #888888;
-  --color-sentinel-dark: #666666;
-  --color-sentinel-shadow: #777777;
-  --color-sentinel-deep: #555555;
-  --color-sentinel-eye: #ef4444;
+  /* Status */
+  --color-status-ok: #00d4ff;
+  --color-status-warn: #ff8c00;
+  --color-status-error: #ff3333;
+  --color-status-idle: #2a4050;
+
+  /* Momentum tiers */
+  --color-momentum-cold: #2a4050;
+  --color-momentum-warm: #0090b8;
+  --color-momentum-hot: #ff8c00;
+  --color-momentum-fever: #ff3333;
+
+  /* Text — cool blue-white */
+  --color-text-primary: #c8d8e8;
+  --color-text-secondary: #6888a0;
+  --color-text-dim: #3a5568;
+
+  /* Sprite colors — glowing eyes */
+  --color-sprite-eye: #00d4ff;
+  --color-sprite-shadow-scout: #003855;
+  --color-sprite-shadow-worker: #004030;
+  --color-sprite-shadow-guard: #553800;
+  --color-sprite-shadow-analyst: #2d1855;
+
+  /* Sentinel — chiral crystal tones */
+  --color-sentinel-body: #8899aa;
+  --color-sentinel-light: #a0b8cc;
+  --color-sentinel-highlight: #b8d0e0;
+  --color-sentinel-shade: #6688a0;
+  --color-sentinel-mid: #557090;
+  --color-sentinel-dark: #445878;
+  --color-sentinel-shadow: #334560;
+  --color-sentinel-deep: #223348;
+  --color-sentinel-eye: #ff3333;
 
   /* UI accents */
-  --color-ground-texture: rgba(255, 255, 255, 0.015);
-  --color-minimap-idle: #2a2a2a;
-  --color-bubble-urgent-bg: #2a1515;
-  --color-shadow-deep: #000000;
+  --color-bubble-urgent-bg: #2a1015;
+  --color-ground-texture: rgba(0, 212, 255, 0.015);
+  --color-shadow-deep: #000810;
+  --color-minimap-idle: #1a3040;
 
   /* Compat */
-  --color-surface-primary: #0a0a0a;
-  --color-surface-secondary: #1e1e1e;
-  --color-surface-elevated: #252525;
-  --color-border-default: #2a2a2a;
-  --color-border-input: #353535;
-  --color-success: #53d769;
-  --color-error: #ef4444;
-  --color-warning: #ffcc00;
+  --color-surface-primary: #080f16;
+  --color-surface-secondary: #0e1820;
+  --color-surface-elevated: #1b2d3d;
+  --color-border-default: #1e3345;
+  --color-border-input: #2a4560;
+  --color-accent: #00d4ff;
+  --color-success: #00ffaa;
+  --color-error: #ff3333;
+  --color-warning: #ff8c00;
 }
 
 body {
@@ -256,34 +257,34 @@ body {
    (which are in @layer utilities). Per CSS cascade layers spec,
    unlayered styles always win over layered styles.
    Reference: https://css-tricks.com/using-css-cascade-layers-with-tailwind-utilities/ */
-[data-theme="rekindle"] .rounded,
-[data-theme="rekindle"] .rounded-sm,
-[data-theme="rekindle"] .rounded-md,
-[data-theme="rekindle"] .rounded-lg {
+[data-theme="springtale"] .rounded,
+[data-theme="springtale"] .rounded-sm,
+[data-theme="springtale"] .rounded-md,
+[data-theme="springtale"] .rounded-lg {
   border-radius: 0;
 }
-[data-theme="rekindle"] .border-2 {
+[data-theme="springtale"] .border-2 {
   border-width: var(--border-input);
 }
-[data-theme="rekindle"] .border-b-2 {
+[data-theme="springtale"] .border-b-2 {
   border-bottom-width: var(--border-divider);
 }
-[data-theme="rekindle"] .border-t-2 {
+[data-theme="springtale"] .border-t-2 {
   border-top-width: var(--border-divider);
 }
-[data-theme="rekindle"] .border-r-2 {
+[data-theme="springtale"] .border-r-2 {
   border-right-width: var(--border-divider);
 }
-[data-theme="rekindle"] .border-l-2 {
+[data-theme="springtale"] .border-l-2 {
   border-left-width: var(--border-divider);
 }
 
 /* Rekindle hover: use subtle highlight instead of brightness filter */
-[data-theme="rekindle"] .colony-tree:hover {
+[data-theme="springtale"] .colony-tree:hover {
   filter: none;
   outline: 1px solid var(--color-bark-light);
 }
-[data-theme="rekindle"] .colony-agent:hover {
+[data-theme="springtale"] .colony-agent:hover {
   filter: none !important;
   outline: 1px solid var(--color-accent);
 }

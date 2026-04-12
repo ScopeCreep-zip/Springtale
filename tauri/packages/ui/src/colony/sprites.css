@@ -1,7 +1,8 @@
 /* ================================================================
-   PIXEL SPRITES — 1:1 from springtale-colony-v8.html
+   PIXEL SPRITES — colony ecosystem + Rekindle diorama figurines
    All visual art uses box-shadow on 1px elements, scaled up.
    Defined here as @layer components so Tailwind includes them.
+   Colors adapt per theme via CSS variables.
    ================================================================ */
 
 @layer components {
@@ -217,4 +218,75 @@
     0%, 100% { opacity: 0.6; }
     50% { opacity: 1; }
   }
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   REKINDLE DIORAMA SPRITES — figurine/facility nodes
+   Unlayered + [data-theme="springtale"] scoped overrides.
+   ══════════════════════════════════════════════════════════════════ */
+
+/* Hub node: hexagonal facility, 8w × 8h at scale(4) = 32×32px */
+[data-theme="springtale"] .sprite-tree-deciduous {
+  box-shadow:
+    3px 0 var(--color-canopy-shadow), 4px 0 var(--color-canopy-shadow),
+    2px 1px var(--color-canopy-shadow), 5px 1px var(--color-canopy-shadow),
+    1px 2px var(--color-canopy), 6px 2px var(--color-canopy),
+    1px 3px var(--color-canopy), 3px 3px var(--color-canopy-highlight),
+    4px 3px var(--color-canopy-highlight), 6px 3px var(--color-canopy),
+    1px 4px var(--color-canopy), 6px 4px var(--color-canopy),
+    2px 5px var(--color-canopy-shadow), 5px 5px var(--color-canopy-shadow),
+    3px 6px var(--color-canopy-shadow), 4px 6px var(--color-canopy-shadow),
+    3px 7px var(--color-trunk), 4px 7px var(--color-trunk);
+  transform: scale(4);
+}
+
+/* Relay node: antenna tower, 7w × 10h at scale(4) = 28×40px */
+[data-theme="springtale"] .sprite-tree-conifer {
+  box-shadow:
+    3px 0 var(--color-canopy-highlight),
+    2px 1px var(--color-canopy), 3px 1px var(--color-canopy-highlight), 4px 1px var(--color-canopy),
+    3px 2px var(--color-canopy),
+    2px 3px var(--color-canopy-shadow), 3px 3px var(--color-canopy), 4px 3px var(--color-canopy-shadow),
+    2px 4px var(--color-canopy), 3px 4px var(--color-canopy-highlight), 4px 4px var(--color-canopy),
+    2px 5px var(--color-canopy-shadow), 3px 5px var(--color-canopy), 4px 5px var(--color-canopy-shadow),
+    2px 6px var(--color-canopy-shadow), 3px 6px var(--color-canopy-shadow), 4px 6px var(--color-canopy-shadow),
+    3px 7px var(--color-trunk), 3px 8px var(--color-trunk),
+    2px 9px var(--color-trunk-dark), 3px 9px var(--color-trunk-dark), 4px 9px var(--color-trunk-dark);
+  transform: scale(4);
+}
+
+/* Terminal node: diamond, 7w × 7h at scale(4) = 28×28px */
+[data-theme="springtale"] .sprite-tree-shrub {
+  box-shadow:
+    3px 0 var(--color-canopy-shadow),
+    2px 1px var(--color-canopy-shadow), 4px 1px var(--color-canopy-shadow),
+    1px 2px var(--color-canopy), 3px 2px var(--color-canopy-highlight), 5px 2px var(--color-canopy),
+    0 3px var(--color-canopy), 6px 3px var(--color-canopy),
+    1px 4px var(--color-canopy), 3px 4px var(--color-canopy-highlight), 5px 4px var(--color-canopy),
+    2px 5px var(--color-canopy-shadow), 4px 5px var(--color-canopy-shadow),
+    3px 6px var(--color-trunk);
+  transform: scale(4);
+}
+
+/* Data output indicators: 3w × 3h diamond at scale(3) */
+[data-theme="springtale"] .sprite-mushroom-gold {
+  box-shadow:
+    1px 0 var(--color-mushroom-gold),
+    0 1px var(--color-mushroom-gold), 1px 1px var(--color-mushroom-gold-highlight), 2px 1px var(--color-mushroom-gold),
+    1px 2px var(--color-mushroom-gold);
+  transform: scale(3);
+}
+[data-theme="springtale"] .sprite-mushroom-purple {
+  box-shadow:
+    1px 0 var(--color-mushroom-purple),
+    0 1px var(--color-mushroom-purple), 1px 1px var(--color-mushroom-purple-highlight), 2px 1px var(--color-mushroom-purple),
+    1px 2px var(--color-mushroom-purple);
+  transform: scale(3);
+}
+[data-theme="springtale"] .sprite-mushroom-teal {
+  box-shadow:
+    1px 0 var(--color-mushroom-teal),
+    0 1px var(--color-mushroom-teal), 1px 1px var(--color-mushroom-teal-highlight), 2px 1px var(--color-mushroom-teal),
+    1px 2px var(--color-mushroom-teal);
+  transform: scale(3);
 }

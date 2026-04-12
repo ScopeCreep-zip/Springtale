@@ -7,30 +7,30 @@
  * connectorPositions always flows through — this is how drag overrides
  * propagate to both the main canvas and the minimap.
  */
-import type { ColonyTree, ColonyAgent, ColonyFormation } from "./types";
+import type { ColonyNode, ColonyAgent, ColonyFormation } from "./types";
 import { seeded } from "./types";
 
 export type ConnectorPositions = Record<string, { x: number; y: number }>;
 
-/** Get a tree's position, respecting drag overrides. */
+/** Get a node's position, respecting drag overrides. */
 export function getConnectorPosition(
   connectorId: string,
-  trees: ColonyTree[],
+  nodes: ColonyNode[],
   connectorPositions: ConnectorPositions,
 ): { x: number; y: number } {
-  const tree = trees.find((t) => t.id === connectorId);
-  if (!tree) return { x: 50, y: 50 };
-  return connectorPositions[connectorId] ?? { x: tree.x, y: tree.y };
+  const node = nodes.find((n) => n.id === connectorId);
+  if (!node) return { x: 50, y: 50 };
+  return connectorPositions[connectorId] ?? { x: node.x, y: node.y };
 }
 
-/** Get an agent's position — always near its connector tree. */
+/** Get an agent's position — always near its connector node. */
 export function getAgentPosition(
   agent: ColonyAgent,
-  trees: ColonyTree[],
+  nodes: ColonyNode[],
   connectorPositions: ConnectorPositions,
 ): { x: number; y: number } {
   if (!agent.connectorId) return { x: 50, y: 78 };
-  const connectorPos = getConnectorPosition(agent.connectorId, trees, connectorPositions);
+  const connectorPos = getConnectorPosition(agent.connectorId, nodes, connectorPositions);
   return {
     x: connectorPos.x + seeded(agent.id + "tx", -5, 6),
     y: connectorPos.y + seeded(agent.id + "ty", 10, 16),
@@ -54,11 +54,11 @@ export function getFormationAgents(
 export function getFormationBounds(
   formation: ColonyFormation,
   agents: ColonyAgent[],
-  trees: ColonyTree[],
+  nodes: ColonyNode[],
   connectorPositions: ConnectorPositions,
 ): { cx: number; cy: number; rx: number; ry: number } {
   const members = getFormationAgents(formation, agents);
-  const positions = members.map((a) => getAgentPosition(a, trees, connectorPositions));
+  const positions = members.map((a) => getAgentPosition(a, nodes, connectorPositions));
 
   if (positions.length === 0) {
     // No members — fall back to zone center with minimum size

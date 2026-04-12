@@ -4,8 +4,8 @@
  * Used by both the Tauri desktop app and the web dashboard.
  * Components render state and forward actions — no business logic.
  *
- * Colony ecosystem visualization: trees=connectors, springtails=agents,
- * mycelium=pipelines. Pixel-art aesthetic via Silkscreen font + box-shadow sprites.
+ * Colony network visualization: nodes=connectors, agents=porters,
+ * strands=pipelines. Pixel-art aesthetic via Silkscreen font + box-shadow sprites.
  */
 
 export { createI18n, I18nProvider, useI18n } from "./i18n/context";
@@ -20,17 +20,17 @@ export { BottomPanel } from "./colony/BottomPanel";
 
 // Colony types + utilities
 export type {
-  ColonyTree, ColonyAgent, ColonyConnection, ColonyFormation,
+  ColonyNode, ColonyAgent, ColonyConnection, ColonyFormation,
   ColonySelection, ColonyCommand, ColonyPipe, DetailView,
 } from "./colony/types";
-export { seeded, hash, COMMANDS, TREE_TYPES, MOMENTUM_NAMES, MOMENTUM_COLORS } from "./colony/types";
+export { seeded, hash, COMMANDS, NODE_TYPES, MOMENTUM_NAMES, MOMENTUM_COLORS } from "./colony/types";
 
 // Colony geometry (shared position calculations for canvas + minimap)
 export { getConnectorPosition, getAgentPosition, getFormationAgents, getFormationBounds } from "./colony/geometry";
 export type { ConnectorPositions } from "./colony/geometry";
 
 // Colony data mappers (DashboardState → colony visual model)
-export { mapTrees, mapAgents, mapFormations } from "./colony/mappers";
+export { mapNodes, mapAgents, mapFormations } from "./colony/mappers";
 
 // Colony panels
 export { AiConfigPanel } from "./colony/AiConfigPanel";
