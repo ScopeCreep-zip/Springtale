@@ -5,6 +5,7 @@ use springtale_connector::error::ConnectorError;
 use springtale_connector::manifest::types::{
     ActionDecl, Capability, ConnectorManifest, DataDisclosure, TriggerDecl,
 };
+use springtale_connector::Subscription;
 
 use crate::actions;
 use crate::client::HttpClient;
@@ -63,10 +64,18 @@ impl Connector for HttpConnector {
         }
     }
 
-    async fn on_event(&self, trigger: &str, _handler: EventHandler) -> Result<(), ConnectorError> {
+    async fn on_event(
+        &self,
+        trigger: &str,
+        _handler: EventHandler,
+    ) -> Result<Subscription, ConnectorError> {
         Err(ConnectorError::ExecutionFailed(format!(
             "HTTP connector has no triggers, cannot register handler for: {trigger}"
         )))
+    }
+
+    async fn remove_event(&self, _sub: &Subscription) -> Result<(), ConnectorError> {
+        Ok(())
     }
 
     fn manifest(&self) -> &ConnectorManifest {

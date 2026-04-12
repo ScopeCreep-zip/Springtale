@@ -29,10 +29,12 @@ pub async fn execute(
 ) -> Result<ActionResult, IrcError> {
     let target = input
         .get("target")
+        .or_else(|| input.get("chat_id")) // bot response compat
         .and_then(|v| v.as_str())
         .ok_or_else(|| IrcError::InvalidInput("missing 'target'".into()))?;
     let message = input
         .get("message")
+        .or_else(|| input.get("text")) // bot response compat
         .and_then(|v| v.as_str())
         .ok_or_else(|| IrcError::InvalidInput("missing 'message'".into()))?;
 

@@ -9,6 +9,7 @@ use springtale_connector::error::ConnectorError;
 use springtale_connector::manifest::types::{
     ActionDecl, Capability, ConnectorManifest, DataDisclosure, TriggerDecl,
 };
+use springtale_connector::{Subscription, SubscriptionCounter, SubscriptionId};
 
 use crate::actions;
 use crate::client::TelegramClient;
@@ -22,7 +23,11 @@ pub struct TelegramConnector {
     manifest: ConnectorManifest,
     triggers: Vec<TriggerDecl>,
     actions: Vec<ActionDecl>,
-    handlers: Arc<Mutex<Vec<(String, EventHandler)>>>,
+    handlers: Arc<Mutex<Vec<(SubscriptionId, String, EventHandler)>>>,
+    sub_counter: SubscriptionCounter,
+    /// Optional webhook secret token (clone of config.webhook_secret).
+    /// Used to verify incoming webhook requests by the daemon.
+    webhook_secret: Option<SecretBox<String>>,
 }
 
 impl TelegramConnector {
@@ -35,12 +40,19 @@ impl TelegramConnector {
         let token = SecretBox::new(Box::new(config.bot_token.expose_secret().clone()));
         let client = TelegramClient::new(&config.api_base, token)?;
 
+        // SECURITY: expose needed to clone webhook_secret for later verification
+        let webhook_secret = config.webhook_secret.as_ref().map(|s| {
+            SecretBox::new(Box::new(s.expose_secret().clone()))
+        });
+
         Ok(Self {
             client,
             manifest,
             triggers: trigger_decls,
             actions: action_decls,
             handlers: Arc::new(Mutex::new(Vec::new())),
+            sub_counter: SubscriptionCounter::new(),
+            webhook_secret,
         })
     }
 
@@ -62,12 +74,18 @@ impl TelegramConnector {
             // Always fire message_received (even for commands)
             self.dispatch_to_handlers("message_received", message.clone())
                 .await;
+        } else if let Some(callback_query) = update.get("callback_query") {
+            // Inline keyboard button press — fire callback_query_received.
+            // The payload contains the full callback_query object with id, from,
+            // message, and data fields (see triggers/callback_query_received schema).
+            self.dispatch_to_handlers("callback_query_received", callback_query.clone())
+                .await;
         }
     }
 
     async fn dispatch_to_handlers(&self, trigger_name: &str, payload: serde_json::Value) {
         let handlers = self.handlers.lock().await;
-        for (registered, handler) in handlers.iter() {
+        for (_id, registered, handler) in handlers.iter() {
             if registered == trigger_name {
                 handler(payload.clone());
             }
@@ -106,31 +124,86 @@ impl Connector for TelegramConnector {
             "send_inline_keyboard" => actions::send_inline_keyboard::execute(&self.client, &input)
                 .await
                 .map_err(ConnectorError::from),
+            "answer_callback_query" => {
+                actions::answer_callback_query::execute(&self.client, &input)
+                    .await
+                    .map_err(ConnectorError::from)
+            }
             unknown => Err(ConnectorError::ExecutionFailed(format!(
                 "unknown action: {unknown}"
             ))),
         }
     }
 
-    async fn on_event(&self, trigger: &str, handler: EventHandler) -> Result<(), ConnectorError> {
-        let valid_triggers = ["message_received", "command_received"];
+    async fn on_event(
+        &self,
+        trigger: &str,
+        handler: EventHandler,
+    ) -> Result<Subscription, ConnectorError> {
+        let valid_triggers = [
+            "message_received",
+            "command_received",
+            "callback_query_received",
+        ];
         if !valid_triggers.contains(&trigger) {
             return Err(ConnectorError::ExecutionFailed(format!(
                 "unknown trigger: {trigger}"
             )));
         }
 
+        let id = self.sub_counter.next();
         {
             let mut handlers = self.handlers.lock().await;
-            handlers.push((trigger.to_owned(), handler));
+            handlers.push((id, trigger.to_owned(), handler));
         }
 
         tracing::info!(trigger = trigger, "registered Telegram event handler");
+        Ok(Subscription {
+            id,
+            trigger: trigger.to_owned(),
+        })
+    }
+
+    async fn remove_event(&self, sub: &Subscription) -> Result<(), ConnectorError> {
+        let mut handlers = self.handlers.lock().await;
+        handlers.retain(|(id, _, _)| *id != sub.id);
+        tracing::info!(id = ?sub.id, trigger = %sub.trigger, "removed Telegram event handler");
         Ok(())
     }
 
     fn manifest(&self) -> &ConnectorManifest {
         &self.manifest
+    }
+
+    /// Verify an incoming webhook request using the `X-Telegram-Bot-Api-Secret-Token` header.
+    ///
+    /// Telegram sets this header on every webhook POST when `set_webhook` was
+    /// called with a `secret_token`. Constant-time string comparison prevents
+    /// timing attacks.
+    async fn verify_webhook(
+        &self,
+        headers: &std::collections::HashMap<String, String>,
+        _body: &[u8],
+    ) -> Result<(), ConnectorError> {
+        let expected = self.webhook_secret.as_ref().ok_or_else(|| {
+            ConnectorError::ExecutionFailed(
+                "webhook_secret not configured for connector-telegram".to_owned(),
+            )
+        })?;
+
+        // Header name is case-insensitive but the standard form is lowercase in HTTP/2+.
+        // Check both common casings to handle any reverse proxy normalization.
+        let received = headers
+            .get("x-telegram-bot-api-secret-token")
+            .or_else(|| headers.get("X-Telegram-Bot-Api-Secret-Token"))
+            .ok_or_else(|| {
+                ConnectorError::ExecutionFailed(
+                    "missing X-Telegram-Bot-Api-Secret-Token header".to_owned(),
+                )
+            })?;
+
+        crate::webhook::verify_webhook_secret(expected, received)
+            .map_err(|e| ConnectorError::ExecutionFailed(e.to_string()))
     }
 }
 
@@ -166,6 +239,7 @@ mod tests {
             api_base: "https://api.telegram.org".to_owned(),
             update_mode: "polling".to_owned(),
             webhook_url: None,
+            webhook_secret: None,
             poll_timeout: 30,
         }
     }
@@ -189,13 +263,13 @@ mod tests {
     #[test]
     fn test_trigger_count() {
         let connector = TelegramConnector::new(&test_config()).unwrap();
-        assert_eq!(connector.triggers().len(), 2);
+        assert_eq!(connector.triggers().len(), 3);
     }
 
     #[test]
     fn test_action_count() {
         let connector = TelegramConnector::new(&test_config()).unwrap();
-        assert_eq!(connector.actions().len(), 5);
+        assert_eq!(connector.actions().len(), 6);
     }
 
     #[tokio::test]

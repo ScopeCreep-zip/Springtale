@@ -8,6 +8,7 @@ use springtale_connector::error::ConnectorError;
 use springtale_connector::manifest::types::{
     ActionDecl, Capability, ConnectorManifest, DataDisclosure, TriggerDecl,
 };
+use springtale_connector::{Subscription, SubscriptionCounter, SubscriptionId};
 
 use crate::actions;
 use crate::config::FilesystemConfig;
@@ -26,9 +27,10 @@ pub struct FilesystemConnector {
     triggers: Vec<TriggerDecl>,
     actions: Vec<ActionDecl>,
     /// Shared trigger callbacks, dispatched by the watcher.
-    callbacks: Arc<Mutex<Vec<(String, TriggerCallback)>>>,
+    callbacks: Arc<Mutex<Vec<(SubscriptionId, String, TriggerCallback)>>>,
     /// The filesystem watcher instance. Created lazily when `on_event` is first called.
     watcher: Mutex<Option<FsConnectorWatcher>>,
+    sub_counter: SubscriptionCounter,
 }
 
 impl FilesystemConnector {
@@ -46,6 +48,7 @@ impl FilesystemConnector {
             actions: action_decls,
             callbacks: Arc::new(Mutex::new(Vec::new())),
             watcher: Mutex::new(None),
+            sub_counter: SubscriptionCounter::new(),
         }
     }
 
@@ -98,7 +101,11 @@ impl Connector for FilesystemConnector {
         }
     }
 
-    async fn on_event(&self, trigger: &str, handler: EventHandler) -> Result<(), ConnectorError> {
+    async fn on_event(
+        &self,
+        trigger: &str,
+        handler: EventHandler,
+    ) -> Result<Subscription, ConnectorError> {
         // Validate trigger name
         let valid_triggers = ["file_created", "file_modified", "file_deleted"];
         if !valid_triggers.contains(&trigger) {
@@ -114,9 +121,10 @@ impl Connector for FilesystemConnector {
             handler(payload);
         });
 
+        let id = self.sub_counter.next();
         {
             let mut callbacks = self.callbacks.lock().await;
-            callbacks.push((trigger.to_owned(), callback));
+            callbacks.push((id, trigger.to_owned(), callback));
         }
 
         // Start the watcher if not already running
@@ -128,6 +136,16 @@ impl Connector for FilesystemConnector {
             trigger = trigger,
             "registered event handler for filesystem trigger"
         );
+        Ok(Subscription {
+            id,
+            trigger: trigger.to_owned(),
+        })
+    }
+
+    async fn remove_event(&self, sub: &Subscription) -> Result<(), ConnectorError> {
+        let mut callbacks = self.callbacks.lock().await;
+        callbacks.retain(|(id, _, _)| *id != sub.id);
+        tracing::info!(id = ?sub.id, trigger = %sub.trigger, "removed filesystem event handler");
         Ok(())
     }
 

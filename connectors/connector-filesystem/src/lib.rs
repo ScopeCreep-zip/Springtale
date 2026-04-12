@@ -5,9 +5,9 @@ pub mod actions;
 pub mod config;
 pub mod connector;
 pub mod error;
+pub mod factory;
 pub mod triggers;
 pub mod watcher;
-pub mod factory;
 
 pub use config::FilesystemConfig;
 pub use connector::FilesystemConnector;

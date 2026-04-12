@@ -1,7 +1,7 @@
+use springtale_connector::Connector;
 use springtale_connector::error::ConnectorError;
 use springtale_connector::factory::{ConnectorFactory, FactoryEntry};
 use springtale_connector::manifest::types::{ActionDecl, TriggerDecl};
-use springtale_connector::Connector;
 
 struct SignalFactory;
 

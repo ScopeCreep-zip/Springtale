@@ -33,6 +33,9 @@ pub fn update_to_trigger(update: &serde_json::Value) -> Option<&'static str> {
         }
         return Some("message_received");
     }
+    if update.get("callback_query").is_some() {
+        return Some("callback_query_received");
+    }
     None
 }
 
@@ -90,8 +93,15 @@ mod tests {
     }
 
     #[test]
-    fn test_update_to_trigger_unknown() {
+    fn test_update_to_trigger_callback_query() {
         let update = serde_json::json!({ "update_id": 1, "callback_query": {} });
+        assert_eq!(update_to_trigger(&update), Some("callback_query_received"));
+    }
+
+    #[test]
+    fn test_update_to_trigger_unknown() {
+        // A channel_post or other non-message, non-callback update → None
+        let update = serde_json::json!({ "update_id": 1, "channel_post": {} });
         assert_eq!(update_to_trigger(&update), None);
     }
 

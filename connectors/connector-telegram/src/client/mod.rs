@@ -60,6 +60,19 @@ pub trait TelegramApi: Send + Sync {
     async fn delete_webhook(&self) -> Result<serde_json::Value, TelegramError>;
 
     async fn get_me(&self) -> Result<serde_json::Value, TelegramError>;
+
+    /// Answer a callback_query (inline keyboard button press).
+    ///
+    /// MUST be called within 10 seconds of receiving the callback_query
+    /// or Telegram will show a perpetual loading spinner on the button.
+    /// Pass empty text to dismiss silently; set `show_alert=true` for a
+    /// modal popup instead of a toast notification.
+    async fn answer_callback_query(
+        &self,
+        callback_query_id: &str,
+        text: Option<&str>,
+        show_alert: bool,
+    ) -> Result<serde_json::Value, TelegramError>;
 }
 
 /// Telegram Bot API REST client.
@@ -328,6 +341,28 @@ impl TelegramApi for TelegramClient {
         let response = self.inner.get(self.method_url("getMe")).send().await?;
         handle_telegram_response(response).await
     }
+
+    async fn answer_callback_query(
+        &self,
+        callback_query_id: &str,
+        text: Option<&str>,
+        show_alert: bool,
+    ) -> Result<serde_json::Value, TelegramError> {
+        let mut body = serde_json::json!({
+            "callback_query_id": callback_query_id,
+            "show_alert": show_alert,
+        });
+        if let Some(t) = text {
+            body["text"] = serde_json::Value::String(t.to_owned());
+        }
+        let response = self
+            .inner
+            .post(self.method_url("answerCallbackQuery"))
+            .json(&body)
+            .send()
+            .await?;
+        handle_telegram_response(response).await
+    }
 }
 
 #[cfg(test)]
@@ -401,6 +436,14 @@ pub mod test_helpers {
             Ok(self.response.clone())
         }
         async fn get_me(&self) -> Result<serde_json::Value, TelegramError> {
+            Ok(self.response.clone())
+        }
+        async fn answer_callback_query(
+            &self,
+            _callback_query_id: &str,
+            _text: Option<&str>,
+            _show_alert: bool,
+        ) -> Result<serde_json::Value, TelegramError> {
             Ok(self.response.clone())
         }
     }

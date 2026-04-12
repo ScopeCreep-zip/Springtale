@@ -93,7 +93,10 @@ pub async fn execute(
                 "working_directory must be absolute".into(),
             ));
         }
-        if path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        if path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+        {
             return Err(crate::error::ShellError::InvalidConfig(
                 "working_directory must not contain '..'".into(),
             ));

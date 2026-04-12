@@ -7,8 +7,8 @@ pub mod client;
 pub mod config;
 pub mod connector;
 pub mod error;
-pub mod triggers;
 pub mod factory;
+pub mod triggers;
 
 pub use config::BrowserConfig;
 pub use connector::BrowserConnector;

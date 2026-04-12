@@ -9,6 +9,7 @@ use springtale_connector::error::ConnectorError;
 use springtale_connector::manifest::types::{
     ActionDecl, Capability, ConnectorManifest, DataDisclosure, TriggerDecl,
 };
+use springtale_connector::{Subscription, SubscriptionCounter, SubscriptionId};
 
 use crate::actions;
 use crate::client::KickClient;
@@ -27,11 +28,12 @@ pub struct KickConnector {
     manifest: ConnectorManifest,
     triggers: Vec<TriggerDecl>,
     actions: Vec<ActionDecl>,
-    handlers: Arc<Mutex<Vec<(String, EventHandler)>>>,
+    handlers: Arc<Mutex<Vec<(SubscriptionId, String, EventHandler)>>>,
     /// Webhook callback URL where Kick sends events (from config).
     webhook_callback_url: Option<String>,
     /// Kick event types we've already subscribed to (avoid duplicate subscriptions).
     subscribed_events: Mutex<HashSet<String>>,
+    sub_counter: SubscriptionCounter,
 }
 
 /// Map a connector trigger name to the Kick event type(s) to subscribe to.
@@ -66,13 +68,14 @@ impl KickConnector {
             handlers: Arc::new(Mutex::new(Vec::new())),
             webhook_callback_url: config.webhook_callback_url.clone(),
             subscribed_events: Mutex::new(HashSet::new()),
+            sub_counter: SubscriptionCounter::new(),
         })
     }
 
     /// Dispatch a webhook event to registered handlers by trigger name.
     pub async fn dispatch_webhook(&self, trigger_name: &str, payload: serde_json::Value) {
         let handlers = self.handlers.lock().await;
-        for (registered, handler) in handlers.iter() {
+        for (_id, registered, handler) in handlers.iter() {
             if registered == trigger_name {
                 handler(payload.clone());
             }
@@ -136,7 +139,11 @@ impl Connector for KickConnector {
         }
     }
 
-    async fn on_event(&self, trigger: &str, handler: EventHandler) -> Result<(), ConnectorError> {
+    async fn on_event(
+        &self,
+        trigger: &str,
+        handler: EventHandler,
+    ) -> Result<Subscription, ConnectorError> {
         let valid_triggers = [
             "chat_message",
             "stream_live",
@@ -150,9 +157,10 @@ impl Connector for KickConnector {
         }
 
         // Store the handler
+        let id = self.sub_counter.next();
         {
             let mut handlers = self.handlers.lock().await;
-            handlers.push((trigger.to_owned(), handler));
+            handlers.push((id, trigger.to_owned(), handler));
         }
 
         // Subscribe with Kick's API for the corresponding event types
@@ -195,6 +203,16 @@ impl Connector for KickConnector {
         }
 
         tracing::info!(trigger = trigger, "registered Kick event handler");
+        Ok(Subscription {
+            id,
+            trigger: trigger.to_owned(),
+        })
+    }
+
+    async fn remove_event(&self, sub: &Subscription) -> Result<(), ConnectorError> {
+        let mut handlers = self.handlers.lock().await;
+        handlers.retain(|(id, _, _)| *id != sub.id);
+        tracing::info!(id = ?sub.id, trigger = %sub.trigger, "removed Kick event handler");
         Ok(())
     }
 

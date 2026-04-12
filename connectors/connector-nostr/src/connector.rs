@@ -8,6 +8,7 @@ use springtale_connector::error::ConnectorError;
 use springtale_connector::manifest::types::{
     ActionDecl, Capability, ConnectorManifest, DataDisclosure, TriggerDecl,
 };
+use springtale_connector::{Subscription, SubscriptionCounter, SubscriptionId};
 
 use crate::actions;
 use crate::client::NostrClient;
@@ -26,7 +27,8 @@ pub struct NostrConnector {
     manifest: ConnectorManifest,
     triggers: Vec<TriggerDecl>,
     actions: Vec<ActionDecl>,
-    handlers: Arc<Mutex<Vec<(String, EventHandler)>>>,
+    handlers: Arc<Mutex<Vec<(SubscriptionId, String, EventHandler)>>>,
+    sub_counter: SubscriptionCounter,
 }
 
 impl NostrConnector {
@@ -42,14 +44,15 @@ impl NostrConnector {
             .relays
             .iter()
             .filter_map(|url| {
-                url.strip_prefix("wss://")
-                    .or_else(|| url.strip_prefix("ws://"))
-                    .map(|host| {
-                        let host = host.trim_end_matches('/');
-                        Capability::NetworkOutbound {
-                            host: host.to_owned(),
-                        }
-                    })
+                // Only wss:// accepted — ws:// rejected because unencrypted
+                // WebSocket leaks message content to network observers.
+                // For IPV survivors, network monitoring is a real threat.
+                url.strip_prefix("wss://").map(|host| {
+                    let host = host.trim_end_matches('/');
+                    Capability::NetworkOutbound {
+                        host: host.to_owned(),
+                    }
+                })
             })
             .collect();
 
@@ -99,6 +102,7 @@ impl NostrConnector {
             triggers: trigger_decls,
             actions: action_decls,
             handlers: Arc::new(Mutex::new(Vec::new())),
+            sub_counter: SubscriptionCounter::new(),
         })
     }
 
@@ -136,13 +140,20 @@ impl Connector for NostrConnector {
             "reply" => actions::reply::execute(&self.client, &input)
                 .await
                 .map_err(ConnectorError::from),
+            "send_message" => actions::send_message::execute(&self.client, &input)
+                .await
+                .map_err(ConnectorError::from),
             unknown => Err(ConnectorError::ExecutionFailed(format!(
                 "unknown action: {unknown}"
             ))),
         }
     }
 
-    async fn on_event(&self, trigger: &str, handler: EventHandler) -> Result<(), ConnectorError> {
+    async fn on_event(
+        &self,
+        trigger: &str,
+        handler: EventHandler,
+    ) -> Result<Subscription, ConnectorError> {
         let valid = [
             "note_received",
             "dm_received",
@@ -155,9 +166,20 @@ impl Connector for NostrConnector {
             )));
         }
 
+        let id = self.sub_counter.next();
         let mut handlers = self.handlers.lock().await;
-        handlers.push((trigger.to_owned(), handler));
+        handlers.push((id, trigger.to_owned(), handler));
         tracing::info!(trigger = trigger, "registered Nostr event handler");
+        Ok(Subscription {
+            id,
+            trigger: trigger.to_owned(),
+        })
+    }
+
+    async fn remove_event(&self, sub: &Subscription) -> Result<(), ConnectorError> {
+        let mut handlers = self.handlers.lock().await;
+        handlers.retain(|(id, _, _)| *id != sub.id);
+        tracing::info!(id = ?sub.id, trigger = %sub.trigger, "removed Nostr event handler");
         Ok(())
     }
 
@@ -178,6 +200,6 @@ mod tests {
 
     #[test]
     fn test_action_count() {
-        assert_eq!(actions::action_declarations().len(), 4);
+        assert_eq!(actions::action_declarations().len(), 5);
     }
 }

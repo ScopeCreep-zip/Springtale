@@ -8,6 +8,7 @@ use tokio::sync::Mutex;
 
 use crate::config::FilesystemConfig;
 use crate::error::FilesystemError;
+use springtale_connector::SubscriptionId;
 
 /// Maps a notify `EventKind` to the trigger name used by the connector.
 ///
@@ -56,7 +57,7 @@ impl FsConnectorWatcher {
     /// the trigger name and event payload.
     pub fn new(
         config: &FilesystemConfig,
-        callbacks: Arc<Mutex<Vec<(String, TriggerCallback)>>>,
+        callbacks: Arc<Mutex<Vec<(SubscriptionId, String, TriggerCallback)>>>,
     ) -> Result<Self, FilesystemError> {
         let debouncer = new_debouncer(
             config.debounce_duration(),
@@ -89,7 +90,7 @@ impl FsConnectorWatcher {
                                 // Dispatch to all handlers registered for this trigger.
                                 // Use try_lock to avoid blocking the notify callback thread.
                                 if let Ok(handlers) = callbacks.try_lock() {
-                                    for (registered_trigger, handler) in handlers.iter() {
+                                    for (_id, registered_trigger, handler) in handlers.iter() {
                                         if registered_trigger == trigger_name {
                                             handler(trigger_name, payload.clone());
                                         }
@@ -178,7 +179,8 @@ mod tests {
         let received = Arc::new(Mutex::new(Vec::<(String, serde_json::Value)>::new()));
         let received_clone = received.clone();
 
-        let callbacks: Arc<Mutex<Vec<(String, TriggerCallback)>>> = Arc::new(Mutex::new(vec![(
+        let callbacks: Arc<Mutex<Vec<(SubscriptionId, String, TriggerCallback)>>> = Arc::new(Mutex::new(vec![(
+            SubscriptionId(1),
             "file_created".to_owned(),
             Box::new(move |trigger: &str, payload: serde_json::Value| {
                 // Use try_lock since we're in a sync callback
@@ -223,7 +225,7 @@ mod tests {
             debounce_ms: 100,
         };
 
-        let callbacks: Arc<Mutex<Vec<(String, TriggerCallback)>>> = Arc::new(Mutex::new(vec![]));
+        let callbacks: Arc<Mutex<Vec<(SubscriptionId, String, TriggerCallback)>>> = Arc::new(Mutex::new(vec![]));
         let mut watcher = FsConnectorWatcher::new(&config, callbacks).unwrap();
 
         // Should succeed for allowed path
@@ -247,7 +249,7 @@ mod tests {
         fs::create_dir_all(&dir).ok();
 
         let config = test_config(&dir);
-        let callbacks: Arc<Mutex<Vec<(String, TriggerCallback)>>> = Arc::new(Mutex::new(vec![]));
+        let callbacks: Arc<Mutex<Vec<(SubscriptionId, String, TriggerCallback)>>> = Arc::new(Mutex::new(vec![]));
         let mut watcher = FsConnectorWatcher::new(&config, callbacks).unwrap();
 
         watcher.watch(&dir, &config).unwrap();

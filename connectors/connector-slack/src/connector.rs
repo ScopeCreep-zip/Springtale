@@ -8,6 +8,7 @@ use springtale_connector::error::ConnectorError;
 use springtale_connector::manifest::types::{
     ActionDecl, Capability, ConnectorManifest, DataDisclosure, TriggerDecl,
 };
+use springtale_connector::{Subscription, SubscriptionCounter, SubscriptionId};
 
 use crate::actions;
 use crate::client::SlackClient;
@@ -35,7 +36,8 @@ pub struct SlackConnector {
     manifest: ConnectorManifest,
     triggers: Vec<TriggerDecl>,
     actions: Vec<ActionDecl>,
-    handlers: Arc<Mutex<Vec<(String, EventHandler)>>>,
+    handlers: Arc<Mutex<Vec<(SubscriptionId, String, EventHandler)>>>,
+    sub_counter: SubscriptionCounter,
 }
 
 impl SlackConnector {
@@ -53,7 +55,7 @@ impl SlackConnector {
             crate::auth::validate_app_token(app_token_str)?;
         }
 
-        // Pass token wrapped — SlackClient keeps it in SecretBox
+        // SECURITY: expose needed to clone bot token into client's own SecretBox
         let bot_token = secrecy::SecretBox::new(Box::new(
             secrecy::ExposeSecret::expose_secret(&config.bot_token).clone(),
         ));
@@ -118,6 +120,7 @@ impl SlackConnector {
             triggers: trigger_decls,
             actions: action_decls,
             handlers: Arc::new(Mutex::new(Vec::new())),
+            sub_counter: SubscriptionCounter::new(),
         })
     }
 }
@@ -159,7 +162,11 @@ impl Connector for SlackConnector {
         }
     }
 
-    async fn on_event(&self, trigger: &str, handler: EventHandler) -> Result<(), ConnectorError> {
+    async fn on_event(
+        &self,
+        trigger: &str,
+        handler: EventHandler,
+    ) -> Result<Subscription, ConnectorError> {
         let valid = [
             "slash_command",
             "message_received",
@@ -173,9 +180,20 @@ impl Connector for SlackConnector {
             )));
         }
 
+        let id = self.sub_counter.next();
         let mut handlers = self.handlers.lock().await;
-        handlers.push((trigger.to_owned(), handler));
+        handlers.push((id, trigger.to_owned(), handler));
         tracing::info!(trigger = trigger, "registered Slack event handler");
+        Ok(Subscription {
+            id,
+            trigger: trigger.to_owned(),
+        })
+    }
+
+    async fn remove_event(&self, sub: &Subscription) -> Result<(), ConnectorError> {
+        let mut handlers = self.handlers.lock().await;
+        handlers.retain(|(id, _, _)| *id != sub.id);
+        tracing::info!(id = ?sub.id, trigger = %sub.trigger, "removed Slack event handler");
         Ok(())
     }
 

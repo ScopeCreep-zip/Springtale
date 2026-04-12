@@ -25,8 +25,7 @@ pub fn validate_command(
     // for injection. We execute commands directly (not via shell), so
     // these characters shouldn't normally appear in legitimate arguments.
     let dangerous_patterns = [
-        "|", ";", "`", "$(", "${", ">>", "<<", "&&", "||",
-        ">", "<", "&", "\n", "\r", "\0",
+        "|", ";", "`", "$(", "${", ">>", "<<", "&&", "||", ">", "<", "&", "\n", "\r", "\0",
     ];
 
     for arg in args {

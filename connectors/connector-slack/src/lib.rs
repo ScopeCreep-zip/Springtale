@@ -7,9 +7,9 @@ pub mod client;
 pub mod config;
 pub mod connector;
 pub mod error;
+pub mod factory;
 pub mod gateway;
 pub mod triggers;
-pub mod factory;
 
 pub use config::SlackConfig;
 pub use connector::SlackConnector;

@@ -1,3 +1,4 @@
+pub mod answer_callback_query;
 pub mod delete_message;
 pub mod edit_message;
 pub mod send_inline_keyboard;
@@ -13,5 +14,6 @@ pub fn action_declarations() -> Vec<ActionDecl> {
         edit_message::declaration(),
         delete_message::declaration(),
         send_inline_keyboard::declaration(),
+        answer_callback_query::declaration(),
     ]
 }

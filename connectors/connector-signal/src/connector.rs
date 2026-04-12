@@ -8,6 +8,7 @@ use springtale_connector::error::ConnectorError;
 use springtale_connector::manifest::types::{
     ActionDecl, Capability, ConnectorManifest, DataDisclosure, TriggerDecl,
 };
+use springtale_connector::{Subscription, SubscriptionCounter, SubscriptionId};
 
 use crate::actions;
 use crate::client::SignalClient;
@@ -31,7 +32,8 @@ pub struct SignalConnector {
     manifest: ConnectorManifest,
     triggers: Vec<TriggerDecl>,
     actions: Vec<ActionDecl>,
-    handlers: Arc<Mutex<Vec<(String, EventHandler)>>>,
+    handlers: Arc<Mutex<Vec<(SubscriptionId, String, EventHandler)>>>,
+    sub_counter: SubscriptionCounter,
 }
 
 impl SignalConnector {
@@ -100,6 +102,7 @@ impl SignalConnector {
             triggers: trigger_decls,
             actions: action_decls,
             handlers: Arc::new(Mutex::new(Vec::new())),
+            sub_counter: SubscriptionCounter::new(),
         })
     }
 
@@ -142,7 +145,11 @@ impl Connector for SignalConnector {
         }
     }
 
-    async fn on_event(&self, trigger: &str, handler: EventHandler) -> Result<(), ConnectorError> {
+    async fn on_event(
+        &self,
+        trigger: &str,
+        handler: EventHandler,
+    ) -> Result<Subscription, ConnectorError> {
         let valid = [
             "message_received",
             "group_message_received",
@@ -154,9 +161,20 @@ impl Connector for SignalConnector {
             )));
         }
 
+        let id = self.sub_counter.next();
         let mut handlers = self.handlers.lock().await;
-        handlers.push((trigger.to_owned(), handler));
+        handlers.push((id, trigger.to_owned(), handler));
         tracing::info!(trigger = trigger, "registered Signal event handler");
+        Ok(Subscription {
+            id,
+            trigger: trigger.to_owned(),
+        })
+    }
+
+    async fn remove_event(&self, sub: &Subscription) -> Result<(), ConnectorError> {
+        let mut handlers = self.handlers.lock().await;
+        handlers.retain(|(id, _, _)| *id != sub.id);
+        tracing::info!(id = ?sub.id, trigger = %sub.trigger, "removed Signal event handler");
         Ok(())
     }
 

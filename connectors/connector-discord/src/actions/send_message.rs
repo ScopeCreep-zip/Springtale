@@ -31,6 +31,7 @@ pub async fn execute(
 ) -> Result<ActionResult, DiscordError> {
     let channel_id: u64 = input
         .get("channel_id")
+        .or_else(|| input.get("chat_id")) // bot response compat
         .and_then(|v| v.as_str())
         .ok_or_else(|| DiscordError::InvalidInput("missing 'channel_id'".into()))?
         .parse()
@@ -38,6 +39,7 @@ pub async fn execute(
 
     let content = input
         .get("content")
+        .or_else(|| input.get("text")) // bot response compat
         .and_then(|v| v.as_str())
         .ok_or_else(|| DiscordError::InvalidInput("missing 'content'".into()))?;
 

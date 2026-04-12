@@ -8,6 +8,7 @@ use springtale_connector::error::ConnectorError;
 use springtale_connector::manifest::types::{
     ActionDecl, Capability, ConnectorManifest, DataDisclosure, TriggerDecl,
 };
+use springtale_connector::{Subscription, SubscriptionCounter, SubscriptionId};
 
 use crate::actions;
 use crate::client::GithubClient;
@@ -25,9 +26,10 @@ pub struct GithubConnector {
     triggers: Vec<TriggerDecl>,
     actions: Vec<ActionDecl>,
     /// Registered event handlers for webhook-driven triggers.
-    handlers: Arc<Mutex<Vec<(String, EventHandler)>>>,
+    handlers: Arc<Mutex<Vec<(SubscriptionId, String, EventHandler)>>>,
     /// Webhook secret for HMAC-SHA256 signature verification.
     webhook_secret: Option<secrecy::SecretBox<String>>,
+    sub_counter: SubscriptionCounter,
 }
 
 impl GithubConnector {
@@ -36,6 +38,7 @@ impl GithubConnector {
         let trigger_decls = triggers::trigger_declarations();
         let action_decls = actions::action_declarations();
         let manifest = build_manifest(&trigger_decls, &action_decls);
+        // SECURITY: expose needed to clone webhook secret into connector's own SecretBox
         let webhook_secret = config.webhook_secret.as_ref().map(|s| {
             secrecy::SecretBox::new(Box::new(secrecy::ExposeSecret::expose_secret(s).clone()))
         });
@@ -48,6 +51,7 @@ impl GithubConnector {
             actions: action_decls,
             handlers: Arc::new(Mutex::new(Vec::new())),
             webhook_secret,
+            sub_counter: SubscriptionCounter::new(),
         })
     }
 
@@ -58,7 +62,7 @@ impl GithubConnector {
     /// `X-GitHub-Event` header.
     pub async fn dispatch_webhook(&self, trigger_name: &str, payload: serde_json::Value) {
         let handlers = self.handlers.lock().await;
-        for (registered, handler) in handlers.iter() {
+        for (_id, registered, handler) in handlers.iter() {
             if registered == trigger_name {
                 handler(payload.clone());
             }
@@ -97,7 +101,11 @@ impl Connector for GithubConnector {
         }
     }
 
-    async fn on_event(&self, trigger: &str, handler: EventHandler) -> Result<(), ConnectorError> {
+    async fn on_event(
+        &self,
+        trigger: &str,
+        handler: EventHandler,
+    ) -> Result<Subscription, ConnectorError> {
         let valid_triggers = [
             "push",
             "pull_request_opened",
@@ -110,10 +118,21 @@ impl Connector for GithubConnector {
             )));
         }
 
+        let id = self.sub_counter.next();
         let mut handlers = self.handlers.lock().await;
-        handlers.push((trigger.to_owned(), handler));
+        handlers.push((id, trigger.to_owned(), handler));
 
         tracing::info!(trigger = trigger, "registered GitHub event handler");
+        Ok(Subscription {
+            id,
+            trigger: trigger.to_owned(),
+        })
+    }
+
+    async fn remove_event(&self, sub: &Subscription) -> Result<(), ConnectorError> {
+        let mut handlers = self.handlers.lock().await;
+        handlers.retain(|(id, _, _)| *id != sub.id);
+        tracing::info!(id = ?sub.id, trigger = %sub.trigger, "removed GitHub event handler");
         Ok(())
     }
 

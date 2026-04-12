@@ -148,6 +148,14 @@ mod tests {
                     Ok(serde_json::json!([]))
                 }
             }
+            async fn answer_callback_query(
+                &self,
+                _: &str,
+                _: Option<&str>,
+                _: bool,
+            ) -> Result<serde_json::Value, TelegramError> {
+                Ok(serde_json::json!({}))
+            }
         }
 
         let mock = Arc::new(OneShotApi {

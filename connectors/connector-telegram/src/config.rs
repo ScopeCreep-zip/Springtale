@@ -1,6 +1,6 @@
 use secrecy::SecretBox;
 use serde::Deserialize;
-use springtale_connector::config::deserialize_secret;
+use springtale_connector::config::{deserialize_secret, deserialize_secret_option};
 
 /// Telegram connector configuration.
 /// Bot token is wrapped in `Secret<String>` — never logged, zeroed on drop.
@@ -21,6 +21,14 @@ pub struct TelegramConfig {
     /// Webhook callback URL (required when update_mode = "webhook").
     #[serde(default)]
     pub webhook_url: Option<String>,
+
+    /// Webhook secret token (required when update_mode = "webhook").
+    ///
+    /// Telegram will include this in the `X-Telegram-Bot-Api-Secret-Token`
+    /// header on every webhook request. 1-256 characters, alphanumeric
+    /// plus `_` and `-`.
+    #[serde(default, deserialize_with = "deserialize_secret_option")]
+    pub webhook_secret: Option<SecretBox<String>>,
 
     /// Long-polling timeout in seconds. Default: 30.
     #[serde(default = "default_poll_timeout")]
@@ -46,6 +54,10 @@ impl std::fmt::Debug for TelegramConfig {
             .field("api_base", &self.api_base)
             .field("update_mode", &self.update_mode)
             .field("webhook_url", &self.webhook_url)
+            .field(
+                "webhook_secret",
+                &self.webhook_secret.as_ref().map(|_| "[REDACTED]"),
+            )
             .field("poll_timeout", &self.poll_timeout)
             .finish()
     }
@@ -63,6 +75,7 @@ mod tests {
             api_base: default_api_base(),
             update_mode: default_update_mode(),
             webhook_url: None,
+            webhook_secret: None,
             poll_timeout: default_poll_timeout(),
         };
         let debug = format!("{config:?}");
