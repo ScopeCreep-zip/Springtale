@@ -5,13 +5,13 @@
 
 use anyhow::Result;
 
-use springtale_runtime::operations::diagnostics::{self, Check, Report, Severity};
+use springtale_runtime::operations::diagnostics::{self, CallerContext, Check, Report, Severity};
 
 pub async fn run() -> Result<()> {
     println!("Springtale Doctor");
     println!("=================\n");
 
-    let report = diagnostics::run_default_checks().await;
+    let report = diagnostics::run_default_checks(CallerContext::Cli).await;
     render(&report);
 
     println!();

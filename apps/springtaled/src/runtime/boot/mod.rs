@@ -114,6 +114,7 @@ pub async fn boot(
         &runtime.registry,
         &runtime.engine,
         trigger_tx.clone(),
+        runtime.store.clone(),
     )
     .await;
 

@@ -8,17 +8,21 @@ pub mod config_api;
 pub mod connectors;
 pub mod dashboard;
 pub mod data;
+pub mod diagnostics;
 pub mod events;
 pub mod events_stream;
 pub mod extractors;
+pub mod fixes;
 pub mod formations;
 pub mod health;
 pub mod memory;
+pub mod onboarding;
 pub mod rules;
 pub mod safety;
 pub mod send;
 pub mod sessions;
 pub mod state;
+pub mod templates;
 pub mod webhooks;
 
 /// Maximum length for API path parameters. Prevents DoS via oversized route strings.
@@ -109,6 +113,14 @@ pub fn build_router(state: AppState) -> Router {
         .route("/canvas/stream", get(canvas_stream::stream))
         .route("/webhook/{connector}/{trigger}", post(webhooks::receive))
         .route("/send", post(send::send))
+        .route("/diagnostics", get(diagnostics::list))
+        .route("/onboarding/platforms", get(onboarding::list))
+        .route("/onboarding/{platform}", post(onboarding::apply))
+        .route("/templates", get(templates::list))
+        .route("/templates/{name}", post(templates::write))
+        .route("/fixes", get(fixes::list))
+        .route("/fixes/{id}", get(fixes::get))
+        .route("/fixes/{id}/apply", post(fixes::apply))
         .route(
             "/formations",
             get(formations::list).post(formations::create),
@@ -171,6 +183,7 @@ pub fn build_router(state: AppState) -> Router {
         // Memory management
         .route("/memory/audit", post(memory::audit_memory))
         .route("/memory/compact", post(memory::compact_memory))
+        .layer(middleware::from_fn(auth::require_csrf_protection))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::require_auth,

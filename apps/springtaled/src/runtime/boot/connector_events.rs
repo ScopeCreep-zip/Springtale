@@ -27,15 +27,27 @@ pub(crate) struct ActiveSub {
 pub struct TriggerRegistry {
     /// rule_id → list of active subscriptions to tear down on disable/delete
     active: Arc<Mutex<HashMap<RuleId, Vec<ActiveSub>>>>,
+    /// Reverse index: connector name → rule IDs that have subscriptions
+    /// on it. Used by `reload_connector()` to re-attach affected rules
+    /// when a connector's token is rotated or config is updated.
+    /// n8n's `ActiveWorkflowManager` maintains the same index.
+    by_connector: Arc<Mutex<HashMap<String, Vec<RuleId>>>>,
     /// Sender for trigger events — cloned into each handler closure
     trigger_tx: mpsc::Sender<TriggerEvent>,
+    /// Store reference for persisting activation_error per rule.
+    store: Arc<dyn springtale_store::StorageBackend>,
 }
 
 impl TriggerRegistry {
-    pub fn new(trigger_tx: mpsc::Sender<TriggerEvent>) -> Self {
+    pub fn new(
+        trigger_tx: mpsc::Sender<TriggerEvent>,
+        store: Arc<dyn springtale_store::StorageBackend>,
+    ) -> Self {
         Self {
             active: Arc::new(Mutex::new(HashMap::new())),
+            by_connector: Arc::new(Mutex::new(HashMap::new())),
             trigger_tx,
+            store,
         }
     }
 
@@ -93,8 +105,21 @@ impl TriggerRegistry {
                         connector: connector_name.clone(),
                         subscription: sub,
                     });
+                    drop(active);
+                    let mut by_conn = self.by_connector.lock().await;
+                    let ids = by_conn.entry(connector_name.clone()).or_default();
+                    if !ids.contains(&rule.id) {
+                        ids.push(rule.id);
+                    }
+                    // Clear any previous activation error
+                    let _ = self.store.set_rule_activation_error(&rule.id, None).await;
                 }
                 Err(e) => {
+                    // Persist activation error so the dashboard can show broken rules
+                    let _ = self
+                        .store
+                        .set_rule_activation_error(&rule.id, Some(&e.to_string()))
+                        .await;
                     tracing::warn!(
                         rule = %rule.name,
                         connector = %connector_name,
@@ -145,11 +170,70 @@ impl TriggerRegistry {
             }
         }
 
+        // Clean the connector→rules reverse index
+        {
+            let mut by_conn = self.by_connector.lock().await;
+            for sub in &subs {
+                if let Some(ids) = by_conn.get_mut(&sub.connector) {
+                    ids.retain(|id| id != rule_id);
+                }
+            }
+        }
+
         tracing::info!(
             rule_id = %rule_id.0,
             count = subs.len(),
             "detached connector event handlers"
         );
+    }
+
+    /// Re-attach all rules that had subscriptions on a specific connector.
+    ///
+    /// Called after token rotation or connector reconfigure so stale
+    /// subscriptions are replaced. n8n's `ActiveWorkflowManager` does
+    /// exactly this on credential update; Home Assistant does NOT (known
+    /// HA bug where automations silently stop after integration reload).
+    pub async fn reload_connector(
+        &self,
+        connector_name: &str,
+        connector_registry: &Arc<RwLock<ConnectorRegistry>>,
+        engine: &Arc<RwLock<RuleEngine>>,
+    ) {
+        let affected: Vec<RuleId> = {
+            let by_conn = self.by_connector.lock().await;
+            by_conn.get(connector_name).cloned().unwrap_or_default()
+        };
+        if affected.is_empty() {
+            return;
+        }
+
+        tracing::info!(
+            connector = %connector_name,
+            rules = affected.len(),
+            "reloading connector subscriptions"
+        );
+
+        for rule_id in &affected {
+            self.detach_rule(rule_id, connector_registry).await;
+        }
+
+        let rules: Vec<Rule> = {
+            let engine_guard = engine.read().await;
+            affected
+                .iter()
+                .filter_map(|id| {
+                    engine_guard
+                        .list_rules()
+                        .iter()
+                        .find(|r| &r.id == id)
+                        .map(|r| (*r).clone())
+                })
+                .collect()
+        };
+
+        for rule in &rules {
+            self.attach_rule(rule, connector_registry).await;
+        }
     }
 }
 
@@ -161,8 +245,9 @@ pub(super) async fn wire_connector_events(
     registry: &Arc<RwLock<ConnectorRegistry>>,
     engine: &Arc<RwLock<RuleEngine>>,
     trigger_tx: mpsc::Sender<TriggerEvent>,
+    store: Arc<dyn springtale_store::StorageBackend>,
 ) -> TriggerRegistry {
-    let trigger_registry = TriggerRegistry::new(trigger_tx);
+    let trigger_registry = TriggerRegistry::new(trigger_tx, store);
 
     let rules: Vec<Rule> = {
         let engine_guard = engine.read().await;

@@ -108,6 +108,28 @@ pub async fn receive(
         );
     }
 
+    // Acknowledge callback_query via answerCallbackQuery so the user's
+    // inline-keyboard button stops spinning. Polling mode handles this
+    // in runtime/connectors/telegram.rs; webhook mode needs it here.
+    if trigger_name == "callback_query_received"
+        && let Some(callback_id) = payload.get("id").and_then(|v| v.as_str())
+    {
+            let ack_input = serde_json::json!({
+                "callback_query_id": callback_id,
+            });
+            let reg = state.runtime.registry.read().await;
+            if let Err(e) = reg
+                .execute(&connector_name, "answer_callback_query", ack_input)
+                .await
+            {
+                tracing::warn!(
+                    error = %e,
+                    connector = %connector_name,
+                    "webhook: failed to answerCallbackQuery"
+                );
+            }
+    }
+
     // Dispatch trigger event to the rule engine via the trigger channel.
     // This is the same path used by cron and file-watch triggers.
     // trigger_type must match what the rule engine expects for ConnectorEvent triggers.

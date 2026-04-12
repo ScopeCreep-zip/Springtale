@@ -1,17 +1,15 @@
 //! `springtale new` — thin CLI wrapper around the template operations.
 //!
 //! Template content and write logic live in
-//! `springtale_runtime::operations::templates`. This file only parses
-//! args and renders the result.
-
-use std::path::Path;
+//! `springtale_runtime::operations::templates`. The daemon picks the
+//! destination directory to prevent path traversal.
 
 use anyhow::{Context, Result};
 
 use springtale_runtime::operations::templates::{self, TemplateError};
 
-pub fn run(template: &str, dir: &Path) -> Result<()> {
-    match templates::write_to(template, dir) {
+pub fn run(template: &str) -> Result<()> {
+    match templates::write_to(template) {
         Ok(report) => {
             println!(
                 "Creating {} project in {}",

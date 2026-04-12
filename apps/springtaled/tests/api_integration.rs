@@ -60,6 +60,7 @@ fn build_test_app(ready: bool) -> (Router, String) {
     let (bot_msg_tx, _bot_msg_rx) = mpsc::channel(256);
     let trigger_registry = springtaled::runtime::boot::connector_events::TriggerRegistry::new(
         trigger_tx.clone(),
+        store.clone(),
     );
 
     let heartbeat_monitor = std::sync::Arc::new(tokio::sync::Mutex::new(

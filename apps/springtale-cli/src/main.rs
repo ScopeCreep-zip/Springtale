@@ -7,7 +7,7 @@ use clap::Parser;
 
 use springtale_store::backend::sqlite::SqliteBackend;
 
-use cli::{Cli, Command, CryptoAction, ServerAction, TravelAction, VaultAction};
+use cli::{BotAction, Cli, Command, CryptoAction, ServerAction, TravelAction, VaultAction};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -17,8 +17,8 @@ async fn main() -> Result<()> {
         Command::Init => {
             commands::init::run().await?;
         }
-        Command::New { template, dir } => {
-            commands::new::run(&template, &dir)?;
+        Command::New { template } => {
+            commands::new::run(&template)?;
         }
         Command::Doctor => {
             commands::doctor::run().await?;
@@ -67,6 +67,14 @@ async fn main() -> Result<()> {
         Command::Crypto { action } => match action {
             CryptoAction::RotateVaultKey => {
                 commands::crypto::rotate_vault_key()?;
+            }
+        },
+        Command::Bot { action } => match action {
+            BotAction::PairInit => {
+                commands::bot::pair_init().await?;
+            }
+            BotAction::PanicUnpair => {
+                commands::bot::panic_unpair().await?;
             }
         },
         // Commands that need the store

@@ -45,9 +45,6 @@ pub enum Command {
     New {
         /// Template name: telegram-bot, github-monitor, cron-runner, llm-assistant
         template: String,
-        /// Output directory (default: current directory).
-        #[arg(long, default_value = ".")]
-        dir: std::path::PathBuf,
     },
     /// Diagnose configuration and connectivity issues.
     Doctor,
@@ -98,6 +95,20 @@ pub enum Command {
         #[command(subcommand)]
         action: CryptoAction,
     },
+    /// Bot pairing management — generate codes and revoke access.
+    Bot {
+        #[command(subcommand)]
+        action: BotAction,
+    },
+}
+
+#[derive(Subcommand)]
+pub enum BotAction {
+    /// Generate a pairing code for a new user. Display on terminal only — never in chat.
+    PairInit,
+    /// Revoke ALL paired users and invalidate ALL outstanding codes.
+    /// For emergencies — no chat access needed.
+    PanicUnpair,
 }
 
 #[derive(Subcommand)]

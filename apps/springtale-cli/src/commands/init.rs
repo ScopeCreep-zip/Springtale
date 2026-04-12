@@ -21,6 +21,7 @@ use springtale_crypto::identity::keypair::Keypair;
 use springtale_crypto::token::derive_db_encryption_key_hex;
 use springtale_crypto::vault::store::Vault;
 use springtale_runtime::operations::onboarding::{self, FormField, PlatformForm};
+use springtale_store::StorageBackend;
 use springtale_store::backend::sqlite::SqliteBackend;
 
 pub async fn run() -> Result<()> {
@@ -43,9 +44,44 @@ pub async fn run() -> Result<()> {
         .context("failed to open encrypted database for onboarding")?;
 
     run_platform_wizard(&store).await?;
+    set_owner_id(&store).await?;
 
     println!("\nSpringtale initialized. Run `springtale server start` to begin.");
     println!("Or try: springtale new telegram-bot");
+    Ok(())
+}
+
+/// Prompt for the bot owner's platform user ID so the pairing gate
+/// knows who to trust on first boot. Without this, preconfigured mode
+/// (the default) denies all messages.
+async fn set_owner_id(store: &SqliteBackend) -> Result<()> {
+    println!("\n--- Owner Setup ---");
+    println!("Enter your user ID on the chat platform (e.g., your Telegram numeric ID).");
+    println!("This user will be the bot owner — they can manage pairing and settings.");
+    println!("(Leave blank to use trust-on-first-use mode — first person to message becomes owner)");
+    print!("> ");
+    io::stdout().flush().ok();
+
+    let mut input = String::new();
+    io::stdin()
+        .read_line(&mut input)
+        .context("failed to read owner ID")?;
+    let input = input.trim();
+
+    if input.is_empty() {
+        store
+            .set_config("bot:access_mode", "\"tofu\"")
+            .await
+            .context("failed to set access mode")?;
+        println!("  TOFU mode enabled — first user to message becomes owner.");
+    } else {
+        let owner_val = format!("\"{input}\"");
+        store
+            .set_config("bot:owner_id", &owner_val)
+            .await
+            .context("failed to set owner ID")?;
+        println!("  Owner set to: {input}");
+    }
     Ok(())
 }
 
