@@ -5,18 +5,12 @@ use std::sync::Arc;
 
 use serde_json::json;
 use springtale_ai::{
-    AiAdapter, AiError, AiOptions, AiRequest, AiResponse, ChatMessage, ToolCall,
+    AiAdapter, AiError, AiOptions, AiRequest, AiResponse, ChatMessage, ToolCall, ToolPolicy,
 };
 use springtale_connector::registry::store::ConnectorRegistry;
 use tokio::sync::RwLock;
 
 use super::builder::{collect_tools, split_tool_name};
-
-/// Maximum conversation turns the runner will take before giving up.
-/// Each iteration = one adapter round-trip + any tool executions it
-/// asked for. Five is enough for "look up, then send" flows without
-/// letting a bad loop exhaust the context window.
-const MAX_ITERATIONS: usize = 5;
 
 /// Truncate tool output fed back into the model. 8 KiB keeps the
 /// conversation well under any vendor's context limit even after ~10
@@ -43,10 +37,12 @@ pub async fn run_with_tools(
     registry: &Arc<RwLock<ConnectorRegistry>>,
     mut messages: Vec<ChatMessage>,
     options: AiOptions,
+    policy: &ToolPolicy,
 ) -> Result<AiResponse, ToolRunnerError> {
-    let tools = collect_tools(registry).await;
+    let tools = collect_tools(registry, policy).await;
+    let max_iterations = policy.effective_max_iterations();
 
-    for iteration in 0..MAX_ITERATIONS {
+    for iteration in 0..max_iterations {
         let request = AiRequest::Chat {
             messages: messages.clone(),
         };
@@ -71,6 +67,7 @@ pub async fn run_with_tools(
             content: response.content.clone(),
             tool_calls: response.tool_calls.clone(),
             tool_call_id: None,
+            tool_name: None,
         });
 
         // Execute each call and push a `tool` result message.
@@ -80,7 +77,7 @@ pub async fn run_with_tools(
         }
     }
 
-    Err(ToolRunnerError::IterationLimit(MAX_ITERATIONS))
+    Err(ToolRunnerError::IterationLimit(max_iterations))
 }
 
 /// Result of a single tool execution as the model will see it.
@@ -125,11 +122,6 @@ async fn execute_tool_call(
 }
 
 fn result_message(call: &ToolCall, result: ExecutedResult) -> ChatMessage {
-    // Vendor APIs signal failure differently (Anthropic has `is_error`
-    // on tool_result blocks, OpenAI relies on the tool content). We use
-    // a lowest-common-denominator `[ERROR]` prefix so every adapter
-    // sees the same failure marker. When Anthropic's tool-result shape
-    // is used, the adapter also sets `is_error: true` on the block.
     let content = if result.is_error {
         format!("[ERROR] {}", result.body)
     } else {
@@ -139,7 +131,8 @@ fn result_message(call: &ToolCall, result: ExecutedResult) -> ChatMessage {
         role: "tool".into(),
         content,
         tool_calls: Vec::new(),
-        tool_call_id: Some(call.id.clone()),
+        tool_call_id: Some(call.id.clone()),   // OpenAI / Anthropic
+        tool_name: Some(call.name.clone()),    // Ollama
     }
 }
 

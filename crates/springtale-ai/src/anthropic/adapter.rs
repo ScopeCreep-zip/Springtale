@@ -17,7 +17,7 @@ pub struct AnthropicConfig {
     /// API key wrapped in Secret<String>.
     #[serde(deserialize_with = "crate::config::deserialize_secret")]
     pub api_key: SecretBox<String>,
-    /// Model name (e.g., "claude-sonnet-4-20250514").
+    /// Model name (e.g., "claude-sonnet-4-6").
     #[serde(default = "default_model")]
     pub model: String,
     /// Base URL. Default: "https://api.anthropic.com".
@@ -26,7 +26,11 @@ pub struct AnthropicConfig {
 }
 
 fn default_model() -> String {
-    "claude-sonnet-4-20250514".to_owned()
+    // Keep this in sync with CLAUDE.md. The full family (as of
+    // knowledge cutoff): claude-opus-4-6, claude-sonnet-4-6,
+    // claude-haiku-4-5-20251001. Sonnet 4.6 is the default because
+    // it's the best cost/quality mix for chat+tool-use workloads.
+    "claude-sonnet-4-6".to_owned()
 }
 
 fn default_base_url() -> String {
@@ -396,6 +400,16 @@ impl AiAdapter for AnthropicAdapter {
 
                     match event_type {
                         "content_block_delta" => {
+                            // Only text_delta blocks are streamed. input_json_delta
+                            // blocks (tool_use argument fragments) are intentionally
+                            // not accumulated here. Tool-calling flows use the
+                            // non-streaming complete_with_tools() via tool_runner,
+                            // which needs complete tool calls before execution.
+                            // Streaming individual argument chars has zero latency
+                            // benefit since execution can't start until the JSON is
+                            // complete. If needed later: accumulate with
+                            // HashMap<index, (id, name, args_buffer)>, parse JSON
+                            // at stream end when stop_reason == "tool_use".
                             if let Some(text) = data
                                 .get("delta")
                                 .and_then(|d| d.get("text"))

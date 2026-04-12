@@ -60,20 +60,21 @@ impl OllamaAdapter {
             obj.insert("role".into(), serde_json::Value::String(m.role.clone()));
 
             if m.role == "tool" {
-                // Ollama follows OpenAI's convention: role=tool +
-                // tool_call_id + content.
-                if let Some(id) = m.tool_call_id {
-                    obj.insert("tool_call_id".into(), serde_json::Value::String(id));
+                // Ollama uses tool_name (function name), NOT tool_call_id.
+                // OpenAI uses tool_call_id. The ChatMessage carries both
+                // so each adapter picks the right one.
+                if let Some(name) = m.tool_name {
+                    obj.insert("tool_name".into(), serde_json::Value::String(name));
                 }
                 obj.insert("content".into(), serde_json::Value::String(sanitized));
             } else if m.role == "assistant" && !m.tool_calls.is_empty() {
                 obj.insert("content".into(), serde_json::Value::String(sanitized));
+                // Ollama tool_calls have no `id` field (unlike OpenAI).
                 let calls: Vec<serde_json::Value> = m
                     .tool_calls
                     .into_iter()
                     .map(|c| {
                         serde_json::json!({
-                            "id": c.id,
                             "function": {
                                 "name": c.name,
                                 "arguments": c.arguments,
@@ -101,29 +102,21 @@ impl OllamaAdapter {
         let mut tool_calls = Vec::new();
         if let Some(calls) = message.and_then(|m| m.get("tool_calls")).and_then(|v| v.as_array()) {
             for call in calls {
-                let id = call
-                    .get("id")
-                    .and_then(|i| i.as_str())
-                    .unwrap_or("")
-                    .to_owned();
                 let func = call.get("function");
                 let name = func
                     .and_then(|f| f.get("name"))
                     .and_then(|n| n.as_str())
                     .unwrap_or("")
                     .to_owned();
-                // Ollama returns arguments as an object, not a string.
                 let arguments = func
                     .and_then(|f| f.get("arguments"))
                     .cloned()
                     .unwrap_or(serde_json::Value::Object(Default::default()));
                 if !name.is_empty() {
-                    // Synthesize an id when the model/tool-plugin omits it.
-                    let id = if id.is_empty() {
-                        format!("ollama_tool_{}", tool_calls.len())
-                    } else {
-                        id
-                    };
+                    // Ollama tool calls have no `id` field — synthesize one
+                    // so the rest of the pipeline (which uses id for correlation)
+                    // has something to work with.
+                    let id = format!("ollama_tool_{}", tool_calls.len());
                     tool_calls.push(ToolCall {
                         id,
                         name,

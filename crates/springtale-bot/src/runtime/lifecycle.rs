@@ -48,6 +48,10 @@ pub struct BotConfig {
     /// Vault auto-lock timeout in seconds. Default: 300 (5 min).
     #[serde(default = "default_vault_timeout")]
     pub vault_timeout_secs: u64,
+    /// Controls which connector actions the AI can call as tools.
+    /// Default: empty allow list = AI has zero tools (OWASP LLM06).
+    #[serde(default)]
+    pub tool_policy: springtale_ai::ToolPolicy,
 }
 
 fn default_context_window() -> usize {
@@ -64,6 +68,7 @@ impl Default for BotConfig {
             context_window: default_context_window(),
             persona: BotPersona::default(),
             vault_timeout_secs: default_vault_timeout(),
+            tool_policy: springtale_ai::ToolPolicy::default(),
         }
     }
 }

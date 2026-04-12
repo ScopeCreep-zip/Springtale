@@ -66,9 +66,16 @@ pub struct ChatMessage {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tool_calls: Vec<ToolCall>,
     /// For `role == "tool"` messages, the id of the matching assistant
-    /// tool call this message carries the result for.
+    /// tool call this message carries the result for. Used by
+    /// OpenAI/Anthropic adapters.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tool_call_id: Option<String>,
+    /// Function name for tool result messages. Ollama uses `tool_name`
+    /// instead of `tool_call_id` to correlate results with calls.
+    /// The tool_runner populates both so each adapter picks what its
+    /// vendor expects.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
 }
 
 impl ChatMessage {
@@ -78,6 +85,7 @@ impl ChatMessage {
             content: content.into(),
             tool_calls: Vec::new(),
             tool_call_id: None,
+            tool_name: None,
         }
     }
 }
@@ -126,6 +134,77 @@ pub struct ToolResult {
     /// `[ERROR]` in content).
     #[serde(default)]
     pub is_error: bool,
+}
+
+// ── Tool policy ─────────────────────────────────────────────────────
+
+/// Per-bot policy controlling which connector actions the AI can see and call.
+///
+/// Pattern: LangChain's `bind_tools` + MCP `annotations.requiresConsent`.
+/// Default is ZERO tools (empty `allow` list) per OWASP LLM06:
+/// "Limit extensions to the minimum necessary."
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ToolPolicy {
+    /// Glob allow-list. e.g. `["connector-telegram__*", "connector-github__read_*"]`.
+    /// Empty = no tools exposed (safe default).
+    #[serde(default)]
+    pub allow: Vec<String>,
+    /// Glob deny-list. Overrides allow. e.g. `["*__execute", "*__delete_*"]`.
+    #[serde(default)]
+    pub deny: Vec<String>,
+    /// Max tool-call iterations per AI invocation. 0 = use default (5).
+    #[serde(default)]
+    pub max_iterations: u8,
+}
+
+impl ToolPolicy {
+    pub fn is_allowed(&self, tool_name: &str) -> bool {
+        if self.allow.is_empty() {
+            return false;
+        }
+        let allowed = self.allow.iter().any(|pat| glob_match(pat, tool_name));
+        let denied = self.deny.iter().any(|pat| glob_match(pat, tool_name));
+        allowed && !denied
+    }
+
+    pub fn effective_max_iterations(&self) -> usize {
+        if self.max_iterations > 0 {
+            self.max_iterations as usize
+        } else {
+            5
+        }
+    }
+}
+
+/// Minimal glob: trailing `*` only.
+fn glob_match(pattern: &str, name: &str) -> bool {
+    if let Some(prefix) = pattern.strip_suffix('*') {
+        name.starts_with(prefix)
+    } else {
+        pattern == name
+    }
+}
+
+/// Field names in a tool's input schema that suggest secrets. Tools whose
+/// schemas contain these are rejected from the AI's catalog — credentials
+/// come from the connector config, never from the model.
+const SECRET_FIELD_PATTERNS: &[&str] = &["_key", "_secret", "_token", "_password", "passphrase"];
+
+/// Hard cap on tools per AI call. Anthropic docs report degradation past ~50.
+pub const MAX_TOOLS_HARD_CAP: usize = 50;
+
+/// Returns true if a JSON Schema's `properties` object contains field
+/// names that look like they hold secrets.
+pub fn schema_has_secret_fields(schema: &serde_json::Value) -> bool {
+    if let Some(props) = schema.get("properties").and_then(|p| p.as_object()) {
+        for key in props.keys() {
+            let lower = key.to_ascii_lowercase();
+            if SECRET_FIELD_PATTERNS.iter().any(|pat| lower.contains(pat)) {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 // ── Response types ──────────────────────────────────────────────────

@@ -325,6 +325,16 @@ impl AiAdapter for OpenAiCompatAdapter {
                         Err(_) => continue,
                     };
 
+                    // Only text content deltas are streamed. delta.tool_calls
+                    // (argument JSON fragments indexed by tool_call.index) are
+                    // intentionally not accumulated here. Tool-calling flows use
+                    // complete_with_tools() (non-streaming) via tool_runner —
+                    // streaming argument chars provides zero latency benefit since
+                    // tool execution can't start until the arguments JSON is
+                    // complete. If needed later: accumulate with
+                    // HashMap<u32, (id, name, args_buffer)>, parse the final JSON
+                    // when finish_reason == "tool_calls". See async-openai crate
+                    // for the raw chunk types (ChatCompletionMessageToolCallChunk).
                     if let Some(content) = data
                         .get("choices")
                         .and_then(|c| c.get(0))
