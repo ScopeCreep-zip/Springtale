@@ -5,136 +5,81 @@ mod connectors;
 mod events;
 mod formations;
 mod jobs;
-mod memory;
 mod rules;
 mod safety;
 mod sessions;
-mod wasm;
 
-use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
 
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
-use rusqlite::Connection;
+use tokio::sync::RwLock;
 
 use crate::error::StoreError;
-use crate::migrations;
 use crate::schema::audit::{AuditEntry, AuditFilter};
 use crate::schema::bot::{MemoryRow, SessionRow, UserPrefsRow};
 use crate::schema::connectors::ConnectorRow;
 use crate::schema::events::{EventEntry, EventFilter};
-use crate::schema::execution::ExecutionResultRow;
 use crate::schema::formations::{FormationMemberRow, FormationRow};
 use crate::schema::jobs::{JobId, JobRow};
 use crate::schema::safety::SafetyConfigRow;
-use crate::schema::wasm::WasmBinaryRow;
 use springtale_core::rule::types::{Rule, RuleId};
 
-/// SQLite-backed storage. Single-file, zero external dependencies.
+/// In-memory storage backend for ephemeral mode.
 ///
-/// Connection is wrapped in `Arc<std::sync::Mutex>` and all database
-/// operations run inside `tokio::task::spawn_blocking` to avoid holding
-/// async resources during synchronous `rusqlite` I/O. This follows
-/// rusqlite maintainer guidance (issue #697).
-pub struct SqliteBackend {
-    conn: Arc<Mutex<Connection>>,
-    path: Option<PathBuf>,
+/// All data is lost when the process exits. This is intentional —
+/// ephemeral mode is designed for:
+/// - Privacy-critical demos (no disk traces)
+/// - Travel mode (device seizure risk)
+/// - Testing without SQLite
+///
+/// WARNING: This backend provides NO persistence. If the daemon crashes
+/// or is killed, all rules, sessions, memory, and audit trails are gone.
+pub struct InMemoryBackend {
+    rules: RwLock<HashMap<String, Rule>>,
+    connectors: RwLock<HashMap<String, ConnectorRow>>,
+    events: RwLock<Vec<EventEntry>>,
+    jobs: RwLock<Vec<JobRow>>,
+    sessions: RwLock<HashMap<(String, String), SessionRow>>,
+    user_prefs: RwLock<HashMap<String, UserPrefsRow>>,
+    memory: RwLock<Vec<MemoryRow>>,
+    aliases: RwLock<HashMap<String, (String, String)>>,
+    audit: RwLock<Vec<AuditEntry>>,
+    safety_config: RwLock<Option<SafetyConfigRow>>,
+    formations: RwLock<Vec<FormationRow>>,
+    formation_members: RwLock<Vec<FormationMemberRow>>,
+    config: RwLock<HashMap<String, String>>,
 }
 
-impl SqliteBackend {
-    /// Open or create a SQLite database at the given path.
-    ///
-    /// Sets file permissions to 0o600, enables WAL mode, and runs migrations.
-    /// Database is unencrypted — use `open_encrypted` for encryption at rest.
-    pub fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
-        Self::open_with_key(path, None)
-    }
-
-    /// Open or create an encrypted SQLite database.
-    ///
-    /// Uses SQLite3MultipleCiphers (sqlite3mc) with ChaCha20-Poly1305.
-    /// The encryption key should be a hex-encoded 32-byte key derived
-    /// from the vault passphrase. Full-database encryption — same
-    /// approach as Signal (SQLCipher) but with ChaCha20.
-    pub fn open_encrypted(path: impl AsRef<Path>, hex_key: &str) -> Result<Self, StoreError> {
-        Self::open_with_key(path, Some(hex_key))
-    }
-
-    fn open_with_key(path: impl AsRef<Path>, hex_key: Option<&str>) -> Result<Self, StoreError> {
-        let path = path.as_ref();
-
-        // Ensure parent directory exists
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
+impl InMemoryBackend {
+    /// Create a new empty in-memory backend.
+    pub fn new() -> Self {
+        Self {
+            rules: RwLock::new(HashMap::new()),
+            connectors: RwLock::new(HashMap::new()),
+            events: RwLock::new(Vec::new()),
+            jobs: RwLock::new(Vec::new()),
+            sessions: RwLock::new(HashMap::new()),
+            user_prefs: RwLock::new(HashMap::new()),
+            memory: RwLock::new(Vec::new()),
+            aliases: RwLock::new(HashMap::new()),
+            audit: RwLock::new(Vec::new()),
+            safety_config: RwLock::new(None),
+            formations: RwLock::new(Vec::new()),
+            formation_members: RwLock::new(Vec::new()),
+            config: RwLock::new(HashMap::new()),
         }
-
-        let conn = Connection::open(path)?;
-
-        #[cfg(unix)]
-        set_db_permissions(path)?;
-
-        // Activate encryption before any other operations.
-        // sqlite3mc requires PRAGMA key before WAL mode or migrations.
-        if let Some(key) = hex_key {
-            conn.execute_batch("PRAGMA cipher = 'chacha20';")?;
-            // Use raw key format (x'hex') to avoid passphrase KDF overhead —
-            // we already derive the key via Argon2id in the vault.
-            conn.execute_batch(&format!("PRAGMA key = \"x'{key}'\";"))?;
-            tracing::info!("database encryption active (ChaCha20-Poly1305)");
-        }
-
-        configure_connection(&conn)?;
-        migrations::run_migrations(&conn)?;
-
-        tracing::info!(path = %path.display(), "SQLite store opened");
-
-        Ok(Self {
-            conn: Arc::new(Mutex::new(conn)),
-            path: Some(path.to_owned()),
-        })
-    }
-
-    /// Open an in-memory SQLite database (for testing).
-    pub fn open_in_memory() -> Result<Self, StoreError> {
-        let conn = Connection::open_in_memory()?;
-        configure_connection(&conn)?;
-        migrations::run_migrations(&conn)?;
-
-        Ok(Self {
-            conn: Arc::new(Mutex::new(conn)),
-            path: None,
-        })
-    }
-
-    /// Get the database file path (None for in-memory).
-    pub fn path(&self) -> Option<&Path> {
-        self.path.as_deref()
     }
 }
 
-/// Configure SQLite connection pragmas.
-fn configure_connection(conn: &Connection) -> Result<(), StoreError> {
-    conn.execute_batch(
-        "PRAGMA journal_mode = WAL;
-         PRAGMA synchronous = NORMAL;
-         PRAGMA busy_timeout = 5000;
-         PRAGMA foreign_keys = ON;",
-    )?;
-    Ok(())
-}
-
-/// Set file permissions to 0o600 (owner read/write only).
-#[cfg(unix)]
-fn set_db_permissions(path: &Path) -> Result<(), StoreError> {
-    use std::os::unix::fs::PermissionsExt;
-    let perms = std::fs::Permissions::from_mode(0o600);
-    std::fs::set_permissions(path, perms)?;
-    Ok(())
+impl Default for InMemoryBackend {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[async_trait]
-impl super::trait_::StorageBackend for SqliteBackend {
+impl super::trait_::StorageBackend for InMemoryBackend {
     // ── Rules ──────────────────────────────────────────────────
 
     async fn insert_rule(&self, rule: &Rule) -> Result<RuleId, StoreError> {
@@ -373,69 +318,11 @@ impl super::trait_::StorageBackend for SqliteBackend {
         self.list_config_impl().await
     }
 
-    async fn delete_config(&self, key: &str) -> Result<(), StoreError> {
-        self.delete_config_impl(key).await
-    }
-
-    // ── WASM Binaries ──────────────────────────────────────────
-
-    async fn store_wasm_binary(
-        &self,
-        name: &str,
-        wasm_bytes: &[u8],
-        manifest_json: &str,
-        wasm_hash: &str,
-        author: &str,
-    ) -> Result<(), StoreError> {
-        self.store_wasm_binary_impl(name, wasm_bytes, manifest_json, wasm_hash, author)
-            .await
-    }
-
-    async fn get_wasm_binary(&self, name: &str) -> Result<Option<WasmBinaryRow>, StoreError> {
-        self.get_wasm_binary_impl(name).await
-    }
-
-    async fn list_wasm_binaries(&self) -> Result<Vec<WasmBinaryRow>, StoreError> {
-        self.list_wasm_binaries_impl().await
-    }
-
-    async fn delete_wasm_binary(&self, name: &str) -> Result<(), StoreError> {
-        self.delete_wasm_binary_impl(name).await
-    }
-
-    // ── Execution Results ──────────────────────────────────────
-
-    async fn insert_execution_result(
-        &self,
-        input: &crate::schema::execution::ExecutionResultInput<'_>,
-    ) -> Result<(), StoreError> {
-        self.insert_execution_result_impl(input).await
-    }
-
-    async fn list_execution_results(
-        &self,
-        connector_name: &str,
-        limit: usize,
-    ) -> Result<Vec<ExecutionResultRow>, StoreError> {
-        self.list_execution_results_impl(connector_name, limit)
-            .await
-    }
-
     // ── Emergency ─────────────────────────────────────────────
 
+    /// No-op for in-memory backend — data is already ephemeral.
+    /// All state lives in HashMaps and is lost on process exit.
     fn panic_wipe(&self) -> Result<(), StoreError> {
-        // Close the connection to release file locks
-        // (acquiring the mutex ensures no other operations are in progress)
-        let _conn = self
-            .conn
-            .lock()
-            .map_err(|_| StoreError::Database("lock poisoned".into()))?;
-
-        // Wipe all SQLite files if we have a path
-        if let Some(ref path) = self.path {
-            super::wipe::secure_wipe_sqlite(path)?;
-        }
-
         Ok(())
     }
 }

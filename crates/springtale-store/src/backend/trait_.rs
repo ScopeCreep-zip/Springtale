@@ -6,9 +6,9 @@ use crate::schema::audit::{AuditEntry, AuditFilter};
 use crate::schema::bot::{MemoryRow, SessionRow, UserPrefsRow};
 use crate::schema::connectors::ConnectorRow;
 use crate::schema::events::{EventEntry, EventFilter};
-use crate::schema::jobs::{JobId, JobRow};
 use crate::schema::execution::ExecutionResultRow;
 use crate::schema::formations::{FormationMemberRow, FormationRow};
+use crate::schema::jobs::{JobId, JobRow};
 use crate::schema::safety::SafetyConfigRow;
 use springtale_core::rule::types::{Rule, RuleId};
 
@@ -215,7 +215,10 @@ pub trait StorageBackend: Send + Sync + 'static {
     }
 
     /// List members of a formation.
-    async fn list_formation_members(&self, _formation_id: &str) -> Result<Vec<FormationMemberRow>, StoreError> {
+    async fn list_formation_members(
+        &self,
+        _formation_id: &str,
+    ) -> Result<Vec<FormationMemberRow>, StoreError> {
         Ok(Vec::new())
     }
 
@@ -280,13 +283,7 @@ pub trait StorageBackend: Send + Sync + 'static {
     /// Store an execution result (output data from a rule/action execution).
     async fn insert_execution_result(
         &self,
-        _id: &str,
-        _connector_name: &str,
-        _rule_id: Option<&str>,
-        _rule_name: Option<&str>,
-        _output_json: &str,
-        _success: bool,
-        _error_message: Option<&str>,
+        _input: &crate::schema::execution::ExecutionResultInput<'_>,
     ) -> Result<(), StoreError> {
         Ok(())
     }
