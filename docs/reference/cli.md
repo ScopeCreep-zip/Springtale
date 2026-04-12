@@ -1,11 +1,33 @@
 # CLI Reference
 
-`springtale` — command-line interface for managing connectors, rules, events, and the daemon.
+`springtale` — command-line interface for managing connectors, rules, events, vault, formations, and the daemon.
+
+```
+   springtale
+     │
+     ├── init                         create vault + DB
+     ├── server start                 run springtaled inline
+     ├── panic                        emergency wipe
+     │
+     ├── connector { list, install, enable, disable, remove }
+     ├── rule      { list, add, toggle, run, update, delete }
+     ├── events    [--limit N --connector NAME]
+     ├── agent     set-autonomy NAME LEVEL
+     │
+     ├── vault     duress-setup
+     ├── crypto    rotate-vault-key
+     │
+     ├── travel    { prepare --backup-to, restore --from }
+     ├── memory    { audit, compact --max-entries N }
+     └── data      { export [--output --encrypt], purge }
+```
+
+*Fig. 1. CLI surface at a glance. `--json` is a global flag on every subcommand.*
 
 ## 1. Global Options
 
 | Flag | Description |
-|------|-------------|
+|---|---|
 | `--json` | Output as JSON instead of formatted tables |
 
 ---
@@ -14,7 +36,7 @@
 
 Create the data directory, vault, and database. Prompts for a passphrase interactively.
 
-```bash
+```
 $ springtale init
 Enter vault passphrase: ********
 Confirm passphrase: ********
@@ -26,70 +48,51 @@ Database created at ~/.local/share/springtale/springtale.db
 
 ## 3. `springtale server start`
 
-Start the springtaled daemon inline (foreground). Useful for development.
+Start the `springtaled` daemon inline (foreground). Useful for development.
 
-```bash
+```
 $ springtale server start
 INFO springtaled: listening on 127.0.0.1:8080
-INFO springtaled: ready
+INFO springtaled: READY
 ```
 
 ---
 
 ## 4. `springtale connector`
 
-### 4.1. `connector install <path>`
+### 4.1 `connector install <path>`
 
-Install a connector from a TOML manifest file.
+Install a connector from a TOML manifest file. Verifies the Ed25519 signature before registering.
 
-```bash
+```
 $ springtale connector install ./connector-kick.toml
 Installed: connector-kick v0.1.0
 ```
 
-### 4.2. `connector list`
+### 4.2 `connector list`
 
 List all installed connectors.
 
-```bash
+```
 $ springtale connector list
 ┌──────────────────────┬─────────┬─────────┐
 │ NAME                 │ VERSION │ ENABLED │
 ├──────────────────────┼─────────┼─────────┤
 │ connector-kick       │ 0.1.0   │ true    │
-│ connector-bluesky    │ 0.1.0   │ true    │
+│ connector-telegram   │ 0.1.0   │ true    │
 │ connector-github     │ 0.1.0   │ false   │
 └──────────────────────┴─────────┴─────────┘
 ```
 
-```bash
-$ springtale connector list --json
-{"connectors":[{"name":"connector-kick","version":"0.1.0","enabled":true},...]}
+### 4.3 `connector enable <name>` / `disable <name>` / `remove <name>`
+
 ```
-
-### 4.3. `connector enable <name>`
-
-Enable a disabled connector.
-
-```bash
 $ springtale connector enable connector-github
 Enabled: connector-github
-```
 
-### 4.4. `connector disable <name>`
-
-Disable a connector without removing it.
-
-```bash
 $ springtale connector disable connector-github
 Disabled: connector-github
-```
 
-### 4.5. `connector remove <name>`
-
-Remove a connector and its registration.
-
-```bash
 $ springtale connector remove connector-github
 Removed: connector-github
 ```
@@ -98,20 +101,18 @@ Removed: connector-github
 
 ## 5. `springtale rule`
 
-### 5.1. `rule add <file>`
+### 5.1 `rule add <file>`
 
 Add a rule from a TOML or JSON file.
 
-```bash
+```
 $ springtale rule add ./rules/stream-announce.toml
 Added: stream-announce (id: a1b2c3d4-...)
 ```
 
-### 5.2. `rule list`
+### 5.2 `rule list`
 
-List all rules with status.
-
-```bash
+```
 $ springtale rule list
 ┌──────────────────┬──────────┬─────────────────────┐
 │ NAME             │ STATUS   │ TRIGGER             │
@@ -122,20 +123,26 @@ $ springtale rule list
 └──────────────────┴──────────┴─────────────────────┘
 ```
 
-### 5.3. `rule toggle <id>`
+### 5.3 `rule toggle <id>`
 
-Toggle a rule between enabled and disabled.
-
-```bash
+```
 $ springtale rule toggle a1b2c3d4-...
 Toggled: stream-announce → disabled
 ```
 
-### 5.4. `rule run <id>`
+### 5.4 `rule update <id> <file>`
 
-Manually evaluate a rule (dry-run). Shows whether it would match and how many actions would fire.
+Replace a rule definition from a file.
 
-```bash
+### 5.5 `rule delete <id>`
+
+Delete a rule permanently.
+
+### 5.6 `rule run <id>`
+
+Manually evaluate a rule against a synthetic trigger (dry-run).
+
+```
 $ springtale rule run a1b2c3d4-...
 Rule: stream-announce
 Matched: true
@@ -149,19 +156,127 @@ Actions: 1
 Query the event log.
 
 | Flag | Type | Default | Description |
-|------|------|---------|-------------|
+|---|---|---|---|
 | `--limit` | `u32` | 50 | Number of events to return |
 | `--connector` | `String` | (all) | Filter by connector name |
 
-```bash
+```
 $ springtale events --limit 10 --connector connector-kick
 ┌─────────────────────┬──────────────────┬──────────────────┐
 │ TIMESTAMP           │ CONNECTOR        │ TRIGGER          │
 ├─────────────────────┼──────────────────┼──────────────────┤
-│ 2026-03-29 14:22:01 │ connector-kick   │ stream_live      │
-│ 2026-03-29 12:05:33 │ connector-kick   │ chat_message     │
+│ 2026-04-10 14:22:01 │ connector-kick   │ stream_live      │
+│ 2026-04-10 12:05:33 │ connector-kick   │ chat_message     │
 └─────────────────────┴──────────────────┴──────────────────┘
 ```
+
+---
+
+## 7. `springtale agent`
+
+### 7.1 `agent set-autonomy <name> <level>`
+
+Autonomy levels: `observe`, `suggest`, `act-with-approval`, `act-autonomously`.
+
+```
+$ springtale agent set-autonomy watcher observe
+Set autonomy: watcher → observe
+```
+
+---
+
+## 8. `springtale vault duress-setup`
+
+Configure a secondary duress passphrase that unlocks a decoy vault under coercion. Both passphrases produce valid decryption paths; the vault file size is constant (131,152 bytes) regardless of which is in use.
+
+```
+$ springtale vault duress-setup
+Enter real passphrase: ********
+Enter duress passphrase: ********
+Duress vault configured.
+```
+
+---
+
+## 9. `springtale crypto rotate-vault-key`
+
+Re-encrypt the vault with a new passphrase. The API bearer token changes as a side effect — the token is `HMAC-SHA256(passphrase, "springtale-api-token")`.
+
+```
+$ springtale crypto rotate-vault-key
+Enter current passphrase: ********
+Enter new passphrase: ********
+Vault re-encrypted. Update API clients with the new token.
+```
+
+---
+
+## 10. `springtale travel`
+
+Travel mode prepares Springtale for a border crossing or device inspection: encrypt a backup, wipe the local install, then restore at destination.
+
+### 10.1 `travel prepare --backup-to <path>`
+
+```
+$ springtale travel prepare --backup-to ~/secure-backup.enc
+Backup written: ~/secure-backup.enc (encrypted with vault passphrase)
+Local vault + database wiped.
+```
+
+### 10.2 `travel restore --from <path>`
+
+```
+$ springtale travel restore --from ~/secure-backup.enc
+Enter passphrase: ********
+Restored: vault, database, config.
+```
+
+---
+
+## 11. `springtale panic`
+
+Emergency wipe. Vault key material is zeroed in memory, then the vault file is overwritten with random bytes, fsync'd, and unlinked. SQLite databases are VACUUM'd and overwritten. Completes in under 3 seconds on a 1 MB vault.
+
+```
+$ springtale panic
+Wiping... done in 0.8s.
+```
+
+**Limitation:** on SSDs with wear levelling, residual ciphertext may survive in the flash translation layer. Full-disk encryption is the only complete mitigation — Springtale's panic wipe destroys the **key**, which is sufficient to make any residual data unreadable, but not to physically remove it from all blocks.
+
+---
+
+## 12. `springtale memory`
+
+### 12.1 `memory audit`
+
+List memory sessions and their entry counts.
+
+```
+$ springtale memory audit
+┌──────────────────┬─────────┬─────────┐
+│ SESSION          │ ENTRIES │ BYTES   │
+├──────────────────┼─────────┼─────────┤
+│ telegram:alice   │ 124     │ 56K     │
+│ telegram:bob     │ 43      │ 12K     │
+└──────────────────┴─────────┴─────────┘
+```
+
+### 12.2 `memory compact [--max-entries N]`
+
+Delete oldest entries beyond the per-session cap (default 100).
+
+---
+
+## 13. `springtale data`
+
+### 13.1 `data export [--output <path>] [--encrypt]`
+
+Export all user data as JSON. With `--encrypt`, the output is encrypted with the vault passphrase.
+
+### 13.2 `data purge`
+
+Delete all user data (rules, events, memory, formations) without touching the vault.
 
 ---
 
@@ -169,4 +284,5 @@ $ springtale events --limit 10 --connector connector-kick
 
 - [1] Configuration: [configuration.md](configuration.md)
 - [2] API endpoints: [api.md](api.md)
-- [3] Rule authoring: [guide/rules.md](../guide/rules.md)
+- [3] Rule authoring: [../guide/rules.md](../guide/rules.md)
+- [4] Security model: [../arch/SECURITY.md](../arch/SECURITY.md)

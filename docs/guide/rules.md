@@ -116,7 +116,7 @@ Actions are what the rule does when it fires. They run in sequence.
 | `Chain` | Run nested actions in sequence | `steps` (list of actions, max depth: 4) |
 | `Transform` | Apply a data transformation | `operation`, `params` |
 | `Delay` | Wait before next action | `seconds` |
-| `AiComplete` | Optional AI call (Phase 2) | `prompt`, `adapter` (optional) |
+| `AiComplete` | Optional AI call through the configured adapter | `prompt`, `adapter` (optional) |
 
 ### 4.1. Template Variables
 

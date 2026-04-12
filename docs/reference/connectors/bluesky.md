@@ -2,6 +2,28 @@
 
 Bluesky/ATProto integration. Session-based authentication, Jetstream firehose for real-time events, and post/reply/like/repost actions.
 
+```
+  ATProto PDS           connector-bluesky            Rule engine
+  (bsky.social)               │                          │
+        │                     │                          │
+        │  POST /createSession│                          │
+        │  ◄─────────────────►│                          │
+        │  session token      │                          │
+        │                     │                          │
+  Jetstream                   │                          │
+  (wss://…)                   │                          │
+        │  note/mention/like  │                          │
+        │  firehose frames    │                          │
+        ├────────────────────►│ emit TriggerEvent        │
+        │                     ├─────────────────────────►│
+        │                     │                          │
+        │  POST /createRecord │ execute(create_post,     │
+        │  (post, like, …)    │          reply, like, …) │
+        │  ◄──────────────────┤  ◄───────────────────────┤
+```
+
+*Fig. 1. Bluesky data flow. Triggers come from the Jetstream firehose; actions go through the ATProto PDS REST endpoints with a session token.*
+
 ## 1. Configuration
 
 **TABLE I. CONFIG FIELDS**

@@ -41,17 +41,26 @@ Full walkthrough with a worked example: [docs/QUICKSTART.md](docs/QUICKSTART.md)
 
 ## Connectors
 
-Seven first-party connectors ship with Phase 1a. You wire them together with rules — no code, no AI, just TOML:
+Fourteen first-party connectors ship today. You wire them together with rules — no code, no AI, just TOML:
 
-| Connector | Platform | Triggers | Actions |
-|-----------|----------|----------|---------|
-| `connector-kick` | Kick streaming | 4 (chat, stream live/offline, follow) | 3 (send chat, get channel/stream) |
-| `connector-bluesky` | Bluesky/ATProto | 4 (mention, follow, like, repost) | 4 (post, reply, like, repost) |
-| `connector-github` | GitHub | 4 (push, PR, issue, comment) | 3 (create issue, comment, get diff) |
-| `connector-presearch` | Presearch | — | 2 (search, scrape with caching) |
-| `connector-filesystem` | Local files | 3 (create, modify, delete) | 3 (read, write, list) |
-| `connector-shell` | Commands | — | 1 (exec with allow-list) |
-| `connector-http` | Generic HTTP | — | 2 (get, post with host allow-list) |
+| Connector | Platform | What it does |
+|---|---|---|
+| `connector-kick` | Kick streaming | OAuth 2.1 PKCE, chat, stream events, webhooks |
+| `connector-bluesky` | Bluesky / ATProto | posts, replies, likes, Jetstream firehose |
+| `connector-github` | GitHub | issues, comments, diffs, HMAC webhooks |
+| `connector-presearch` | Presearch | privacy-first search + scraping, cached |
+| `connector-filesystem` | Local files | watch, read, write with path allow-lists |
+| `connector-shell` | Shell commands | execute with allow-list, timeout, approval gate |
+| `connector-http` | Generic HTTP | GET/POST/PUT/DELETE with host allow-list |
+| `connector-telegram` | Telegram | Bot API, polling + webhooks |
+| `connector-discord` | Discord | twilight gateway, slash commands, messages |
+| `connector-slack` | Slack | Socket Mode + webhooks, messages, blocks |
+| `connector-irc` | IRC | native IRC client, channels, messages |
+| `connector-nostr` | Nostr | NIP-44 relays, notes, encrypted DMs |
+| `connector-signal` | Signal | signal-cli bridge, messages, groups |
+| `connector-browser` | Headless browser | Chromium via WASM, navigate, click, screenshot |
+
+`connector-matrix` is deferred — `matrix-sdk` pins a `rusqlite` with an open heap-leak CVE; Springtale uses the patched version. We'll ship it once upstream catches up.
 
 Any connector automatically becomes an MCP server via `springtale-mcp`. One framework, not N hand-written servers.
 
@@ -82,27 +91,39 @@ Per-connector details: [docs/reference/connectors/](docs/reference/connectors/) 
 Springtale is a Rust workspace with strict downward-only dependencies. No cycles, no upward references.
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     Applications                        │
-│  springtaled (daemon)        springtale-cli (terminal)  │
-├─────────────────────────────────────────────────────────┤
-│                   Integration Crates                    │
-│  mcp (protocol bridge)   ai (adapter + noop)            │
-│  scheduler (cron, watcher, jobs, retry)                 │
-├─────────────────────────────────────────────────────────┤
-│                     Connector Layer                     │
-│  trait, registry, manifest signing, capability system,  │
-│  WASM sandbox (Wasmtime — fuel, memory, timeout)        │
-├─────────────────────────────────────────────────────────┤
+┌──────────────────────────────────────────────────────────┐
+│                      Applications                       │
+│   springtaled (daemon)         springtale-cli            │
+│   Tauri desktop + web dashboard (SolidJS)                │
+├──────────────────────────────────────────────────────────┤
+│                        Bot Layer                         │
+│   bot (runtime, router, cooperation, orchestrator)       │
+│   runtime (shared init, dispatch, operations)            │
+├──────────────────────────────────────────────────────────┤
+│                   Integration Crates                     │
+│   mcp (rmcp 1.x bridge)     ai (Anthropic/Ollama/…/Noop) │
+│   sentinel (toxic pairs, behavioural monitor)            │
+│   scheduler (cron, watcher, jobs, heartbeat)             │
+├──────────────────────────────────────────────────────────┤
+│                     Connector Layer                      │
+│   trait, registry, manifest signing, capability system,  │
+│   WASM sandbox (Wasmtime — fuel, memory, epoch timeout)  │
+├──────────────────────────────────────────────────────────┤
 │                    Foundation Crates                     │
-│  store (SQLite + WAL)           crypto (Ed25519, vault) │
-│  core (rule engine, pipeline)   transport (Unix socket) │
-└─────────────────────────────────────────────────────────┘
+│   store (SQLite + WAL + 8 migrations)                    │
+│   crypto (Ed25519, vault, Argon2id, XChaCha20-Poly1305)  │
+│   core (rule engine, pipeline, transforms, canvas)       │
+│   transport (Local / HTTP-mTLS / Veilid-stub)            │
+└──────────────────────────────────────────────────────────┘
 ```
 
-When an event arrives — webhook, file change, cron timer — it flows through trigger matching, condition evaluation, pipeline stages, capability check, then dispatch to the connector. Events are logged to the store. The job queue runs 4 concurrent workers.
+*Fig. 1. Crate stack. Dependencies flow downward only.*
 
-Architecture guide: [docs/guide/architecture.md](docs/guide/architecture.md) | Full specification: [docs/current-arch/ARCHITECTURE.md](docs/current-arch/ARCHITECTURE.md)
+When an event arrives — webhook, file change, cron timer, chat message — it flows through trigger matching, condition evaluation, pipeline stages, capability check, then dispatch to the connector. Events and outputs land in the store. Bots sit on top of the same rule engine and add command routing, session memory, and a cooperation framework that coordinates multi-agent formations without central orchestration.
+
+Architecture (as-built): [docs/arch/ARCHITECTURE.md](docs/arch/ARCHITECTURE.md) · [docs/arch/SECURITY.md](docs/arch/SECURITY.md) · [docs/arch/AUDIT-NOTES.md](docs/arch/AUDIT-NOTES.md)
+Design intent: [docs/current-arch/ARCHITECTURE.md](docs/current-arch/ARCHITECTURE.md)
+Friendly guide: [docs/guide/architecture.md](docs/guide/architecture.md)
 
 ## Security
 
@@ -128,27 +149,29 @@ Security and privacy are constraints, not features. Eight independent layers —
 └───────────────────────────────────────────────────────────┘
 ```
 
+*Fig. 2. Defence-in-depth. Compromise of any one layer doesn't cascade.*
+
 Native connectors (first-party, audited) run in-process with runtime capability checks. Community WASM connectors are fully sandboxed in Wasmtime — they can only reach the host through capabilities declared in their signed manifest.
 
 Security guide: [docs/guide/security.md](docs/guide/security.md) | Full threat model + OWASP/MITRE mappings: [docs/current-arch/SECURITY.md](docs/current-arch/SECURITY.md)
 
 ## Roadmap
 
-| Phase | Name | Status |
-|-------|------|--------|
-| 1a | Framework + Connectors | **COMPLETE** |
-| 1b | Bot Foundations | IN DESIGN — command routing, Telegram connector |
-| 2a | Chat + AI | PLANNED — Discord, Signal, WhatsApp, Matrix, IRC, Slack, Nostr |
-| 2b | Desktop + Mobile + Safety | PLANNED — Tauri 2, duress passphrase, panic wipe, travel mode |
-| 3 | Veilid Mesh | PLANNED — P2P transport, E2E encrypted AI chat, no server |
+| Phase | Scope | State |
+|---|---|---|
+| 1a | Framework + connectors. Daemon, CLI, rule engine, crypto vault, WASM sandbox, 7 baseline connectors, MCP bridge. | Present. |
+| 1b | Bot foundations. `springtale-bot` with command router, cooperation framework, `connector-telegram`. | Present. 12 of 20 cooperation modules are type-defined only; 3 unaudited. |
+| 2a | Chat + AI. Discord, Signal, IRC, Slack, Nostr connectors. Anthropic / Ollama / OpenAI-compat adapters. `HttpTransport` (rustls mTLS). `springtale-sentinel`. | Present except: OpenAI streaming is stubbed (non-streaming works). `connector-matrix` is not in the workspace — `matrix-sdk` pins a `rusqlite` with an open CVE. |
+| 2b | Desktop + safety. Tauri 2 shell, SolidJS dashboard, canvas visualisation. Duress vault, panic wipe, travel mode. | Shell, dashboard, canvas, duress, panic wipe, travel mode all present. Visual rule builder, i18n, and a11y are not implemented. |
+| 3 | Veilid mesh. P2P transport, E2E encrypted AI chat, no server. | `VeilidTransport` is a stub — every method returns `TransportError::NotConnected`. |
 
-Full roadmap: [docs/ROADMAP.md](docs/ROADMAP.md)
+Full breakdown: [docs/ROADMAP.md](docs/ROADMAP.md)
 
 ## Ecosystem
 
 Springtale draws from and contributes to a constellation of projects:
 
-- **[Rekindle](https://github.com/ScopeCreep-zip/Rekindle)** — Veilid-native decentralized gaming chat. Phase 3 transport wraps `rekindle-protocol`.
+- **[Rekindle](https://github.com/ScopeCreep-zip/Rekindle)** — Veilid-native decentralized gaming chat. Springtale's `VeilidTransport` (currently a stub) targets `rekindle-protocol`.
 - **[Konductor](https://github.com/braincraftio/konductor)** — Nix flake framework for reproducible dev environments.
 - **[Kalilix](https://github.com/ScopeCreep-zip/kalilix)** — Nix-based polyglot dev environment with security tooling.
 - **[SpiritStream](https://github.com/ScopeCreep-zip/SpiritStream)** — Tauri desktop app patterns.
@@ -160,7 +183,7 @@ Springtale draws from and contributes to a constellation of projects:
 | [Learning path](docs/guide/) | [CLI reference](docs/reference/cli.md) | [Contributing guide](docs/contributing/) |
 | [Architecture guide](docs/guide/architecture.md) | [API reference](docs/reference/api.md) | [Design decisions](docs/contributing/design-decisions.md) |
 | [Security guide](docs/guide/security.md) | [Config reference](docs/reference/configuration.md) | [Adding a connector](docs/contributing/adding-a-connector.md) |
-| [Glossary](docs/GLOSSARY.md) | [Connector reference](docs/reference/connectors/) | [Full architecture spec](docs/current-arch/) |
+| [Glossary](docs/GLOSSARY.md) | [Connector reference](docs/reference/connectors/) | [As-built arch](docs/arch/) |
 
 ## Contributing
 

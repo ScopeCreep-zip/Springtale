@@ -2,6 +2,30 @@
 
 Presearch decentralized search engine integration. Search and scrape actions with TTL-based result caching.
 
+```
+       Rule engine                    connector-presearch              Presearch
+            │                                 │                            │
+            │ execute(search, {query})        │                            │
+            ├────────────────────────────────►│                            │
+            │                                 │ cache lookup               │
+            │                                 │ (TTL = cache_ttl_secs)     │
+            │                                 │                            │
+            │                                 │ miss ──────────────────────┤
+            │                                 │  Bearer <api_key>          │
+            │                                 │ HTTPS                      │
+            │                                 │  ◄─────────────────────────┤
+            │                                 │                            │
+            │                                 │ store in cache             │
+            │  results                        │                            │
+            │  ◄──────────────────────────────┤                            │
+            │                                 │                            │
+            │ execute(scrape, {url})          │                            │
+            ├────────────────────────────────►│ check allowed_scrape_hosts │
+            │                                 │  ◄─────────────────────────┤
+```
+
+*Fig. 1. Presearch data flow. Search results are cached with a configurable TTL; scrape targets must match `allowed_scrape_hosts` before a request is made.*
+
 ## 1. Configuration
 
 **TABLE I. CONFIG FIELDS**

@@ -1,0 +1,679 @@
+Replayable Cooperative Game Design: Left 4 Dead
+                               Michael Booth, Valve
+                             What is Left 4 Dead?
+
+
+ Left 4 Dead is a
+  replayable, cooperative,
+  survival-horror game
+  where four Survivors
+  cooperate to escape
+  environments swarming
+  with murderously enraged
+  “Infected” (ie: zombies)
+Left 4 Dead: The Survivor Team
+Left 4 Dead: Enraged Infected Mob
+Left 4 Dead: The Special Infected
+Left 4 Dead: The Boss Infected
+Left 4 Dead
+Left 4 Dead
+Left 4 Dead
+Left 4 Dead
+                                             Project Goals
+
+ Observations
+   • Perceived Gap in the Market for Co-op gaming
+      • The major risk of the project
+   • Experience creating single player games epic in scale, narrative
+   • Multiplayer builds community, generates long-term retail sales
+      • Still selling Counter-Strike 1.6 today
+   • Experience with online multiplayer AI technology
+      • Counter-Strike Bot
+ Goal
+   • Using our AI tech, combine single player and multiplayer game
+     mechanics into a new kind of replayable, cooperative, online
+     experience
+                     Strategy for Reaching our Goals
+
+ Require Cooperation
+   • Primary product risk
+   • Crisp focus
+      • Generate clear data on demand for feature
+      • Explicitly fill perceived gap in market
+   • Game design must clearly encourage coop to mitigate risk
+ Replayability
+   • Game design must encourage long-term replayability
+   • Build online community
+   • Entertainment as a Service
+                       Left 4 Dead Game Mechanics
+
+
+ Requiring Cooperation
+ Replayability
+  • Designing for Dramatic Potential
+     • Dramatic Anticipation
+     • Structured Unpredictability
+  • Adaptive Dramatic Pacing
+  • Procedurally Populated Environment
+                                 Requiring Cooperation
+
+ Encourage cooperation throughout game design
+   • Structure game so players want to do the right thing
+   • Ensure cooperation is the only winning strategy
+   • Treat entire Survivor team as “the player”
+ Penalize non-cooperative behavior harshly
+   • Abandoning the team = death
+ Avoid artificial/arbitrary enforcement
+   • Players rebel against overtly heavy-handed punishments
+   • No invisible leashes, teleporting stragglers closer, dealing
+      “out of bounds” damage, etc
+                                  Requiring Cooperation
+
+
+ Survival Horror genre is an excellent fit
+   • Well established mainstream genre
+   • Everyone knows “The Rules”:
+       • The Good Guys work together
+       • The Jerks selfishly abandon the group (and die horribly)
+       • The Enemies are ruthless and nearly unstoppable
+                 Requiring Cooperation: Enemy Design
+
+ You Are Clearly Outnumbered: The Horde
+   • Obviously too many enemies for one Survivor to handle alone
+   • “Grabby” Infected stop Survivors when they hit, making even a
+     single Infected dangerous
+   • Enforces cooperation in an implicit manner without seeming heavy-
+     handed because it fits the expected genre behavior
+                Requiring Cooperation: Enemy Design
+
+
+ Don’t Go Out Alone: The Special Infected
+   • Tougher Infected with special abilities
+   • Adds a layer of variation to the homogeneity/predictability of
+     battling the horde
+   • Each special ability exists to address specific gameplay
+     issues
+   • Each has an overwhelming or incapacitating attack which
+     create dramatic cooperative moments for the Survivor team
+               Requiring Cooperation: Enemy Design
+
+
+ The Hunter
+  • Purpose: Outrun and kill stragglers and
+    “lone wolf” players
+  • Completely incapacitating Pounce
+    attack
+               Requiring Cooperation: Enemy Design
+
+
+ The Smoker
+  • Purpose: Pull apart tightly
+    coordinated teams to create
+    unexpected moments of chaos
+  • Completely incapacitating long
+    range Tongue attack
+                 Requiring Cooperation: Enemy Design
+
+ The Boomer
+   • Purpose: Break the rule of “shoot everything that moves”, forcing
+     players to think a bit before firing
+   • Boomer’s Vomit/Explosion creates excellent moments of Dramatic
+     Anticipation where you know the mob is coming to get you, soon…
+                Requiring Cooperation: Enemy Design
+
+
+ The Special Infected Incapacitating attacks
+   • Make players fear becoming separated from the group,
+     reinforcing team cohesion
+   • Give players near the incapacitated victim the opportunity to
+     be the hero and save them
+   • Players really enjoy helping each other
+                Requiring Cooperation: Enemy Design
+
+
+ “OH $#*!!”: The Boss Infected
+   • Boss Infected force the Survivors to immediately reevaluate
+     their tactics
+   • Breaks Survivor team out of their familiar pattern of
+     behavior
+   • Forces the Survivors to re-think whole-team situation and
+     current strategy, encourages team talk
+   • Generates Dramatic Anticipation
+                 Requiring Cooperation: Enemy Design
+
+ The Tank
+   • Halts forward momentum while
+       Survivors focus on the imminent
+       danger of the Tank
+   •   Requires full attention of entire team
+   •   Forces Survivors to defend instead
+       of assault
+   •   Tank throw ability makes Survivors
+       reevaluate their environment
+   •   Music change, Tank’s yells and
+       heavy footfalls create powerful
+       moment of Dramatic Anticipation
+              Requiring Cooperation: Enemy Design
+
+ The Witch
+  • Breaks the rule of “shoot
+    everything that moves” with
+    higher contrast than the Boomer
+  • Forces Survivors to move
+    stealthily and take extra care with
+    flashlights and weapons
+  • Danger is communicated by
+    broadcasting Witch presence via
+    disturbing crying sound effects
+  • Creates powerful moments of
+    Dramatic Anticipation
+                     Requiring Cooperation: Vocalizations
+
+ Survivor characters automatically emit various vocalizations
+    • Improves situational awareness
+        • “Behind you!”
+        • “Hunter’s got Zoey!”
+        • “Witch!”
+        • “Here they come!”
+        • “Grenade!”
+        • Rebukes for friendly fire
+    • Communicates short term goals
+        • “The subway is just up the street”
+        • “Can you let me out? I’m stuck!”
+        • “Get to the chopper!”
+    • Encourages cooperation via baseline of camaraderie
+        • “Thanks for that”
+        • “Don’t worry I got ya…”
+        • Friendly, supportive tone of voice (usually)
+               Requiring Cooperation: Limited Resources
+
+ Limited resources that are required for
+   success encourage cooperation
+    • Effective because the game clearly
+        can’t be won alone
+    •   Obvious benefit to sharing (keep extra
+        gun alive)
+    •   Minimal sharing UI doesn’t get in the
+        way
+    •   Sharing behavior breaks the ice, builds
+        group solidarity
+    •   Another opportunity for Players to
+        directly help each other
+                      Requiring Cooperation: Helplessness
+
+ A player in a clearly helpless and
+   dependent state demands
+   cooperation
+    • Effective because the game can’t
+        be won alone
+    •   Obvious benefit to sharing (keep
+        extra gun alive)
+    •   Obvious that you will likely be in a
+        similar situation soon
+    •   Easy to assist helpless player
+    •   Benefit clearly outweighs cost
+        (usually)
+    •   Another opportunity for Players to
+        directly help each other
+                        Left 4 Dead Game Mechanics
+
+
+ Requiring Cooperation
+ Replayability
+   • Designing for Dramatic Potential
+      • Dramatic Anticipation
+      • Structured Unpredictability
+   • Adaptive Dramatic Pacing
+   • Procedurally Populated Environment
+                      Designing for Dramatic Potential
+
+
+ Dramatic Anticipation
+   • Set up moments where event X implies interesting event Y
+     after a short delay
+   • Anticipation of imminent reward/punishment is very
+     powerful
+   • Example: Old Boomer vs New Boomer
+                               Designing for Dramatic Potential
+
+ Many Dramatic Anticipation examples in Left 4 Dead
+    • Infected Breaking Through Doors
+       • Classic horror movie moment of anticipation
+    • Boomer Vomit/Explosion
+       • A big attack coming in a few seconds. Anticipation enhanced via distinctive music
+            and vision obscuring screen effect
+    • Tank Incoming!
+         • Distinctive music, Tank’s distant yelling and pounding footsteps build anticipation
+            as he approaches
+    • Witch Nearby
+         • Her sobbing in the distance creates anticipation, particularly when her position is
+            unknown
+    • Music
+        • Many events are preceded by a distinctive piece of music that builds anticipation
+    • Finales/Crescendo Events
+        • These start with a angry crowd shrieking in the distance, implying chaos is on the
+            way soon
+    • Finale Escape Vehicle
+         • Watching the escape vehicle arrive while fighting for your life
+                               Designing for Dramatic Potential
+
+ Dramatic Anticipation examples in Left 4 Dead (continued)
+    • Incoming Mobs
+          • Seeing a huge mob of Infected running down the street or climbing over a fence
+    •   “Third Strike”
+          • Survivor has been revived twice will die next time – on “last legs”
+    •   Moving slowly when injured
+          • Limping into the safe room with a mob hot on your heels
+    •   Ledge hanging
+          • Classic example of anticipation – the “cliff hanger”
+    •   Incapacitation
+          • Lying helpless and bleeding on the ground generates anticipation for both the
+            victim and his teammates
+    • Rescue Closets
+          • Hearing trapped friends creates anticipation – especially if you are the only one
+            left alive
+    • Car Alarms
+          • Double anticipation: Of not setting it off, and of the mob that comes when you do
+                  Designing for Dramatic Potential
+
+
+ Dramatic Anticipation
+                        Left 4 Dead Game Mechanics
+
+
+ Requiring Cooperation
+ Replayability
+   • Designing for Dramatic Potential
+      • Dramatic Anticipation
+      • Structured Unpredictability
+   • Adaptive Dramatic Pacing
+   • Procedurally Populated Environment
+                         Designing for Dramatic Potential
+
+ Structured Unpredictability – What is it?
+    • Collections of interesting possibilities selected at runtime using
+      intentionally designed randomized constraints
+ The value of Structured Unpredictability
+    • Low probability + High drama = Memorable
+    • Designers often want everything to be experienced, every time -
+      resist the temptation
+    • Set up many possible moments, knowing few will happen at any
+      run
+    • Unpredictability greatly enhances replayability and drama
+    • Combinations of randomized events generate memorable stories
+                        Left 4 Dead Game Mechanics
+
+
+ Requiring Cooperation
+ Replayability
+   • Designing for Dramatic Potential
+      • Dramatic Anticipation
+      • Structured Unpredictability
+   • Adaptive Dramatic Pacing
+   • Procedurally Populated Environment
+                                 Adaptive Dramatic Pacing
+
+ Adaptive Dramatic Pacing
+   • Algorithmically adjusting game pacing on the fly to maximize “drama”
+ Inspired by Observations from Counter-Strike
+   • Natural pacing of CS is "spiky”, with periods of quiet tension
+        punctuated by unpredictable moments of intense combat
+    •   Constant, unchanging combat is fatiguing
+    •   Long periods of inactivity are boring
+    •   Unpredictable peaks and valleys of intensity create a powerfully
+        compelling and replayable experience
+    •   Same scenario, often the same map, yet different and compelling
+        experience each round
+                               Adaptive Dramatic Pacing
+
+
+ The AI Director algorithmically drives overall pacing
+   • Creates peaks and valleys of intensity similar to the proven
+     pacing success of Counter-Strike
+   • Pacing Algorithm
+       • Estimate the “emotional intensity” of each Survivor
+       • Track the max intensity of all 4 Survivors
+       • If intensity is too high, remove major threats for awhile
+       • Otherwise, create an interesting population of threats
+                                       Adaptive Dramatic Pacing
+
+ Estimating the “emotional intensity” of each
+   Survivor
+    • Represent Survivor Intensity as a single
+      floating point value
+    • Increase Survivor Intensity
+         • When injured by the Infected, proportional to
+           damage taken
+         • When the player becomes incapacitated
+         • When player is pulled/pushed off of a ledge
+           by the Infected
+         • When nearby Infected dies, inversely
+           proportional to distance
+    • Decay Survivor Intensity towards zero over
+      time
+    • Do NOT decay Survivor Intensity if there are
+      Infected actively engaging the Survivor
+                                        Adaptive Dramatic Pacing
+
+ Use Survivor Intensity to modulate the Infected population
+    • Build Up
+        • Create full threat population until Survivor Intensity crosses peak threshold
+    • Sustain Peak
+        • Continue full threat population for 3-5 seconds after Survivor Intensity has
+            peaked
+    • Peak Fade
+         • Switch to minimal threat population (“Relax period”) and monitor Survivor
+           Intensity until it decays out of peak range
+         • This state is needed so current combat engagement can play out without using
+           up entire Relax period. Peak Fade won’t allow the Relax period to start until a
+           natural break in the action occurs.
+    • Relax
+         • Maintain minimal threat population for 30-45 seconds, or until Survivors have
+            traveled far enough toward the next safe room
+                            Adaptive Dramatic Pacing
+
+
+ “Build Up” = Full Threat Population
+   • Wanderers
+   • Mobs
+   • Special Infected
+ “Relax” = Minimal Threat Population
+   • No Wanderers until team is calm
+   • No Mobs
+   • No Special Infected (although existing Specials may attack)
+ Boss Encounters NOT affected by adaptive pacing
+                             Adaptive Dramatic Pacing
+
+
+ Adaptive Dramatic Pacing reacts to Survivor team
+  actions
+   • Generates reliable peaks of intensity without completely
+     overwhelming the team
+   • Because of player variation, timing and location of peaks will
+     differ each time game is played
+                       Adaptive Dramatic Pacing
+
+
+ A procedurally generated population
+                        Adaptive Dramatic Pacing
+
+
+ How the AI Director modulates the population based
+  on the Survivor team’s “emotional intensity”
+                        Adaptive Dramatic Pacing
+
+
+ How the AI Director modulates the population based
+  on the Survivor team’s “emotional intensity”
+                        Adaptive Dramatic Pacing
+
+
+ How the AI Director modulates the population based
+  on the Survivor team’s “emotional intensity”
+                        Adaptive Dramatic Pacing
+
+
+ How the AI Director modulates the population based
+  on the Survivor team’s “emotional intensity”
+                        Adaptive Dramatic Pacing
+
+
+ How the AI Director modulates the population based
+  on the Survivor team’s “emotional intensity”
+                        Adaptive Dramatic Pacing
+
+
+ How the AI Director modulates the population based
+  on the Survivor team’s “emotional intensity”
+                        Adaptive Dramatic Pacing
+
+
+ How the AI Director modulates the population based
+  on the Survivor team’s “emotional intensity”
+                       Adaptive Dramatic Pacing
+
+
+ Comparing population after modulation by the AI
+  Director
+                          Left 4 Dead Game Mechanics
+
+
+ Requiring Cooperation
+ Replayability
+   • Designing for Dramatic Potential
+      • Dramatic Anticipation
+      • Structured Unpredictability
+   • Adaptive Dramatic Pacing
+   • Procedurally Populated
+     Environment
+                  Procedurally Populated Environment
+
+
+ How do we fill the environment with interesting
+  distributions of threats?
+   • Layers of Structured Unpredictability
+ How to populate world with hundreds of enemies
+  efficiently?
+   • Reuse a limited number of entities
+   • Only populate the environment immediately surrounding the
+      Survivor team via the Active Area Set
+                         Procedurally Populated Environment
+
+ Layers of Structured Unpredictability create interesting populations
+    • Wanderers
+         • Common Infected that wander around in a daze, sit down, or lay down until
+            alerted by a Survivor
+    • Mobs
+         • A large group (20-30) of enraged Common Infected that rush the Survivors at
+            unexpected times
+    • Special Infected
+       • Infected with special abilities that skirmish with the Survivor team periodically
+    • Bosses
+       • Powerful Infected encountered a few times per map that force the Survivors to
+            change their strategy
+    • Weapon Caches
+        • Collections of “2nd tier” weapons
+    • Scavenge Items
+        • Pipe bombs, Molotovs, Pain Pills, Extra Pistols
+                     Procedurally Populated Environment
+
+ The Navigation Mesh
+   • Originally created for
+     Counter-Strike Bot
+     pathfinding
+   • Useful for general spatial
+     reasoning and spatially
+     localized information
+       • Has an area been seen by
+         an actor?
+       • Is area X potentially visible
+         by area Y?
+       • “Flow” distance – distance
+         to this area from the
+         Survivor team start
+         location in the map
+       • Etc
+                 Procedurally Populated Environment
+
+
+ The Active Area Set (AAS)
+   • The set of Navigation Areas surrounding the Survivor team
+   • The AI Director creates/destroys Infected as the AAS moves
+     through the environment
+               Procedurally Populated Environment
+
+
+ The Active Area Set
+               Procedurally Populated Environment
+
+
+ The Active Area Set
+               Procedurally Populated Environment
+
+
+ The Active Area Set
+                        Procedurally Populated Environment
+
+ Populating Wandering Infected
+    • Stored as a simple count, C, in each area
+    • Counts are randomly determined at map
+      (re)start
+    • When an area enters the AAS
+        • Create C Infected (if possible)
+    • When an area leaves the AAS, or a
+      pending Mob needs more members
+        • Wanderers in the area are deleted and C is
+            increased accordingly
+    • Wanderer count is zeroed:
+         • When an area becomes visible to any
+           Survivor
+         • When the Director is in Relax mode
+                  Procedurally Populated Environment
+
+ Populating Mobs
+   • Created at randomized
+     intervals (90-180 seconds on
+     Normal difficulty)
+   • No mobs during Relax periods
+   • Boomer Vomit forces Mob
+     spawn, resets random
+     interval
+   • Mob size grows from
+     minimum just after spawn to
+     maximum after a duration to
+     balance difficulty of
+     successive, frequent Mobs
+                  Procedurally Populated Environment
+
+ Where to create Mobs
+   • Behind Survivors
+      • Only select valid areas in the AAS that are at or behind the
+        Survivor team’s “flow” distance
+      • 75% of Mobs come from behind, since wanderers and
+        Special/Boss Infected are usually engaged ahead of the team
+   • Near Boomer Vomit Victim
+      • Only select valid areas in the AAS that are near the Boomer
+        Vomit Victim’s “flow” distance
+   • Anywhere
+      • Any valid area in the AAS
+      • Default if there are no valid areas in the more specific sets
+                  Procedurally Populated Environment
+
+ Populating the Special Infected
+   • Created at individually randomized intervals
+   • No Specials during Relax periods
+   • Use any valid area not currently visible by the Survivor team
+   • Cleared status of areas ignored
+   • Smokers attempt to select areas above the Survivor team
+                 Procedurally Populated Environment
+
+
+ Boss Population
+   • Created every N units along
+     “escape path” +/- random
+     amount.
+   • Three Boss events are shuffled
+     and dealt out: Tank, Witch, and
+     Nothing.
+   • Successive repeats are not
+     allowed (ie: Tank, then Tank
+     again)
+
+Tank   Witch         Witch             Tank      Witch   Tank
+                  Procedurally Populated Environment
+
+
+ Avoid manually placed scripts/triggers
+   • Specifically with respect to “when” and “where”
+      • “what” can be ok
+   • Kills replayability
+      • Players learn all script locations quickly
+      • Removes suspense of not knowing what will happen next
+   • Kills cooperation
+      • Players expect everyone to have memorized all encounters
+      • Becomes a race
+                      Procedurally Populated Environment
+
+ Weapon Caches
+   • Map designer creates several possible weapon
+      caches in each map, the AI Director chooses
+      which will actually exist
+ Scavenge Items
+   • Map designer creates many possible item groups
+      throughout the map, the AI Direction chooses
+      which groups actually exist
+ Why designer-placed?
+   • Prediction of possible locations beneficial in this
+     case
+   • Allows visual storytelling/intention
+   • Solves item placement issues (leaning against
+     wall, mounted in gun rack, etc)
+                                      Other Supporting Technologies
+
+ Voice over IP
+     • “Open mic” allows spontaneous and rapid communication
+     • Hearing friend’s reactions increases drama and camaraderie
+   Game Instructor
+     • System of hints and visual directives allows new players to learn the game “on the fly”
+   In-game Voting
+     • Allow community to police itself
+   Split screen
+     • Supports casual “living room couch” cooperative play
+     • Introduces a friend to the game
+   Achievements
+     • Reinforces desired co-op behaviors
+     • Poses challenges for future play sessions
+   Steam/Matchmaking
+     • Friend lists
+     • Groups
+     • Free weekend passes
+     • Matchmaking
+   Robust AI “Actors”
+     • CPU controlled Common, Special, and Boss Infected as well as Survivors
+                                            Robust AI Actors
+
+ A procedural, adaptive system like the AI Director needs a roster of
+  robust AI agents to direct
+   • Humans don’t like to be explicitly directed (VS mode)
+ Complex 3D Environment Navigation
+   • Climb fences, rubble
+   • Use ladders
+   • Jump across rooftops
+ Rich Behaviors
+   • Custom HCSM system with integrated event processing
+ Survivor Bots
+   • Allowed us to assume baseline 4 player Survivor team for game tuning
+   • Drop in/out (“Take a Break”) incredibly valuable in the wild
+   • Automated testing
+                                                          Summary
+
+ Random players in the wild will actually cooperate!
+   • If game is structured to facilitate it (ie: no way to win otherwise)
+   • Players enjoy helping each other
+ Procedural Content
+   • Generates replayability
+   • Solution for replayable multiplayer experiences
+   • Greatly multiplies output of development team
+   • Improves community created content
+ Dramatic Anticipation
+   • If an event is exciting, it will be more so if it broadcasts its impending
+        arrival
+ Structured Unpredictability
+   • Low probability + High drama = Memorable
+ Simple algorithms can generate compelling pacing schedules
+   • Survivor Intensity estimation is crude, yet the resulting pacing works
+                       Do These Techniques Work?
+
+
+ In the six months since release, Left 4 Dead has
+   • … sold more than 2,500,000 retail units
+   • … received over 40 industry awards
+   • … become the #1 new IP on the PC and Xbox 360
+                       For more information…
+
+
+ www.L4D.com
+ www.valvesoftware.com
+ mike.booth.gdc09 AT gmail.com
+THANK YOU!
+

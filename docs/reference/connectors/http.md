@@ -2,6 +2,27 @@
 
 Generic HTTP client for making GET and POST requests to allow-listed hosts. Useful for integrating with APIs that don't have a dedicated connector.
 
+```
+   Rule engine                     connector-http                    Remote
+        │                                 │                             │
+        │ execute(get / post / put / del, │                             │
+        │         {url, headers, body})   │                             │
+        ├────────────────────────────────►│                             │
+        │                                 │ parse url → host            │
+        │                                 │ host ∈ allowed_hosts?       │
+        │                                 │                             │
+        │                                 │ merge default_headers       │
+        │                                 │                             │
+        │                                 │ rustls TLS +                │
+        │                                 │ timeout_secs deadline       │
+        │                                 ├────────────────────────────►│
+        │                                 │                             │
+        │  ActionResult                   │  response (status, body)    │
+        │  ◄──────────────────────────────┤  ◄──────────────────────────┤
+```
+
+*Fig. 1. HTTP data flow. Every request's host must appear in `allowed_hosts` — the capability check is enforced both at dispatch time and at connector construction.*
+
 ## 1. Configuration
 
 **TABLE I. CONFIG FIELDS**

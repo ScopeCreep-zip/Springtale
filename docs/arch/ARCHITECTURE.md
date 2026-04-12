@@ -1,0 +1,865 @@
+# Springtale — Architecture (As-Built)
+
+> **Status:** Reflects working tree · **Updated:** 2026-04-10 · **Source of truth:** the code
+>
+> This document describes what **actually exists** in the repository today.
+> For design intent (threat-model philosophy, Veilid transport,
+> accessibility roadmap), see `docs/current-arch/ARCHITECTURE.md` — that
+> document is the locked design reference. When this file and `current-arch/`
+> disagree, **this file is reality and `current-arch/` is intent**.
+
+---
+
+## Contents
+
+1. [Workspace Layout](#1-workspace-layout)
+2. [Dependency Graph](#2-dependency-graph)
+3. [Boot Sequence](#3-boot-sequence)
+4. [Foundational Crates](#4-foundational-crates)
+5. [Connector Framework](#5-connector-framework)
+6. [Bot Runtime & Cooperation](#6-bot-runtime--cooperation)
+7. [AI Adapters](#7-ai-adapters)
+8. [MCP Bridge](#8-mcp-bridge)
+9. [HTTP API Surface](#9-http-api-surface)
+10. [CLI Surface](#10-cli-surface)
+11. [Storage Schema](#11-storage-schema)
+12. [Frontend](#12-frontend)
+13. [Data Flow](#13-data-flow)
+
+Companion: [`SECURITY.md`](SECURITY.md), [`AUDIT-NOTES.md`](AUDIT-NOTES.md).
+
+---
+
+## 1. Workspace Layout
+
+```
+Springtale/
+├── crates/                        # Pure Rust library crates
+│   ├── springtale-core/           #   rules, pipelines, router, transforms, canvas types
+│   ├── springtale-crypto/         #   vault (KDF, AEAD, duress), signatures
+│   ├── springtale-transport/      #   Transport trait + Local/Http/Veilid impls
+│   ├── springtale-store/          #   SQLite backend + 8 migrations
+│   ├── springtale-scheduler/      #   cron, fs-watch, job queue, heartbeat, backoff
+│   ├── springtale-connector/     #   native + WASM connector framework, capability checker
+│   ├── springtale-ai/             #   AiAdapter + Anthropic/Ollama/OpenAI-compat/Noop
+│   ├── springtale-mcp/            #   rmcp 1.x bridge (stdio)
+│   ├── springtale-sentinel/       #   behavioural monitor, toxic-pair detection
+│   ├── springtale-runtime/        #   shared init, dispatch, operations layer
+│   ├── springtale-bot/            #   runtime, router, cooperation, orchestrator, memory
+│   └── libsqlite3-sys-mc/         #   vendored sqlite shim
+│
+├── connectors/                    # First-party connectors (all native Rust today)
+│   ├── connector-bluesky   connector-browser   connector-discord
+│   ├── connector-filesystem connector-github   connector-http
+│   ├── connector-irc       connector-kick      connector-matrix (deferred)
+│   ├── connector-nostr     connector-presearch connector-shell
+│   ├── connector-signal    connector-slack     connector-telegram
+│
+├── apps/
+│   ├── springtaled/               # Daemon — axum HTTP API, boot, scheduler wiring
+│   └── springtale-cli/            # clap-based CLI
+│
+├── tauri/                         # Excluded from workspace (own dep tree)
+│   ├── packages/types/            #   shared TS types
+│   ├── packages/ui/               #   shared SolidJS components + DataProvider interface
+│   ├── apps/desktop/              #   Tauri 2 desktop shell
+│   └── apps/dashboard/            #   SPA served by springtaled
+│
+├── sdk/connector-sdk/             # Excluded — wasm32-unknown-unknown target
+└── docs/
+    ├── current-arch/              # Locked design intent (do not edit)
+    ├── intended-arch/              # Includes COOPERATION.md spec
+    └── arch/                      # ← this folder (as-built)
+```
+
+*Fig. 1. Workspace tree.*
+
+Workspace members are declared in `Cargo.toml:1-40`. `matrix-sdk` is
+held due to CVE-2025-70873 in its pinned rusqlite 0.37; Springtale uses
+rusqlite 0.39.
+
+---
+
+## 2. Dependency Graph
+
+```
+                    springtale-core
+                   /       |       \
+                  /        |        \
+    springtale-store  springtale-crypto  (zero-dep peers)
+          |                 |
+          |                 +-----------+
+          |                 |           |
+  springtale-scheduler  springtale-transport
+          |                 |
+          +-------+---------+
+                  |
+        springtale-connector ──── springtale-sentinel
+                  |
+        springtale-ai        springtale-mcp
+                  \          /
+                   \        /
+                springtale-runtime
+                        |
+                 springtale-bot
+                        |
+                   springtaled
+                        |
+                 springtale-cli
+```
+
+*Fig. 2. Crate dependency graph.*
+
+Dependencies flow downward only. No circular edges. Rule enforced by
+`.claude/rules/backend/crate-structure.md`.
+
+---
+
+## 3. Boot Sequence
+
+`springtaled` boot is a 9-step ordered pipeline split between the daemon
+and the shared runtime crate.
+
+```
+main.rs (apps/springtaled/src/main.rs)
+  │
+  ├─[1] Install rustls::crypto::ring provider             main.rs:13
+  ├─[2] tracing_subscriber init (EnvFilter)               main.rs:16
+  ├─[3] config::load_config() → LoadedConfig              main.rs:23
+  └─[4] runtime::boot(config, connector_configs)          main.rs:32
+        │
+        │  apps/springtaled/src/runtime/boot/mod.rs:20-167
+        │
+        ├─[1] Log + 0.0.0.0 bind warning                  boot/mod.rs:25
+        ├─[2] init_crypto()                               boot/crypto.rs:8
+        │       vault OR ephemeral, keypair,
+        │       api_token_hash, db_key_hex
+        ├─[3] springtale_runtime::init(&RuntimeConfig)    init.rs:28-78
+        │       store, RuleEngine, WasmEngine (+ epoch
+        │       ticker), ConnectorRegistry (inventory),
+        │       AiAdapter (ArcSwap), Sentinel, Canvas bus
+        ├─[4] init_transport(keypair)                     boot/transport.rs
+        ├─[5] init_schedulers()                           boot/schedulers.rs
+        │       CronExecutor, FsWatcher, HeartbeatMonitor
+        ├─[6] init_job_queue()                            boot/queue.rs
+        ├─[7] init_bot(wiring, msg channels)              boot/bot.rs
+        │       bot handle + per-connector shutdowns
+        │       (telegram, nostr, irc, discord, slack, signal)
+        ├─[7c] data retention purge task (if configured)  boot/mod.rs
+        │       spawned when [store] retention_days is set
+        ├─[8] api::build_router(state) + bind             boot/mod.rs
+        └─[9] mark `ready=true`, spawn API server
+                + event_loop(trigger_rx, engine)          boot/mod.rs:138
+                wait on shutdown_signal()
+```
+
+*Fig. 3. 9-step boot pipeline.*
+
+**Design notes**
+
+- `boot/crypto.rs` (daemon-only) was split off from the deleted
+  `springtale-runtime/src/boot.rs`. Shared init now lives in
+  `springtale-runtime/src/init.rs`; daemon-specific crypto and bot wiring
+  stays with `springtaled`.
+- Passphrase acquisition (`boot/crypto.rs:65-99`) has a 3-way fallback:
+  `SPRINGTALE_PASSPHRASE_FILE` (Docker secrets), `SPRINGTALE_PASSPHRASE`
+  (dev only), or interactive TTY prompt. Fatal if none available.
+- The API token is `HMAC-SHA256(passphrase, "springtale-api-token")`.
+  There is no separate API key; rotating the token means rotating the
+  vault passphrase.
+- AI adapter is hot-swappable at runtime via `ArcSwap<Arc<dyn AiAdapter>>`
+  (`state.rs:27`). Config changes to `/config/ai` atomically replace the
+  active adapter with zero locking on the read path.
+
+---
+
+## 4. Foundational Crates
+
+### 4.1 `springtale-core`
+
+```
+core/src/
+├── lib.rs                  # module declarations only
+├── canvas/types.rs         # CanvasState, CanvasBlock, CanvasUpdate
+├── pipeline/
+│   ├── stage.rs            # Stage trait (async call → PipelineContext)
+│   ├── context.rs          # trace_id, input, output, errors, fuel_remaining
+│   ├── compose.rs          # compose_pipeline()
+│   └── error.rs
+├── router/dispatch.rs      # dispatch_event(engine, event) → Vec<RuleMatch>
+├── rule/
+│   ├── engine.rs           # RuleEngine (regex pre-compile at add_rule)
+│   ├── action.rs           # Action enum
+│   ├── trigger.rs          # Trigger enum
+│   ├── condition.rs        # Condition enum
+│   ├── evaluate.rs         # evaluate_condition()
+│   ├── template.rs         # ${trigger.field} interpolation
+│   ├── parse.rs            # TOML + NL parsing
+│   └── types.rs            # Rule, RuleId, RuleStatus, RuleVersion
+└── transform/
+    ├── extract.rs          # field extraction
+    ├── filter.rs           # data filtering
+    └── format.rs           # resolve_template()
+```
+
+**Key types**
+
+| Type | File:Line | Notes |
+|---|---|---|
+| `Stage` trait | `pipeline/stage.rs:12` | `async fn call(PipelineContext) -> Result<PipelineContext, PipelineError>` |
+| `RuleEngine` | `rule/engine.rs:54` | Pre-compiles regex at `add_rule()`; evaluation is pure |
+| `Action` | `rule/action.rs:21` | RunConnector, SendMessage, WriteFile, RunShell, Notify, Chain, Transform |
+| `Trigger` | `rule/trigger.rs:7` | Cron, FileWatch, Webhook, ConnectorEvent, SystemEvent |
+| `CanvasState` | `canvas/types.rs:57` | Broadcast to SolidJS via SSE |
+
+### 4.2 `springtale-store`
+
+SQLite-only backend behind a `StorageBackend` trait (40+ async methods).
+`SqliteBackend` uses `rusqlite 0.39` (WAL mode, `0o600` perms).
+
+```
+store/src/backend/
+├── trait_.rs               # StorageBackend trait
+├── sqlite/
+│   ├── mod.rs              # SqliteBackend
+│   ├── migrations.rs       # apply_migrations()
+│   └── {rules, connectors, events, jobs, sessions, memory,
+│        aliases, audit, safety, formations, execution, wasm}.rs
+├── memory/                 # in-memory impl (tests)
+└── wipe.rs                 # panic wipe hooks
+```
+
+See [§11 Storage Schema](#11-storage-schema) for tables.
+
+### 4.3 `springtale-scheduler`
+
+```
+scheduler/src/
+├── cron/executor.rs        # CronExecutor (tokio-cron-scheduler)
+├── watcher/fs_watcher.rs   # FsWatcher (notify-rs)
+├── heartbeat/monitor.rs    # HeartbeatMonitor (liveness + TTL)
+├── queue/
+│   ├── producer.rs         # JobProducer, Job, JobStatus
+│   └── consumer.rs         # JobConsumer (dequeue + retry)
+└── retry/backoff.rs        # BackoffConfig (exponential)
+```
+
+**Job queue is in-memory today.** `JobProducer` is an mpsc sender; the
+schema for SQLite-backed jobs exists in `001_init.sql` but
+`StorageBackend::enqueue_job()` is not yet wired. Producer comments note
+the API is stable and only the backing changes. See AUDIT-NOTES §1.
+
+### 4.4 `springtale-transport`
+
+```
+transport/src/
+├── transport/trait_.rs     # Transport trait (send/recv/node_id/name)
+├── local/unix_socket.rs    # LocalTransport — present, Unix socket
+├── http/server.rs          # HttpTransport — present, rustls mTLS
+└── veilid/stub.rs          # VeilidTransport — stub, returns NotConnected
+```
+
+Wire envelope is length-delimited JSON (`WireMessage { sender: [u8;32],
+message: Message }`). `Message::MAX_MESSAGE_SIZE = 16 MiB`. `recv()` is
+cancel-safe for `tokio::select!`. `VeilidTransport` is a stub: every
+method returns `TransportError::NotConnected`. The struct has a private
+constructor and is currently a compile-time placeholder only.
+
+---
+
+## 5. Connector Framework
+
+### 5.1 Trait
+
+`crates/springtale-connector/src/connector/trait_.rs:27-82`
+
+```rust
+#[async_trait]
+pub trait Connector: Send + Sync {
+    fn triggers(&self) -> &[TriggerDecl];
+    fn actions(&self) -> &[ActionDecl];
+    async fn execute(&self, action: &str, input: Value) -> Result<ActionResult>;
+    async fn on_event(&self, trigger: &str, handler: Box<dyn EventHandler>);
+    fn manifest(&self) -> &ConnectorManifest;
+    async fn verify_webhook(&self, headers: &Headers, body: &[u8]) -> Result<()>;
+    // default: reject all
+}
+```
+
+**Invariant** (line 31): the capability layer wraps this trait; every
+`execute()` is preceded by `check_action_capabilities()` in the dispatch
+path. Connectors **cannot** skip it.
+
+### 5.2 Capability enforcement
+
+```
+Manifest declares           User policy              Runtime check
+─────────────────           ───────────              ─────────────
+[[capabilities]]            CapabilityPolicy:        On each execute():
+  type = NetworkOutbound    • AllowAll               1. Try per-action
+  host = "api.kick.com"     • DenyAll                   inference:
+                            • AllowList(set)            input["host"] → NetworkOutbound
+[[capabilities]]            • Interactive (default)     input["path"] → Fs{Read,Write}
+  type = ShellExec            (ShellExec always           input["command"] → ShellExec
+                               holds pending           2. Fallback: check ALL declared
+                               user approval)           3. Error → dispatch aborts
+```
+
+*Fig. 4. Capability declaration → verification → runtime check.*
+
+File refs: `manifest/types.rs:10-70`, `manifest/verify.rs:11-71`,
+`capability/grant.rs:60-143`, `native/capability.rs:20-42`.
+
+Wildcard `NetworkOutbound` hosts are rejected at manifest validation
+(`verify.rs:56-61`). Signatures are Ed25519 over canonical JSON (all
+manifest fields except `signature`).
+
+### 5.3 Host trait + two execution models
+
+```
+           Arc<dyn ConnectorHost>
+         ┌─────────┴──────────┐
+         │                    │
+NativeConnectorHost     WasmConnectorHost
+ (in-process)           (Wasmtime sandbox)
+  no sandbox             64 MB mem, 10 M fuel,
+  trait object           epoch timeout,
+  #[forbid(unsafe)]      per-invocation Store
+```
+
+*Fig. 5. Two execution models behind one `ConnectorHost` trait.*
+
+**Native path** (`native/runtime.rs:16-97`): wraps `Box<dyn Connector>`,
+runs `execute_checked()` which calls `check_action_capabilities()` then
+delegates. All 15 first-party connectors ride this path.
+
+**WASM path** (`wasm/connector.rs:45-301`): per-invocation `Store` with
+fresh fuel budget and epoch deadline. ABI: guest exports
+`execute(action_ptr, action_len, input_ptr, input_len) -> i32` with
+length-prefixed JSON in linear memory at offset 1024. Host functions
+(currently only `http_request`) gate through `CapabilityChecker::check()`
+in `wasm/host_api.rs`. SHA-256 of the wasm bytes is verified against
+`manifest.wasm_hash` before module load (`wasm/connector.rs:70`).
+
+Engine config (`wasm/runtime.rs:23-56`):
+
+| Setting | Value |
+|---|---|
+| `consume_fuel` | true |
+| `epoch_interruption` | true |
+| `cranelift_opt_level` | Speed |
+| memory limit | `limits.memory_bytes` (64 MB default) |
+| instance cap | 10 |
+| table cap | 10 |
+| memory cap | 2 |
+
+**No WASM connector exists today.** All 14 first-party connectors ride
+the native path. The Wasmtime host, capability gate, SHA-256 integrity
+check, SDK, and per-invocation limits are all built and tested — but
+no first-party or community connector actually rides the sandbox. The
+SDK under `sdk/connector-sdk/` is usable for authors targeting
+`wasm32-unknown-unknown`.
+
+### 5.4 Registry
+
+`registry/store.rs:25-137`. In-memory `HashMap<String, ConnectorEntry>`.
+Persistence lives at the application layer via `springtale-store`
+(`connectors` table, migration 001). `get_for_execute()` (line 96-112)
+returns a cloned `Arc<dyn ConnectorHost>` + cloned capability checker so
+network calls don't hold the registry `RwLock`.
+
+### 5.5 First-party connector inventory
+
+All 15 are native Rust. Matrix is workspace-excluded (deferred).
+
+| Name | Transport | Notable triggers | Notable actions |
+|---|---|---|---|
+| bluesky | ATProto + Jetstream | note_received, repost, like | create_post, reply, like, repost |
+| browser | Chromium (WASM) | dom_element_found, nav_complete | click, fill, navigate, screenshot |
+| discord | twilight gateway | interaction_received | send_message, send_embed |
+| filesystem | inotify | file_{created,modified,deleted} | read_file, write_file, list_dir |
+| github | REST v3 + webhooks | push, pr_opened, issue_opened | create_issue, post_comment |
+| http | reqwest | webhook_received | GET/POST/PUT/DELETE |
+| irc | native IRC | channel_message, user_joined | send_message, join, part |
+| kick | OAuth 2.1 + REST | stream_live, chat_message | send_message, start_raid, ban |
+| nostr | NIP-44 relays | note_received, dm_received | send_note, send_dm |
+| presearch | REST | query_results_received | search, get_trending |
+| shell | OS exec | command_exit_received | execute_command/script |
+| signal | signal-cli bridge | message_received | send_message, group_invite |
+| slack | Socket Mode + webhooks | slash_command, app_mention | send_message, send_blocks |
+| telegram | Bot API poll/webhook | message_received, callback_query | send_message, send_photo |
+
+---
+
+## 6. Bot Runtime & Cooperation
+
+### 6.1 Bot event loop
+
+`crates/springtale-bot/src/runtime/event_loop.rs`. Three-way
+`tokio::select!`:
+
+```
+           ┌─────────────────────────────┐
+           │   Bot::event_loop()         │
+           └──────────────┬──────────────┘
+                          │
+         ┌────────────────┼─────────────────┐
+         │                │                 │
+   connector_rx      rule_rx           cadence_rx
+   (chat messages)   (triggers)        (CadenceBus ticks)
+         │                │                 │
+   handle_incoming   handle_trigger    handle_cadence_tick
+         │                │                 │
+   router dispatch   engine evaluate   for each formation:
+         │                │              • record_success
+         │                │              • persist momentum
+         │                │              • if Fever + orchestrator:
+         │                │                  orchestrate_formation()
+         └────────┬───────┴─────────────────┘
+                  ▼
+            handler registry → connector action
+```
+
+*Fig. 6. Bot three-way event-loop select.*
+
+Design constraint at `event_loop.rs:8`: never `?` individual message
+processing — a single bad message must never crash the bot.
+
+### 6.2 Cooperation module tree
+
+`crates/springtale-bot/src/cooperation/` — 20 files matching
+`docs/intended-arch/COOPERATION.md`:
+
+```
+cooperation/
+├── cadence.rs          § 5  tokio broadcast Tick bus + IntentPattern
+├── formation.rs        § 6  peer group, FormationMember, DynamicRole
+├── momentum.rs         § 7  Cold/Warming/Hot/Fever + capability gates
+├── awareness.rs        § 8  LocalAwareness, NeighborSnapshot
+├── attention.rs        § 9  AttentionEconomy (zero-sum aggro)
+├── environment.rs      §10  SharedEnvironment, Surface, SurfaceType
+├── consensus.rs        §11  ConsensusVote, VoteResolution
+├── commit.rs           §12  CommitPhase enum (5-phase)       ⚠ barrier stub
+├── interference.rs     §13  InterferenceEvent (4 types)
+├── transformation.rs   §14  RoleTransformation enum
+├── rally.rs            §15  RallyState, RallyResult           ⚠ not invoked
+├── capability.rs       §16  DynamicCapabilitySet (4 layers)
+├── recovery.rs         §18  DistressSignal, RecoveryAction    ⚠ not invoked
+├── comms.rs            §19  (not audited)                     ⚠ status TBD
+├── handoff.rs          §20  (not audited)                     ⚠ status TBD
+├── mental_model.rs     §21  SharedMentalModel, CooperationPattern
+├── pacing.rs           §22  (not audited)                     ⚠ status TBD
+├── sacrifice.rs        §24  SacrificeType, SacrificeCost      ⚠ not invoked
+├── action.rs                SubTask, SubTaskResult
+└── mod.rs                   declarations + re-exports
+```
+
+### 6.3 Momentum capability gate
+
+The core differentiator: momentum tiers **gate runtime capabilities**.
+
+| Tier | Successes | env read | neighbours | env write | commit | consensus | AI | recruit |
+|---|---|---|---|---|---|---|---|---|
+| Cold | 0 | ✓ | — | — | — | — | — | — |
+| Warming | ≥3 | ✓ | ✓ | — | — | — | — | — |
+| Hot | ≥8, 0 interference | ✓ | ✓ | ✓ | ✓ | — | — | — |
+| Fever | ≥15, 0 interference | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ | ✓ |
+
+*Fig. 7. Momentum tiers gate runtime capabilities.*
+
+Source: `momentum.rs:16-134`. Gates are enforced via methods like
+`can_write_environment()`, `can_use_ai()`, `can_consensus()` — called
+before the corresponding action. Cold formations physically cannot reach
+the AI adapter because the dispatch predicate fails.
+
+### 6.4 Formation struct
+
+```rust
+pub struct Formation {                           // formation.rs:180
+    pub id: FormationId,
+    pub members: Vec<FormationMember>,           // peers, no hierarchy
+    pub intent: IntentPattern,                   // Reconnoiter/Execute/...
+    pub constraints: FormationConstraints,
+    pub momentum: MomentumState,
+    pub environment: Arc<CooperativeBlackboard>, // dashmap workspace
+    pub fuel: FuelBudget,                        // shared budget
+    pub orchestrator: Option<Arc<dyn AiAdapter>>, // Fever-gated decomposer
+}
+```
+
+Orchestrator is called only when `can_orchestrate()` returns true (Fever
+tier + orchestrator present), at which point it decomposes intent into
+subtasks posted to the shared blackboard (`orchestrate.rs:52-76`).
+Members pull from the blackboard (pull model, not push).
+
+### 6.5 Integration with other crates
+
+- **Store:** momentum persisted to `momentum:{id}` config key after every
+  successful tick (`event_loop.rs:123-127`).
+- **Registry:** bot owns `Arc<RwLock<ConnectorRegistry>>`; orchestrator
+  reads available actions per connector for decomposition context.
+- **AI:** two levels — per-formation orchestrator, per-member adapter.
+  Both behind the same `AiAdapter` trait, both Fever-gated.
+
+See [`AUDIT-NOTES.md §3`](AUDIT-NOTES.md) for the list of cooperation
+modules that are type-defined but not yet invoked from the hot path.
+
+---
+
+## 7. AI Adapters
+
+`crates/springtale-ai/src/`.
+
+```
+AiAdapter trait (adapter/trait_.rs:172)
+    │
+    ├── complete(AiRequest)          → Result<String, AiError>
+    ├── stream(AiRequest)             → Result<AiStream, AiError>
+    ├── parse_rule(String)            → Result<Rule, AiError>
+    └── is_available() -> bool
+
+AiStream = Pin<Box<dyn futures_core::Stream<Item = Result<StreamChunk, AiError>> + Send>>
+```
+
+| Adapter | Streaming | Status |
+|---|---|---|
+| `AnthropicAdapter` | ✓ (SSE, Claude Sonnet 4) | Full |
+| `OllamaAdapter` | ✓ (NDJSON) | Full |
+| `OpenAiCompatAdapter` | ✗ (`stream()` stubs error) | Non-streaming only |
+| `NoopAdapter` | — | `AiError::Disabled` for everything |
+
+Factory at `factory.rs:16-38` — selection priority Anthropic → OpenAI →
+Ollama → Noop. Hot-swapped at runtime via `ArcSwap<Arc<dyn AiAdapter>>`
+on the `RuntimeState` (`state.rs`). `POST /config/ai` replaces the active
+adapter atomically.
+
+### Sanitization
+
+Two layers before every request:
+
+1. **Compile-time**: `AiRequest` is a closed enum with concrete `String`
+   fields. Secrets can't be passed through the type system.
+2. **Runtime**: `Sanitizer` (`sanitize/sanitizer.rs`) scans for PII
+   (SSN/CC/phone/email), credentials (`sk-`/`pk-` prefixes, bearer
+   tokens), prompt injection patterns from the OWASP LLM Cheat Sheet,
+   excessive length (>10k chars), and suspicious base64 blobs. Policy
+   modes: `Warn` (default), `Redact`, `Block`.
+
+Called from all three production adapters before sending (e.g.
+`OllamaAdapter:34`, `OpenAiCompatAdapter:57`, `AnthropicAdapter:67`).
+
+---
+
+## 8. MCP Bridge
+
+`crates/springtale-mcp/`. Built on `rmcp` 1.x.
+
+```
+ConnectorMcpServer (server/builder.rs:34)
+  ├── connector: Arc<dyn Connector>
+  ├── capability_checker
+  └── tools: cached at construction from connector.actions()
+
+list_tools(): if ALL capabilities approved → return tools
+              else → return [] (defense-in-depth discovery filter)
+
+call_tool(name, args):
+  1. JSON Schema validate args against action.input_schema (jsonschema crate)
+  2. check_action_capabilities() (re-check, not just trust list_tools)
+  3. connector.execute(name, args)
+  4. Return ActionResult → MCP tool result
+```
+
+*Fig. 8. MCP bridge. Capabilities are re-checked at both `list_tools` and `call_tool` — MCP does not bypass the sandbox.*
+
+**Transport: stdio only.** `start_stdio_server()` reads JSON-RPC from
+stdin, writes to stdout. No HTTP or SSE MCP transport is wired. Exit on
+stdin EOF.
+
+---
+
+## 9. HTTP API Surface
+
+Defined in `apps/springtaled/src/api/`. Router built at `api/mod.rs:93`.
+All authenticated routes require `Authorization: Bearer <token>` or
+`?token=` query param (SSE fallback). Middleware stack: rate limit
+(default 100 req/s, `tower::limit::RateLimitLayer`), 1 MiB body cap,
+30 s timeout, CSP headers, `X-Frame-Options: DENY`.
+
+**Public routes**
+
+| Method | Path | Handler |
+|---|---|---|
+| GET | `/health` | `health::health` |
+| GET | `/ready` | `health::ready` |
+| GET | `/ui`, `/ui/*path` | `dashboard::serve_*` (embedded SPA) |
+
+**Authenticated routes** (grouped). Webhook routes live here — they require the same bearer token as every other authenticated endpoint. Each connector performs its own signature check on the body via `Connector::verify_webhook()`.
+
+| Group | Routes |
+|---|---|
+| **Connectors** | `GET /connectors`, `/connectors/schemas`, `/connectors/available`; `POST /connectors/setup`, `/connectors/install`; `DELETE /{name}`, `/{name}/cascade`; `GET /{name}/config`, `/{name}/outputs`; `POST /{name}/enable`, `/{name}/disable`, `/{name}/test`, `/{name}/upsert-config` |
+| **Rules** | `GET|POST /rules`; `POST /rules/parse`; `GET /rules/schema`; `PUT|DELETE /rules/{id}`; `POST /rules/{id}/{toggle|run|reassign}`; `POST /rules/connector`; `GET /rules/connector/{name}` |
+| **Formations** | `GET|POST /formations`; `GET /formations/intents`; `POST /formations/deploy-team`; `POST /formations/{id}/{deploy|pause|resume|dissolve|cycle-intent|cycle-autonomy}`; `PUT /formations/{id}/intent`; `POST /formations/{id}/members`; `POST /formations/{id}/toggle-guard` |
+| **Agents** | `GET /agents/states`; `GET|PUT /agents/{name}/autonomy`; `POST /agents/{name}/autonomy/step` |
+| **Canvas** | `GET /canvas`, `/canvas/connections`; `POST /canvas/update`; `GET /canvas/stream` (SSE) |
+| **Events** | `GET /events`; `GET /events/stream` (SSE) |
+| **Config** | `GET|PUT /config/{key}`; `GET /config`; `POST /config/ai`, `/config/ai/configure`, `/config/connector/{name}`; `GET|PUT /config/heartbeat` |
+| **Authors** | `GET /authors`; `POST|DELETE /authors/{name}` |
+| **Bot admin** | `GET /bot/{status|formations|memory}` |
+| **Sessions** | `GET /sessions` |
+| **Memory** | `POST /memory/audit`, `/memory/compact` |
+| **Safety** | `GET|PUT /safety` |
+| **Data** | `POST /data/export` |
+
+Full auth + middleware + response header details in [`SECURITY.md §7`](SECURITY.md).
+
+---
+
+## 10. CLI Surface
+
+`apps/springtale-cli/src/cli.rs`. Global `--json` flag switches
+human-readable tables to JSON.
+
+```
+springtale
+├── init                                  create ~/.local/share/springtale
+├── server start                          run daemon inline (dev)
+├── panic                                 emergency wipe
+│
+├── connector
+│   ├── list
+│   ├── enable <name>
+│   ├── disable <name>
+│   ├── remove <name>
+│   └── install <path>                    verify signature + manifest
+│
+├── rule
+│   ├── list
+│   ├── toggle <id>
+│   ├── add <file>
+│   ├── run <id>                          dry-run against synthetic event
+│   ├── update <id> <file>
+│   └── delete <id>
+│
+├── events [--limit N] [--connector NAME]
+│
+├── vault
+│   ├── duress-setup
+│   └── crypto rotate-vault-key
+│
+├── travel
+│   ├── prepare --backup-to <path>
+│   └── restore  --from      <path>
+│
+├── memory
+│   ├── audit
+│   └── compact [--max-entries N]
+│
+├── data
+│   ├── export [--output <path>] [--encrypt]
+│   └── purge
+│
+└── agent set-autonomy <name> <level>
+```
+
+Command handlers live in `apps/springtale-cli/src/commands/*`.
+
+---
+
+## 11. Storage Schema
+
+Eight migrations under `crates/springtale-store/src/migrations/`:
+
+| # | File | Tables / purpose |
+|---|---|---|
+| 001 | `001_init.sql` | `_migrations`, `rules`, `connectors`, `events`, `jobs` |
+| 002 | `002_bot.sql` | `bot_sessions`, `user_prefs`, `bot_memory` (encrypted BLOB), `bot_aliases` |
+| 003 | `003_sentinel.sql` | `audit_trail` (append-only, 3 indices) |
+| 004 | `004_safety.sql` | `safety_config` (single row, disguise-first defaults) |
+| 005 | `005_formations.sql` | `formations`, `formation_members` |
+| 006 | `006_config.sql` | `config_store` (KV, UI-driven runtime config) |
+| 007 | `007_execution_results.sql` | `execution_results` (capped at 100/connector) |
+| 008 | `008_wasm_binaries.sql` | `wasm_binaries` (content-addressed, SHA-256 + Ed25519 sig) |
+
+**Notes**
+
+- `bot_memory` is encrypted at rest (`content_encrypted BLOB`, `nonce
+  BLOB`) but not compressed.
+- `safety_config` is forced single-row via `CHECK (id = 1)`.
+- `execution_results` auto-prunes on insert (oldest dropped once a
+  connector exceeds 100 rows).
+- `jobs` schema is ready for persistent queues; the current `JobProducer`
+  still uses in-memory mpsc (see AUDIT-NOTES §1).
+
+---
+
+## 12. Frontend
+
+`tauri/` is workspace-excluded (pnpm + Tauri 2 + SolidJS 1.9 + Tailwind 4
++ Vite 6).
+
+```
+tauri/
+├── packages/
+│   ├── types/              # TS types mirroring Rust schemas
+│   └── ui/                 # shared SolidJS components, DataProvider interface
+│        └── src/dashboard/types.ts:48-135   # DataProvider (~60 methods)
+│
+└── apps/
+    ├── desktop/
+    │   ├── src/                              # SolidJS UI
+    │   └── src-tauri/src/commands/*.rs       # IPC handlers → springtale-runtime
+    │
+    └── dashboard/
+        └── src/provider.ts                   # HTTP + SSE DataProvider
+```
+
+*Fig. 9. Frontend workspace layout.*
+
+### DataProvider abstraction
+
+```
+           DashboardState (SolidJS store)
+                      ▲
+                      │
+              DataProvider (interface)
+              ┌───────┴───────┐
+              │               │
+      DesktopProvider     WebProvider
+              │               │
+        Tauri invoke()    HTTP + SSE
+              │               │
+      src-tauri commands  springtaled /api
+              │               │
+              └───────┬───────┘
+                      ▼
+              springtale-runtime
+```
+
+*Fig. 10. DataProvider abstraction. The frontend never calls the backend directly — always through the provider.*
+
+- ~60 async methods on `DataProvider` covering connectors, rules,
+  events, formations, config, agents, canvas, memory, authors, data
+  export.
+- Subscribe methods return `() => void` unsubscribe fns.
+- **Desktop**: `createDesktopProvider()` wraps `invoke()`; real-time via
+  Tauri `listen("event-fired")` and `listen("canvas-update")`.
+- **Web**: `createWebProvider()` wraps fetch + `EventSource` on
+  `/events/stream?token=...` and `/canvas/stream?token=...`. Token lives
+  in the query param because `EventSource` cannot set custom headers.
+- Rule from `.claude/rules/frontend/solidjs-conventions.md`: components
+  never call `invoke()` directly — always through the provider.
+
+---
+
+## 13. Data Flow
+
+### 13.1 Event → action (happy path)
+
+```
+  Connector trigger (webhook / poll / fs-event / cron)
+            │
+            ▼
+   TriggerEvent { trigger_type, connector, payload }
+            │
+            ▼
+   RuleEngine::evaluate()  → Vec<RuleMatch>
+            │                   (pre-compiled regex, pure fn)
+            ▼
+   router::dispatch_event()
+            │
+            ▼
+   JobProducer::enqueue(Job { payload, max_attempts })
+            │                   (mpsc today; SQLite-backed planned)
+            ▼
+   JobConsumer::dequeue() → exponential backoff on failure
+            │
+            ▼
+   dispatch_action(action, registry, sentinel)   runtime/dispatch.rs
+            │
+            ▼
+   sentinel.evaluate(action, connector)        → Go | Throttle | Pause | Quarantine
+            │                                    (every action, no bypass)
+            ▼
+   per-action branch
+            │   ├─ RunConnector  → registry.execute(name, action, input)
+            │   │                  → CapabilityChecker.check()
+            │   │                  → NativeConnectorHost / WasmConnectorHost
+            │   ├─ WriteFile     → filesystem with path capability
+            │   ├─ RunShell      → shell connector (blocking approval)
+            │   ├─ SendMessage   → chat connector
+            │   ├─ AiComplete    → AiAdapter.complete() (sanitized)
+            │   ├─ Transform     → template resolver
+            │   ├─ Chain         → recursive dispatch_with_depth (max 15)
+            │   └─ Notify        → canvas bus + events table
+            │
+            ▼
+   sentinel.report(action, outcome)              success | failure rows
+            ▼
+   StorageBackend::log_event()
+   StorageBackend::complete_job()
+            │
+            ▼
+   canvas_tx.send(CanvasUpdate)  → SSE → DataProvider → SolidJS signal
+```
+
+*Fig. 11. Event → action happy path. Sentinel evaluates every action before the per-action branch.*
+
+### 13.2 Chat message → bot response
+
+```
+  Connector chat message (Telegram/Discord/IRC/...)
+            │
+            ▼
+  bot.connector_rx  (mpsc into event_loop)
+            │
+            ▼
+  handle_incoming_message()
+            │
+            ▼
+  Router (router/{prefix,pattern,alias,fallback}.rs)
+            │
+       ┌────┴────┐
+       ▼         ▼
+  Prefix hit  No match
+  (/search)   (fallback)
+       │         │
+       ▼         ▼
+  Handler    Fallback AI
+  dispatch   (Fever-gated; else "unknown command")
+       │         │
+       ▼         ▼
+  ActionResult → response template → connector.execute(send_message)
+```
+
+*Fig. 12. Chat message routing in the bot runtime.*
+
+### 13.3 Cadence tick → formation orchestration
+
+```
+  CadenceBus::tick() (broadcast, generous window)
+            │
+            ▼
+  bot.cadence_rx  (per-bot receiver)
+            │
+            ▼
+  handle_cadence_tick()
+       │
+       ├─ for each Formation:
+       │     record_success()         → momentum.try_promote()
+       │     persist momentum         → config_store[momentum:{id}]
+       │     if can_orchestrate():    (Fever + orchestrator present)
+       │         AiAdapter.complete(intent_prompt)
+       │         parse subtasks → post to CooperativeBlackboard
+       │
+       └─ members pull subtasks from blackboard (pull, not push)
+```
+
+*Fig. 13. Cadence tick → orchestrator → blackboard → members. Orchestrator is Fever-gated; Cold/Warming/Hot formations never reach the AI adapter.*
+
+---
+
+*End of ARCHITECTURE.md. See [`SECURITY.md`](SECURITY.md) for the
+security posture audit and [`AUDIT-NOTES.md`](AUDIT-NOTES.md) for known
+drift, gaps, and in-flight work.*

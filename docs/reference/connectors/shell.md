@@ -2,6 +2,27 @@
 
 Local shell command execution. Runs commands directly (not through a shell interpreter) with an allow-list, configurable timeout, and optional working directory.
 
+```
+   Rule engine                     connector-shell                      Shell
+        │                                 │                               │
+        │ execute(execute_command,        │                               │
+        │         {command, args})        │                               │
+        ├────────────────────────────────►│                               │
+        │                                 │ capability gate: ShellExec    │
+        │                                 │                               │
+        │                                 │ allow-list check              │
+        │                                 │ (allowed_commands)            │
+        │                                 │                               │
+        │                                 │ spawn with timeout_secs       │
+        │                                 ├──────────────────────────────►│
+        │                                 │                               │
+        │                                 │ stdout + stderr + exit code   │
+        │ ActionResult                    │ ◄─────────────────────────────┤
+        │ ◄───────────────────────────────┤                               │
+```
+
+*Fig. 1. Shell data flow. Every command is gated on the `ShellExec` capability (which requires explicit user approval at install time) and checked against `allowed_commands` before being spawned.*
+
 ## 1. Configuration
 
 **TABLE I. CONFIG FIELDS**

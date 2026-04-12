@@ -11,9 +11,12 @@ Not all connectors are created equal. Springtale draws a hard line between code 
 ```
   ┌─ Native Connectors (in-process) ─────────────────────────────┐
   │                                                               │
-  │   connector-kick       connector-bluesky    connector-http    │
-  │   connector-github     connector-presearch                    │
-  │   connector-filesystem connector-shell                        │
+  │   connector-kick        connector-bluesky    connector-http   │
+  │   connector-github      connector-presearch                   │
+  │   connector-filesystem  connector-shell                       │
+  │   connector-telegram    connector-discord    connector-slack  │
+  │   connector-irc         connector-nostr      connector-signal │
+  │   connector-browser                                           │
   │                                                               │
   │   Trust:     HIGH — audited, signed by Springtale team        │
   │   Isolation: capability-checked at runtime                    │
@@ -146,19 +149,26 @@ When a rule's action says `RunConnector`, here's what happens:
 
 ## 5. First-Party Connectors
 
-Phase 1a ships seven native connectors:
+Fourteen native connectors ship today. `connector-matrix` is deferred — `matrix-sdk` pins `rusqlite` 0.37 which has CVE-2025-70873 (heap info disclosure); Springtale uses the patched 0.39.
 
 **TABLE II. FIRST-PARTY CONNECTORS**
 
-| Connector | Platform | Auth | Triggers | Actions | Key Capabilities |
-|-----------|----------|------|----------|---------|-----------------|
-| `connector-kick` | Kick (streaming) | OAuth 2.1 PKCE | 4 (webhook) | 3 | `NetworkOutbound` (api.kick.com, id.kick.com) |
-| `connector-presearch` | Presearch (search) | API key | 0 | 2 (cached) | `NetworkOutbound` (presearch.com + configured hosts) |
-| `connector-bluesky` | Bluesky/ATProto | Session auth | 4 (Jetstream) | 4 | `NetworkOutbound` (bsky.social, jetstream) |
-| `connector-github` | GitHub | PAT | 4 (webhook) | 3 | `NetworkOutbound` (api.github.com) |
-| `connector-filesystem` | Local filesystem | None | 3 (watcher) | 3 | `FilesystemRead` / `FilesystemWrite` (configured paths) |
-| `connector-shell` | Shell commands | None | 0 | 1 | `ShellExec` (requires approval) |
-| `connector-http` | Generic HTTP | None | 0 | 2 | `NetworkOutbound` (configured hosts) |
+| Connector | Platform | Auth | Key Capabilities |
+|---|---|---|---|
+| `connector-kick` | Kick streaming | OAuth 2.1 PKCE | `NetworkOutbound` (api.kick.com, id.kick.com) |
+| `connector-presearch` | Presearch search | API key | `NetworkOutbound` (presearch.com + configured hosts) |
+| `connector-bluesky` | Bluesky / ATProto | Session auth | `NetworkOutbound` (bsky.social, jetstream) |
+| `connector-github` | GitHub | PAT / webhook HMAC | `NetworkOutbound` (api.github.com) |
+| `connector-filesystem` | Local filesystem | — | `FilesystemRead` / `FilesystemWrite` (configured paths) |
+| `connector-shell` | Shell commands | — | `ShellExec` (requires approval) |
+| `connector-http` | Generic HTTP | — | `NetworkOutbound` (configured hosts) |
+| `connector-telegram` | Telegram Bot API | bot token | `NetworkOutbound` (api.telegram.org) |
+| `connector-discord` | Discord | bot token | `NetworkOutbound` (discord.com, gateway.discord.gg) |
+| `connector-slack` | Slack | app + bot tokens | `NetworkOutbound` (slack.com) |
+| `connector-irc` | IRC | SASL (optional) | `NetworkOutbound` (configured IRC server) |
+| `connector-nostr` | Nostr | nsec / Ed25519 | `NetworkOutbound` (configured relays) |
+| `connector-signal` | Signal | signal-cli bridge | `ShellExec` (to signal-cli) |
+| `connector-browser` | Headless Chromium | — | `NetworkOutbound` (configured hosts) |
 
 For full details on each connector — config fields, trigger payloads, action inputs/outputs, and example rules — see the [reference/connectors/](../reference/connectors/) directory.
 
@@ -195,10 +205,11 @@ Every connector automatically becomes an MCP (Model Context Protocol) server via
 *Fig. 4. MCP bridge. Any connector is automatically exposed as an MCP server. One framework, not N hand-written MCP servers.*
 
 This means:
-- 7 connectors = 7 MCP servers, automatically
+- 14 connectors = 14 MCP servers, automatically
 - No MCP-specific code in connectors
-- Same capability checks apply — MCP doesn't bypass the sandbox
-- Input validated against JSON Schema at runtime
+- Same capability checks apply at both `list_tools` and `call_tool` — MCP doesn't bypass the sandbox
+- Input validated against JSON Schema (via the `jsonschema` crate) at runtime
+- Uses `rmcp` 1.x over stdio transport
 
 ---
 

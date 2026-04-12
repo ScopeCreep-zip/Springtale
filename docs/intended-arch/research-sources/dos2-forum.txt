@@ -1,0 +1,342 @@
+ Register  Log In
+Larian Studios  Forums  Divinity: Original Sin 2 - The Modding Dungeon  Divinity - Original Sin 2 - Modding  General  Adding a new surface type to the surface type enum
+Forums Calendar Active Threads
+
+
+ Previous Thread
+	
+Next Thread 
+Print Thread
+Adding a new surface type to the surface type enum
+#626820
+05/10/17 09:54 PM
+
+
+
+OP
+Ryukaki
+stranger
+R
+Joined: Oct 2017
+	
+Hey, wanting to put together a new themed kit for a custom class but running into a problem where new surface types aren't being added to the enum/array of available surface types.
+
+Any time I try to access my new surface type suing the CreateSurface function, it throws me this lovely error:
+
+Surface -2 is out of range!
+
+Category: Code
+Count: 1
+Timestamp: 05-10-2017 10:49:02:560
+Function: eoc::GetSurfaceStateFromType
+Location: EoCShared\Shared\SurfaceTypes.cpp (227)
+
+I assume this is because there's a static array of surface types defined in the surfacetypes there, but maybe I'm just doing something wrong.
+
+I've created a new surfacetype in the RootTemplates and defined all of the components that it seems like I should need, including using my new custom Status type for the effect of walking on the surface, but the system for surfaces is a bit opaque.
+
+Any help would be appreciated, thanks!
+
+
+
+
+Re: Adding a new surface type to the surface type enum
+ Ryukaki
+#627368
+06/10/17 07:20 PM
+
+
+
+OP
+Ryukaki
+stranger
+R
+Joined: Oct 2017
+	
+I've dug for a few more hours, and still couldn't find any way to make this work. Are these hardcoded?
+
+
+Re: Adding a new surface type to the surface type enum
+ Ryukaki
+#628012
+08/10/17 02:23 AM
+
+
+
+OP
+Ryukaki
+stranger
+R
+Joined: Oct 2017
+	
+Gonna give this one more bump and then let it die a peaceful death, anyone have any insight into this?
+
+
+Re: Adding a new surface type to the surface type enum
+ Ryukaki
+#628109
+08/10/17 08:37 AM
+
+
+
+morez
+enthusiast
+Joined: Jul 2014
+	
+I have no clue at all. But would love if this attempt would t die unless it is proofed to be impossible. Keep up ...
+
+
+Re: Adding a new surface type to the surface type enum
+ Ryukaki
+#628194
+08/10/17 01:45 PM
+
+
+
+Hinado
+stranger
+H
+Joined: Oct 2017
+	
+Sorry I can't help at all but am already struggeling with a more basic problem.
+
+Can surface properties even be modified except their damage values?
+E.g. I want to stop web from piercing armor (should be resisted by magic armor). Changing the status fixes this for the abilty. Sadly I fail to find where I can change this for the effect that's applied from walking across a web surface.
+
+Where are the files specifying surface properties even located?
+
+
+Re: Adding a new surface type to the surface type enum
+ Ryukaki
+#628305
+08/10/17 04:42 PM
+
+
+
+OP
+Ryukaki
+stranger
+R
+Joined: Oct 2017
+	
+The surface properties are defined in the surface type in the root template manager, and then enumerated in the Status Data property of the surface type:
+
+https://imgur.com/IzHGfCP
+
+These status data entries are defined in the Stats/Potions/ subsection of the data file:
+
+https://imgur.com/Yes8Ihg
+
+and can be modified or whole new ones made in there.
+
+Unfortunately, as above, making a NEW surface type seems to either never compile the new type into the surfacetypes enum, or something else breaks ):
+
+Hope that helps.
+
+
+Re: Adding a new surface type to the surface type enum
+ Ryukaki
+#628619
+09/10/17 09:23 AM
+
+
+
+Larian_JB
+member
+Joined: Sep 2017
+	
+Hi,
+
+Adding new surface types is indeed not possible.
+
+
+Re: Adding a new surface type to the surface type enum
+ Ryukaki
+#628893
+09/10/17 06:17 PM
+
+
+
+OP
+Ryukaki
+stranger
+R
+Joined: Oct 2017
+	
+Thanks, any plans to expose this enum any time soon, or should I just pick a new route?
+
+
+
+
+Re: Adding a new surface type to the surface type enum
+ Ryukaki
+#629343
+10/10/17 03:52 PM
+
+
+
+Larian_KVN
+addict
+Joined: Sep 2017
+Location: Belgium, Ghent
+	
+Sorry,
+exposing this is not feasible any time soon.
+
+Sincerely,
+Kevin
+
+
+
+
+CTRL+K the elf
+Re: Adding a new surface type to the surface type enum
+ Ryukaki
+#631671
+17/10/17 07:18 AM
+
+
+
+Luckmann
+Banned
+Joined: Mar 2015
+Location: Swedonia
+	
+Hey, I thought I'd bump this, because OP has obviously been messing around with surfaces, and someone that sees it might be able to answer a question.
+
+How do you actually change the properties of surfaces?
+
+More specifically, I'd like to make it so that Poison Surfaces of all types aren't ignitable, but I can't find such a property anywhere. I was thinking that this could change the combat dynamics of the game, make surfaces matter again, and prevent everything from slowly devolving into a hellscape of Cursed Fire.
+
+Anyone come across anything like it? It's driving me nuts. I think it would vastly improve the current situation, but I can't find a way to even test it.
+
+
+Hop To 
+Divinity ------
+  Divinity - News
+  General Discussion
+Baldur's Gate III ------
+  Baldur's Gate III - Latest News
+  Baldur's Gate III - Story &...
+  Baldur's Gate III - Build Discu...
+  Baldur's Gate III - Multiplayer...
+  Baldur's Gate III - Modding
+  Baldur's Gate III - Suggestions...
+  Baldur's Gate III - Help Tips &...
+  Baldur's Gate III - Technical &...
+  Baldur's Gate III - General
+  Baldur's Gate III - Mega-thread...
+Baldur's Gate III - The Modding ... ------
+    General
+    Guides
+    Stats
+    Tools
+    Troubleshooting
+General ------
+  General announcements
+  Chat
+    RPG Chat
+    Chat (Anything)
+  Chat (German)
+    RPG Chat (German)
+  About this website
+  Suggestions
+Divinity: Original Sin 2 ------
+  Divinity - Original Sin 2 - Lat...
+  Divinity - Original Sin 2 - General
+  Divinity - Original Sin 2 - Sug...
+  Divinity - Original Sin 2 - Hel...
+  Divinity - Original Sin 2 - Arena
+  Divinity - Original Sin 2 - Gam...
+  Divinity - Original Sin 2 - Bug...
+Divinity: Original Sin 2 - The M... ------
+  Divinity - Original Sin 2 - Modding
+    General
+    Guides
+    Scripting
+    Stats
+    Tools
+    Troubleshooting
+  Divinity - Original Sin 2 - Pro...
+  Divinity - Original Sin 2 - Fin...
+Divinity - Original Sin ------
+  Divinity - Original Sin - Enhan...
+  Divinity - Original Sin - Lates...
+  Divinity - Original Sin - General
+  Divinity Original Sin - Help/Ti...
+  Divinity Original Sin - Mods
+  Divinity - Original Sin - Techn...
+  Divinity Original Sin - Beta
+Dragon Commander ------
+  Dragon Commander - Latest News
+  Dragon Commander - General
+  Dragon Commander - Beta
+  Dragon Commander - Technical Pr...
+Divinity II The Dragon Knight S... ------
+  Divinity II - The Dragon Knight...
+  Divinity II - Flames of Vengeance
+  Help/Tips/Tricks
+  Technical problems
+Divinity II The Dragon Knight S... ------
+  Divinity II - The Dragon Knight...
+  Divinity II - Flames of Vengeance
+  Hilfe/Tips/Tricks
+  Technische Probleme
+Divinity II The Dragon Knight S... ------
+  Divinity II - The Dragon Knight...
+  Divinity II - Flames of Vengeance
+  Aide/Trucs/Astuces
+  Problèmes techniques
+Divinity 2 - Ego Draconis (English) ------
+  Divinity 2 - Ego Draconis
+  Help/Tips/Tricks
+  Technical problems
+Divinity 2 - Ego Draconis (German) ------
+  Divinity 2 - Ego Draconis
+  Hilfe/Tips/Tricks
+  Technische Probleme
+Divinity 2 - Ego Draconis (French) ------
+  Divinity 2 - Ego Draconis
+  Aide/Trucs/Astuces
+  Problèmes techniques
+Beyond Divinity (English) ------
+  General
+  Suggestions
+  Help/Tips/Tricks
+  Technical Problems
+Beyond Divinity (German) ------
+  Allgemein
+  Hilfe/Tips/Tricks
+  Technische Probleme
+Beyond Divinity (French) ------
+  Général
+  Aide/Trucs/Astuces
+  Problèmes techniques
+Divine Divinity (English) ------
+  General
+  Help/Tips/Tricks
+  Technical Problems
+  Suggestions
+Divine Divinity (Other languages) ------
+  Allgemein (Deutsch)
+  Hilfe/Tips/Tricks (Deutsch)
+  Technische Probleme (Deutsch)
+  Algemeen (Nederlands)
+
+
+
+
+Default Style
+UBBT77
+UBBT77 - Dark
+ubbthreads dark blue
+ubbthreads dark purple
+ubbthreads divinity2
+ubbthreads larian
+ubbthreads larian dark
+ubbthreads light blue
+ubbthreads old larian boards
+Vom's test style
+Forum Rules · Mark All Read
+Contact Us · Forum Help · Larian Studios
+Powered by UBB.threads™ PHP Forum Software 7.7.5

@@ -21,6 +21,22 @@ cargo nextest run --workspace
 
 Then read [guide/architecture.md](../guide/architecture.md) to understand how the pieces fit together.
 
+```
+   clone ───► build ───► nextest ───► read guide/architecture.md
+     │                      │                    │
+     │                      │                    └─► pick an area:
+     │                      │                        • connector
+     │                      │                        • bot/cooperation
+     │                      │                        • security
+     │                      │                        • docs / a11y / i18n
+     │                      │
+     │                      └─► green? open a draft PR
+     │
+     └─► first time? konductor dev shell: `direnv allow`
+```
+
+*Fig. 1. Contributor onboarding loop.*
+
 ## 3. Phase Discipline
 
 Springtale ships in phases. **Do not build Phase N+1 features while implementing Phase N.**

@@ -1,0 +1,776 @@
+Director Scripts
+< Left 4 Dead 2‎ | Scripting
+(Redirected from L4D2 Director Scripts)
+Jump to navigation
+Jump to search
+Contents
+1	Usage
+2	General scripts and Onslaughts
+3	Finales and Scripted Panic Events
+3.1	Setting up Stages
+3.2	Code Sample
+4	Adaptive Dramatic Pacing
+5	Callbacks
+5.1	LocalScript based callbacks
+5.2	ChallengeScript based callbacks
+6	DirectorOptions
+6.1	General
+6.1.1	Spawning limits
+6.2	EMS Stage Specific
+6.3	Finale Specific/Related
+6.4	Gauntlet Specific/Related
+6.5	Versus Specific
+6.6	Scavenge Specific/Related
+6.7	Survival Specific/Related
+6.8	Mutation Specific/Related
+6.9	Callback Functions
+6.9.1	Scripted mode callbacks
+6.9.2	Internal callbacks
+6.10	Data mining
+7	Enumerations
+8	See also
+8.1	Intros
+8.2	Documentations
+8.3	Miscelleanous
+
+ Left 4 Dead 2 Director scripts are vscripts that are primarily used to influence the behavior of the AI Director. They are extensively used for custom finales and gauntlet events.
+
+Usage
+
+Director scripts typically contain a table named DirectorOptions, which contains variables that change up the decision making of the Director. They can be ran / stopped with the following inputs to the info_director entity:
+
+BeginScript <scriptlist>
+Run Director scripts, and parse their DirectorOptions table once. If a Director script is already running and this input is called, the previous Director script automatically stops running.
+EndScript
+Ends the running script and resets the Director options to either the map's DirectorOptions values, or the default settings.
+ScriptedPanicEvent <scriptlist>
+With the script names given they'll be ran as a scripted panic event, which is like a mini finale, so a script should be structured as a finale script.
+Note:
+Scripts used with these inputs will not work if they are in a subdirectory under thevscriptsfolder, even though you can use subdirectories in other script contexts. Events will play out only the 1 second DELAY "stage 0" if they violate this.
+
+There is also a CDirector object for VScripts, and its extra functions can be paired for customizing your Director scripts.
+
+General scripts and Onslaughts
+
+Scripts launched with the BeginScript Director input run until a different script is launched, or the script is manually ended with the EndScript input. Unless new Director Options are set, the gameplay continues on as normally.
+
+Onslaught events are created by manipulating the pacing and spawn limits of mobs and special infected.
+
+c2m4_barns_onslaught.nut (with annotations):
+
+Msg("Initiating Onslaught\n");
+
+DirectorOptions <-
+{
+	// This turns off tanks and witches (when true).
+	ProhibitBosses = false
+	
+	//LockTempo = true
+
+	// Sets the time between mob spawns. Mobs can only spawn when the pacing is in the BUILD_UP state.
+	MobSpawnMinTime = 1
+	MobSpawnMaxTime = 1
+
+	// How many zombies are in each mob.
+	MobMinSize = 30
+	MobMaxSize = 30
+	MobMaxPending = 30
+
+	// Modifies the length of the SUSTAIN_PEAK and RELAX states to shorten the time between mob spawns.
+	SustainPeakMinTime = 5
+	SustainPeakMaxTime = 10
+	IntensityRelaxThreshold = 0.99
+	RelaxMinInterval = 1
+	RelaxMaxInterval = 5
+	RelaxMaxFlowTravel = 50
+
+	//Special infected options
+	SpecialRespawnInterval = 1.0
+        SmokerLimit = 2
+        JockeyLimit = 0
+        BoomerLimit = 0
+        HunterLimit = 2
+        ChargerLimit = 1
+
+	// Valid spawn locations
+	PreferredMobDirection = SPAWN_NO_PREFERENCE
+	ZombieSpawnRange = 2000
+}
+
+Director.ResetMobTimer()		// Sets the mob spawn timer to 0.
+Director.PlayMegaMobWarningSounds()	// Plays the incoming mob sound effect.
+
+Finales and Scripted Panic Events
+
+The structure of custom finales and scripted panic events (or mini-finales) setup their structure with a script. In the script, its DirectorOptions table defines:
+
+Expand
+
+
+
+To load a custom finale script, nothing extra needs to be done other than naming the script as [current map]_finale.nut. The script will be automatically loaded when the custom finale starts.
+
+However, scripted panic events are different; they are always manual, and initiated by inputting ScriptedPanicEvent [scriptfilename] to info_director without file extensions nor parent folders.
+
+Bug:
+In Scripted Panic Events:
+Sending an EndCustomScriptedStage input or running Director.ForceNextStage() during a SCRIPTED stage ends the whole event.
+When the last stage ends, its repeated once more but with the default values. Effects are as follows: Expand
+PANIC and TANK stages will repeat with only 1x Wave / Tank.
+DELAY and SCRIPTED stages repeat, but are then skipped immediately.
+Note:
+The repeating bug can be circumvented by using the ONSLAUGHT/SCRIPTED stage to call another director script which ends the event via an EndCustomScriptedStage input to the info_director entity.
+
+
+
+
+Setting up Stages
+
+There are 4 main types of stages (visit StageTypeAppendix for others):
+
+Name	Value	Description
+PANIC	0	A panic event; The value is the number of infected waves.
+TANK	1	Spawn tank(s), with the value as the number of tanks to spawn.
+DELAY	2	A delay, its value is the number of seconds to wait before it goes to the next stage.
+SCRIPTED	3	Sometimes with the ONSLAUGHTname; sets up a stage using the loaded script's contents. The value is the name of the relevant VScript (with no file extension).
+
+In SCRIPTED, the script is fully responsible for dictating when it'll end! To end the stage, send the EndCustomScriptedStage input to a info_director entity. Moreover on finales, these two can be used instead:
+
+Expand
+
+
+Code Sample
+
+An example custom finale script, that also makes use of various finale settings documented at later parts of this page:
+
+const ERROR = -1
+const PANIC = 0
+const TANK = 1
+const DELAY = 2
+const SCRIPTED = 3 
+
+DirectorOptions <-
+{
+	//-----------------------------------------------------
+	A_CustomFinale_StageCount = 3 // Number of stages. Used for calculating the Versus score.
+	B_CustomFinale_StageCount = 3 // Number of stages for the alternate B finale type
+	
+	A_CustomFinale1 = PANIC
+	A_CustomFinaleValue1 = 2	// Two panic waves.
+	
+	A_CustomFinale2 = DELAY
+	A_CustomFinaleValue2 = 5 	// Delay for five seconds in addition to stage delay.
+	
+	A_CustomFinale3 = TANK
+	A_CustomFinaleValue3 = 3 	// 3 tanks! Start rescue for Finale Type A after this wave ends too.
+	
+	B_CustomFinale1 = SCRIPTED
+	B_CustomFinaleValue1 = "my_scripted_stage"	// Start of with running a custom scripted stage using a separate script.
+	
+	B_CustomFinale2 = TANK
+	B_CustomFinaleValue2 = 1 	// Follow up with a single tank.
+
+	B_CustomFinale3 = DELAY
+	B_CustomFinaleValue3 = 5	// Wait five more seconds ... rescue for Finale Type B!
+
+	//-----------------------------------------------------
+
+	CommonLimit = 10
+	SpecialRespawnInterval = 25
+}
+
+function OnBeginCustomFinaleStage( num, type ) // This function is run at the beginning of every stage.
+{
+	printl( "Beginning custom finale stage #" + num + " of type: " + type )
+	if( DirectorOptions.CommonLimit < 30 )
+		DirectorOptions.CommonLimit = num * 5 // Increase commons by 5 linearly with stages.
+}
+
+
+See a list of all official finale scripts here.
+
+Adaptive Dramatic Pacing
+Todo: 	Add info from [1]
+Callbacks
+
+When functions with these specific names are placed in a Director script scope table (see delegation rules), they get called by C++ with specific arguments used.
+
+LocalScript based callbacks
+float GetCustomScriptedStageProgress(float defvalue)
+Will be called during FINALE_CUSTOM_SCRIPTED stages. The function should return a value from 0-1 to indicate the completion percentage of the stage. The default time-based completion percentage is passed in as a parameter.
+void OnBeginCustomFinaleStage(int num, int type)
+Will be called on every scripted panic event or finale stage change. This is how you would change director options between stages (spawn directions, etc). num refers to the finale stage number passed by the director and type is the stage type (PANIC, TANK, etc.) following the standard, STAGE_ prefixed, enumeration.
+Bug:
+The CEntities object will not work properly in this callback, always returning the default value null every tick until Squirrel terminates the script.
+ChallengeScript based callbacks
+void GetNextStage()
+Called by the director when it wants a new stage. It can be forced with Director.ForceNextStage(). Used by Dash, Holdout and Tank Run.
+DirectorOptions
+
+TheDirectorOptionstable is used for overriding various Director variables that govern among other things: infected spawning rough distance, finale stages, and others.
+
+In mode and map scripts, use SessionOptions and MutationOptions/MapOptions! SessionOptions for influencing the director, while the MutationOptions/MapOptions tables for setting default values. This is because BaseScriptedDOTable has priority and overrides some initial parameters in the DirectorOptions table of the mode script scope (see MergeSessionOptionTables in scriptedmode.nut).
+
+Note:
+'Mode scripts' term refer to scripts ran when a specific gamemode is active, like shootzones.nut. 'Map scripts' on the other hand, could run anytime during a map, dependent of map logic. Examples for this include: c3m1_plankcountry_holdout.nut,c9m1_minifinale.nut and c11m4_reserved_wanderers.nut.
+
+Though, while customizing the Director's behaviour, you might come across these issues:
+
+
+The Fields interact a lot!
+Say you have a custom mutation mod, and you use aDirectorOptionstable to influence the Director. It reducesCommonLimit for lesser Commons, but also reduces bothMobSpawnTimeMinandMobSpawnTimeMax to make them respawn faster. However, when playtesting your mod on Dead Center, everything seems to revert to default after you complete the Gauntlet fetch quest, featuring weapon_cola_bottles. While not a great example scenario, this is to show something that can happen if you're not careful: Things working not as expected, as DirectorOptions have been set in ways that conflict, causing unexpected behaviors.
+
+When you see odd behavior like this, think about what other variables and objects might be interfering with your plans. Going back to the earlier example, the cause of this could be other scripts using aDirectorOptionstable, so if you remember, you could try aMutationOptionstable and see if it works. But if it doesn't, its okay, because if you inspect the keys documentation below, you'll find out the keycm_CommonLimitalso exists, and could solve your other problems. Viewing the list of usableDirectorOptionskeys can be very vital when debugging issues like these, sometimes you find something that just does what exactly you want.
+
+Don't forget to use the proper assignment operator!
+With a new DirectorOptions table, you should use the<-operator. <- is required over using thelocaltag and the= operator, as variables created with<-become globals, allowing the C++ side of the game to use DirectorOptions.
+
+Note:
+The default values are for reference of the values set elsewhere in-game (if it has one), and do NOT mean that the DirectorOption key is set by default. Blank values for a key also imply something simply has no default value.
+General
+Name	Type	Default value	Description
+AlwaysAllowWanderers	bool	false	
+BuildUpMinInterval	int	15	Minimum time in seconds the BUILD_UP stage lasts.
+ClearedWandererRespawnChance	int	0; 3 in Scavenge	Percent chance (0-100) that cleared nav areas will get re-populated with wanderers.
+DisallowThreatType	int		Disallows boss types from being spawned in threat areas in coop mode. Valid flags are:ZOMBIE_WITCH, ZOMBIE_TANK
+FarAcquireRange	float	2500.0	The maximum range common infected can spot survivors.
+NearAcquireRange	float	200.0	The range where common infected can spot survivors in the least amount of time.
+FarAcquireTime	float	5.0	The time it takes for an infected to acquire the survivor after spotting them at maximum range.
+NearAcquireTime	float	0.5	The time it takes for an infected to acquire the survivor after spotting them at minimum range.
+GasCansOnBacks	bool	false	Puts the Hard Rain diesel cans on the survivors backs.
+GetSpecialSlotCountdownTime	float		
+IgnoreNavThreatAreas	bool	false	Likely prevents bosses from spawning along the nav.
+ Confirm:	In proper category, and still working? Used in dash
+
+InfectedFlags	int	0	Applies flags to newly spawned infected. Valid flags are: INFECTED_FLAG_CANT_SEE_SURVIVORS, INFECTED_FLAG_CANT_HEAR_SURVIVORS, INFECTED_FLAG_CANT_FEEL_SURVIVORS
+IntensityRelaxAllowWanderersThreshold	float	0.8 in Expert; 0.5 in Advanced; 0.3 in other difficulties	If the maximum intensity of the survivors is below this threshold, wandering commons can spawn.
+IntensityRelaxThreshold	float	0.9	All survivors must be below this intensity before a Peak is allowed to switch to Relax (in addition to the normal peak timer)
+JournalString	string	-none-	
+Todo: 	Used in holdout, seems to build some kind of table. Is this for the Director Journal related I/O inputs?
+
+LockTempo	bool	false, true in finales	Locks the Director tempo in the BUILD_UP phase.
+Note:
+The phases cycle consists of: BUILD_UP -> SUSTAIN_PEAK -> PEAK_FADE -> RELAX -> BUILD_UP again. Hordes only spawn in the BUILD_UP tempo.
+
+MobRechargeRate	float	0.0025	How fast a mob's CI spawn in-between each other.
+MobSpawnMaxTime	float	180.0-240.0	Maximum time in seconds between mob spawns. Default value depends on difficulty.
+MobSpawnMinTime	float	90.0-120.0	Minimum time in seconds between mob spawns. Default value depends on difficulty.
+MusicDynamicMobScanStopSize	int	3	When fewer than this many of a mob are in play, the mob music stops.
+MusicDynamicMobSpawnSize	int	25	Spawning a mob this large will play the mob music.
+MusicDynamicMobStopSize	int	8	When a mob gets to this size, the Director thinks about stopping the mob music.
+NumReservedWanderers	int	0	The number of wandering infected that cannot be despawned for mobs.
+PanicForever	bool	false	This seems to only work in gauntlets.
+PausePanicWhenRelaxing	bool	false	
+ Confirm:	In proper category, and still working? Used in dash
+
+PreferredMobDirection	int	-1	Valid flags are: SPAWN_ABOVE_SURVIVORS, SPAWN_ANYWHERE, SPAWN_BEHIND_SURVIVORS, SPAWN_FAR_AWAY_FROM_SURVIVORS, SPAWN_IN_FRONT_OF_SURVIVORS, SPAWN_LARGE_VOLUME, SPAWN_NEAR_IT_VICTIM, SPAWN_NO_PREFERENCE
+Note:
+SPAWN_NEAR_IT_VICTIM does not exist before a finale and will cause an error, so I'm assuming the director picks someone as IT when the finale starts.[confirm]
+Note:
+The flag names are case sensitive. Not using all caps will result in errors.
+Note:
+SPAWN_LARGE_VOLUMEis what makes infected be a considerable distance away, like on Dead Center finale.
+
+Todo: 	Explain more, and do it on a new page forPreferredMobDirection
+
+PreferredMobPosition	Vector	Vector(0, 0, 0)	
+ Confirm:	In proper category
+
+PreferredMobPositionRange	float	1000.0	Only works if PreferredMobDirection is set to SPAWN_NEAR_POSITION.
+ Confirm:	In proper category
+
+PreferredSpecialDirection	int	-1	When set to SPAWN_NO_PREFERENCE, it behaves like this: If it's a smoker, it'll be SPAWN_ABOVE_SURVIVORS. If it's a charger, it'll be a 10% chance to be SPAWN_BEHIND_SURVIVORS, otherwise it's SPAWN_SPECIALS_IN_FRONT_OF_SURVIVORS. All other classes will be SPAWN_SPECIALS_IN_FRONT_OF_SURVIVORS. If any of these directions (including a manually specified one) fail to find a location, all retries will happen with SPAWN_SPECIALS_ANYWHERE as the direction.
+Note:
+The same values for PreferredMobDirection appear to work, BUT the following have also been seen, it is unknown if it's just redundancy. SPAWN_SPECIALS_ANYWHERE, SPAWN_SPECIALS_IN_FRONT_OF_SURVIVORS
+
+ProhibitBosses	bool	false	Prohibits tanks and witches from being spawned by the Director in THREAT areas. Campaign modes only.
+RelaxMaxFlowTravel	float	3000	How far the survivors can advance along the flow before transitioning from RELAX to BUILD_UP.
+RelaxMaxInterval	float	45	Maximum seconds to spend in the RELAX tempo.
+RelaxMinInterval	float	30	Minimum seconds to spend in the RELAX tempo.
+ShouldAllowMobsWithTank	bool	false	Whether to allow spawning of infected mobs (except Boomer / Bile Bomb spawned mobs) when a tank is in play. Campaign modes only.
+ShouldAllowSpecialsWithTank	bool	false	Whether to allow spawning of Special Infected when a tank is in play. Campaign modes only.
+Warning:
+Causes the Director to spawn Special Infecteds by time, instead of tempo.
+
+ShouldConstrainLargeVolumeSpawn	bool	true	IfSPAWN_LARGE_VOLUMEis used, it'll obey the restrictions imposed by the convarsz_large_volume_mob_too_far_xyandz_large_volume_mob_too_far_z.
+
+Todo: 	Move to new page with images
+
+ShouldIgnoreClearStateForSpawn	bool	false	
+ Confirm:	In proper category, and still working? Used in dash
+
+SpawnBehindSurvivorsDistance	float		Appears to require PreferredSpecialfction = SPAWN_BEHIND_SURVIVORS
+SpecialInfectedAssault	bool	false	
+Todo: 	confirm category/working
+
+SpecialInitialSpawnDelayMax	float	60.0	Specials cannot spawn for this many time maximum after the survivors exited the saferoom. Campaign modes only.
+SpecialInitialSpawnDelayMin	float	30.0	Specials cannot spawn for this many time minimum after the survivors exited the saferoom. Campaign modes only.
+SpecialRespawnInterval	float	45 in Campaign, 10 in Campaign finales, 20 in Versus	Time in seconds before a Special Infected slot can respawn an infected.
+SurvivorMaxIncapacitatedCount	int	2	Maximum amount of survivor incapacitating before dying.
+SustainPeakMaxTime	float	5	in minutes[confirm]
+SustainPeakMinTime	float	3	in minutes[confirm]
+TankHitDamageModifierCoop	float	1.0	Damage dealt by Tanks is multiplied by this number in non PvP modes.
+TankRunSpawnDelay	float	15	in seconds (mutation19.nut Taaannnkk!)
+ Confirm:	In proper category, and still working? Used in dash
+
+WanderingZombieDensityModifier	float	0.027 for versus, 0.03 otherwise	Multiplier for the amount of wandering infected.
+WaterSlowsMovement	bool	true	The campaign "The Sacrifice" manually places trigger_playermovement in some of its maps's water.
+ZombieDiscardRange	int	2500	Any CI beyond this point will be deleted, while any AI-controlled SI will suicide.
+ZombieDontClear	bool	false	Do not mark nav areas as cleared.
+ZombieSpawnInFog	bool	false	Allows zombies to spawn in in line-of-sight of survivors in fogged areas.
+ZombieSpawnRange	float	1500.0	Maximum distance from the survivors that the infected can spawn.
+ZombieTankHealth	float	4000.0	Sets the amount of health a tank spawns with. The health is later affected by hidden health modifiers:
+
+Expand
+
+
+Spawning limits
+Warning:
+Only the limits for bosses affect spawners.
+Name	Type	Default value	Description
+BileMobSize	int		Number of commons spawned in a mob when a bile bomb is thrown or a survivor is hit by vomit. Also controls the common limit if a survivor is currently vomited on. Only works if either scripted mode is enabled or the finale is active. Found in the Dead Center and The Passing finales.
+Note:
+The common limit is not changed if the finale is a gauntlet finale.
+
+BoomerLimit	int	1	Maximum number of Boomers allowed to be in play simultaneously.
+ChargerLimit	int	1	Maximum number of chargers allowed to be in play simultaneously.
+CommonLimit	int	30	Maximum number of commons allowed to be in play simultaneously.
+DominatorLimit	int	2	Maximum number of dominator SI types (Hunter, Smoker, Jockey or Charger) that can freely fill up their caps. The extra SI type (3rd by default) will be capped at 1 regardless of its individual limit orcm_BaseSpecialLimit. Therefore, ifcm_BaseSpecialLimit = 2,MaxSpecials = 8andDominatorLimitis unset, the maximum amount of dominators will be 2+2+1+0. The remaining 3 slots could only be filled with Boomers and Spitters. Its maximum effective value is 4 since there are only 4 dominator types. To block all dominators, set it to -1.
+HunterLimit	int	1	Maximum number of Hunters allowed to be in play simultaneously.
+JockeyLimit	int	1	Maximum number of Jockeys allowed to be in play simultaneously.
+MaxSpecials	int	2	Maximum number of Director spawned Special Infected allowed to be in play simultaneously.
+MegaMobSize	int	50	The amount of total infected spawned during a panic event.
+MobMaxPending	int	-1	How many infected can be left pending to spawn when the mob size is larger than CommonLimit.
+MobMaxSize	int	30	Maximum amount of infected that can spawn in a mob.
+MobMinSize	int	10	Minimum amount of infected that can spawn in a mob.
+MobSpawnSize	int	-none-	Static amount of infected in a mob. Overrides MobMinSize and MobMaxSize.
+PreTankMobMax	int	50	
+ Confirm:	In proper category, and still working? Possibly Gauntlet finale specific?
+
+SmokerLimit	int	1	Maximum number of Smokers allowed to be in play simultaneously.
+SpitterLimit	int	1	Maximum number of Spitters allowed to be in play simultaneously.
+TankLimit	int	-1	Maximum number of Tanks allowed to be in play simultaneously.
+WitchLimit	int	-1	Maximum number of Witches allowed to be in play simultaneously. Less than 0 means no maximum.
+EMS Stage Specific
+
+[Todo]
+
+See L4D2_EMS/Appendix:_Spawning_Infected
+
+Name	Type	Default value	Description
+AddToSpawnTimer	float	0.0	
+Todo: 	needs more testing but it's related to adding time to special timers when stage changes
+
+AllowCrescendoEvents	bool	true	
+PanicSpecialsOnly	bool	false	The Panic should end when we finish with Specials, not wait for the MegaMob.
+PanicWavePauseMax	float		
+Todo: 	confirm category/working
+
+PanicWavePauseMin	float		
+Todo: 	confirm category/working
+
+ScriptedStageType	int	9	The type of stage to run next. See L4D2_EMS/StageTypeAppendix for a description of stage types.
+ScriptedStageValue	int	1	Dependant on the stage type.
+SpawnDirectionCount	int	0	
+Todo: 	confirm category/working
+
+SpawnDirectionMask	int	0	A bitfield (using SPAWNDIR_N, _NE, _E, etc) of directors to spawn from _relative to_ a map entity named Compass in your map. Designed for Survival-like game modes. See L4D2_EMS/Appendix:_Spawning_Infected.
+SpawnSetPosition	Vector		The center point of the area infected can spawn in, when SpawnSetRule is set to SPAWN_POSITIONAL.
+SpawnSetRadius	float	1000.0	How far from the center point infected can spawn, when SpawnSetRule is set to SPAWN_POSITIONAL.
+SpawnSetRule	int	0	Overrides the mode of spawning used. Seems to be non-functional in finales. Valid flags are: SPAWN_ANYWHERE, SPAWN_FINALE, SPAWN_BATTLEFIELD, SPAWN_SURVIVORS, SPAWN_POSITIONAL
+TotalBoomers	int	0	Number of Boomers allowed in a wave.
+TotalChargers	int	0	Number of Chargers allowed in a wave.
+TotalHunters	int	0	Number of Hunters allowed in a wave.
+TotalJockeys	int	0	Number of Jockeys allowed in a wave.
+TotalSmokers	int	0	Number of Smokers allowed in a wave.
+TotalSpecials	int	0	Total number of Special Infected allowed in a wave.
+TotalSpitters	int		Number of Spitters allowed in a wave.
+Finale Specific/Related
+
+A normal finale consists of X number of stages. Some variables in DirectorOptions can only be used during finales. Multiple custom finales can be defined in the same script, with the Options starting with A_, B_, C_, D_, E_. Which finale is used will be chosen randomly.
+
+Name	Type	Default value	Description
+[A-E]_CustomFinale_StageCount	int	-none-	Number of stages. Needs to be set for Versus scoring to function properly.
+[A-E]_CustomFinaleX	int	-none-	Stage type (enumerated PANIC, SCRIPTED (AKA ONSLAUGHT), DELAY, TANK), where X is the corresponding stage number. Usable in scripted panic events.
+[A-E]_CustomFinaleValueX	any	-none-	Value depends on the stage type above. Usable in scripted panic events.
+[A-E]_CustomFinaleMusicX	string	-none-	Soundscript entry to play. For instance, A_CustomFinaleMusic1 = "C2M5.BadManTank2" will play a Dark Carnival - Concert finale song. Does not work in Scripted Panic Events.
+Note:
+Dark Carnival - Concert finale does not use this method! It instead uses map logic and ambient_music. However its finale script hasA_CustomFinaleMusic4= "", suggesting that it may be disabling the default Tank music.
+
+EnforceFinaleNavSpawnRules	bool	true	Possibly used to enforce the finale spawning behavior without running a finale.
+Todo: 	confirm category/working
+
+HordeEscapeCommonLimit	int	-1	Number of commons allowed in the escape stage.
+EscapeSpawnTanks	bool	true	Whether to spawn tanks in the escape sequence.
+Todo: 	possibly EMS stage related
+
+MinimumStageTime	float	1.0	The minimum amount of time a SCRIPTED stage is allowed to run before ending. Unavailable for Scripted Panic Events.
+Gauntlet Specific/Related
+
+These options are specific to Gauntlet finales. Most of these can be found in director_gauntlet.nut
+
+Name	Type	Default value	Description
+CustomTankKiteDistance	float	3000.0	Controls when the Gauntlet's Tank wave should start if a survivor advanced this far, in flow distance.
+Movement Bonus related options
+Movement Bonus are an unique RELAX pacing method present only in Gauntlet finales. Everytime the Movement Timer finishes its timing, Movement Bonus is incremented by its set value. However if a new mob spawns, the Director initiates an extra variable afterwards: Current Bonus. Current Bonus is a timer that lasts as long as the current Movement Bonus, which when still ticking down, disallows the Director from spawning any new infecteds (except Tanks).
+
+To familiarize with Movement Bonus better, usedirector_debug 1in-game to see the values.
+
+Name	Type	Default value	Description
+GauntletMovementThreshold	float	500.0	When survivors advance this many amount of flow distance, from the last reset point or the start point, Movement Bonus, Movement Timer and Current Bonus is reset to defaults.
+GauntletMovementTimerLength	float	5.0	The interval between each Movement Bonus increase, in seconds.
+GauntletMovementBonus	float	2.0	The initial value, and the amount the movement Bonus increases everytime the timer stops, in seconds.
+GauntletMovementBonusMax	float	30.0	The maximum value that the Movement Bonus can store.
+Versus Specific
+Name	Type	Default value	Description
+TankHitDamageModifierVersus	float	1.0	Damage dealt by Tanks is multiplied by this number in PvP modes.
+ZombieGhostDelayMax	float	30.0	Maximum time in seconds until allowing player infected to respawn.
+ZombieGhostDelayMin	float	20.0	Minimum time in seconds until allowing player infected to respawn.
+Scavenge Specific/Related
+Name	Type	Default value	Description
+ScavengeClusterBonusTime	float	15.0	
+Todo: 	confirm category/working
+
+ScavengeRoundInitialTime	float	90.0	The timer's initial length when the round starts.
+ScavengeScoreBonusTime	float	15.0	Amount of time added to the timer when a gascan is successfully poured.
+Survival Specific/Related
+Name	Type	Default value	Description
+SurvivalSetupTime	float		(Used in mutation15.nut for Survival Versus with setup time of 90 seconds)
+Mutation Specific/Related
+
+Some of these values are mutation specific values of the global ones (cm_CommonLimit,cm_MaxSpecials, etc.), so use them if you are making a mutation, in case any map scripts are changing the global values.
+
+Note:
+These options need scripted mode to be active (e.g. running a mutation)
+Name	Type	Default value	Description
+ActiveChallenge	bool	false	Activates mutation mode.
+Note:
+Seems to be obsolete with the EMS update.
+
+AllowWitchesInCheckpoints	bool	false	Whether Witches are allowed to access nav areas marked with CHECKPOINT.
+cm_AggressiveSpecials	bool	false	If enabled, Special Infected will always go straight after the Survivors instead of possibly waiting around.
+cm_AllowPillConversion	bool	true	Allows pills to be converted to health kits or defibrillators in non-Expert difficulties.
+cm_AllowSurvivorRescue	bool	true if base mode is coop, false otherwise	Controls whether survivors can be respawned in rescue closets.
+cm_AutoReviveFromSpecialIncap	bool	false	Instantly revives a survivor when incapacitated by a Special Infected.
+Note:
+Doesn't work if a player isn't incapacitated by being dominated.
+
+cm_AutoSpawnInfectedGhosts	bool	false	
+cm_BaseCommonAttackDamage	float	1.0	
+cm_BaseSpecialLimit	int		Controls the default max limits of all the Special Infected.
+Note:
+Overridden by individual special limits. See https://github.com/Tsuey/L4D2-Community-Update/issues/317.
+
+cm_CommonLimit	int		Identical to theCommonLimit key, except this key will be prioritized over anyCommonLimitkeys.
+cm_FirstManOut	bool	false	Ends the escape when the first survivor reaches the escape vehicle.
+cm_HeadshotOnly	bool	false	Every infected only takes damage when shot to the head, else they will only stumble. Tanks are excepted from this. Used in the mutation "Headshot!"
+cm_HealingGnome	bool	false	All survivors start with only temporary health, with a gnome to be picked up near of them; The gnome will slowly regenerate the health of anyone who holds it. Used in the mutation "Healing Gnome."
+cm_InfiniteFuel	bool	false	(mutation7.nut Chainsaw Massacre)
+cm_MaxSpecials	int	-none-	Identical to theMaxSpecials key, except this key will be priortized over anyMaxSpecialskeys.
+cm_NoSurvivorBots	bool	false	Should survivor bots be kicked on round start?
+Todo: 	Improve description, add side effects
+
+cm_ProhibitBosses	bool	-none-	Identical to theProhibitBosses key, except this key will be priortized over anyProhibitBosseskeys.
+cm_ShouldEscortHumanPlayers	bool		
+cm_ShouldHurry	bool	false	Prompt survivor bots to rush as they would in Versus.
+cm_SingleScavengeCluster	bool	false	Only a group of scavenge cans together will be active at once. Used in the mutation "Follow the Liter."
+cm_SpecialRespawnInterval	int	-none-	Identical to theSpecialRespawnInterval key, except this key will be priortized over anySpecialRespawnIntervalkeys.
+cm_SpecialSlotCountdownTime	int		Used in Hunting Party (mutation16.nut).
+Todo: 	Is this the same ascm_SpecialRespawnInterval?
+
+cm_SpecialsRetreatToCover	bool	false	
+cm_TankLimit	int	-none-	Identical to theTankLimit key, except this key will be priortized over anyTankLimitkeys.
+cm_TankRun	bool	false	Allows bypassing c7m1's second train door. Used in Taaannnkk! (mutation19.nut) and Tank Run mutations.
+cm_TempHealthOnly	bool	false	
+cm_VIPTarget	bool	false	Spawns a gnome in the safe area of each map that must be carried to the end of the map. Used in the mutation "Last Gnome on Earth"
+cm_WanderingZombieDensityModifier	float	0.027 for versus, 0.03 otherwise	Identical to theWanderingZombieDensityModifier key, except this key will be priortized over anyWanderingZombieDensityModifierkeys.
+cm_WitchLimit	int	-none-	Identical to theWitchLimit key, except this key will be priortized over anyWitchLimitkeys.
+NoMobSpawns	bool	false	Prevents new mobs from attempting to spawn. Does not reset the timer, and already pending infected still spawn.
+TempHealthDecayRate	float	0.27	0.27 is the pain_pills_decay_rate default, higher values equals quicker decay.
+Important:
+If you add this to your MutationOptions don't delete it later in an attempt to get back to defaults. This option directly changes pain_pills_decay_rate cvar and is the only proper way to change that cvar dynamically.
+Callback Functions
+
+When functions with these specific names are placed in the DirectorOptions table, they get called by C++ with specific arguments used.
+
+Scripted mode callbacks
+Function	Signature	Description
+AllowFallenSurvivorItem	bool AllowFallenSurvivorItem(string classname)	For the given weapon classnames, return true to allow Fallen Survivors to carry the item, false / none is otherwise.
+AllowWeaponSpawn	bool AllowWeaponSpawn(string classname)	Return false to the given string to disallow the respective weapon from spawning, used by several mutations.
+ConvertWeaponSpawn	string ConvertWeaponSpawn(string classname)	For the given weapon classname, return another classname to convert the weapon to another, used by several mutations.
+ConvertZombieClass	int ConvertZombieClass(int infectedClass)	Converts player-controlled Special Unfecteds into another. Used by the Taaannnk!! (mutation19.nut) and Riding My Survivor (community3.nut) mutations.
+EndScriptedMode	int EndScriptedMode()	Called when the game attempts to end a round to allow changing the mission lost scenario or even preventing it. Used by the Dash mutation.
+GetDefaultItem	string GetDefaultItem(int index)	Repeatedly called with incrementing indices. Return a string of a weapon name to make it a default item for survivors, or 0 to end the iteration.
+ShouldAvoidItem	bool ShouldAvoidItem(string classname)	Return true or false to the given weapon classname to either make bots dislike or prefer a weapon. Used in mutations such as Four Swordsmen (mutation5.nut) or Chainsaw Massacre (mutation7.nut).
+ShouldPlayBossMusic	bool ShouldPlayBossMusic(int index)	Whether the standard Tank music (Event.Tank) should be force played in a Tank fight. Normally, the standard Tank music is only played before finales and the finale variants (Event.TankMidpoint and Event.TankBrothers) only played during Tank stages (specifically FINALE_FINAL_BOSS for the second variant). Returning true will override the finale Tank music variant in Tank stages and also allow the standard Tank music in other stages. Returning false will silence the music even outside finales.
+Todo: 	What is the index?
+Internal callbacks
+Warning:
+The following are internal/technical callbacks that should not be used directly by users.
+Function	Signature	Description
+OnChangeFinaleStage	void OnChangeFinaleStage(int finaletype, int stagetype)	Called right before OnBeginCustomFinaleStage. finaletype refers to the trigger_finale's Finale Type keyvalue. stagetype follows the special, FINALE_ prefixed, enumeration. It is used by director_base.nut to set the default music for finale stages by modifying the variable OnChangeFinaleMusic. As such, it's only called for stages without a _CustomFinaleMusic and is unsuitable for general use.
+Data mining
+
+The following are data mined Director options that may have never been functional in-game.
+
+Name	Type	Default value	Description
+cm_AllowTeamSwap	bool	true	
+Enumerations
+
+List of enumerations from DirectorScript table. If you have a script that intends to access these but won't be ran with the info_director's inputs, access them in this manner to avoid errors: DirectorScript.ALLOW_BASH_ALL.
+
+Some enumerations here are bitmasked, so they can be combined with other ones. Any hook / callback functions are stylized in italics.
+
+Note:
+These aren't actual Squirrel enumerations, but rather table slots dressed up like constants.
+AllowBash
+ALLOW_BASH_ALL = 0
+ALLOW_BASH_PUSHONLY = 1
+ALLOW_BASH_NONE = 2
+CTerrorPlayer::GetSenseFlags or CTerrorPlayer::SetSenseFlags (Bitmasks)
+BOT_CANT_SEE = 1
+BOT_CANT_HEAR = 2
+BOT_CANT_FEEL = 4
+CommandABot
+BOT_CMD_ATTACK = 0
+BOT_CMD_MOVE = 1
+BOT_CMD_RETREAT = 2
+BOT_CMD_RESET = 3
+BotQuery
+BOT_QUERY_NOTARGET = 1
+CBaseEntity::TakeDamage or AllowTakeDamage (Bitmasks)
+DMG_BULLET = 2
+DMG_BURN = 8
+DMG_BLAST = 64 (0x40)
+DMG_MELEE = 2097152 (0x200000) (also known as DMG_SLOWBURN in other Source games)
+DMG_STUMBLE = 33554432 (0x2000000)
+DMG_BLAST_SURFACE = 134217728 (0x8000000)
+DMG_BUCKSHOT = 536870912 (0x20000000)
+DMG_HEADSHOT = 1073741824 (0x40000000)
+DirectorOptions.OnChangeFinaleStage
+FINALE_GAUNTLET_1 = 0
+FINALE_HORDE_ATTACK_1 = 1
+FINALE_HALFTIME_BOSS = 2
+FINALE_GAUNTLET_2 = 3
+FINALE_HORDE_ATTACK_2 = 4
+FINALE_FINAL_BOSS = 5
+FINALE_HORDE_ESCAPE = 6
+FINALE_CUSTOM_PANIC = 7
+FINALE_CUSTOM_TANK = 8
+FINALE_CUSTOM_SCRIPTED = 9
+FINALE_CUSTOM_DELAY = 10
+FINALE_CUSTOM_CLEAROUT = 11
+FINALE_GAUNTLET_START = 12
+FINALE_GAUNTLET_HORDE = 13
+FINALE_GAUNTLET_HORDE_BONUSTIME = 14
+FINALE_GAUNTLET_BOSS_INCOMING = 15
+FINALE_GAUNTLET_BOSS = 16
+FINALE_GAUNTLET_ESCAPE = 17
+Ticker_AddToHud
+FLAGS
+HUD_FLAG_PRESTR = 1
+HUD_FLAG_POSTSTR = 2
+HUD_FLAG_BEEP = 4
+HUD_FLAG_BLINK = 8
+HUD_FLAG_AS_TIME = 16
+HUD_FLAG_COUNTDOWN_WARN = 32
+HUD_FLAG_NOBG = 64
+HUD_FLAG_ALLOWNEGTIMER = 128
+HUD_FLAG_ALIGN_LEFT = 256
+HUD_FLAG_ALIGN_CENTER = 512
+HUD_FLAG_ALIGN_RIGHT = 768
+HUD_FLAG_TEAM_SURVIVORS = 1024
+HUD_FLAG_TEAM_INFECTED = 2048
+HUD_FLAG_TEAM_MASK = 3072
+HUD_FLAG_NOTVISIBLE = 16384
+SLOTS
+HUD_LEFT_TOP = 0
+HUD_LEFT_BOT = 1
+HUD_MID_TOP = 2
+HUD_MID_BOT = 3
+HUD_RIGHT_TOP = 4
+HUD_RIGHT_BOT = 5
+HUD_TICKER = 6
+HUD_FAR_LEFT = 7
+HUD_FAR_RIGHT = 8
+HUD_MID_BOX = 9
+HUD_SCORE_TITLE = 10
+HUD_SCORE_1 = 11
+HUD_SCORE_2 = 12
+HUD_SCORE_3 = 13
+HUD_SCORE_4 = 14
+SPECIAL
+HUD_SPECIAL_TIMER0 = 0
+HUD_SPECIAL_TIMER1 = 1
+HUD_SPECIAL_TIMER2 = 2
+HUD_SPECIAL_TIMER3 = 3
+HUD_SPECIAL_COOLDOWN = 4
+HUD_SPECIAL_ROUNDTIME = 5
+HUD_SPECIAL_MAPNAME = 6
+HUD_SPECIAL_MODENAME = 7
+ClientPrint
+HUD_PRINTNOTIFY = 1
+HUD_PRINTCONSOLE = 2
+HUD_PRINTTALK = 3
+HUD_PRINTCENTER = 4
+DirectorOptions.InfectedFlags or ReapplyInfectedFlags (Bitmasks)
+INFECTED_FLAG_CANT_SEE_SURVIVORS = 8192 (0x2000)
+INFECTED_FLAG_CANT_HEAR_SURVIVORS = 16384 (0x4000)
+INFECTED_FLAG_CANT_FEEL_SURVIVORS = 32768 (0x8000)
+CTerrorPlayer::GetButtonMask (Bitmasks)
+IN_ATTACK = 1
+IN_JUMP = 2
+IN_DUCK = 4
+IN_FORWARD = 8
+IN_BACK = 16 (0x10)
+IN_USE = 32 (0x20)
+IN_CANCEL = 64 (0x40)
+IN_LEFT = 512 (0x200)
+IN_RIGHT = 1024 (0x400)
+IN_ATTACK2 = 2048 (0x800)
+IN_RELOAD = 8192 (0x2000)
+TerrorNavArea or CNavLadder
+LADDER_UP = 0
+LADDER_DOWN = 1
+TerrorNavArea or CNavLadder
+NAV_NORTH = 0
+NAV_EAST = 1
+NAV_SOUTH = 2
+NAV_WEST = 3
+DirectorOptions.SpawnSetRule
+SCRIPTED_SPAWN_FINALE = 0
+SCRIPTED_SPAWN_SURVIVORS = 1
+SCRIPTED_SPAWN_BATTLEFIELD = 2
+SCRIPTED_SPAWN_POSITIONAL = 3
+DirectorOptions.SpawnSetRule
+SPAWN_FINALE = 0
+SPAWN_SURVIVORS = 1
+SPAWN_BATTLEFIELD = 2
+SPAWN_POSITIONAL = 3
+SCRIPT_SHUTDOWN
+Todo: 	Are these for the VS 2010 debugger?
+SCRIPT_SHUTDOWN_MANUAL = 0
+SCRIPT_SHUTDOWN_ROUND_RESTART = 1
+SCRIPT_SHUTDOWN_TEAM_SWAP = 2
+SCRIPT_SHUTDOWN_LEVEL_TRANSITION = 3
+SCRIPT_SHUTDOWN_EXIT_GAME = 4
+DirectorScript.SpawnDirectionMask (Bitmasks)
+SPAWNDIR_N = 1
+SPAWNDIR_NE = 2
+SPAWNDIR_E = 4
+SPAWNDIR_SE = 8
+SPAWNDIR_S = 16 (0x10)
+SPAWNDIR_SW = 32 (0x20)
+SPAWNDIR_W = 64 (0x40)
+SPAWNDIR_NW = 128 (0x80)
+DirectorOptions.PreferredMobDirection or DirectorOptions.PreferredSpecialDirection
+SPAWN_NO_PREFERENCE = -1
+SPAWN_ANYWHERE = 0
+SPAWN_BEHIND_SURVIVORS = 1
+SPAWN_NEAR_IT_VICTIM = 2
+SPAWN_SPECIALS_IN_FRONT_OF_SURVIVORS = 3
+SPAWN_SPECIALS_ANYWHERE = 4
+SPAWN_FAR_AWAY_FROM_SURVIVORS = 5
+SPAWN_ABOVE_SURVIVORS = 6
+SPAWN_IN_FRONT_OF_SURVIVORS = 7
+SPAWN_VERSUS_FINALE_DISTANCE = 8
+SPAWN_LARGE_VOLUME = 9
+SPAWN_NEAR_POSITION = 10
+DirectorOptions.ScriptedStageType
+STAGE_PANIC = 0
+STAGE_TANK = 1
+STAGE_DELAY = 2
+STAGE_CLEAROUT = 4
+STAGE_SETUP = 5
+STAGE_ESCAPE = 7
+STAGE_RESULTS = 8
+STAGE_NONE = 9
+TraceLine (Bitmasks)
+Todo: 	Is this a bitmask or what? If yes, then the term's definition in the second paragraph should be revised as these can't be independently combined.
+TRACE_MASK_ALL = -1
+TRACE_MASK_VISION = 33579073
+TRACE_MASK_VISIBLE_AND_NPCS = 33579137
+TRACE_MASK_PLAYER_SOLID = 33636363
+TRACE_MASK_NPC_SOLID = 33701899
+TRACE_MASK_SHOT = 1174421507
+HUDManageTimers
+TIMER_DISABLE = 0
+TIMER_COUNTUP = 1
+TIMER_COUNTDOWN = 2
+TIMER_STOP = 3
+TIMER_SET = 4
+CTerrorPlayer::GiveUpgrade
+UPGRADE_INCENDIARY_AMMO = 0
+UPGRADE_EXPLOSIVE_AMMO = 1
+UPGRADE_LASER_SIGHT = 2
+ZSpawn
+ZOMBIE_NORMAL = 0
+ZOMBIE_SMOKER = 1
+ZOMBIE_BOOMER = 2
+ZOMBIE_HUNTER = 3
+ZOMBIE_SPITTER = 4
+ZOMBIE_JOCKEY = 5
+ZOMBIE_CHARGER = 6
+ZOMBIE_WITCH = 7
+ZOMBIE_TANK = 8
+ZSPAWN_MOB = 10
+ZSPAWN_MUDMEN = 12
+ZSPAWN_WITCHBRIDE = 11
+See also
+Intros
+VScript
+L4D2 VScripts
+Mutation Gametype (L4D2)
+Documentations
+Left 4 Dead 2/Scripting/Script Functions
+Decrypted Mutation Vscripts
+L4D2 Level Design/Boss Prohibition
+L4D2 Vscript Examples
+Extended Mutation System
+Custom Finales Contains all original finale scripts as reference.
+Miscelleanous
+logic_script
+L4D2 Level Design/Boss Prohibition
+trigger_finale
+info_director
+Categories: Pages with Left 4 Dead 2 bugsLeft 4 Dead 2Scripting
+Navigation menu
+Create account
+Log in
+Page
+Discussion
+Read
+View source
+View history
+More
+Search
+Main Page
+Source SDK index
+Recent changes
+Random page
+Workshop
+Half-Life SDK
+Half-Life: Alyx Tools
+Dota 2 Tools
+SteamVR Tools
+Counter-Strike 2 Tools
+Support
+Community portal
+Getting help
+Source SDK FAQ
+Level Design FAQ
+Steam Community
+Source SDK Hub
+Source SDK Discussion
+Steam
+Tools
+What links here
+Related changes
+Special pages
+Printable version
+Permanent link
+Page information
+This page was last edited on 4 October 2025, at 10:28.
+About Valve Developer Community
+Terms of Use
+Third Party Legal Notices

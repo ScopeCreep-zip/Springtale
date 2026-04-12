@@ -2,6 +2,29 @@
 
 Kick streaming platform integration. OAuth 2.1 PKCE authentication, real-time webhook triggers for stream and chat events, and chat/channel/stream actions.
 
+```
+  Kick platform                 connector-kick                 Rule engine
+       │                              │                             │
+       │  OAuth 2.1 PKCE              │                             │
+       │  (id.kick.com)               │                             │
+       │  ◄──────────────────────────►│                             │
+       │  access token                │                             │
+       │                              │                             │
+       │  webhook (stream_live,       │                             │
+       │   chat_message, …)           │                             │
+       │  + RSA signature             │                             │
+       ├─────────────────────────────►│                             │
+       │                              │ verify_webhook (RSA)        │
+       │                              │ emit TriggerEvent           │
+       │                              ├────────────────────────────►│
+       │                              │                             │
+       │  POST /chat/send, etc.       │  execute(send_chat, …)      │
+       │  api.kick.com                │  ◄──────────────────────────┤
+       │  ◄──────────────────────────┤                              │
+```
+
+*Fig. 1. Kick data flow. Inbound webhooks are RSA-verified against the Kick public key before being dispatched as trigger events; outbound actions hit the Kick REST API with a bearer token derived from the PKCE flow.*
+
 ## 1. Configuration
 
 **TABLE I. CONFIG FIELDS**

@@ -1,0 +1,114 @@
+Sign in with Github
+Framework "Living Framework for Cooperative Games" created by Authors
+Play Structure
+
+Play Structure groups the categories which define the overarching structures of play. It encompasses the progression of the game, group formation, and goal structure.
+
+Group Formation
+Serendipitous
+Party Creation
+Drop-in/Drop-out
+Looking for Group
+Organised Grouping
+Goal Structure
+Shared
+Intertwined
+Independent
+Conflicting
+No Goal Structure
+Progression Structure
+Community
+Server
+Party
+Individual
+Player Context
+
+Player Context groups the categories that shape how individual players engage with the gameplay, and includes Player Identity, Player Entities Relationships, World View, and Player View.
+
+Player Identity
+Representation
+Single
+Dispersed
+Distinct
+Shared
+No representation
+Selection
+Arbitrary
+Pool
+Customisation
+Progress
+Predefined
+Static
+Customisable
+Switchable
+Relationships between Player Entities
+Individuals
+Sidekick
+Teammates
+Allies
+Competitors
+Game World
+Shared
+Unique
+Distinct world
+Player Viewpoint
+Shared
+Split
+Distinct
+Forms of Collaboration
+
+Players can collaborate in different forms, some directly supported by the game, while others emerge from the rules and challenges of the game. In most games, collaboration happens through in-game actions. Some also require collaboration through communication — we detail aspects related to this form of collaboration below. Other types of collaboration can also happen (e.g., sharing or assisting with controls), but are outside the scope of this work.
+
+Arrangement
+Strict Collaboration
+Free Collaboration
+Coupled Collaboration
+Coincident Collaboration
+Synchronicity
+Asynchronous Collaboration
+Concurrent Collaboration
+Sequential Collaboration
+Communication
+Communication by Design
+Agnostic
+Limited
+Required/Incentivised
+Means of Communication
+Text Chat
+Pings
+Pins
+Premade Messages
+Voice Chat
+Drawings
+Voice Lines
+Emotes
+In-Game Movement/Actions
+Collaboration Design Patterns
+
+The following list is not a comprehensive list of patterns, but a first step into collating and systematising design approaches found in cooperative games. It is expected to be a starting point to be expanded as new collaboration patterns are identified, added and emerge in games. All the patterns and mechanics can be implemented with varying degrees of visibility, from explicit to implicit or even hidden. We divide the section into Play Structure, Player Context, Dependencies, Affecting Others, Resource Sharing, Asymmetry, and Relations between Players' Actions patterns.
+
+Dependencies
+Task
+Grouping
+Spatial
+Temporal
+Fixed Difficulty
+Scaling Difficulty
+Affecting others
+Assistive Actions
+Manipulating Others' entities
+Piggy-Backing
+Resource Sharing
+Consumables
+Unlockables
+Interactables
+Playable characters
+Space
+Asymmetry
+Information
+Abilities
+Usefulness
+Relations between Player Actions
+Synergies
+Complementarity
+Select an item to get more more information in this section

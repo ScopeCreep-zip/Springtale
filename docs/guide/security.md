@@ -183,10 +183,22 @@ These are blocked at install time. If a manifest declares a toxic pair, the inst
 
 No security model is complete. These are known limitations:
 
-- **Flash storage wear leveling** — Even after zeroize, SSDs may retain old data in wear-leveled blocks. Full-disk encryption (LUKS, FileVault, BitLocker) is the real defense here. Springtale's vault encryption is a second layer, not a replacement.
+- **Flash storage wear leveling** — Even after zeroize, SSDs may retain old data in wear-leveled blocks. Full-disk encryption (LUKS, FileVault, BitLocker) is the real defense here. Springtale's vault encryption is a second layer, not a replacement. The **panic wipe** destroys the key material (making any residual ciphertext unreadable) but cannot physically clear all flash blocks.
 - **Full-disk encryption** — Springtale encrypts its own vault and database, but can't encrypt the entire disk. Users in high-risk situations should enable OS-level FDE.
 - **Side-channel attacks** — Timing attacks on crypto operations are mitigated (constant-time comparison for HMAC), but hardware-level side channels (cache timing, power analysis) are out of scope for a software project.
-- **Physical device access with unlimited time** — Duress and panic features (Phase 2b) help, but a sufficiently resourced adversary with physical access and time will eventually prevail. The goal is to make it expensive, not impossible.
+- **Physical device access with unlimited time** — Duress and panic features help, but a sufficiently resourced adversary with physical access and time will eventually prevail. The goal is to make it expensive, not impossible.
+
+## 7. Safety Features
+
+The following safety features are present:
+
+| Feature | Where | What it does |
+|---|---|---|
+| **Duress passphrase** | `springtale vault duress-setup` | Secondary passphrase unlocks a decoy vault. Two AEAD-encrypted regions share one file with constant 131,152-byte size. Writing one region never touches the other. |
+| **Panic wipe** | `springtale panic` | Random overwrite → fsync → unlink. Completes in <3 s on a 1 MB vault. Zeros key material in memory before file ops. |
+| **Travel mode** | `springtale travel prepare --backup-to` / `travel restore --from` | Encrypt backup to external location, wipe local install, restore at destination. |
+| **Ephemeral mode** | `ephemeral = true` in config | All state in memory, lost on exit. No file I/O for vault or database. |
+| **Sentinel monitor** | always on | Toxic-pair capability detection at install time, writes to `audit_trail` table. |
 
 ---
 

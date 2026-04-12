@@ -39,7 +39,7 @@ ECDSA (P-256) was considered but has a more complex implementation surface and h
 
 ## 4. Why SQLite over PostgreSQL
 
-**Chose:** SQLite (via `rusqlite`, bundled)
+**Chose:** SQLite (via `rusqlite` 0.39, bundled)
 **Considered:** PostgreSQL, Sled, plain files
 
 Springtale is local-first. Users should be able to run it on a Raspberry Pi, a laptop, or a phone without installing a database server. SQLite is:
@@ -49,9 +49,9 @@ Springtale is local-first. Users should be able to run it on a Raspberry Pi, a l
 - Fast for the workload (single writer, many readers)
 - Portable — the database is a single file you can back up by copying
 
-PostgreSQL is available as an optional backend (via `sqlx`) for server-mode deployments in Phase 2, but SQLite is the default and the only requirement.
-
 Sled was considered but has an uncertain maintenance future. Plain files lack transactions and queries.
+
+**Downstream cost.** Pinning the patched `rusqlite` 0.39 to avoid CVE-2025-70873 (heap info disclosure in 0.37) means any upstream library that transitively pins 0.37 has to either catch up or be deferred. The most visible casualty is `connector-matrix` — `matrix-sdk` 0.16 still pins 0.37, so we don't ship Matrix support until they update. For activist / survivor data, we'd rather defer a connector than expose stored session data to a heap leak.
 
 ## 5. Why rustls over OpenSSL/native-tls
 
@@ -66,6 +66,32 @@ We enforce this at three levels:
 1. `deny.toml` bans `native-tls`, `openssl`, and `openssl-sys`
 2. `vendor/native-tls-stub/` provides a fake `native-tls` crate that prevents accidental transitive dependencies
 3. All `reqwest` clients use the `rustls-tls` feature flag
+
+```
+   Any crate tries to pull native-tls
+               │
+               ▼
+   ┌────────────────────────────┐
+   │ [patch.crates-io]           │
+   │ native-tls = vendor/stub    │
+   └─────────────┬───────────────┘
+                 ▼
+     vendor/native-tls-stub/src/lib.rs
+     ┌──────────────────────────────┐
+     │ compile_error!(              │
+     │   "native-tls is banned …"   │
+     │ );                           │
+     └──────────────┬───────────────┘
+                    ▼
+               BUILD FAILS
+
+   Defence in depth:
+   ├─ deny.toml      → catches direct deps at cargo-deny time
+   ├─ vendor stub    → catches transitive deps at compile time
+   └─ reqwest flags  → rustls-tls feature only, no fallback
+```
+
+*Fig. 1. Three-layer `native-tls` ban. Even a deeply transitive dependency trying to pull native-tls hits the compile_error!() stub.*
 
 ## 6. Why TOML for Rules
 
@@ -109,12 +135,13 @@ Not everything is ideal. These are risks we've accepted with eyes open:
 **TABLE I. KNOWN TRADEOFFS**
 
 | Risk | Severity | Details |
-|------|----------|---------|
-| `rmcp` version mismatch | HIGH | The MCP Rust SDK (`rmcp`) had a version disconnect between what's published and what's documented. We pin to v1.x and track closely. |
+|---|---|---|
+| `matrix-sdk` blocked on `rusqlite` 0.37 | HIGH | Upstream pins an unpatched rusqlite with a heap info-disclosure CVE. `connector-matrix` deferred until upstream catches up. Tracked in workspace Cargo.toml exclusion comment. |
 | `jco` WASM overhead | MEDIUM | TypeScript → WASM via `jco componentize` adds 3-5MB per connector due to the bundled JS engine. Acceptable for community connectors, not for first-party. |
-| Veilid maturity | MEDIUM | Veilid is v0.4.x. Phase 3 is gated on production stability. The `VeilidTransport` stub is ready, but we won't ship it until Veilid is stable. |
-| WASM binary size | LOW | Even Rust WASM connectors are ~1-2MB. Acceptable for local installation, but limits distribution via DHT in Phase 3. |
-| Compile times | LOW | Full workspace rebuild: ~2-3 minutes. Incremental builds are fast. Accepted tradeoff for Rust's guarantees. |
+| Veilid maturity | MEDIUM | Veilid is v0.4.x. The `VeilidTransport` stub is present but won't go live until Veilid is stable in production. |
+| WASM binary size | LOW | Even Rust WASM connectors are ~1-2MB. Acceptable for local installation, but limits distribution via a future DHT-backed registry. |
+| Compile times | LOW | Full workspace rebuild: ~3-5 minutes. Incremental builds are fast. Accepted tradeoff for Rust's guarantees. |
+| Cooperation partial wiring | LOW | Several cooperation modules (rally, sacrifice, recovery, consensus) are type-defined but not yet invoked from the bot event loop. Documented in `docs/arch/AUDIT-NOTES.md §3`. |
 
 ---
 

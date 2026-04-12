@@ -11,7 +11,7 @@ Step-by-step guide to building a new first-party connector for Springtale.
 | **Isolation** | In-process, capability-checked | Wasmtime sandbox (10M fuel, 64MB mem, 30s timeout) |
 | **Trust** | High | Low |
 
-This guide covers native Rust connectors. WASM connector authoring will be covered when the TypeScript SDK ships (Phase 2a).
+This guide covers native Rust connectors. WASM connector authoring will be covered once the TypeScript SDK lands.
 
 ---
 

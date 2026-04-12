@@ -1,0 +1,378 @@
+[
+  {
+    "url": "https://www.lfcooperativegames.com/reports/search",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/assets/0.ddbeeeec.css",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/assets/ProgressBar.4f1e9ba5.css",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/entry/start.881f3710.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/index.23c93d93.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/singletons.f7db2baf.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/index.dc458d92.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/paths.7a94aeb7.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/parse.7d180a0f.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/control.f2d6eca3.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/entry/app.05af8267.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/preload-helper.a4192956.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/nodes/0.d97d9e6f.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/chevron-left.65002415.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/Icon.71722a85.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/stores.ff17d7f8.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/forms.11f8c46a.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/navigation.0439e803.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/ProgressBar.svelte_svelte_type_style_lang.72c6fb64.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/stores.c44d9371.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/TabGroup.2d82d233.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/CategoryDetail.46ace9d0.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/Giscus.4580aed0.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/loader-circle.4325d9fd.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/GameDetail.f524e2e6.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/index.8d4c3149.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/category.747200da.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/nodes/16.c8afdfaf.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/ThreeColumnLayout.feb1a693.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/chunks/search.5394c626.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/assets/framework-logo-text.86273bdf.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/coa6kp.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co8ok7.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co62ao.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co1vca.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co3nh9.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co686e.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co8fu7.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co8o7i.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/xrpmydnu9rpxvxfjkiu7.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co4jni.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co20u8.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co2cuw.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co6p4p.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co1xbv.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co2vzi.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co2769.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co54tr.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co1n69.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co8086.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co1y2f.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co2t97.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co6kqt.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co67qb.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co49wj.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co2t2u.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co20yw.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co230s.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co1mb9.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co214e.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co1trz.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co4rq1.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co5t0k.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co22a9.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co8sx6.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co2311.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co5wzs.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co1qrr.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co2hby.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/yckmopwynvlncm1ub3om.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co6ene.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co7989.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co1rs4.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co1tfy.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co5ive.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co3isd.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co3ga8.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co61ky.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co1nhi.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co6115.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/coaat4.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co1xdc.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co6rzl.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co2534.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co2558.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co396n.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co4k2y.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/coaeeu.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co215b.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co2ekt.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co72yn.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://images.igdb.com/igdb/image/upload/t_cover_big/co5w0w.png",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/_app/immutable/nodes/1.1b7b5a54.js",
+    "method": "GET"
+  },
+  {
+    "url": "https://www.lfcooperativegames.com/api/reports?game=124",
+    "method": "GET"
+  }
+]

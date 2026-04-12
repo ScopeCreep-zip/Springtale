@@ -2,6 +2,25 @@
 
 Local filesystem integration. Watch directories for changes, read/write files, and list directories — all constrained to configured allow-list paths.
 
+```
+  Local filesystem              connector-filesystem           Rule engine
+         │                              │                           │
+         │  inotify / FSEvents          │                           │
+         │  (watch_paths)               │                           │
+         ├─────────────────────────────►│                           │
+         │                              │ debounce (debounce_ms)    │
+         │                              │ emit FileWatch trigger    │
+         │                              ├──────────────────────────►│
+         │                              │                           │
+         │                              │  execute(read_file, …)    │
+         │  ◄───────────────────────────┤  path ∈ read_paths?       │
+         │                              │                           │
+         │                              │  execute(write_file, …)   │
+         │  ◄───────────────────────────┤  path ∈ write_paths?      │
+```
+
+*Fig. 1. Filesystem data flow. Watched paths emit debounced triggers; read/write actions are capability-checked against the path allow-lists.*
+
 ## 1. Configuration
 
 **TABLE I. CONFIG FIELDS**

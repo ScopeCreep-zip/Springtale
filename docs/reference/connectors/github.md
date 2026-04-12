@@ -2,6 +2,25 @@
 
 GitHub API v3 integration. Personal access token authentication, webhook-driven triggers with HMAC verification, and issue/comment/diff actions.
 
+```
+  GitHub                  connector-github               Rule engine
+     │                            │                           │
+     │  webhook (push, PR,        │                           │
+     │   issue, comment)          │                           │
+     │  X-Hub-Signature-256       │                           │
+     ├───────────────────────────►│                           │
+     │                            │ verify_webhook (HMAC-256) │
+     │                            │ emit TriggerEvent         │
+     │                            ├──────────────────────────►│
+     │                            │                           │
+     │  REST v3 request           │  execute(create_issue,    │
+     │  api.github.com            │           post_comment,…) │
+     │  Bearer <PAT>              │  ◄────────────────────────┤
+     │  ◄─────────────────────────┤                           │
+```
+
+*Fig. 1. GitHub data flow. Inbound webhooks are HMAC-SHA256 verified against `webhook_secret`; outbound calls use a PAT stored as `Secret<String>`.*
+
 ## 1. Configuration
 
 **TABLE I. CONFIG FIELDS**

@@ -1,0 +1,163 @@
+Tell us about your gaming habits
+
+CALLING ALL GAMERS!
+SIGN IN
+CREATE A FREE ACCOUNT
+EXPLORE
+CHARACTERS
+ENEMIES
+ITEMS
+MISC.
+SIGN IN
+Home
+Explore
+Saved
+Progress
+History
+More
+ADVERTISEMENT
+SKIP TO CONTENT
+Crypt of the NecroDancer Wiki
+173
+PAGES
+EXPLORE
+CHARACTERS
+ENEMIES
+ITEMS
+MISC.
+Sub-beat Mechanics
+SAVE
+VIEW SOURCE
+
+Sub-beat mechanics refer to (most likely unintended) game mechanics that involve units of time not equal to a whole number of beats, such as the player making inputs that deliberately do not fall on the beat.
+
+Contents
+1	Valid Inputs
+2	Heal Spell
+2.1	Double Heal Spell
+2.2	Triple Heal Spell, etc.
+3	Trapdoors as Aria/Coda + Food
+4	Trapdoors as Aria + Damage prevention
+5	Getting killed by the Food Shopkeeper
+6	Ice on top of a travel rune
+Valid Inputs
+
+Fundamentally, the reason why sub-beat mechanics exist in the first place is due to the game's wide timing windows. The player may be up to half a beat early or half a beat late on any input. As a result, if one beat is made as late as possible, and the very next beat is made as early as possible, the game will recognize two valid inputs in rapid succession. (Normally, the second input would be rejected for being too close to the first instead of a beat after the first, causing a missed beat.)
+
+Heal Spell
+
+When the player steps on the stairs, the game is programmed to:
+
+Ignore all damage while the player is on the stairs (except for the Vow of Poverty)
+Transition to the next floor in approximately 27 frames (~0.45 seconds)
+
+Thus, if the player can use the Heal spell while still on the stairs, they will not take any damage even from blood magic, and effectively gain half a heart of health for free. Normally this is not possible, since after the player makes the input to move onto the stairs, they must wait a beat before being allowed to input again, and by then the next floor transition would have already completed.
+
+Deliberately moving onto the stairs late while using the Heal spell early allows the above trick to be performed on any floor.
+If the BPM of the music is at least 134, there are fewer than 27 frames between beats and the above trick can be performed without needing any sub-beat inputs.
+
+ If the player is bat form Nocturna at the end of a floor, the same trick can be used in a near identical manner to transform back into human form without taking damage.
+
+Double Heal Spell
+
+While two valid inputs can be made with only three frames (0.05 seconds) in between, three valid inputs require at least one full beat plus two frames between the first and last input. Under certain conditions, this allows for the above trick to be used twice per floor:
+
+If the BPM of the music is at least 267, the Heal spell can be used twice without needing any sub-beat inputs. Without custom music, this can only be done as Bolt.
+Theoretically, any character can use the Heal spell twice per floor when the music BPM is as low as 144; however, this requires two frame-perfect inputs on the half-beat which is extremely difficult. If the player cannot do this, 157 BPM is the slowest tempo that does not require any exact-frame precision, which is viable only on Zone 4-3 and just after defeating Death Metal (or on any floor as Bolt).
+Triple Heal Spell, etc.
+If the player character is Bolt, the song BPM is at least 288 (144 before doubling), and the player can make at least two frame-perfect quarter-beat inputs (i.e. halfway between two of Bolt's beats), it is theoretically possible to use the Heal spell three times on one set of stairs. As above, without frame precision, the BPM must be at least 314 (157 before doubling).
+Since Bard has no such thing has an invalid input timing, he can use the Heal spell a large number of times on one staircase, depending on how fast the player can input. For example, if the player can input at least ~13 times per second, Heal can be used up to 6 times.
+Trapdoors as Aria/Coda + Food
+
+When the player makes an input to move onto a trapdoor, it takes 14 frames for the movement to complete and the trapdoor to open. Meanwhile, eating a food item as any character (including Aria and Coda) grants the player one beat of invincibility. Put together:
+
+If the player can make two valid inputs in 14 frames, the first input can move onto the trapdoor and the second input can eat the food before the trapdoor actually opens, preventing the player from taking missed beat damage.
+As with the Heal spell trick, this is possible on any level by deliberately moving onto the trapdoor late and eating the food early.
+If the music BPM is at least 258, no sub-beat inputs are required. This is effectively limited to Coda on any floor past 1-1.
+Trapdoors as Aria + Damage prevention
+
+The content of this section is not yet confirmed.
+
+Since taking damage (even if blocked) grants the player a beat of invincibility afterward, it is known that Aria wearing Glass Armor can step on a spiketrap followed by a trapdoor immediately afterward (among other scenarios). This reliably works up to 160 BPM (the tempo of Zone 4-3); however:
+
+It stops working if the player steps on the trapdoor late
+It becomes significantly less reliable if a tempo up trap is activated (180 BPM)
+It does not work at any speed with Coda, even on 1-1 with a tempo down trap
+The BPM threshold is much lower (about 130 BPM) if a bounce trap is in between the spiketrap and the trapdoor
+
+The above mechanics imply that the beat of invincibility simply wears off quicker as the music speeds up, causing it to no longer cover the trapdoor; however, this does not explain the following case:
+
+The BPM threshold is still lowered (about 140 BPM) if a bounce trap is used to land on the spiketrap, even though less time should pass between the spiketrap and the trapdoor
+
+Experimental testing implies that when damage to the player is blocked, the player will suffer a "lag" lasting somewhere between ~26 and ~29 frames, during which any valid inputs made are delayed or buffered until the end of the lag. (This can most easily be seen by equipping Bard with Glass Armor and mashing through a spiketrap.) However, there also appears to be some kind of "grace period" after somewhere around ~20 frames, where valid inputs can be made without having to wait through the last few remaining frames of lag. This explains the following:
+
+When lag occurs, the trick will never work since it is effectively the same as the player stepping on the trapdoor late
+No lag is visible at 160 BPM, since the next beat's input (to move onto the trapdoor) falls after the grace period begins
+Lag is somewhat inconsistently visible at 180 BPM, since the next beat's input may or may not fall during the grace period depending on the frame-precision of the player
+Lag is consistently present above ~200 BPM, where the next beat's input is all but guaranteed to fall outside the grace period, causing it to incur the full delay
+The trick does not work at e.g. 150 BPM when a bounce trap is before the spiketrap, because the bounce trap effectively reduces the time between the spiketrap and the trapdoor input, causing the trapdoor input to now occur before the grace period begins and incur lag
+Lag never occurs for the end-of-song trapdoor specifically, since it always appears exactly on the beat regardless of the player's delayed inputs. This makes it possible for Coda to use this trick for the end-of-song trapdoor only (which might be useful if e.g. she has dropped gold on the stairs and has neither a bomb to clear it nor food to use the previous faster trick).
+
+It is not yet fully confirmed why or when all of the above happens.
+
+Getting killed by the Food Shopkeeper
+
+This is normally impossible, since the Food Shopkeeper has only 1 HP and Shopkeepers cannot attack unless damaged first. However, a quirk of the game prevents enemies from taking damage until they are loaded for the first time[citation needed], but Shopkeepers who "avoid" damage this way still become aggressive. The shopkeeper can be attacked before he is loaded by doing the following:
+
+When the player inputs toward a travel rune for the first time, it takes 14 frames before the movement completes and the secret shop loads. During this time, if the player can throw a dagger/spear (or fire a rifle) upwards, it will pass through the shopkeeper before he loads, causing him to become aggressive without taking damage. Like all other shopkeepers, an aggressive Food Shopkeeper inflicts 10 hearts of damage and can move in any direction including diagonally.
+This can be done if a Shove Monster or Skeleton Mage moves the player onto the travel rune while they prepare the throw, allowing them to perform the throw on the first beat of entering the secret shop. As perhaps expected, the two inputs must both be valid and within 14 frames of each other; thus the player must prepare the throw late and perform the throw early. If the BPM is at least 258, no sub-beat inputs are required.
+This becomes much easier if the player misses beats: allow the Shove Monster to push the player character into the travel rune from a distance, or stand next to the travel rune while a Skeleton Mage approaches from a distance from the opposite side. While waiting, prepare a throw and deliberately miss beats. When the enemy moves you onto the travel rune, it will automatically do so as late as possible within the beat (since it was missed); at this point it is much easier to time a throw anytime during the next 14 frames (any of which will be valid).
+For unknown reasons, a thrown Throwing Star does not work, as one thrown during the 14-frame window ends up hitting the tiles north of the travel rune's origin, not the travel rune's destination.
+For unknown reasons, the mechanic is much less consistent (though still possible) when using ice to slide into the travel rune (specifically, ice must be next to the rune and also not on top of the rune, which is a separate sub-beat mechanic). This applies even when accounting for the fact that an ice slide cannot be made late and so it is required for the BPM to be at least 258.
+This can also be done with no enemy help if three inputs can all be performed during the 14-frame window (moving onto the travel rune, preparing the throw, and performing the throw). This is easiest to do with Bard, but can also (theoretically) be done with two frame-perfect quarter-beat inputs when the BPM is at least 300. Without frame-perfection, the BPM must be at least 360 (only possible with Bolt on 4-3 and an active tempo up trap). Experimentally, this has only been verified with custom music with a BPM of at least 403.
+It has not been confirmed if any of the above also applies to the Conjurer (which would require Bard and four inputs in 14 frames), though it has been confirmed that the Food Shopkeeper can be made aggressive from a tile next to the travel rune (which also requires four inputs in 14 frames).
+Ice on top of a travel rune
+
+This scenario can only occur if a travel rune naturally occurs inside of a cracked ice wall; other methods of generating ice (Ice Elementals; Water Balls + Freeze) delete the travel rune.
+
+When the player steps onto a tile that contains both ice and a travel rune, normally they will slide one tile inside of the secret shop. However, if the next beat occurs before they finish traveling (which takes 12 frames), they will instead slide one tile past the travel rune before warping inside. This can happen with no sub-beat inputs if the BPM is at least 300 (naturally occurs with Bolt on 3-3); otherwise, if the BPM is at least 150, this can happen if the player makes the input to step onto the travel rune as late as possible.
+
+Community content is available under CC-BY-SA unless otherwise noted.
+Recent Images
+Monsters
+4/4/2026
+Monsters
+4/4/2026
+Monsters
+4/4/2026
+EXPLORE PROPERTIES
+Fandom
+Fanatical
+GameSpot
+Metacritic
+TV Guide
+Honest Entertainment
+FOLLOW US
+OVERVIEW
+What is Fandom?
+Essentials
+About
+Careers
+Press
+Contact
+Terms of Use
+Privacy Policy
+Digital Services Act
+Global Sitemap
+Local Sitemap
+Do Not Sell My Personal Information
+COMMUNITY
+Community Central
+Support
+Help
+ADVERTISE
+Media Kit
+Contact
+FANDOM APPS
+Take your favorite fandoms with you and never miss a beat.
+Crypt of the NecroDancer Wiki is a Fandom Games Community.
+VIEW MOBILE SITE
+Search this wiki
+Search all wikis
+This website uses cookies to enhance user experience and to analyze performance and traffic on our website. We also share information about your use of our site with our social media, advertising and analytics partners.
+Do Not Sell My Personal Information Accept Cookies

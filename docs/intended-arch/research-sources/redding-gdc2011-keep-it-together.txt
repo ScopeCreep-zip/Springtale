@@ -1,0 +1,979 @@
+Sunday, March 6, 2011
+                                  Keep it together
+                        Encouraging cooperative behavior during co-op play
+
+
+
+
+Sunday, March 6, 2011
+                        Who I am   Patrick Redding
+
+                                   Game director
+                                   Ubisoft Toronto
+
+
+
+                                   Untitled Splinter Cell
+
+                                   Splinter Cell: Conviction
+
+                                   Far Cry 2
+
+                                   Far Cry: Evolution
+
+                                   Far Cry: Instincts
+
+
+
+
+001
+Sunday, March 6, 2011
+                                Player cooperation
+
+
+
+
+002    Photo by stillthedudeabides - http://flic.kr/p/HmcxK
+
+
+
+Sunday, March 6, 2011
+                                Player cooperation
+
+
+                                                              (as opposed to
+                                                              systemic cooperation)
+
+
+
+
+003    Photo by stillthedudeabides - http://flic.kr/p/HmcxK
+
+
+
+Sunday, March 6, 2011
+                        playthisthing.com/
+                        tahrir-game
+
+
+
+Sunday, March 6, 2011
+                        ‘A Force More
+                        Powerful’ (2009)
+
+                        York Zimmerman
+
+
+Sunday, March 6, 2011
+005
+Sunday, March 6, 2011
+                        Photo by Al Jazeera English - http://flic.kr/p/9fwThP
+006  Photo by Steve Rhodes - http://flic.kr/p/9e3WU6
+
+
+
+Sunday, March 6, 2011
+                    Negotiated actions reinforce
+                    social interaction
+
+
+007
+Sunday, March 6, 2011
+                                                   Photo by Cameron Cassan - http://flic.kr/p/8Tbi9i
+                         Players become invested in the
+                        success of collaborative partners
+
+
+
+
+                                                            Photo by vtbrak - http://flic.kr/p/8RX4ui
+
+
+
+Sunday, March 6, 2011
+Sunday, March 6, 2011
+                        Players respond to collective agency
+                             at work in the game space
+
+
+
+
+Sunday, March 6, 2011
+                        shared intentionality
+
+
+
+
+Sunday, March 6, 2011
+                        Why do players
+                        cooperate?
+
+
+
+
+Sunday, March 6, 2011
+                        Players will work together
+                        to optimize system output
+
+
+
+
+Sunday, March 6, 2011
+                        Detection model
+Sunday, March 6, 2011
+                        Two-player stealth
+                        is fragile
+
+
+
+
+                                             Detection model
+Sunday, March 6, 2011
+                          AI
+                        States
+
+
+
+
+                          AI        AI
+                        Actions   Senses
+
+
+
+
+                                           Detection model
+Sunday, March 6, 2011
+                          AI
+                        States
+
+
+
+
+                          AI        AI
+                        Actions   Senses
+
+
+
+
+                                           Detection model
+Sunday, March 6, 2011
+                          AI
+                        States
+
+
+
+
+                          AI        AI        Player 1
+                        Actions   Senses      Actions
+
+
+
+
+                                           Detection model
+Sunday, March 6, 2011
+                          AI
+                        States
+
+
+                                              Player 2
+                                              Actions
+
+
+
+                          AI        AI          Player 1
+                        Actions   Senses        Actions
+
+
+
+
+                                           Detection model
+Sunday, March 6, 2011
+                        2x the players ≠ 2x the chances for detection
+
+
+
+
+Sunday, March 6, 2011
+                        Improving the odds
+                        of staying stealthy
+
+
+
+
+Sunday, March 6, 2011
+                        Shared intentionality promotes
+                          individual self-expression
+
+
+
+
+Sunday, March 6, 2011
+                        Self-expression
+Sunday, March 6, 2011
+                        High-level   Develop strategies
+
+
+
+
+                                                   Self-expression
+Sunday, March 6, 2011
+                        High-level   Develop strategies
+
+                        Mid-level    Create plans
+
+
+
+
+                                                    Self-expression
+Sunday, March 6, 2011
+                        High-level   Develop strategies
+
+                        Mid-level    Create plans
+
+                        Low-level    Make risky choices
+
+
+
+
+                                                    Self-expression
+Sunday, March 6, 2011
+                        High-level   Develop strategies
+
+                        Mid-level    Create plans
+
+                        Low-level    Make risky choices
+
+                        Mastery      Explore optional paths
+
+
+
+
+                                                    Self-expression
+Sunday, March 6, 2011
+                        Players derive satisfaction from
+                            meaningful cooperation
+
+
+
+
+Sunday, March 6, 2011
+                        Meaningful in the sense that it is
+
+                               Serious, important or useful to the
+                               player’s success in the game
+
+
+
+
+Sunday, March 6, 2011
+                        Meaningful in the sense that it is
+
+                               Serious, important or useful to the
+                               player’s success in the game
+
+
+                        But also
+
+                               Has a recognizable function in the
+                               logic of the game systems
+
+
+
+Sunday, March 6, 2011
+                        Formal design tools
+
+
+
+
+Sunday, March 6, 2011
+                        Formal design tools
+
+
+                                      Looking for tools that
+                                      are genre-agnostic
+
+
+
+
+Sunday, March 6, 2011
+                        Formal design tools
+
+
+                                      Looking for tools that
+                                      are genre-agnostic
+                                      Looking for tools that
+                                      are systemic
+
+
+Sunday, March 6, 2011
+                        Cooperative dynamics
+
+
+                                     Enabling cooperation
+                                     through the game
+                                     dynamics
+
+
+
+
+Sunday, March 6, 2011
+                        “dynamics”
+Sunday, March 6, 2011
+                        Dynamics in the MDA sense:
+
+                              The run-time behavior of the
+                              mechanics acting on player inputs
+                              and each other’s outputs over time.
+
+                              (2004, Hunicke, Leblanc and Zubek,
+                              8kindsoffun.com)
+
+
+
+                                                           “dynamics”
+Sunday, March 6, 2011
+                        Dynamics are what deliver the
+                        final game experience:
+
+                              Cooperation, meaningful
+                              or otherwise
+
+
+
+
+                                                        “dynamics”
+Sunday, March 6, 2011
+                        Gating/tethering
+
+                        Exotic challenges
+
+                        Punitive systems
+
+                        Buffing systems
+
+                        Asymmetric abilities
+
+                        Combined actions
+
+                        Survival/attrition
+                                               “dynamics”
+Sunday, March 6, 2011
+                        Gating/tethering       Prescriptive
+
+                        Exotic challenges
+
+                        Punitive systems
+
+                        Buffing systems
+
+                        Asymmetric abilities
+
+                        Combined actions
+
+                        Survival/attrition      Voluntary
+
+Sunday, March 6, 2011
+                          Gating/
+                        tethering
+Sunday, March 6, 2011
+                    No player proceeds until
+                                                 Gating/
+                    all players proceed        tethering
+Sunday, March 6, 2011
+                                    Players drift apart
+
+
+
+
+                        main loop                         bump/snap
+
+
+
+
+                                     Players reunite
+
+
+
+
+                    No player proceeds until
+                                                                        Gating/
+                    all players proceed                               tethering
+Sunday, March 6, 2011
+                        Very prescriptive
+
+
+
+
+                                              Gating/
+                                            tethering
+Sunday, March 6, 2011
+                        Very prescriptive
+
+                        Straggler-centric
+
+
+
+
+                                              Gating/
+                                            tethering
+Sunday, March 6, 2011
+                        Very prescriptive
+
+                        Straggler-centric
+
+                        OR sprinter-centric
+
+
+
+
+                                                Gating/
+                                              tethering
+Sunday, March 6, 2011
+                        Very prescriptive
+
+                        Straggler-centric
+
+                        OR sprinter-centric
+
+                        Tricks to conceal what is just an
+                        invisible wall/leash
+
+                                                              Gating/
+                                                            tethering
+Sunday, March 6, 2011
+Sunday, March 6, 2011
+Sunday, March 6, 2011
+                            Exotic
+                        challenges
+Sunday, March 6, 2011
+                    Altered camera/controls
+                                                  Exotic
+                    for some of the players   challenges
+Sunday, March 6, 2011
+                              Modified camera/controls
+
+
+
+
+                        main loop                 threatened
+
+
+
+
+                               Protected by teammate
+
+
+
+
+                    Altered camera/controls
+                                                                   Exotic
+                    for some of the players                    challenges
+Sunday, March 6, 2011
+                        Moderately coercive
+
+
+
+
+                                                  Exotic
+                                              challenges
+Sunday, March 6, 2011
+                        Moderately coercive
+
+                        Risks associated with playing
+                        separately grow sharply over time
+
+
+
+
+                                                                Exotic
+                                                            challenges
+Sunday, March 6, 2011
+                        Moderately coercive
+
+                        Risks associated with playing
+                        separately grow sharply over time
+
+                        More than one player needed to
+                        avert trouble
+
+
+
+                                                                Exotic
+                                                            challenges
+Sunday, March 6, 2011
+Sunday, March 6, 2011
+Sunday, March 6, 2011
+                        Punitive
+                        systems
+Sunday, March 6, 2011
+                                            Punitive
+                    One player is trapped   systems
+Sunday, March 6, 2011
+                             Player(s) isolated from team
+
+
+
+
+                        main loop                      trap
+
+
+
+
+                                Rescued by teammate
+
+
+                                                              Punitive
+                    One player is trapped                     systems
+Sunday, March 6, 2011
+                        Requires rescue by another player
+                        to survive
+
+
+
+
+                                                            Punitive
+                                                            systems
+Sunday, March 6, 2011
+                        Requires rescue by another player
+                        to survive
+
+                        Negative feedback for everyone
+
+
+
+
+                                                            Punitive
+                                                            systems
+Sunday, March 6, 2011
+                        Requires rescue by another player
+                        to survive
+
+                        Negative feedback for everyone
+
+                        Can be avoided
+
+
+
+
+                                                            Punitive
+                                                            systems
+Sunday, March 6, 2011
+Sunday, March 6, 2011
+Sunday, March 6, 2011
+                         Buffing
+                        systems
+Sunday, March 6, 2011
+                    One player makes another
+                    mechanically more
+                                                Buffing
+                    powerful                   systems
+Sunday, March 6, 2011
+                                Player buffs teammate
+
+
+
+
+                        main loop                 overpowered
+
+
+
+
+                                     Times out
+
+
+                    One player makes another
+                    mechanically more
+                                                                 Buffing
+                    powerful                                    systems
+Sunday, March 6, 2011
+                        Could be passive or intentional
+
+
+
+
+                                                           Buffing
+                                                          systems
+Sunday, March 6, 2011
+                        Could be passive or intentional
+
+                        Benefits are conditional,
+                        temporary
+
+
+
+
+                                                           Buffing
+                                                          systems
+Sunday, March 6, 2011
+                        Could be passive or intentional
+
+                        Benefits are conditional,
+                        temporary
+
+                        Voluntary
+
+
+
+
+                                                           Buffing
+                                                          systems
+Sunday, March 6, 2011
+                        Could be passive or intentional
+
+                        Benefits are conditional,
+                        temporary
+
+                        Voluntary
+
+                        Players can choose whether or
+                        not to opt in
+                                                           Buffing
+                                                          systems
+Sunday, March 6, 2011
+Sunday, March 6, 2011
+Sunday, March 6, 2011
+                        Asymmetric
+                           abilities
+Sunday, March 6, 2011
+                    Players have different
+                                             Asymmetric
+                    sets of game actions        abilities
+Sunday, March 6, 2011
+                                 New challenge type
+
+
+
+
+                        overpowered                  underpowered
+
+
+
+
+                                      Players reorient
+
+
+
+
+                    Players have different
+                                                                    Asymmetric
+                    sets of game actions                               abilities
+Sunday, March 6, 2011
+                        Might be orthogonal classes or
+                        customization system
+
+
+
+
+                                                         Asymmetric
+                                                            abilities
+Sunday, March 6, 2011
+                        Might be orthogonal classes or
+                        customization system
+
+                        Players can’t max out
+
+
+
+
+                                                         Asymmetric
+                                                            abilities
+Sunday, March 6, 2011
+                        Might be orthogonal classes or
+                        customization system
+
+                        Players can’t max out
+
+                        Players free to progress
+                        individually with the available
+                        mechanics
+
+                                                          Asymmetric
+                                                             abilities
+Sunday, March 6, 2011
+                        Might be orthogonal classes or
+                        customization system
+
+                        Players can’t max out
+
+                        Players free to progress
+                        individually with the available
+                        mechanics
+
+                        Strengths/weaknesses suggest
+                        mutual support play
+                                                          Asymmetric
+                                                             abilities
+Sunday, March 6, 2011
+Sunday, March 6, 2011
+Sunday, March 6, 2011
+                        Combined
+                          actions
+Sunday, March 6, 2011
+                    Players need to apply
+                    more than one skillset at
+                                                Combined
+                    the same time                 actions
+Sunday, March 6, 2011
+                                    new challenge type
+
+
+
+
+                                                     single skillset
+                        main loop
+                                                      overloaded
+
+
+
+
+                               players delegate actions
+
+
+                    Players need to apply
+                    more than one skillset at
+                                                                       Combined
+                    the same time                                        actions
+Sunday, March 6, 2011
+                        Any game challenge attacks a
+                        discrete set of player skills:
+
+
+
+
+                                                         Combined
+                                                           actions
+Sunday, March 6, 2011
+                        Any game challenge attacks a
+                        discrete set of player skills:
+
+                        Precision, timing, measurement,
+                        management, tactical choice,
+                        strategy, puzzle-solving
+
+
+
+
+                                                          Combined
+                                                            actions
+Sunday, March 6, 2011
+                        Any game challenge attacks a
+                        discrete set of player skills:
+
+                        Precision, timing, measurement,
+                        management, tactical choice,
+                        strategy, puzzle-solving
+
+                        Player-directed
+
+                                                          Combined
+                                                            actions
+Sunday, March 6, 2011
+                        Any game challenge attacks a
+                        discrete set of player skills:
+
+                        Precision, timing, measurement,
+                        management, tactical choice,
+                        strategy, puzzle-solving
+
+                        Player-directed
+
+                        The hard part is identifying the
+                        compound challenges
+                                                           Combined
+                                                             actions
+Sunday, March 6, 2011
+Sunday, March 6, 2011
+Sunday, March 6, 2011
+                        Survival/
+                        attrition
+Sunday, March 6, 2011
+                    Play continues for as long
+                                                 Survival/
+                    as 1+ players survive        attrition
+Sunday, March 6, 2011
+                                      heroism
+
+
+
+
+                        main loop                 overextended
+
+
+
+
+                                fail, become cautious
+
+
+
+
+                    Play continues for as long
+                                                                 Survival/
+                    as 1+ players survive                        attrition
+Sunday, March 6, 2011
+                        Many survivors possible, but
+                        casualties are perma-dead
+
+
+
+
+                                                       Survival/
+                                                       attrition
+Sunday, March 6, 2011
+                        Many survivors possible, but
+                        casualties are perma-dead
+
+                        Survival guarantees a share in
+                        the collective victory
+
+
+
+
+                                                         Survival/
+                                                         attrition
+Sunday, March 6, 2011
+                        Many survivors possible, but
+                        casualties are perma-dead
+
+                        Survival guarantees a share in
+                        the collective victory
+
+                        The MVP is an outlier
+
+
+                                                         Survival/
+                                                         attrition
+Sunday, March 6, 2011
+                        Many survivors possible, but
+                        casualties are perma-dead
+
+                        Survival guarantees a share in
+                        the collective victory
+
+                        The MVP is an outlier
+
+                        Players weigh risk/rewards
+                                                         Survival/
+                                                         attrition
+Sunday, March 6, 2011
+Sunday, March 6, 2011
+Sunday, March 6, 2011
+                        Lessons learned
+
+
+                                      Players used shared
+                                      marks more intentionally
+
+
+
+
+Sunday, March 6, 2011
+                        Lessons learned
+
+
+                                      Drama emerged from
+                                      punitive dynamics
+
+
+
+
+Sunday, March 6, 2011
+                        Lessons learned
+
+
+                                      Exotic moments exposed
+                                      the limits of interactivity
+
+
+
+
+Sunday, March 6, 2011
+                        Lessons learned
+
+
+                                      High-level plot was not
+                                      as important as low-
+                                      level character events
+
+
+
+
+Sunday, March 6, 2011
+                        Best practices
+
+
+                                         Don’t pour production
+                                         values into prescriptive
+                                         systems
+
+
+
+
+Sunday, March 6, 2011
+                        Best practices
+
+
+                                         Give the players tools
+                                         for mutual support
+
+
+
+
+Sunday, March 6, 2011
+                        Best practices
+
+
+                                         Design game ingredients
+                                         first for legibility, then
+                                         for beauty
+
+
+
+
+Sunday, March 6, 2011
+                        Best practices
+
+
+                                         Trust that groups of
+                                         players will naturally
+                                         improvise solutions to
+                                         hard problems
+
+
+Sunday, March 6, 2011
+                        Further
+                        investigation
+
+                                        Level design (aesthetic)
+                                        strategies
+
+
+
+
+Sunday, March 6, 2011
+                        Further
+                        investigation
+
+                                        Requirements for
+                                        presentation design
+
+
+
+
+Sunday, March 6, 2011
+                        Further
+                        investigation
+
+                                        Tools for communication
+                                        and coordination
+
+
+
+
+Sunday, March 6, 2011
+                        Q&A
+
+
+
+
+Sunday, March 6, 2011
+
