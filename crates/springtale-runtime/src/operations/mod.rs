@@ -18,6 +18,7 @@ pub mod formations;
 pub mod memory;
 pub mod migrate;
 pub mod onboarding;
+pub mod pairing;
 pub mod rules;
 pub mod safety;
 pub mod templates;

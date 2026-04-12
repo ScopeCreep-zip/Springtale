@@ -44,6 +44,9 @@ pub struct FormField {
     /// Optional default value the user can accept without typing.
     pub default: Option<&'static str>,
     pub required: bool,
+    /// Regex pattern the answer must match (OWASP ASVS §5.1.4).
+    /// None = no format restriction beyond non-empty.
+    pub validation: Option<&'static str>,
 }
 
 /// One platform the onboarding wizard knows how to set up.
@@ -95,6 +98,16 @@ pub async fn apply_platform(
     platform_id: &str,
     answers: BTreeMap<String, String>,
 ) -> Result<ApplyReport, OperationError> {
+    // HA pattern: onboarding endpoints auto-lock after first success.
+    if let Ok(Some(val)) = store.get_config("onboarded").await
+        && val.trim_matches('"') == "true"
+    {
+        return Err(OperationError::Validation(
+            "onboarding already completed — use the dashboard or API to add more connectors"
+                .into(),
+        ));
+    }
+
     let platform = get_platform(platform_id).ok_or_else(|| {
         OperationError::Validation(format!("unknown onboarding platform: {platform_id}"))
     })?;
@@ -127,6 +140,21 @@ pub async fn apply_platform(
                 }
             },
         };
+        // Validate format if the field declares a pattern.
+        if let Some(pattern) = field.validation {
+            let re = regex::Regex::new(pattern).map_err(|e| {
+                OperationError::Validation(format!(
+                    "internal: bad validation pattern for '{}': {e}",
+                    field.name
+                ))
+            })?;
+            if !re.is_match(&value) {
+                return Err(OperationError::Validation(format!(
+                    "field '{}' does not match expected format",
+                    field.name
+                )));
+            }
+        }
         config.insert(field.name.to_owned(), serde_json::Value::String(value));
         fields_stored.push(field.name.to_owned());
     }
@@ -140,6 +168,9 @@ pub async fn apply_platform(
         fields = ?fields_stored,
         "onboarding applied"
     );
+
+    // Lock onboarding after first successful apply (HA pattern).
+    let _ = store.set_config("onboarded", "\"true\"").await;
 
     Ok(ApplyReport {
         platform: platform.id,
@@ -169,6 +200,7 @@ static PLATFORMS: &[PlatformForm] = &[
                 secret: true,
                 default: None,
                 required: true,
+                validation: Some(r"^\d+:[A-Za-z0-9_-]+$"),
             },
             FormField {
                 name: "update_mode",
@@ -177,6 +209,7 @@ static PLATFORMS: &[PlatformForm] = &[
                 secret: false,
                 default: Some("polling"),
                 required: false,
+                validation: Some(r"^(polling|webhook)$"),
             },
         ],
     },
@@ -194,6 +227,7 @@ static PLATFORMS: &[PlatformForm] = &[
                 secret: true,
                 default: None,
                 required: true,
+                validation: None,
             },
             FormField {
                 name: "application_id",
@@ -202,6 +236,7 @@ static PLATFORMS: &[PlatformForm] = &[
                 secret: false,
                 default: None,
                 required: true,
+                validation: Some(r"^\d{17,20}$"),
             },
         ],
     },
@@ -219,6 +254,7 @@ static PLATFORMS: &[PlatformForm] = &[
                 secret: true,
                 default: None,
                 required: true,
+                validation: Some(r"^xoxb-"),
             },
             FormField {
                 name: "app_token",
@@ -227,6 +263,7 @@ static PLATFORMS: &[PlatformForm] = &[
                 secret: true,
                 default: None,
                 required: true,
+                validation: Some(r"^xapp-"),
             },
         ],
     },
@@ -244,6 +281,7 @@ static PLATFORMS: &[PlatformForm] = &[
                 secret: false,
                 default: Some("http://localhost:8080"),
                 required: true,
+                validation: Some(r"^https?://"),
             },
             FormField {
                 name: "account_id",
@@ -252,6 +290,7 @@ static PLATFORMS: &[PlatformForm] = &[
                 secret: false,
                 default: Some("default"),
                 required: true,
+                validation: None,
             },
         ],
     },

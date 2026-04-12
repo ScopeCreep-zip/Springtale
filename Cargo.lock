@@ -4775,6 +4775,7 @@ name = "springtale-runtime"
 version = "0.1.0"
 dependencies = [
  "arc-swap",
+ "cap-std",
  "chrono",
  "connector-bluesky",
  "connector-browser",
@@ -4793,6 +4794,7 @@ dependencies = [
  "ed25519-dalek",
  "hex",
  "inventory",
+ "rand 0.8.5",
  "regex",
  "secrecy",
  "serde",

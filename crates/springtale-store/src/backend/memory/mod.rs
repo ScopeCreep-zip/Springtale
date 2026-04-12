@@ -102,6 +102,14 @@ impl super::trait_::StorageBackend for InMemoryBackend {
         self.delete_rule_impl(id).await
     }
 
+    async fn set_rule_activation_error(
+        &self,
+        _id: &RuleId,
+        _error: Option<&str>,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
     // ── Connectors ─────────────────────────────────────────────
 
     async fn register_connector(&self, row: &ConnectorRow) -> Result<(), StoreError> {

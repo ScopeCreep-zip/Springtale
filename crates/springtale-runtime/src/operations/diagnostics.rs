@@ -73,6 +73,16 @@ impl Check {
     }
 }
 
+/// Who is running the diagnostics — determines which checks make sense.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CallerContext {
+    /// CLI: daemon is NOT running. Port check is meaningful.
+    Cli,
+    /// API: called via GET /diagnostics inside the running daemon.
+    /// Port check would always false-alarm (we own the port).
+    Api,
+}
+
 /// Aggregated result of running all diagnostics.
 #[derive(Debug, Clone, Serialize)]
 pub struct Report {
@@ -94,8 +104,8 @@ impl Report {
 }
 
 /// Run all diagnostic checks using default paths.
-pub async fn run_default_checks() -> Report {
-    run_checks(&DiagnosticPaths::default()).await
+pub async fn run_default_checks(context: CallerContext) -> Report {
+    run_checks(&DiagnosticPaths::default(), context).await
 }
 
 /// Paths that diagnostics inspect. Overridable for tests and alt installs.
@@ -119,14 +129,16 @@ impl Default for DiagnosticPaths {
 }
 
 /// Run all diagnostics against the supplied paths.
-pub async fn run_checks(paths: &DiagnosticPaths) -> Report {
+pub async fn run_checks(paths: &DiagnosticPaths, context: CallerContext) -> Report {
     let mut checks = Vec::new();
 
     let config_text = check_config(&paths.config, &mut checks);
     check_vault(&paths.vault, &mut checks);
     check_database(&paths.database, &mut checks);
     check_data_dir(&paths.data_dir, &mut checks);
-    check_api_port(&mut checks);
+    if context == CallerContext::Cli {
+        check_api_port(&mut checks);
+    }
     check_connectors_section(config_text.as_deref(), &mut checks);
 
     Report { checks }

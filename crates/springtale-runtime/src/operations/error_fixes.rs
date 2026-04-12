@@ -143,7 +143,7 @@ fn try_open_db(path: &Path) -> Result<(), String> {
 async fn fix_init_error() -> FixOutcome {
     let mut outcome = FixOutcome::new("E009")
         .push("Running diagnostics...");
-    let report = diagnostics::run_default_checks().await;
+    let report = diagnostics::run_default_checks(diagnostics::CallerContext::Cli).await;
     for check in &report.checks {
         outcome
             .messages

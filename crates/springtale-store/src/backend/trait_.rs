@@ -36,6 +36,14 @@ pub trait StorageBackend: Send + Sync + 'static {
     /// Delete a rule.
     async fn delete_rule(&self, id: &RuleId) -> Result<(), StoreError>;
 
+    /// Persist or clear a rule's activation error.
+    /// Called by TriggerRegistry on attach success (None) or failure (Some).
+    async fn set_rule_activation_error(
+        &self,
+        id: &RuleId,
+        error: Option<&str>,
+    ) -> Result<(), StoreError>;
+
     // ── Connectors ─────────────────────────────────────────────
 
     /// Register a connector's manifest.

@@ -18,6 +18,7 @@
 use std::io;
 use std::path::{Path, PathBuf};
 
+use chrono::Utc;
 use serde::Serialize;
 
 /// A static starter template.
@@ -65,38 +66,49 @@ pub fn get(name: &str) -> Option<&'static Template> {
     TEMPLATES.iter().find(|t| t.name == name)
 }
 
-/// Write a template's files into `dir`.
+/// Write a template's files into a daemon-chosen directory.
 ///
-/// Refuses to write if `dir` exists and contains any entries, or if any
-/// target file already exists. Creates parent directories as needed.
-pub fn write_to(name: &str, dir: &Path) -> Result<WriteReport, TemplateError> {
+/// The daemon picks the destination path under `$DATA_DIR/projects/`
+/// to prevent path-traversal attacks (OWASP ASVS §12.3). The caller
+/// (CLI or API) never supplies a destination — only the template name.
+/// Writes go through `cap_std::fs::Dir` so even a symlink race can't
+/// escape the sandbox.
+pub fn write_to(name: &str) -> Result<WriteReport, TemplateError> {
     let template = get(name).ok_or_else(|| TemplateError::Unknown(name.to_owned()))?;
 
-    if dir.exists() {
-        let mut entries = std::fs::read_dir(dir)?;
-        if entries.next().is_some() {
-            return Err(TemplateError::DestinationNotEmpty(dir.to_path_buf()));
-        }
-    } else {
-        std::fs::create_dir_all(dir)?;
+    let projects_dir = springtale_store::paths::data_dir().join("projects");
+    std::fs::create_dir_all(&projects_dir)?;
+
+    let slug = format!(
+        "{}-{}",
+        name,
+        Utc::now().format("%Y%m%d-%H%M%S")
+    );
+    let dest = projects_dir.join(&slug);
+    if dest.exists() {
+        return Err(TemplateError::DestinationNotEmpty(dest));
     }
+    std::fs::create_dir_all(&dest)?;
+
+    let sandbox = cap_std::fs::Dir::open_ambient_dir(&dest, cap_std::ambient_authority())
+        .map_err(TemplateError::Io)?;
 
     let mut created = Vec::with_capacity(template.files.len());
     for file in template.files {
-        let target = dir.join(file.relative_path);
-        if target.exists() {
-            return Err(TemplateError::WouldOverwrite(target));
+        if let Some(parent) = Path::new(file.relative_path).parent()
+            && !parent.as_os_str().is_empty()
+        {
+            sandbox.create_dir_all(parent).map_err(TemplateError::Io)?;
         }
-        if let Some(parent) = target.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(&target, file.contents)?;
-        created.push(target);
+        sandbox
+            .write(file.relative_path, file.contents)
+            .map_err(TemplateError::Io)?;
+        created.push(dest.join(file.relative_path));
     }
 
     Ok(WriteReport {
         template: template.name,
-        dir: dir.to_path_buf(),
+        dir: dest,
         created,
     })
 }
@@ -325,20 +337,14 @@ mod tests {
     }
 
     #[test]
-    fn write_to_refuses_non_empty_dir() {
-        let tmp = tempfile::tempdir().unwrap();
-        std::fs::write(tmp.path().join("sentinel"), b"x").unwrap();
-        let err = write_to("cron-runner", tmp.path()).unwrap_err();
-        assert!(matches!(err, TemplateError::DestinationNotEmpty(_)));
-    }
-
-    #[test]
     fn write_to_creates_all_files() {
-        let tmp = tempfile::tempdir().unwrap();
-        let dir = tmp.path().join("project");
-        let report = write_to("telegram-bot", &dir).unwrap();
+        // write_to now picks its own path under $DATA_DIR/projects/,
+        // so we just verify it works with a known template.
+        let report = write_to("telegram-bot").unwrap();
         assert_eq!(report.template, "telegram-bot");
-        assert!(dir.join("springtale.toml").exists());
-        assert!(dir.join("rules/welcome.toml").exists());
+        assert!(report.dir.join("springtale.toml").exists());
+        assert!(report.dir.join("rules/welcome.toml").exists());
+        // Clean up
+        let _ = std::fs::remove_dir_all(&report.dir);
     }
 }

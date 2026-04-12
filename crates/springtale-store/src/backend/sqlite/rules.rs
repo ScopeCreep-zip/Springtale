@@ -126,6 +126,28 @@ impl SqliteBackend {
         .map_err(|e| StoreError::Database(format!("spawn_blocking join: {e}")))?
     }
 
+    pub(super) async fn set_rule_activation_error_impl(
+        &self,
+        id: &RuleId,
+        error: Option<&str>,
+    ) -> Result<(), StoreError> {
+        let conn = self.conn.clone();
+        let id = *id;
+        let error = error.map(|s| s.to_owned());
+        tokio::task::spawn_blocking(move || {
+            let conn = conn
+                .lock()
+                .map_err(|_| StoreError::Database("lock poisoned".into()))?;
+            conn.execute(
+                "UPDATE rules SET activation_error = ?1 WHERE id = ?2",
+                params![error, id.0.to_string()],
+            )?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| StoreError::Database(format!("spawn_blocking join: {e}")))?
+    }
+
     pub(super) async fn delete_rule_impl(&self, id: &RuleId) -> Result<(), StoreError> {
         let conn = self.conn.clone();
         let id = *id;

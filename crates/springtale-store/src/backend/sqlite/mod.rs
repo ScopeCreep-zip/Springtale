@@ -157,6 +157,14 @@ impl super::trait_::StorageBackend for SqliteBackend {
         self.delete_rule_impl(id).await
     }
 
+    async fn set_rule_activation_error(
+        &self,
+        id: &RuleId,
+        error: Option<&str>,
+    ) -> Result<(), StoreError> {
+        self.set_rule_activation_error_impl(id, error).await
+    }
+
     // ── Connectors ─────────────────────────────────────────────
 
     async fn register_connector(&self, row: &ConnectorRow) -> Result<(), StoreError> {

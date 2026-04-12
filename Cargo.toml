@@ -82,6 +82,9 @@ schemars         = { version = "1", features = ["derive", "uuid1", "chrono04"] }
 # ── Validation ─────────────────────────────────────────────────────────────────
 garde            = { version = "0.22", features = ["derive", "full"] }
 
+# ── Filesystem Sandbox ─────────────────────────────────────────────────────────
+cap-std          = "3"
+
 # ── Security / Secrets ─────────────────────────────────────────────────────────
 secrecy          = { version = "0.10", features = ["serde"] }
 zeroize          = { version = "1",    features = ["derive"] }

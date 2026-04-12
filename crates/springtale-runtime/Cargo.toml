@@ -33,6 +33,7 @@ connector-signal = { workspace = true }
 connector-browser = { workspace = true }
 
 arc-swap = { workspace = true }
+cap-std = { workspace = true }
 ed25519-dalek = { workspace = true }
 hex = { workspace = true }
 inventory = { workspace = true }
@@ -44,6 +45,7 @@ tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }
+rand = { workspace = true }
 regex = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
