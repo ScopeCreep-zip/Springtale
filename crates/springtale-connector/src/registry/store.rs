@@ -2,7 +2,6 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::capability::grant::{CapabilityChecker, CapabilityPolicy};
-use crate::connector::trait_::Connector;
 use crate::error::ConnectorError;
 use crate::host::ConnectorHost;
 
@@ -24,9 +23,9 @@ pub struct ConnectorEntry {
 /// Phase 1a: in-memory only. Persistence via springtale-store is wired
 /// in the application layer (springtaled).
 pub struct ConnectorRegistry {
-    connectors: HashMap<String, ConnectorEntry>,
-    capability_checker: CapabilityChecker,
-    default_policy: CapabilityPolicy,
+    pub(super) connectors: HashMap<String, ConnectorEntry>,
+    pub(super) capability_checker: CapabilityChecker,
+    pub(super) default_policy: CapabilityPolicy,
 }
 
 impl ConnectorRegistry {
@@ -36,78 +35,6 @@ impl ConnectorRegistry {
             capability_checker: CapabilityChecker::new(),
             default_policy: policy,
         }
-    }
-
-    /// Install a native connector.
-    ///
-    /// Delegates to `registry::loader::load_native()` for the verification
-    /// pipeline (manifest validation, capability registration), then adds
-    /// the connector to the registry as `Arc<dyn ConnectorHost>`.
-    pub fn install_native(
-        &mut self,
-        connector: Box<dyn Connector>,
-    ) -> Result<String, ConnectorError> {
-        let result = super::loader::load_native(
-            connector,
-            &mut self.capability_checker,
-            &self.default_policy,
-        )?;
-
-        let name = result.host.name().to_owned();
-        let host: Arc<dyn ConnectorHost> = Arc::new(result.host);
-
-        self.connectors.insert(
-            name.clone(),
-            ConnectorEntry {
-                host,
-                enabled: true,
-            },
-        );
-
-        Ok(name)
-    }
-
-    /// Install a WASM connector from compiled bytes + manifest.
-    ///
-    /// The WASM binary is compiled, hash-verified against the manifest,
-    /// and loaded into a sandboxed host. Capabilities are registered
-    /// from the manifest's declarations.
-    #[cfg(feature = "wasm-sandbox")]
-    pub fn install_wasm(
-        &mut self,
-        wasm_engine: std::sync::Arc<crate::wasm::WasmEngine>,
-        wasm_bytes: &[u8],
-        manifest: crate::manifest::types::ConnectorManifest,
-        sandbox_limits: crate::wasm::SandboxLimits,
-    ) -> Result<String, ConnectorError> {
-        // Register capabilities from manifest
-        self.capability_checker.register(
-            &manifest.name,
-            &manifest.capabilities,
-            &self.default_policy,
-        )?;
-
-        // Create sandboxed WASM host
-        let host = crate::wasm::WasmConnectorHost::new(
-            wasm_engine,
-            wasm_bytes,
-            manifest.clone(),
-            sandbox_limits,
-        )?;
-
-        let name = manifest.name.clone();
-        let host: std::sync::Arc<dyn ConnectorHost> = std::sync::Arc::new(host);
-
-        self.connectors.insert(
-            name.clone(),
-            ConnectorEntry {
-                host,
-                enabled: true,
-            },
-        );
-
-        tracing::info!(connector = %name, "WASM connector installed (sandboxed)");
-        Ok(name)
     }
 
     /// Get a connector by name.
@@ -216,6 +143,7 @@ impl Default for ConnectorRegistry {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
     use crate::connector::trait_::{ActionResult, Connector, EventHandler};
@@ -278,8 +206,17 @@ mod tests {
         }
         async fn on_event(
             &self,
-            _trigger: &str,
+            trigger: &str,
             _handler: EventHandler,
+        ) -> Result<crate::connector::subscription::Subscription, ConnectorError> {
+            Ok(crate::connector::subscription::Subscription {
+                id: crate::connector::subscription::SubscriptionId(0),
+                trigger: trigger.to_owned(),
+            })
+        }
+        async fn remove_event(
+            &self,
+            _sub: &crate::connector::subscription::Subscription,
         ) -> Result<(), ConnectorError> {
             Ok(())
         }

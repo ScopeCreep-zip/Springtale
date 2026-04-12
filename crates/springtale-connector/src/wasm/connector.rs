@@ -18,6 +18,7 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use wasmtime::{Linker, Module, Store};
 
+use super::host_functions::register_host_functions;
 use super::limits::SandboxLimits;
 use super::runtime::WasmEngine;
 use crate::capability::grant::CapabilityChecker;
@@ -30,10 +31,10 @@ use crate::manifest::types::{ActionDecl, ConnectorManifest, TriggerDecl};
 ///
 /// Accessible from host functions via `Caller::data()`. Contains the
 /// capability checker and connector name for gating host calls.
-struct HostState {
-    connector_name: String,
-    checker: CapabilityChecker,
-    limits: wasmtime::StoreLimits,
+pub(super) struct HostState {
+    pub(super) connector_name: String,
+    pub(super) checker: CapabilityChecker,
+    pub(super) limits: wasmtime::StoreLimits,
 }
 
 /// WASM connector host — sandboxed execution of community connectors.
@@ -80,7 +81,7 @@ impl WasmConnectorHost {
         // Register host functions that WASM guests can call.
         // Each function gates through the capability checker before
         // performing the actual operation.
-        Self::register_host_functions(&mut linker)?;
+        register_host_functions(&mut linker)?;
 
         Ok(Self {
             wasm_engine,
@@ -91,73 +92,9 @@ impl WasmConnectorHost {
         })
     }
 
-    /// Register host functions in the linker.
-    ///
-    /// WASM guests import these as `"springtale" "function_name"`.
-    /// Each function checks capabilities before executing.
-    fn register_host_functions(linker: &mut Linker<HostState>) -> Result<(), ConnectorError> {
-        // Network outbound — gated by NetworkOutbound capability.
-        // The guest calls this to request HTTP access. The host extracts the
-        // URL from guest memory, checks the NetworkOutbound capability, and
-        // returns 0 (allowed), -1 (invalid args), or -2 (capability denied).
-        linker
-            .func_wrap(
-                "springtale",
-                "http_request",
-                |mut caller: wasmtime::Caller<'_, HostState>,
-                 url_ptr: i32,
-                 url_len: i32,
-                 _method_ptr: i32,
-                 _method_len: i32|
-                 -> i32 {
-                    // Extract URL from guest memory to check host.
-                    // Must get memory + read data before borrowing state.
-                    let memory = match caller.get_export("memory") {
-                        Some(wasmtime::Extern::Memory(mem)) => mem,
-                        _ => return -1,
-                    };
-                    let url_start = url_ptr as usize;
-                    let url_end = url_start + url_len as usize;
-                    let data = memory.data(&caller);
-                    if url_end > data.len() {
-                        return -1;
-                    }
-                    let url_str = match std::str::from_utf8(&data[url_start..url_end]) {
-                        Ok(s) => s.to_owned(),
-                        Err(_) => return -1,
-                    };
-
-                    // Extract host from URL for capability check
-                    let host = match reqwest::Url::parse(&url_str) {
-                        Ok(parsed) => parsed.host_str().unwrap_or("").to_owned(),
-                        Err(_) => return -1,
-                    };
-
-                    // Gate: check NetworkOutbound capability
-                    let state = caller.data();
-                    if super::host_api::gate_network_outbound(
-                        &state.checker,
-                        &state.connector_name,
-                        &host,
-                    )
-                    .is_err()
-                    {
-                        return -2; // capability denied
-                    }
-
-                    0 // allowed
-                },
-            )
-            .map_err(|e| ConnectorError::Sandbox(format!("failed to register http_request: {e}")))?;
-
-        Ok(())
-    }
-
     /// Create a fresh store with per-invocation resource limits.
     fn create_store(&self, checker: &CapabilityChecker) -> Store<HostState> {
-        let limits = self
-            .wasm_engine
-            .build_store_limits(&self.sandbox_limits);
+        let limits = self.wasm_engine.build_store_limits(&self.sandbox_limits);
 
         let host_state = HostState {
             connector_name: self.manifest.name.clone(),
@@ -222,9 +159,7 @@ impl ConnectorHost for WasmConnectorHost {
         // and returns a pointer to the JSON result in guest memory.
         let execute_fn = instance
             .get_typed_func::<(i32, i32, i32, i32), i32>(&mut store, "execute")
-            .map_err(|e| {
-                ConnectorError::Sandbox(format!("missing 'execute' export: {e}"))
-            })?;
+            .map_err(|e| ConnectorError::Sandbox(format!("missing 'execute' export: {e}")))?;
 
         // Write action name and input to guest memory
         let memory = instance
@@ -242,8 +177,7 @@ impl ConnectorHost for WasmConnectorHost {
         let total_needed = input_offset + input_bytes.len();
         if total_needed > memory.data_size(&store) {
             // Grow memory if needed
-            let pages_needed =
-                ((total_needed - memory.data_size(&store)) / 65536) + 1;
+            let pages_needed = ((total_needed - memory.data_size(&store)) / 65536) + 1;
             memory
                 .grow(&mut store, pages_needed as u64)
                 .map_err(|e| ConnectorError::Sandbox(format!("memory grow failed: {e}")))?;
@@ -259,10 +193,14 @@ impl ConnectorHost for WasmConnectorHost {
             .call(
                 &mut store,
                 (
-                    action_offset as i32,
-                    action_bytes.len() as i32,
-                    input_offset as i32,
-                    input_bytes.len() as i32,
+                    i32::try_from(action_offset)
+                        .map_err(|_| ConnectorError::Sandbox("action offset exceeds i32".into()))?,
+                    i32::try_from(action_bytes.len())
+                        .map_err(|_| ConnectorError::Sandbox("action length exceeds i32".into()))?,
+                    i32::try_from(input_offset)
+                        .map_err(|_| ConnectorError::Sandbox("input offset exceeds i32".into()))?,
+                    i32::try_from(input_bytes.len())
+                        .map_err(|_| ConnectorError::Sandbox("input length exceeds i32".into()))?,
                 ),
             )
             .map_err(|e| {
@@ -287,15 +225,19 @@ impl ConnectorHost for WasmConnectorHost {
         // Convention: result_ptr points to a JSON string in guest memory
         // terminated by a length returned in the first 4 bytes at result_ptr
         let result_data = memory.data(&store);
-        let rp = result_ptr as usize;
+        let rp = usize::try_from(result_ptr)
+            .map_err(|_| ConnectorError::Sandbox("negative result pointer".into()))?;
         if rp + 4 > result_data.len() {
             return Err(ConnectorError::Sandbox(
                 "result pointer out of bounds".into(),
             ));
         }
-        let result_len =
-            u32::from_le_bytes([result_data[rp], result_data[rp + 1], result_data[rp + 2], result_data[rp + 3]])
-                as usize;
+        let result_len = u32::from_le_bytes([
+            result_data[rp],
+            result_data[rp + 1],
+            result_data[rp + 2],
+            result_data[rp + 3],
+        ]) as usize; // u32→usize: always safe (usize ≥ 32 bits)
 
         if result_len > self.sandbox_limits.max_response_bytes {
             return Err(ConnectorError::Sandbox(format!(
@@ -307,9 +249,7 @@ impl ConnectorHost for WasmConnectorHost {
         let result_start = rp + 4;
         let result_end = result_start + result_len;
         if result_end > result_data.len() {
-            return Err(ConnectorError::Sandbox(
-                "result data out of bounds".into(),
-            ));
+            return Err(ConnectorError::Sandbox("result data out of bounds".into()));
         }
 
         let result_json = std::str::from_utf8(&result_data[result_start..result_end])
@@ -334,12 +274,23 @@ impl ConnectorHost for WasmConnectorHost {
 
     async fn on_event(
         &self,
-        _trigger: &str,
+        trigger: &str,
         _handler: EventHandler,
-    ) -> Result<(), ConnectorError> {
+    ) -> Result<crate::connector::subscription::Subscription, ConnectorError> {
         // WASM connectors register triggers via manifest declarations.
         // The runtime matches incoming webhooks/events to the connector
         // and calls execute() with the trigger data as input.
+        // Return a dummy subscription — WASM handlers are not used.
+        Ok(crate::connector::subscription::Subscription {
+            id: crate::connector::subscription::SubscriptionId(0),
+            trigger: trigger.to_owned(),
+        })
+    }
+
+    async fn remove_event(
+        &self,
+        _sub: &crate::connector::subscription::Subscription,
+    ) -> Result<(), ConnectorError> {
         Ok(())
     }
 
@@ -390,11 +341,14 @@ mod tests {
             triggers: vec![],
             actions: vec![],
             data_disclosure: vec![],
-            wasm_hash: Some("0000000000000000000000000000000000000000000000000000000000000000".into()),
+            wasm_hash: Some(
+                "0000000000000000000000000000000000000000000000000000000000000000".into(),
+            ),
             signature: None,
         };
 
-        let result = WasmConnectorHost::new(engine, &wasm_bytes, manifest, SandboxLimits::default());
+        let result =
+            WasmConnectorHost::new(engine, &wasm_bytes, manifest, SandboxLimits::default());
         assert!(result.is_err());
     }
 
@@ -421,7 +375,8 @@ mod tests {
             signature: None,
         };
 
-        let result = WasmConnectorHost::new(engine, &wasm_bytes, manifest, SandboxLimits::default());
+        let result =
+            WasmConnectorHost::new(engine, &wasm_bytes, manifest, SandboxLimits::default());
         assert!(result.is_ok());
     }
 }

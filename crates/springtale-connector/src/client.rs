@@ -62,18 +62,10 @@ impl GatedHttpClient {
         &self,
         request: reqwest::Request,
     ) -> Result<reqwest::Response, crate::error::ConnectorError> {
-        let host = request
-            .url()
-            .host_str()
-            .unwrap_or("")
-            .to_owned();
+        let host = request.url().host_str().unwrap_or("").to_owned();
 
         // Gate: check NetworkOutbound capability before sending
-        crate::wasm::host_api::gate_network_outbound(
-            &self.checker,
-            &self.connector_name,
-            &host,
-        )?;
+        crate::wasm::host_api::gate_network_outbound(&self.checker, &self.connector_name, &host)?;
 
         self.inner
             .execute(request)
@@ -129,11 +121,7 @@ mod tests {
             .register("connector-test", &caps, &CapabilityPolicy::AllowAll)
             .unwrap();
 
-        GatedHttpClient::new(
-            reqwest::Client::new(),
-            checker,
-            "connector-test".to_owned(),
-        )
+        GatedHttpClient::new(reqwest::Client::new(), checker, "connector-test".to_owned())
     }
 
     #[tokio::test]
@@ -145,7 +133,10 @@ mod tests {
             .build()
             .unwrap();
         let result = client.execute(request).await;
-        assert!(result.is_err(), "request to unapproved host should be blocked");
+        assert!(
+            result.is_err(),
+            "request to unapproved host should be blocked"
+        );
     }
 
     #[tokio::test]

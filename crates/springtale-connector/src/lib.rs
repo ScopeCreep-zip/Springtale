@@ -15,6 +15,7 @@ pub mod registry;
 #[cfg(feature = "wasm-sandbox")]
 pub mod wasm;
 
+pub use connector::subscription::{Subscription, SubscriptionCounter, SubscriptionId};
 pub use connector::trait_::{ActionResult, Connector, EventHandler};
 pub use error::ConnectorError;
 pub use factory::{ConnectorFactory, FactoryEntry};

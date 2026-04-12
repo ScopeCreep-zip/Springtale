@@ -67,8 +67,16 @@ impl NativeConnectorHost {
         &self,
         trigger: &str,
         handler: EventHandler,
-    ) -> Result<(), ConnectorError> {
+    ) -> Result<crate::connector::subscription::Subscription, ConnectorError> {
         self.inner.on_event(trigger, handler).await
+    }
+
+    /// Delegate trigger removal to the inner connector.
+    pub async fn remove_event(
+        &self,
+        sub: &crate::connector::subscription::Subscription,
+    ) -> Result<(), ConnectorError> {
+        self.inner.remove_event(sub).await
     }
 
     /// Get trigger declarations.
@@ -116,8 +124,15 @@ impl ConnectorHost for NativeConnectorHost {
         &self,
         trigger: &str,
         handler: EventHandler,
-    ) -> Result<(), ConnectorError> {
+    ) -> Result<crate::connector::subscription::Subscription, ConnectorError> {
         NativeConnectorHost::on_event(self, trigger, handler).await
+    }
+
+    async fn remove_event(
+        &self,
+        sub: &crate::connector::subscription::Subscription,
+    ) -> Result<(), ConnectorError> {
+        NativeConnectorHost::remove_event(self, sub).await
     }
 
     fn triggers(&self) -> &[TriggerDecl] {

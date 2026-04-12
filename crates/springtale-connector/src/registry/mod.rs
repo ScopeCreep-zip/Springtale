@@ -1,3 +1,4 @@
+mod install;
 pub mod loader;
 pub mod store;
 

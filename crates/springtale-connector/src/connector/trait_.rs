@@ -1,5 +1,6 @@
 use async_trait::async_trait;
 
+use crate::connector::subscription::Subscription;
 use crate::error::ConnectorError;
 use crate::manifest::types::{ActionDecl, ConnectorManifest, TriggerDecl};
 
@@ -50,9 +51,21 @@ pub trait Connector: Send + Sync + 'static {
 
     /// Register a handler for a trigger event.
     ///
-    /// The connector calls `handler(payload)` when the trigger fires.
-    /// Multiple handlers per trigger are supported.
-    async fn on_event(&self, trigger: &str, handler: EventHandler) -> Result<(), ConnectorError>;
+    /// Returns a `Subscription` handle. Store it per-rule and pass to
+    /// `remove_event()` when the rule is disabled, deleted, or updated.
+    ///
+    /// Pattern: Home Assistant's attach_trigger → detach callback.
+    async fn on_event(
+        &self,
+        trigger: &str,
+        handler: EventHandler,
+    ) -> Result<Subscription, ConnectorError>;
+
+    /// Remove a previously registered event handler.
+    ///
+    /// Called when a rule is disabled, deleted, or updated. The subscription
+    /// ID locates the handler in the connector's internal list.
+    async fn remove_event(&self, sub: &Subscription) -> Result<(), ConnectorError>;
 
     /// Get the connector's manifest.
     fn manifest(&self) -> &ConnectorManifest;

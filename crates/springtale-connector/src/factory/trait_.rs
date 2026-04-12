@@ -70,8 +70,6 @@ pub trait ConnectorFactory: Send + Sync + 'static {
     /// The JSON value comes from deserializing the TOML config section
     /// (e.g., `[telegram]`) as raw `serde_json::Value`. The factory
     /// deserializes it into the connector's typed config struct.
-    async fn create(
-        &self,
-        config: serde_json::Value,
-    ) -> Result<Box<dyn Connector>, ConnectorError>;
+    async fn create(&self, config: serde_json::Value)
+    -> Result<Box<dyn Connector>, ConnectorError>;
 }

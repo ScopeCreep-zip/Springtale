@@ -70,6 +70,12 @@ impl WasmEngine {
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::drop_non_drop
+)]
 mod tests {
     use super::*;
 

@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 /// Every connector ships with a manifest. For native connectors, the manifest
 /// is embedded. For WASM connectors, it accompanies the `.wasm` binary.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
 pub struct ConnectorManifest {
     /// Connector name (e.g., "connector-kick").
     pub name: String,
@@ -127,6 +128,7 @@ pub struct DataDisclosure {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 

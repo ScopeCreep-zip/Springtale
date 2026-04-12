@@ -7,6 +7,7 @@
 use async_trait::async_trait;
 
 use crate::capability::grant::CapabilityChecker;
+use crate::connector::subscription::Subscription;
 use crate::connector::trait_::{ActionResult, EventHandler};
 use crate::error::ConnectorError;
 use crate::manifest::types::{ActionDecl, ConnectorManifest, TriggerDecl};
@@ -30,12 +31,15 @@ pub trait ConnectorHost: Send + Sync + 'static {
         checker: &CapabilityChecker,
     ) -> Result<ActionResult, ConnectorError>;
 
-    /// Register an event handler for a trigger.
+    /// Register an event handler for a trigger. Returns a subscription handle.
     async fn on_event(
         &self,
         trigger: &str,
         handler: EventHandler,
-    ) -> Result<(), ConnectorError>;
+    ) -> Result<Subscription, ConnectorError>;
+
+    /// Remove a previously registered event handler by subscription.
+    async fn remove_event(&self, sub: &Subscription) -> Result<(), ConnectorError>;
 
     /// Get trigger declarations.
     fn triggers(&self) -> &[TriggerDecl];

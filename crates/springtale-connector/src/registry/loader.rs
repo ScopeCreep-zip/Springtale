@@ -61,6 +61,7 @@ pub fn load_native(
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
     use crate::connector::trait_::{ActionResult, Connector, EventHandler};
@@ -118,8 +119,17 @@ mod tests {
         }
         async fn on_event(
             &self,
-            _trigger: &str,
+            trigger: &str,
             _handler: EventHandler,
+        ) -> Result<crate::connector::subscription::Subscription, ConnectorError> {
+            Ok(crate::connector::subscription::Subscription {
+                id: crate::connector::subscription::SubscriptionId(0),
+                trigger: trigger.to_owned(),
+            })
+        }
+        async fn remove_event(
+            &self,
+            _sub: &crate::connector::subscription::Subscription,
         ) -> Result<(), ConnectorError> {
             Ok(())
         }

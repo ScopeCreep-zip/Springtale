@@ -1,5 +1,6 @@
 pub mod connector;
 pub mod host_api;
+mod host_functions;
 pub mod limits;
 pub mod runtime;
 
