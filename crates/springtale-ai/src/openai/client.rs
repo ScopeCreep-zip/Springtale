@@ -63,6 +63,39 @@ impl OpenAiClient {
             .map_err(|e| AiError::Serialization(format!("failed to parse OpenAI response: {e}")))
     }
 
+    /// Streaming chat completion — returns the raw response for SSE parsing.
+    pub async fn chat_completion_stream(
+        &self,
+        body: &serde_json::Value,
+    ) -> Result<reqwest::Response, AiError> {
+        let url = format!("{}/v1/chat/completions", self.base_url);
+
+        // SECURITY: expose needed for Authorization Bearer header
+        let response = self
+            .http
+            .post(&url)
+            .header(
+                "Authorization",
+                format!("Bearer {}", self.api_key.expose_secret()),
+            )
+            .json(body)
+            .send()
+            .await
+            .map_err(|e| AiError::InferenceFailed(format!("OpenAI stream request failed: {e}")))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = crate::validate::read_response_body(response)
+                .await
+                .unwrap_or_else(|_| "unknown error".into());
+            return Err(AiError::InferenceFailed(format!(
+                "OpenAI returned {status}: {body}"
+            )));
+        }
+
+        Ok(response)
+    }
+
     /// Check if the endpoint is reachable by listing models.
     pub async fn is_available(&self) -> bool {
         let url = format!("{}/v1/models", self.base_url);

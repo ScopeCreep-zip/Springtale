@@ -117,6 +117,7 @@ pub fn default_patterns() -> Vec<SensitivePattern> {
 pub const MAX_CONTENT_LENGTH: usize = 10_000;
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 

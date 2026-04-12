@@ -15,7 +15,7 @@ pub mod validate;
 
 pub use adapter::{
     AiAdapter, AiOptions, AiRequest, AiResponse, AiStream, ChatMessage, ConnectorInfo,
-    DisclosureLevel, StreamChunk,
+    DisclosureLevel, StreamChunk, ToolCall, ToolDefinition, ToolResult,
 };
 pub use anthropic::AnthropicAdapter;
 pub use anthropic::adapter::AnthropicConfig;

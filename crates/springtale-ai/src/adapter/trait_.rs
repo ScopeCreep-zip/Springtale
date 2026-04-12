@@ -47,25 +47,102 @@ pub enum AiRequest {
 }
 
 /// A single message in a chat conversation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+///
+/// For simple text turns only `role` and `content` are set. When the
+/// model emits a tool call the assistant message carries `tool_calls`
+/// with `content` empty. When the bot runtime sends a tool's output
+/// back, it uses role `"tool"` plus `tool_call_id` to match the id the
+/// model produced. Adapters that support tool calling translate these
+/// into their vendor-specific wire format; adapters without tool
+/// support simply drop the extra fields.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct ChatMessage {
-    /// Role: "system", "user", or "assistant".
+    /// Role: `"system"`, `"user"`, `"assistant"`, or `"tool"`.
     pub role: String,
-    /// Message content — text only.
+    /// Message content — text only (empty when the assistant emits only
+    /// a tool call).
     pub content: String,
+    /// Tool calls the assistant emitted on this turn, if any.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tool_calls: Vec<ToolCall>,
+    /// For `role == "tool"` messages, the id of the matching assistant
+    /// tool call this message carries the result for.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_call_id: Option<String>,
+}
+
+impl ChatMessage {
+    pub fn text(role: impl Into<String>, content: impl Into<String>) -> Self {
+        Self {
+            role: role.into(),
+            content: content.into(),
+            tool_calls: Vec::new(),
+            tool_call_id: None,
+        }
+    }
+}
+
+// ── Tool-calling types ──────────────────────────────────────────────
+
+/// Description of a tool the model may call.
+///
+/// The bot runtime builds this from each enabled connector action's
+/// `ActionDecl`. Names follow the convention `<connector>__<action>`
+/// so OpenAI/Anthropic can accept them (hyphen is allowed but `::` and
+/// `.` are not).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolDefinition {
+    pub name: String,
+    pub description: String,
+    /// JSON Schema for the tool's input. Adapters pass this straight to
+    /// their vendor's tool field so connector manifests drive the model's
+    /// understanding directly.
+    pub input_schema: serde_json::Value,
+}
+
+/// A tool invocation emitted by the model.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolCall {
+    /// Vendor-issued id; echoed back on the tool result message so the
+    /// model can correlate requests and responses.
+    pub id: String,
+    /// Tool name (matches [`ToolDefinition::name`]).
+    pub name: String,
+    /// Arguments object emitted by the model. Always a JSON value so
+    /// callers can validate against the tool's input schema.
+    pub arguments: serde_json::Value,
+}
+
+/// Result of executing a tool, sent back to the model on the next turn.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolResult {
+    /// Id echoed from the [`ToolCall`] this result corresponds to.
+    pub id: String,
+    /// Serialized output. Adapters transport this as the content of a
+    /// `"tool"` role message.
+    pub content: String,
+    /// Hint to the model that the call failed. Vendors render this
+    /// differently (Anthropic `is_error: true`, OpenAI prepends
+    /// `[ERROR]` in content).
+    #[serde(default)]
+    pub is_error: bool,
 }
 
 // ── Response types ──────────────────────────────────────────────────
 
 /// Response from a non-streaming AI completion.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct AiResponse {
     /// The generated text content.
     pub content: String,
-    /// Why the generation stopped (e.g., "stop", "length").
+    /// Why the generation stopped (e.g., `"stop"`, `"length"`, or
+    /// `"tool_use"` when the model requested one or more tool calls).
     pub finish_reason: Option<String>,
     /// Token usage statistics (if the provider returns them).
     pub usage: Option<TokenUsage>,
+    /// Tool calls the model emitted on this turn. Empty when the
+    /// response is plain text.
+    pub tool_calls: Vec<ToolCall>,
 }
 
 /// Token usage statistics from an AI completion.
@@ -174,6 +251,28 @@ pub trait AiAdapter: Send + Sync + 'static {
     /// Non-streaming text completion.
     async fn complete(&self, request: AiRequest, options: AiOptions)
     -> Result<AiResponse, AiError>;
+
+    /// Non-streaming completion with tool-calling support.
+    ///
+    /// Adapters translate [`ToolDefinition`] entries into their native
+    /// tool format (Anthropic `tools`, OpenAI `tools` with `type:
+    /// "function"`, Ollama `tools`). If the model decides to call a
+    /// tool, the returned `AiResponse.tool_calls` is non-empty and the
+    /// caller (usually [`crate::adapter::trait_`] consumers in
+    /// `springtale-bot::tool_runner`) executes each call and feeds the
+    /// results back in a follow-up message list.
+    ///
+    /// Default implementation ignores `tools` and delegates to
+    /// [`complete`] — used by `NoopAdapter` and any adapter that
+    /// hasn't added native tool support yet.
+    async fn complete_with_tools(
+        &self,
+        request: AiRequest,
+        options: AiOptions,
+        _tools: &[ToolDefinition],
+    ) -> Result<AiResponse, AiError> {
+        self.complete(request, options).await
+    }
 
     /// Streaming text completion (SSE pattern).
     async fn stream(&self, request: AiRequest, options: AiOptions) -> Result<AiStream, AiError>;

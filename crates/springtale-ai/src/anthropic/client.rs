@@ -61,10 +61,7 @@ impl AnthropicClient {
 
     /// Streaming messages completion — returns a reqwest::RequestBuilder
     /// configured for SSE streaming. The caller wraps it with reqwest-eventsource.
-    pub fn messages_stream_request(
-        &self,
-        body: &serde_json::Value,
-    ) -> reqwest::RequestBuilder {
+    pub fn messages_stream_request(&self, body: &serde_json::Value) -> reqwest::RequestBuilder {
         let url = format!("{}/v1/messages", self.base_url);
         // SECURITY: expose needed for Anthropic x-api-key header
         self.http

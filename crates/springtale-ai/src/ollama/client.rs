@@ -55,20 +55,52 @@ impl OllamaClient {
         Ok(parsed)
     }
 
-    /// Streaming chat request — returns the raw reqwest::Response for NDJSON parsing.
-    pub async fn chat_stream(&self, request: &OllamaChatRequest) -> Result<reqwest::Response, AiError> {
+    /// Non-streaming chat with a raw JSON body — used when tool-calling
+    /// is enabled and the caller needs to set fields not on
+    /// `OllamaChatRequest` (e.g. `tools`). Returns the parsed JSON value
+    /// so the adapter can walk `message.tool_calls`.
+    pub async fn chat_raw(
+        &self,
+        body: &serde_json::Value,
+    ) -> Result<serde_json::Value, AiError> {
         let url = format!("{}/api/chat", self.base_url);
-        let mut body = serde_json::to_value(request)
-            .map_err(|e| AiError::Serialization(e.to_string()))?;
-        body["stream"] = serde_json::json!(true);
-
         let response = self
             .http
             .post(&url)
-            .json(&body)
+            .json(body)
             .send()
             .await
-            .map_err(|e| AiError::InferenceFailed(format!("Ollama stream request failed: {e}")))?;
+            .map_err(|e| AiError::InferenceFailed(format!("Ollama request failed: {e}")))?;
+
+        let status = response.status();
+        if !status.is_success() {
+            let body = crate::validate::read_response_body(response)
+                .await
+                .unwrap_or_else(|_| "unknown error".into());
+            return Err(AiError::InferenceFailed(format!(
+                "Ollama returned {status}: {body}"
+            )));
+        }
+
+        let body_text = crate::validate::read_response_body(response).await?;
+        serde_json::from_str(&body_text)
+            .map_err(|e| AiError::Serialization(format!("failed to parse Ollama response: {e}")))
+    }
+
+    /// Streaming chat request — returns the raw reqwest::Response for NDJSON parsing.
+    pub async fn chat_stream(
+        &self,
+        request: &OllamaChatRequest,
+    ) -> Result<reqwest::Response, AiError> {
+        let url = format!("{}/api/chat", self.base_url);
+        let mut body =
+            serde_json::to_value(request).map_err(|e| AiError::Serialization(e.to_string()))?;
+        body["stream"] = serde_json::json!(true);
+
+        let response =
+            self.http.post(&url).json(&body).send().await.map_err(|e| {
+                AiError::InferenceFailed(format!("Ollama stream request failed: {e}"))
+            })?;
 
         let status = response.status();
         if !status.is_success() {

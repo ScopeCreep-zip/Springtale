@@ -29,14 +29,8 @@ impl NlRuleParser {
 
         let request = AiRequest::Chat {
             messages: vec![
-                ChatMessage {
-                    role: "system".into(),
-                    content: system_prompt,
-                },
-                ChatMessage {
-                    role: "user".into(),
-                    content: user_prompt,
-                },
+                ChatMessage::text("system", system_prompt),
+                ChatMessage::text("user", user_prompt),
             ],
         };
 

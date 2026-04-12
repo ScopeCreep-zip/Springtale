@@ -3,7 +3,8 @@ use secrecy::{ExposeSecret, SecretBox};
 use serde::Deserialize;
 
 use crate::adapter::{
-    AiAdapter, AiOptions, AiRequest, AiResponse, AiStream, ConnectorInfo, TokenUsage,
+    AiAdapter, AiOptions, AiRequest, AiResponse, AiStream, ChatMessage, ConnectorInfo, TokenUsage,
+    ToolCall, ToolDefinition,
 };
 use crate::error::AiError;
 use springtale_core::rule::types::Rule;
@@ -79,69 +80,174 @@ impl AnthropicAdapter {
     }
 }
 
-#[async_trait]
-impl AiAdapter for AnthropicAdapter {
-    async fn complete(
+impl AnthropicAdapter {
+    /// Translate our cross-vendor `ChatMessage` list into the Anthropic
+    /// `messages` array shape, pulling out any `"system"` turn into the
+    /// separate top-level `system` field. Handles text turns, assistant
+    /// tool-call turns, and `"tool"` role tool-result turns.
+    fn build_messages(
         &self,
         request: AiRequest,
-        options: AiOptions,
-    ) -> Result<AiResponse, AiError> {
-        // Sanitize all message content before sending to AI (Layer 2 defense)
-        let (system, messages) = match request {
+    ) -> Result<(Option<String>, Vec<serde_json::Value>), AiError> {
+        match request {
             AiRequest::Complete { prompt } => {
                 let sanitized = self.sanitize("prompt", &prompt)?;
-                (
+                Ok((
                     None,
                     vec![serde_json::json!({"role": "user", "content": sanitized})],
-                )
+                ))
             }
-            AiRequest::Chat { messages } => {
-                let mut system_msg = None;
-                let mut chat_msgs = Vec::new();
-                for m in messages {
-                    let sanitized = self.sanitize(&format!("chat.{}", m.role), &m.content)?;
-                    if m.role == "system" {
-                        system_msg = Some(sanitized);
-                    } else {
-                        chat_msgs.push(serde_json::json!({"role": m.role, "content": sanitized}));
-                    }
-                }
-                (system_msg, chat_msgs)
-            }
-        };
+            AiRequest::Chat { messages } => self.chat_to_anthropic(messages),
+        }
+    }
 
+    fn chat_to_anthropic(
+        &self,
+        messages: Vec<ChatMessage>,
+    ) -> Result<(Option<String>, Vec<serde_json::Value>), AiError> {
+        let mut system_msg: Option<String> = None;
+        let mut out = Vec::with_capacity(messages.len());
+
+        for m in messages {
+            match m.role.as_str() {
+                "system" => {
+                    let sanitized = self.sanitize("chat.system", &m.content)?;
+                    system_msg = match system_msg {
+                        Some(existing) => Some(format!("{existing}\n\n{sanitized}")),
+                        None => Some(sanitized),
+                    };
+                }
+                "tool" => {
+                    let Some(tool_call_id) = m.tool_call_id.clone() else {
+                        return Err(AiError::InferenceFailed(
+                            "tool message missing tool_call_id".into(),
+                        ));
+                    };
+                    let sanitized = self.sanitize("chat.tool", &m.content)?;
+                    // Anthropic expects tool results as user messages
+                    // whose content is an array of tool_result blocks.
+                    out.push(serde_json::json!({
+                        "role": "user",
+                        "content": [{
+                            "type": "tool_result",
+                            "tool_use_id": tool_call_id,
+                            "content": sanitized,
+                        }],
+                    }));
+                }
+                "assistant" if !m.tool_calls.is_empty() => {
+                    let mut blocks = Vec::new();
+                    if !m.content.is_empty() {
+                        let sanitized = self.sanitize("chat.assistant", &m.content)?;
+                        blocks.push(serde_json::json!({
+                            "type": "text",
+                            "text": sanitized,
+                        }));
+                    }
+                    for call in m.tool_calls {
+                        blocks.push(serde_json::json!({
+                            "type": "tool_use",
+                            "id": call.id,
+                            "name": call.name,
+                            "input": call.arguments,
+                        }));
+                    }
+                    out.push(serde_json::json!({
+                        "role": "assistant",
+                        "content": blocks,
+                    }));
+                }
+                _ => {
+                    let sanitized = self.sanitize(&format!("chat.{}", m.role), &m.content)?;
+                    out.push(serde_json::json!({
+                        "role": m.role,
+                        "content": sanitized,
+                    }));
+                }
+            }
+        }
+
+        Ok((system_msg, out))
+    }
+
+    fn build_request_body(
+        &self,
+        system: Option<String>,
+        messages: Vec<serde_json::Value>,
+        options: &AiOptions,
+        tools: &[ToolDefinition],
+        stream: bool,
+    ) -> serde_json::Value {
         let mut body = serde_json::json!({
             "model": self.model,
             "messages": messages,
             "max_tokens": options.max_tokens,
-            "stream": false,
+            "stream": stream,
         });
-
         if let Some(sys) = system {
             body["system"] = serde_json::Value::String(sys);
         }
         if let Some(temp) = options.temperature {
             body["temperature"] = serde_json::json!(temp);
         }
-
-        let result = tokio::time::timeout(options.timeout, self.client.messages(&body))
-            .await
-            .map_err(|_| AiError::Timeout)??;
-
-        // Parse Anthropic response — content is an array of blocks
-        let content = result
-            .get("content")
-            .and_then(|c| c.as_array())
-            .and_then(|blocks| {
-                blocks.iter().find_map(|block| {
-                    if block.get("type")?.as_str()? == "text" {
-                        block.get("text")?.as_str().map(|s| s.to_owned())
-                    } else {
-                        None
-                    }
+        if !tools.is_empty() {
+            let json_tools: Vec<serde_json::Value> = tools
+                .iter()
+                .map(|t| {
+                    serde_json::json!({
+                        "name": t.name,
+                        "description": t.description,
+                        "input_schema": t.input_schema,
+                    })
                 })
-            })
-            .unwrap_or_default();
+                .collect();
+            body["tools"] = serde_json::Value::Array(json_tools);
+        }
+        body
+    }
+
+    fn parse_anthropic_response(result: &serde_json::Value) -> AiResponse {
+        let mut content = String::new();
+        let mut tool_calls = Vec::new();
+        if let Some(blocks) = result.get("content").and_then(|c| c.as_array()) {
+            for block in blocks {
+                let ty = block.get("type").and_then(|t| t.as_str()).unwrap_or("");
+                match ty {
+                    "text" => {
+                        if let Some(text) = block.get("text").and_then(|t| t.as_str()) {
+                            if !content.is_empty() {
+                                content.push('\n');
+                            }
+                            content.push_str(text);
+                        }
+                    }
+                    "tool_use" => {
+                        let id = block
+                            .get("id")
+                            .and_then(|i| i.as_str())
+                            .unwrap_or("")
+                            .to_owned();
+                        let name = block
+                            .get("name")
+                            .and_then(|n| n.as_str())
+                            .unwrap_or("")
+                            .to_owned();
+                        let arguments = block
+                            .get("input")
+                            .cloned()
+                            .unwrap_or(serde_json::Value::Object(Default::default()));
+                        if !id.is_empty() && !name.is_empty() {
+                            tool_calls.push(ToolCall {
+                                id,
+                                name,
+                                arguments,
+                            });
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
 
         let finish_reason = result
             .get("stop_reason")
@@ -157,11 +263,39 @@ impl AiAdapter for AnthropicAdapter {
             })
         });
 
-        Ok(AiResponse {
+        AiResponse {
             content,
             finish_reason,
             usage,
-        })
+            tool_calls,
+        }
+    }
+}
+
+#[async_trait]
+impl AiAdapter for AnthropicAdapter {
+    async fn complete(
+        &self,
+        request: AiRequest,
+        options: AiOptions,
+    ) -> Result<AiResponse, AiError> {
+        self.complete_with_tools(request, options, &[]).await
+    }
+
+    async fn complete_with_tools(
+        &self,
+        request: AiRequest,
+        options: AiOptions,
+        tools: &[ToolDefinition],
+    ) -> Result<AiResponse, AiError> {
+        let (system, messages) = self.build_messages(request)?;
+        let body = self.build_request_body(system, messages, &options, tools, false);
+
+        let result = tokio::time::timeout(options.timeout, self.client.messages(&body))
+            .await
+            .map_err(|_| AiError::Timeout)??;
+
+        Ok(Self::parse_anthropic_response(&result))
     }
 
     async fn stream(&self, request: AiRequest, options: AiOptions) -> Result<AiStream, AiError> {
@@ -211,7 +345,9 @@ impl AiAdapter for AnthropicAdapter {
             .messages_stream_request(&body)
             .send()
             .await
-            .map_err(|e| AiError::InferenceFailed(format!("Anthropic stream request failed: {e}")))?;
+            .map_err(|e| {
+                AiError::InferenceFailed(format!("Anthropic stream request failed: {e}"))
+            })?;
 
         let status = response.status();
         if !status.is_success() {

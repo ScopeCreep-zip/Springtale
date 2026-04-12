@@ -1,7 +1,8 @@
 use async_trait::async_trait;
 
 use crate::adapter::{
-    AiAdapter, AiOptions, AiRequest, AiResponse, AiStream, ConnectorInfo, TokenUsage,
+    AiAdapter, AiOptions, AiRequest, AiResponse, AiStream, ChatMessage, ConnectorInfo, TokenUsage,
+    ToolCall, ToolDefinition,
 };
 use crate::error::AiError;
 use springtale_core::rule::types::Rule;
@@ -43,6 +44,116 @@ impl OllamaAdapter {
             });
         }
         Ok(result.text)
+    }
+}
+
+impl OllamaAdapter {
+    /// Sanitize a chat message list into an Ollama-shaped JSON array.
+    /// Used by the tool-enabled path which needs `tool_calls` /
+    /// `tool_call_id` fields the typed `OllamaChatMessage` struct
+    /// doesn't carry.
+    fn chat_to_json(&self, messages: Vec<ChatMessage>) -> Result<Vec<serde_json::Value>, AiError> {
+        let mut out = Vec::with_capacity(messages.len());
+        for m in messages {
+            let sanitized = self.sanitize(&format!("chat.{}", m.role), &m.content)?;
+            let mut obj = serde_json::Map::new();
+            obj.insert("role".into(), serde_json::Value::String(m.role.clone()));
+
+            if m.role == "tool" {
+                // Ollama follows OpenAI's convention: role=tool +
+                // tool_call_id + content.
+                if let Some(id) = m.tool_call_id {
+                    obj.insert("tool_call_id".into(), serde_json::Value::String(id));
+                }
+                obj.insert("content".into(), serde_json::Value::String(sanitized));
+            } else if m.role == "assistant" && !m.tool_calls.is_empty() {
+                obj.insert("content".into(), serde_json::Value::String(sanitized));
+                let calls: Vec<serde_json::Value> = m
+                    .tool_calls
+                    .into_iter()
+                    .map(|c| {
+                        serde_json::json!({
+                            "id": c.id,
+                            "function": {
+                                "name": c.name,
+                                "arguments": c.arguments,
+                            }
+                        })
+                    })
+                    .collect();
+                obj.insert("tool_calls".into(), serde_json::Value::Array(calls));
+            } else {
+                obj.insert("content".into(), serde_json::Value::String(sanitized));
+            }
+            out.push(serde_json::Value::Object(obj));
+        }
+        Ok(out)
+    }
+
+    fn parse_ollama_tool_response(result: &serde_json::Value) -> AiResponse {
+        let message = result.get("message");
+        let content = message
+            .and_then(|m| m.get("content"))
+            .and_then(|c| c.as_str())
+            .unwrap_or("")
+            .to_owned();
+
+        let mut tool_calls = Vec::new();
+        if let Some(calls) = message.and_then(|m| m.get("tool_calls")).and_then(|v| v.as_array()) {
+            for call in calls {
+                let id = call
+                    .get("id")
+                    .and_then(|i| i.as_str())
+                    .unwrap_or("")
+                    .to_owned();
+                let func = call.get("function");
+                let name = func
+                    .and_then(|f| f.get("name"))
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("")
+                    .to_owned();
+                // Ollama returns arguments as an object, not a string.
+                let arguments = func
+                    .and_then(|f| f.get("arguments"))
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Object(Default::default()));
+                if !name.is_empty() {
+                    // Synthesize an id when the model/tool-plugin omits it.
+                    let id = if id.is_empty() {
+                        format!("ollama_tool_{}", tool_calls.len())
+                    } else {
+                        id
+                    };
+                    tool_calls.push(ToolCall {
+                        id,
+                        name,
+                        arguments,
+                    });
+                }
+            }
+        }
+
+        let done = result.get("done").and_then(|d| d.as_bool()).unwrap_or(true);
+        let finish_reason = if done { Some("stop".to_owned()) } else { None };
+
+        let usage = match (
+            result.get("prompt_eval_count").and_then(|v| v.as_u64()),
+            result.get("eval_count").and_then(|v| v.as_u64()),
+        ) {
+            (Some(prompt), Some(completion)) => Some(TokenUsage {
+                prompt_tokens: prompt as u32,
+                completion_tokens: completion as u32,
+                total_tokens: (prompt + completion) as u32,
+            }),
+            _ => None,
+        };
+
+        AiResponse {
+            content,
+            finish_reason,
+            usage,
+            tool_calls,
+        }
     }
 }
 
@@ -110,7 +221,63 @@ impl AiAdapter for OllamaAdapter {
                 None
             },
             usage,
+            tool_calls: Vec::new(),
         })
+    }
+
+    async fn complete_with_tools(
+        &self,
+        request: AiRequest,
+        options: AiOptions,
+        tools: &[ToolDefinition],
+    ) -> Result<AiResponse, AiError> {
+        if tools.is_empty() {
+            return self.complete(request, options).await;
+        }
+
+        // Build a raw-JSON request so we can include `tools` —
+        // OllamaChatRequest doesn't have that field.
+        let messages_json = match request {
+            AiRequest::Complete { prompt } => {
+                let sanitized = self.sanitize("prompt", &prompt)?;
+                vec![serde_json::json!({"role": "user", "content": sanitized})]
+            }
+            AiRequest::Chat { messages } => self.chat_to_json(messages)?,
+        };
+
+        let tool_json: Vec<serde_json::Value> = tools
+            .iter()
+            .map(|t| {
+                serde_json::json!({
+                    "type": "function",
+                    "function": {
+                        "name": t.name,
+                        "description": t.description,
+                        "parameters": t.input_schema,
+                    }
+                })
+            })
+            .collect();
+
+        let mut opts = serde_json::Map::new();
+        if let Some(temp) = options.temperature {
+            opts.insert("temperature".into(), serde_json::json!(temp));
+        }
+        opts.insert("num_predict".into(), serde_json::json!(options.max_tokens));
+
+        let body = serde_json::json!({
+            "model": self.model,
+            "messages": messages_json,
+            "tools": tool_json,
+            "stream": false,
+            "options": opts,
+        });
+
+        let result = tokio::time::timeout(options.timeout, self.client.chat_raw(&body))
+            .await
+            .map_err(|_| AiError::Timeout)??;
+
+        Ok(Self::parse_ollama_tool_response(&result))
     }
 
     async fn stream(&self, request: AiRequest, options: AiOptions) -> Result<AiStream, AiError> {
@@ -194,13 +361,12 @@ impl AiAdapter for OllamaAdapter {
                         .get("message")
                         .and_then(|m| m.get("content"))
                         .and_then(|c| c.as_str())
+                        .filter(|c| !c.is_empty())
                     {
-                        if !content.is_empty() {
-                            yield Ok(StreamChunk {
-                                delta: content.to_owned(),
-                                finish_reason: None,
-                            });
-                        }
+                        yield Ok(StreamChunk {
+                            delta: content.to_owned(),
+                            finish_reason: None,
+                        });
                     }
                 }
             }
