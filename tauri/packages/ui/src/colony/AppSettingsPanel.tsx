@@ -15,6 +15,10 @@ export interface AppSettingsPanelProps {
   onClose: () => void;
   /** Whether this is desktop (shows vault/panic) or web (hides them) */
   isDesktop: boolean;
+  /** Current theme name */
+  theme?: string;
+  /** Called when user changes theme */
+  onThemeChange?: (theme: string) => void;
 }
 
 /**
@@ -64,6 +68,21 @@ export const AppSettingsPanel: Component<AppSettingsPanelProps> = (props) => {
                 visit techsafety.org
               </p>
             </div>
+          </section>
+        </Show>
+
+        {/* Theme */}
+        <Show when={props.onThemeChange}>
+          <section>
+            <h3 class="colony-label mb-2">THEME</h3>
+            <select
+              value={props.theme ?? "colony"}
+              onChange={(e) => props.onThemeChange?.(e.currentTarget.value)}
+              class="colony-text-2xs w-full border-2 border-bark bg-soil-deep px-2 py-1.5 text-text-primary"
+            >
+              <option value="colony">Colony (default)</option>
+              <option value="rekindle">Rekindle</option>
+            </select>
           </section>
         </Show>
 

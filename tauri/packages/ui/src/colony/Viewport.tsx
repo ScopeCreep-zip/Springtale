@@ -1,7 +1,7 @@
 import { createSignal, For, Show } from "solid-js";
 import type { Component, JSX } from "solid-js";
 import type { ColonyTree, ColonyAgent, ColonyConnection, ColonyFormation, ColonySelection } from "./types";
-import type { EventItem } from "../CommandPanel";
+import type { EventItem } from "../dashboard/model";
 import type { AvailableConnector, ConnectorSchema } from "@springtale/types";
 import { ColonyCanvas } from "./ColonyCanvas";
 
@@ -80,11 +80,11 @@ export const Viewport: Component<ViewportProps> = (props) => {
       <div class="pointer-events-none absolute right-1.5 top-1.5 z-[15] w-[200px]">
         <For each={props.events.slice(0, 5)}>
           {(event) => (
-            <div class={`colony-feed-entry ${/block|fail|error/i.test(event.actionTaken) ? "is-warning" : ""}`}>
+            <div class={`colony-feed-entry ${event.severity === "error" ? "is-warning" : ""}`}>
               <span class="min-w-[32px] text-text-dim">
                 {new Date(event.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
               </span>
-              <span class={`min-w-[38px] font-bold ${/block|fail|error/i.test(event.actionTaken) ? "text-status-warn" : "text-status-ok"}`}>
+              <span class={`min-w-[38px] font-bold ${event.severity === "error" ? "text-status-warn" : "text-status-ok"}`}>
                 {event.connectorName}
               </span>
               <span class="overflow-hidden text-ellipsis whitespace-nowrap text-text-secondary">

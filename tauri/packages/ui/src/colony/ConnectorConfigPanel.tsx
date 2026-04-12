@@ -1,7 +1,7 @@
 import { createSignal, onMount, For, Show } from "solid-js";
 import type { Component } from "solid-js";
 import type { ConnectorSchema } from "@springtale/types";
-import type { RuleItem } from "../Roster";
+import type { RuleItem } from "../dashboard/model";
 import { ConditionEditor } from "../ConditionEditor";
 import type { ConditionDef } from "../ConditionEditor";
 import type { ConfigSchema, ConfigSchemaProperty } from "@springtale/types";

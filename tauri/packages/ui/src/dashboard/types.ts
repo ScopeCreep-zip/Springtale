@@ -11,11 +11,8 @@ import type {
   Report, PlatformForm, ApplyReport, Template, WriteReport,
   FixGuide, FixOutcome, SendRequest, SendOutcome,
 } from "@springtale/types";
-import type { ConnectorStatus } from "../ResourceBar";
-import type { RuleItem } from "../Roster";
-import type { RuleDetail, EventItem } from "../CommandPanel";
+import type { ConnectorStatus, RuleItem, RuleDetail, EventItem, SwarmInfo } from "./model";
 import type { ConditionDef } from "../ConditionEditor";
-import type { SwarmInfo } from "../SwarmCard";
 
 // Re-export types that originated in @springtale/types but are consumed
 // by components that import from @springtale/ui

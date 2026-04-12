@@ -10,11 +10,8 @@
  */
 import { createContext, useContext, createSignal, onCleanup } from "solid-js";
 import type { ConnectorSchema, CanvasState, CanvasUpdate, EventEntry, AgentState } from "@springtale/types";
-import type { ConnectorStatus } from "../ResourceBar";
-import type { RuleItem } from "../Roster";
-import type { RuleDetail, EventItem } from "../CommandPanel";
+import type { ConnectorStatus, RuleItem, RuleDetail, EventItem, SwarmInfo } from "../dashboard/model";
 import type { ConditionDef } from "../ConditionEditor";
-import type { SwarmInfo } from "../SwarmCard";
 import type { DataProvider, DashboardState, FormationInfo } from "./types";
 
 // ── Canvas update reducer ────────────────────────────────
@@ -100,6 +97,7 @@ export function createDashboardState(provider: DataProvider): DashboardState {
         triggerType: event.trigger_type,
         timestamp: event.timestamp,
         actionTaken: event.action_taken,
+        severity: (event as EventEntry & { severity?: string }).severity === "error" ? "error" : "ok",
       }, ...prev].slice(0, 200));
     });
     unsubCanvas = provider.subscribeToCanvasUpdates((update: CanvasUpdate) => {
@@ -136,21 +134,26 @@ export function createDashboardState(provider: DataProvider): DashboardState {
         connector: x.connector_name ?? x.trigger_type,
       })));
 
-      setEvents(e.map((x) => ({
-        id: x.id,
-        connectorName: x.connector_name,
-        triggerType: x.trigger_type,
-        timestamp: x.timestamp,
-        actionTaken: x.action_taken,
+      setEvents(e.map((x: Record<string, unknown>) => ({
+        id: x.id as string,
+        connectorName: x.connector_name as string,
+        triggerType: x.trigger_type as string,
+        timestamp: x.timestamp as string,
+        actionTaken: x.action_taken as string,
+        severity: ((x.severity as string) === "error" ? "error" : "ok") as "ok" | "error",
       })));
 
-      setSwarms(s.map((x) => ({
-        id: x.id,
-        name: x.name,
-        intent: x.intent,
-        status: x.status,
-        member_count: x.member_count,
-        members: x.members ?? [],
+      setSwarms(s.map((x: Record<string, unknown>) => ({
+        id: x.id as string,
+        name: x.name as string,
+        intent: x.intent as string,
+        status: x.status as string,
+        member_count: x.member_count as number,
+        members: (x.members as string[]) ?? [],
+        momentum_tier: x.momentum_tier as string | undefined,
+        momentum_label: x.momentum_label as string | undefined,
+        capabilities: x.capabilities as string[] | undefined,
+        guard_status: x.guard_status as string | undefined,
       })));
 
       setSchemas(cs);

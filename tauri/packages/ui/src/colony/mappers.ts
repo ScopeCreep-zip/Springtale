@@ -6,9 +6,7 @@
  * comes from the backend via AgentState — no frontend inference.
  */
 import type { ConnectorSchema, AgentState } from "@springtale/types";
-import type { ConnectorStatus } from "../ResourceBar";
-import type { RuleItem } from "../Roster";
-import type { SwarmInfo } from "../SwarmCard";
+import type { ConnectorStatus, RuleItem, SwarmInfo } from "../dashboard/model";
 import type {
   ColonyTree, ColonyAgent, ColonyConnection, ColonyFormation, ColonyPipe,
 } from "./types";
@@ -41,10 +39,12 @@ export function mapAgents(rules: RuleItem[], agentStates: AgentState[] = []): Co
       name: r.name,
       role: (state?.role ?? "worker") as ColonyAgent["role"],
       autonomy: state?.autonomy ?? 1,
-      fuel: state?.fuel ?? (r.status === "enabled" ? 100 : 0),
+      autonomyLabel: state?.autonomy_label ?? "SUGGEST",
+      fuel: state?.fuel ?? 0,
+      fuelStatus: (state?.fuel_status ?? "ok") as ColonyAgent["fuelStatus"],
       hp: 100,
       connectorId: r.connector ?? r.triggerType,
-      task: state?.task_display ?? "Idle",
+      task: state?.task_display ?? "",
       status: r.status === "enabled" ? "ok" as const : "idle" as const,
       pipeline: r.triggerType,
       activity: state?.activity ?? "waiting",
@@ -59,11 +59,10 @@ const TIER_TO_INDEX: Record<string, number> = {
   Cold: 0, Warming: 1, Hot: 2, Fever: 3,
 };
 
-/** Map swarms to formations. Momentum tier comes from backend. */
+/** Map swarms to formations. Momentum tier + label come from backend. */
 export function mapFormations(swarms: SwarmInfo[]): ColonyFormation[] {
   return swarms.map((s) => {
-    const tierName = (s as { momentum_tier?: string }).momentum_tier ?? "Cold";
-    const momentum = TIER_TO_INDEX[tierName] ?? 0;
+    const momentum = TIER_TO_INDEX[s.momentum_tier ?? "Cold"] ?? 0;
 
     return {
       id: s.id,
@@ -71,7 +70,7 @@ export function mapFormations(swarms: SwarmInfo[]): ColonyFormation[] {
       intent: s.intent.toUpperCase(),
       description: s.intent,
       momentum,
-      momentumLabel: MOMENTUM_LABELS[momentum] ?? "COLD",
+      momentumLabel: s.momentum_label ?? MOMENTUM_LABELS[momentum] ?? "COLD",
       color: MOMENTUM_COLORS[momentum] ?? "var(--color-momentum-cold)",
       members: s.members ?? [],
       zone: { x: seeded(s.id + "zx", 20, 80), y: seeded(s.id + "zy", 20, 60) },

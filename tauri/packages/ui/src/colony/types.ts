@@ -19,7 +19,11 @@ export interface ColonyAgent {
   name: string;
   role: "scout" | "worker" | "guard" | "analyst" | "sentinel";
   autonomy: number;
+  /** Human label from backend: "OBSERVE" | "SUGGEST" | "APPROVE" | "AUTONOMOUS". */
+  autonomyLabel: string;
   fuel: number;
+  /** Fuel status from backend threshold: "ok" | "warn" | "critical". */
+  fuelStatus: "ok" | "warn" | "critical";
   hp: number;
   connectorId: string | null;
   task: string;
@@ -181,6 +185,13 @@ export const MOMENTUM_COLORS = [
   "var(--color-momentum-fever)",
 ];
 export const MOMENTUM_UNLOCKS = ["Read only", "Basic chains", "Write env + sync", "Consensus + AI"];
+
+export const TIER_CAPABILITIES: Record<number, string[]> = {
+  0: ["read env"],
+  1: ["read env", "neighbors", "chain"],
+  2: ["read env", "neighbors", "chain", "write env", "commit"],
+  3: ["read env", "neighbors", "chain", "write env", "commit", "consensus", "AI", "recruit"],
+};
 
 export const MUSHROOM_SPRITES = ["sprite-mushroom-gold", "sprite-mushroom-purple", "sprite-mushroom-teal"];
 

@@ -4,7 +4,7 @@ import type { Component } from "solid-js";
 import type {
   ColonyTree, ColonyAgent, ColonyConnection, ColonyFormation, ColonySelection,
 } from "./types";
-import type { EventItem } from "../CommandPanel";
+import type { EventItem } from "../dashboard/model";
 import { TREE_SPRITES, TREE_SIZES, ROLE_SPRITES, MUSHROOM_SPRITES, seeded } from "./types";
 import { getConnectorPosition, getAgentPosition, getFormationAgents, getFormationBounds } from "./geometry";
 import type { AvailableConnector, ConnectorSchema } from "@springtale/types";
@@ -185,7 +185,7 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
       <div
         class="pointer-events-none absolute inset-0 z-0"
         style={{
-          background: "repeating-conic-gradient(from 0deg, transparent 0 89deg, rgba(50,42,25,.035) 89deg 90deg) 0 0 / 20px 20px",
+          background: "repeating-conic-gradient(from 0deg, transparent 0 89deg, var(--color-ground-texture) 89deg 90deg) 0 0 / 20px 20px",
         }}
       />
 
@@ -469,7 +469,7 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                 class="pointer-events-none absolute flex flex-col items-center gap-px"
                 style={{ bottom: "100%", left: "50%", transform: "translateX(-50%)", "margin-bottom": "2px" }}
               >
-                <span class="colony-text-sm" style={{ filter: "drop-shadow(0 0 2px #000)" }}>
+                <span class="colony-text-sm" style={{ filter: "drop-shadow(0 0 2px var(--color-shadow-deep))" }}>
                   {act() === "error" ? "!!" : act() === "firing" ? "!" : act() === "idle" ? "-" : act() === "waiting" ? "~" : "*"}
                 </span>
                 {/* Fuel bars — visible when not at full */}
@@ -477,7 +477,7 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                   <div class="flex gap-px">
                     <div class="colony-fuel-bar">
                       <div
-                        class={`colony-fuel-fill ${agent.fuel > 50 ? "bg-status-ok" : agent.fuel > 20 ? "bg-status-warn" : "bg-status-error"}`}
+                        class={`colony-fuel-fill ${agent.fuelStatus === "ok" ? "bg-status-ok" : agent.fuelStatus === "warn" ? "bg-status-warn" : "bg-status-error"}`}
                         style={{ width: `${agent.fuel}%` }}
                       />
                     </div>

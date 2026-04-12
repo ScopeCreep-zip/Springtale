@@ -126,6 +126,10 @@ pub struct AgentState {
     pub activity: String,
     /// Autonomy level index (0=observe, 1=suggest, 2=approve, 3=autonomous).
     pub autonomy: u8,
+    /// Human label for autonomy level.
+    pub autonomy_label: String,
+    /// Fuel status derived from threshold: "ok" | "warn" | "critical".
+    pub fuel_status: String,
     /// Pre-formatted task description for display.
     pub task_display: String,
 }
@@ -245,6 +249,26 @@ pub async fn list_agent_states(state: &RuntimeState) -> Result<Vec<AgentState>, 
                 format!("{} → {}", r.trigger_type, activity)
             };
 
+            let autonomy_idx = autonomy_to_index(autonomy_str);
+            let autonomy_label = match autonomy_idx {
+                0 => "OBSERVE",
+                1 => "SUGGEST",
+                2 => "APPROVE",
+                3 => "AUTONOMOUS",
+                _ => "SUGGEST",
+            }
+            .to_owned();
+
+            let fuel: u8 = if r.status == "enabled" { 100 } else { 0 };
+            let fuel_status = if fuel > 50 {
+                "ok"
+            } else if fuel > 20 {
+                "warn"
+            } else {
+                "critical"
+            }
+            .to_owned();
+
             AgentState {
                 rule_id: r.id.clone(),
                 name: r.name.clone(),
@@ -252,9 +276,11 @@ pub async fn list_agent_states(state: &RuntimeState) -> Result<Vec<AgentState>, 
                 trigger_type: r.trigger_type.clone(),
                 connector_name: r.connector_name.clone(),
                 role: infer_role(&r.trigger_type).to_owned(),
-                fuel: if r.status == "enabled" { 100 } else { 0 },
+                fuel,
                 activity: activity.to_owned(),
-                autonomy: autonomy_to_index(autonomy_str),
+                autonomy: autonomy_idx,
+                autonomy_label,
+                fuel_status,
                 task_display,
             }
         })

@@ -83,28 +83,28 @@
   .sprite-mushroom-gold {
     box-shadow:
       1px 0 var(--color-mushroom-gold), 2px 0 var(--color-mushroom-gold), 3px 0 var(--color-mushroom-gold),
-      0 1px var(--color-mushroom-gold), 1px 1px #dab860, 2px 1px #dab860,
+      0 1px var(--color-mushroom-gold), 1px 1px var(--color-mushroom-gold-highlight), 2px 1px var(--color-mushroom-gold-highlight),
       3px 1px var(--color-mushroom-gold), 4px 1px var(--color-mushroom-gold),
       1px 2px var(--color-mushroom-gold), 2px 2px var(--color-mushroom-gold), 3px 2px var(--color-mushroom-gold),
-      2px 3px #d8d0b0, 2px 4px #d8d0b0;
+      2px 3px var(--color-mushroom-stem), 2px 4px var(--color-mushroom-stem);
     transform: scale(3);
   }
   .sprite-mushroom-purple {
     box-shadow:
       1px 0 var(--color-mushroom-purple), 2px 0 var(--color-mushroom-purple), 3px 0 var(--color-mushroom-purple),
-      0 1px var(--color-mushroom-purple), 1px 1px #c088c0, 2px 1px #c088c0,
+      0 1px var(--color-mushroom-purple), 1px 1px var(--color-mushroom-purple-highlight), 2px 1px var(--color-mushroom-purple-highlight),
       3px 1px var(--color-mushroom-purple), 4px 1px var(--color-mushroom-purple),
       1px 2px var(--color-mushroom-purple), 2px 2px var(--color-mushroom-purple), 3px 2px var(--color-mushroom-purple),
-      2px 3px #d8d0b0, 2px 4px #d8d0b0;
+      2px 3px var(--color-mushroom-stem), 2px 4px var(--color-mushroom-stem);
     transform: scale(3);
   }
   .sprite-mushroom-teal {
     box-shadow:
       1px 0 var(--color-mushroom-teal), 2px 0 var(--color-mushroom-teal), 3px 0 var(--color-mushroom-teal),
-      0 1px var(--color-mushroom-teal), 1px 1px #88c8c0, 2px 1px #88c8c0,
+      0 1px var(--color-mushroom-teal), 1px 1px var(--color-mushroom-teal-highlight), 2px 1px var(--color-mushroom-teal-highlight),
       3px 1px var(--color-mushroom-teal), 4px 1px var(--color-mushroom-teal),
       1px 2px var(--color-mushroom-teal), 2px 2px var(--color-mushroom-teal), 3px 2px var(--color-mushroom-teal),
-      2px 3px #d8d0b0, 2px 4px #d8d0b0;
+      2px 3px var(--color-mushroom-stem), 2px 4px var(--color-mushroom-stem);
     transform: scale(3);
   }
 
@@ -115,12 +115,12 @@
       0 -3px 0 var(--color-role-scout), 6px -3px 0 var(--color-role-scout),
       1px -2px 0 var(--color-role-scout), 2px -2px 0 var(--color-role-scout), 3px -2px 0 var(--color-role-scout),
       4px -2px 0 var(--color-role-scout), 5px -2px 0 var(--color-role-scout),
-      1px -1px 0 var(--color-role-scout), 2px -1px 0 #111, 4px -1px 0 #111, 5px -1px 0 var(--color-role-scout),
-      0 0 0 #1e3d5a, 1px 0 0 var(--color-role-scout), 2px 0 0 var(--color-role-scout),
-      3px 0 0 var(--color-role-scout), 4px 0 0 var(--color-role-scout), 5px 0 0 #1e3d5a, 6px 0 0 #1e3d5a,
+      1px -1px 0 var(--color-role-scout), 2px -1px 0 var(--color-sprite-eye), 4px -1px 0 var(--color-sprite-eye), 5px -1px 0 var(--color-role-scout),
+      0 0 0 var(--color-sprite-shadow-scout), 1px 0 0 var(--color-role-scout), 2px 0 0 var(--color-role-scout),
+      3px 0 0 var(--color-role-scout), 4px 0 0 var(--color-role-scout), 5px 0 0 var(--color-sprite-shadow-scout), 6px 0 0 var(--color-sprite-shadow-scout),
       1px 1px 0 var(--color-role-scout), 2px 1px 0 var(--color-role-scout), 4px 1px 0 var(--color-role-scout),
       2px 2px 0 var(--color-role-scout), 3px 2px 0 var(--color-role-scout), 4px 2px 0 var(--color-role-scout),
-      1px 3px 0 #1e3d5a, 5px 3px 0 #1e3d5a;
+      1px 3px 0 var(--color-sprite-shadow-scout), 5px 3px 0 var(--color-sprite-shadow-scout);
     transform: scale(4);
   }
   .sprite-worker {
@@ -129,12 +129,12 @@
       0 -3px 0 var(--color-role-worker), 6px -3px 0 var(--color-role-worker),
       1px -2px 0 var(--color-role-worker), 2px -2px 0 var(--color-role-worker), 3px -2px 0 var(--color-role-worker),
       4px -2px 0 var(--color-role-worker), 5px -2px 0 var(--color-role-worker),
-      1px -1px 0 var(--color-role-worker), 2px -1px 0 #111, 4px -1px 0 #111, 5px -1px 0 var(--color-role-worker),
-      0 0 0 #1e4a1e, 1px 0 0 var(--color-role-worker), 2px 0 0 var(--color-role-worker),
-      3px 0 0 var(--color-role-worker), 4px 0 0 var(--color-role-worker), 5px 0 0 #1e4a1e, 6px 0 0 #1e4a1e,
+      1px -1px 0 var(--color-role-worker), 2px -1px 0 var(--color-sprite-eye), 4px -1px 0 var(--color-sprite-eye), 5px -1px 0 var(--color-role-worker),
+      0 0 0 var(--color-sprite-shadow-worker), 1px 0 0 var(--color-role-worker), 2px 0 0 var(--color-role-worker),
+      3px 0 0 var(--color-role-worker), 4px 0 0 var(--color-role-worker), 5px 0 0 var(--color-sprite-shadow-worker), 6px 0 0 var(--color-sprite-shadow-worker),
       1px 1px 0 var(--color-role-worker), 2px 1px 0 var(--color-role-worker), 4px 1px 0 var(--color-role-worker),
       2px 2px 0 var(--color-role-worker), 3px 2px 0 var(--color-role-worker), 4px 2px 0 var(--color-role-worker),
-      1px 3px 0 #1e4a1e, 5px 3px 0 #1e4a1e;
+      1px 3px 0 var(--color-sprite-shadow-worker), 5px 3px 0 var(--color-sprite-shadow-worker);
     transform: scale(4);
   }
   .sprite-guard {
@@ -143,12 +143,12 @@
       0 -3px 0 var(--color-role-guard), 6px -3px 0 var(--color-role-guard),
       1px -2px 0 var(--color-role-guard), 2px -2px 0 var(--color-role-guard), 3px -2px 0 var(--color-role-guard),
       4px -2px 0 var(--color-role-guard), 5px -2px 0 var(--color-role-guard),
-      1px -1px 0 var(--color-role-guard), 2px -1px 0 #111, 4px -1px 0 #111, 5px -1px 0 var(--color-role-guard),
-      0 0 0 #5a4518, 1px 0 0 var(--color-role-guard), 2px 0 0 var(--color-role-guard),
-      3px 0 0 var(--color-role-guard), 4px 0 0 var(--color-role-guard), 5px 0 0 #5a4518, 6px 0 0 #5a4518,
+      1px -1px 0 var(--color-role-guard), 2px -1px 0 var(--color-sprite-eye), 4px -1px 0 var(--color-sprite-eye), 5px -1px 0 var(--color-role-guard),
+      0 0 0 var(--color-sprite-shadow-guard), 1px 0 0 var(--color-role-guard), 2px 0 0 var(--color-role-guard),
+      3px 0 0 var(--color-role-guard), 4px 0 0 var(--color-role-guard), 5px 0 0 var(--color-sprite-shadow-guard), 6px 0 0 var(--color-sprite-shadow-guard),
       1px 1px 0 var(--color-role-guard), 2px 1px 0 var(--color-role-guard), 4px 1px 0 var(--color-role-guard),
       2px 2px 0 var(--color-role-guard), 3px 2px 0 var(--color-role-guard), 4px 2px 0 var(--color-role-guard),
-      1px 3px 0 #5a4518, 5px 3px 0 #5a4518;
+      1px 3px 0 var(--color-sprite-shadow-guard), 5px 3px 0 var(--color-sprite-shadow-guard);
     transform: scale(4);
   }
   .sprite-analyst {
@@ -157,25 +157,25 @@
       0 -3px 0 var(--color-role-analyst), 6px -3px 0 var(--color-role-analyst),
       1px -2px 0 var(--color-role-analyst), 2px -2px 0 var(--color-role-analyst), 3px -2px 0 var(--color-role-analyst),
       4px -2px 0 var(--color-role-analyst), 5px -2px 0 var(--color-role-analyst),
-      1px -1px 0 var(--color-role-analyst), 2px -1px 0 #111, 4px -1px 0 #111, 5px -1px 0 var(--color-role-analyst),
-      0 0 0 #3d1e5a, 1px 0 0 var(--color-role-analyst), 2px 0 0 var(--color-role-analyst),
-      3px 0 0 var(--color-role-analyst), 4px 0 0 var(--color-role-analyst), 5px 0 0 #3d1e5a, 6px 0 0 #3d1e5a,
+      1px -1px 0 var(--color-role-analyst), 2px -1px 0 var(--color-sprite-eye), 4px -1px 0 var(--color-sprite-eye), 5px -1px 0 var(--color-role-analyst),
+      0 0 0 var(--color-sprite-shadow-analyst), 1px 0 0 var(--color-role-analyst), 2px 0 0 var(--color-role-analyst),
+      3px 0 0 var(--color-role-analyst), 4px 0 0 var(--color-role-analyst), 5px 0 0 var(--color-sprite-shadow-analyst), 6px 0 0 var(--color-sprite-shadow-analyst),
       1px 1px 0 var(--color-role-analyst), 2px 1px 0 var(--color-role-analyst), 4px 1px 0 var(--color-role-analyst),
       2px 2px 0 var(--color-role-analyst), 3px 2px 0 var(--color-role-analyst), 4px 2px 0 var(--color-role-analyst),
-      1px 3px 0 #3d1e5a, 5px 3px 0 #3d1e5a;
+      1px 3px 0 var(--color-sprite-shadow-analyst), 5px 3px 0 var(--color-sprite-shadow-analyst);
     transform: scale(4);
   }
   .sprite-sentinel {
     box-shadow:
-      1px -4px 0 #ccc, 5px -4px 0 #ccc,
-      0 -3px 0 #bbb, 6px -3px 0 #bbb,
-      1px -2px 0 #ccc, 2px -2px 0 #ddd, 3px -2px 0 #eee, 4px -2px 0 #ddd, 5px -2px 0 #ccc,
-      1px -1px 0 #ccc, 2px -1px 0 #e44, 4px -1px 0 #e44, 5px -1px 0 #ccc,
-      0 0 0 #888, 1px 0 0 #bbb, 2px 0 0 #ccc, 3px 0 0 #ccc, 4px 0 0 #ccc,
-      5px 0 0 #bbb, 6px 0 0 #888,
-      1px 1px 0 #aaa, 2px 1px 0 #aaa, 3px 1px 0 #999, 4px 1px 0 #aaa,
-      2px 2px 0 #aaa, 3px 2px 0 #bbb, 4px 2px 0 #aaa,
-      1px 3px 0 #777, 5px 3px 0 #777;
+      1px -4px 0 var(--color-sentinel-body), 5px -4px 0 var(--color-sentinel-body),
+      0 -3px 0 var(--color-sentinel-shade), 6px -3px 0 var(--color-sentinel-shade),
+      1px -2px 0 var(--color-sentinel-body), 2px -2px 0 var(--color-sentinel-light), 3px -2px 0 var(--color-sentinel-highlight), 4px -2px 0 var(--color-sentinel-light), 5px -2px 0 var(--color-sentinel-body),
+      1px -1px 0 var(--color-sentinel-body), 2px -1px 0 var(--color-sentinel-eye), 4px -1px 0 var(--color-sentinel-eye), 5px -1px 0 var(--color-sentinel-body),
+      0 0 0 var(--color-sentinel-shadow), 1px 0 0 var(--color-sentinel-shade), 2px 0 0 var(--color-sentinel-body), 3px 0 0 var(--color-sentinel-body), 4px 0 0 var(--color-sentinel-body),
+      5px 0 0 var(--color-sentinel-shade), 6px 0 0 var(--color-sentinel-shadow),
+      1px 1px 0 var(--color-sentinel-mid), 2px 1px 0 var(--color-sentinel-mid), 3px 1px 0 var(--color-sentinel-dark), 4px 1px 0 var(--color-sentinel-mid),
+      2px 2px 0 var(--color-sentinel-mid), 3px 2px 0 var(--color-sentinel-shade), 4px 2px 0 var(--color-sentinel-mid),
+      1px 3px 0 var(--color-sentinel-deep), 5px 3px 0 var(--color-sentinel-deep);
     transform: scale(5);
   }
 

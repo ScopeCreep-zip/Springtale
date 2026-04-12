@@ -30,6 +30,16 @@ export const App = () => {
   const db = useDashboard();
   const { t, locale, setLocale } = useI18n();
 
+  // ── Theme ────────────────────────────────────────────────
+  const [theme, setTheme] = createSignal("colony");
+  const applyTheme = (t: string) => {
+    if (t === "colony") {
+      delete document.documentElement.dataset.theme;
+    } else {
+      document.documentElement.dataset.theme = t;
+    }
+  };
+
   // ── Colony state ────────────────────────────────────────
   const [selection, setSelection] = createSignal<ColonySelection>({ id: null, type: null });
   const [connectorPositions, setConnectorPositions] = createSignal<Record<string, { x: number; y: number }>>({});
@@ -68,6 +78,15 @@ export const App = () => {
     db.provider.setConfig("locale", loc).catch(() => {});
   });
 
+  // ── Persist theme changes to config store ───────────────
+  let themeInitialized = false;
+  createEffect(() => {
+    const t = theme();
+    applyTheme(t);
+    if (!themeInitialized) { themeInitialized = true; return; }
+    db.provider.setConfig("theme", t).catch(() => {});
+  });
+
   const handleSettingsSaved = async () => {
     setConnected(true);
     db.resubscribe();
@@ -95,6 +114,14 @@ export const App = () => {
         setLocale(savedLocale as "en");
       }
     } catch { /* Default locale is fine */ }
+
+    // Restore persisted theme
+    try {
+      const savedTheme = await db.provider.getConfig("theme");
+      if (savedTheme && typeof savedTheme === "string") {
+        setTheme(savedTheme);
+      }
+    } catch { /* Default theme is fine */ }
   };
 
   // ── Keyboard shortcuts ─────────────────────────────────
@@ -306,6 +333,17 @@ export const App = () => {
             </Show>
           </div>
           <SettingsPage onSaved={handleSettingsSaved} />
+          <div class="mt-4 border-t border-bark pt-4">
+            <h3 class="colony-label mb-2">THEME</h3>
+            <select
+              value={theme()}
+              onChange={(e) => setTheme(e.currentTarget.value)}
+              class="colony-text-2xs w-full border-2 border-bark bg-soil-deep px-2 py-1.5 text-text-primary"
+            >
+              <option value="colony">Colony (default)</option>
+              <option value="rekindle">Rekindle</option>
+            </select>
+          </div>
         </div>
       );
     }

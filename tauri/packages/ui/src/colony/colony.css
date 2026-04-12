@@ -150,7 +150,7 @@
   /* Stat bars */
   .colony-stat-bar {
     height: 6px;
-    background: #120f08;
+    background: var(--color-soil-darker);
     border: 1px solid var(--color-bark);
     position: relative;
   }
@@ -165,7 +165,7 @@
   .colony-fuel-bar {
     width: 20px;
     height: 3px;
-    background: #1a1510;
+    background: var(--color-soil-light);
     position: relative;
   }
   .colony-fuel-fill {
@@ -212,7 +212,7 @@
   }
   .colony-roster-slot.is-selected {
     border-color: var(--color-status-ok);
-    box-shadow: 0 0 4px rgba(61,184,160,.4);
+    box-shadow: 0 0 4px color-mix(in srgb, var(--color-status-ok) 40%, transparent);
   }
   /* Plumbob status dot */
   .colony-roster-slot::before {
@@ -242,7 +242,7 @@
     gap: 4px;
     padding: 3px 6px;
     font-size: 9px;
-    background: rgba(14,12,8,.85);
+    background: color-mix(in srgb, var(--color-soil-deep) 85%, transparent);
     margin-bottom: 2px;
     border-right: 3px solid var(--color-status-ok);
   }
@@ -269,7 +269,7 @@
 
   /* Minimap */
   .colony-minimap {
-    background: #080604;
+    background: var(--color-soil-deepest);
     border: 2px solid var(--color-bark);
     position: relative;
     height: calc(100% - 14px);
@@ -340,7 +340,7 @@
   .colony-portrait-frame {
     width: 48px;
     height: 48px;
-    background: #080604;
+    background: var(--color-soil-deepest);
     border: 2px solid var(--color-bark);
     display: flex;
     align-items: center;
@@ -386,7 +386,7 @@
     padding: 3px 6px;
   }
   .colony-bubble.is-urgent {
-    background: #2a1510;
+    background: var(--color-bubble-urgent-bg);
     border: 2px solid var(--color-status-error);
     color: var(--color-status-error);
     font-size: 8px;
@@ -462,7 +462,7 @@
   }
   .colony-card.is-selected {
     border-color: var(--color-status-ok);
-    background: rgba(61, 184, 160, 0.08);
+    background: color-mix(in srgb, var(--color-status-ok) 8%, transparent);
   }
   .colony-card.is-available {
     border-style: dashed;
@@ -479,6 +479,103 @@
     border-color: var(--color-status-error);
   }
 
+  /* ── Form primitives (Rekindle-compatible boxed style) ── */
+
+  .colony-input {
+    width: 100%;
+    background: var(--color-soil-light);
+    border: 1px solid color-mix(in srgb, var(--color-status-idle) 20%, transparent);
+    border-radius: 0.25rem;
+    padding: 6px 10px;
+    font-size: 10px;
+    color: var(--color-text-primary);
+    outline: none;
+    font-family: inherit;
+  }
+  .colony-input:focus {
+    border-color: var(--color-accent);
+  }
+
+  .colony-select {
+    width: 100%;
+    background: var(--color-soil-light);
+    border: 1px solid color-mix(in srgb, var(--color-status-idle) 20%, transparent);
+    border-radius: 0.25rem;
+    padding: 6px 10px;
+    font-size: 10px;
+    color: var(--color-text-primary);
+    outline: none;
+    font-family: inherit;
+  }
+
+  .colony-btn-primary {
+    padding: 6px 12px;
+    background: var(--color-accent);
+    color: var(--color-soil-deep);
+    border: none;
+    border-radius: 0.25rem;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+  .colony-btn-primary:hover {
+    background: color-mix(in srgb, var(--color-accent) 80%, var(--color-text-primary));
+  }
+  .colony-btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .colony-btn-danger {
+    padding: 6px 12px;
+    background: color-mix(in srgb, var(--color-status-error) 60%, transparent);
+    color: var(--color-text-primary);
+    border: none;
+    border-radius: 0.25rem;
+    font-size: 10px;
+    font-weight: 600;
+    cursor: pointer;
+    font-family: inherit;
+    transition: background 0.15s;
+  }
+  .colony-btn-danger:hover {
+    background: var(--color-status-error);
+  }
+
+  /* Panel with explicit borders */
+  .colony-panel {
+    background: var(--color-soil-mid);
+    border: 1px solid color-mix(in srgb, var(--color-status-idle) 20%, transparent);
+    border-radius: 0.25rem;
+  }
+
+  /* Section header */
+  .colony-section-header {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-text-dim);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 4px;
+  }
+
+  /* Interactive list item with hover */
+  .colony-list-item {
+    display: flex;
+    align-items: center;
+    padding: 4px 8px;
+    gap: 6px;
+    cursor: pointer;
+  }
+  .colony-list-item:hover {
+    background: color-mix(in srgb, var(--color-text-primary) 5%, transparent);
+  }
+  .colony-list-item.is-selected {
+    background: color-mix(in srgb, var(--color-accent) 25%, transparent);
+  }
+
   /* Underground mode */
   .colony-underground .colony-tree .pixel-sprite { opacity: .15 !important; }
   .colony-underground .colony-tree .colony-tree-label { opacity: .3; }
@@ -486,4 +583,14 @@
   .colony-underground .colony-mushroom { opacity: .1 !important; }
   .colony-underground .colony-agent { opacity: .5; }
   .colony-underground .colony-formation { opacity: .15 !important; }
+}
+
+/* ── Theme-driven border widths (colony elements in @layer components) ── */
+
+.colony-modal,
+.colony-stat-bar,
+.colony-roster-slot,
+.colony-minimap,
+.colony-portrait-frame {
+  border-width: var(--border-panel);
 }

@@ -41,6 +41,16 @@ export const App = () => {
   const [passphrase, setPassphrase] = createSignal("");
   const [vaultError, setVaultError] = createSignal("");
 
+  // ── Theme ────────────────────────────────────────────────
+  const [theme, setTheme] = createSignal("colony");
+  const applyTheme = (t: string) => {
+    if (t === "colony") {
+      delete document.documentElement.dataset.theme;
+    } else {
+      document.documentElement.dataset.theme = t;
+    }
+  };
+
   // ── Colony state ────────────────────────────────────────
   const [selection, setSelection] = createSignal<ColonySelection>({ id: null, type: null });
   const [connectorPositions, setConnectorPositions] = createSignal<Record<string, { x: number; y: number }>>({});
@@ -76,6 +86,15 @@ export const App = () => {
     db.provider.setConfig("locale", loc).catch(() => {});
   });
 
+  // ── Persist theme changes to config store ───────────────
+  let themeInitialized = false;
+  createEffect(() => {
+    const t = theme();
+    applyTheme(t);
+    if (!themeInitialized) { themeInitialized = true; return; }
+    db.provider.setConfig("theme", t).catch(() => {});
+  });
+
   // ── Data loading (deferred until vault unlocked) ────────
   const loadColonyData = async () => {
     try {
@@ -102,6 +121,14 @@ export const App = () => {
           setLocale(savedLocale as "en");
         }
       } catch { /* Default locale is fine */ }
+
+      // Restore persisted theme
+      try {
+        const savedTheme = await db.provider.getConfig("theme");
+        if (savedTheme && typeof savedTheme === "string") {
+          setTheme(savedTheme);
+        }
+      } catch { /* Default theme is fine */ }
     } catch (e) {
       console.warn("loadColonyData:", e);
     }
@@ -534,6 +561,8 @@ export const App = () => {
           onExportData={async () => { await db.provider.exportData(); }}
           onCompactMemory={async () => { await db.provider.compactMemory(1000); }}
           onClose={() => setShowDesktopSettings(false)}
+          theme={theme()}
+          onThemeChange={(t) => setTheme(t)}
         />
       );
     }

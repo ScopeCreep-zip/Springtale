@@ -23,10 +23,10 @@ export const ColonyShell: Component<ColonyShellProps> = (props) => {
   const db = useDashboard();
 
   return (
-    <div class="relative grid h-screen grid-rows-[40px_1fr_180px] overflow-hidden bg-soil-deep text-text-primary">
+    <div class="relative grid h-screen grid-rows-[40px_1fr_180px] overflow-hidden border border-bark rounded-none bg-soil-deep text-text-primary">
       <a
         href="#colony-viewport"
-        class="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-accent focus:px-4 focus:py-2 focus:text-white"
+        class="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded focus:bg-accent focus:px-4 focus:py-2 focus:text-soil-deep"
       >
         {t("a11y.skipToContent")}
       </a>

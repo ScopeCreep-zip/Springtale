@@ -38,12 +38,12 @@ export const TriggerPicker: Component<TriggerPickerProps> = (props) => {
   return (
     <div class="space-y-3">
       <div>
-        <label for="trigger-connector" class="block text-sm font-medium text-gray-300">
+        <label for="trigger-connector" class="block colony-text-xs font-medium text-text-secondary">
           {t("picker.connector")}
         </label>
         <select
           id="trigger-connector"
-          class="mt-1 w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-white"
+          class="mt-1 w-full rounded border border-bark bg-soil-deep px-3 py-2 text-text-primary"
           value={selectedConnector()}
           onChange={(e) => handleConnectorChange(e.currentTarget.value)}
         >
@@ -56,12 +56,12 @@ export const TriggerPicker: Component<TriggerPickerProps> = (props) => {
 
       <Show when={currentConnector()}>
         <div>
-          <label for="trigger-event" class="block text-sm font-medium text-gray-300">
+          <label for="trigger-event" class="block colony-text-xs font-medium text-text-secondary">
             {t("picker.trigger")}
           </label>
           <select
             id="trigger-event"
-            class="mt-1 w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-white"
+            class="mt-1 w-full rounded border border-bark bg-soil-deep px-3 py-2 text-text-primary"
             value={selectedTrigger()}
             onChange={(e) => handleTriggerChange(e.currentTarget.value)}
           >
@@ -74,7 +74,7 @@ export const TriggerPicker: Component<TriggerPickerProps> = (props) => {
       </Show>
 
       <Show when={currentTrigger()}>
-        <p class="text-sm text-gray-400" aria-live="polite">
+        <p class="colony-text-xs text-text-dim" aria-live="polite">
           {currentTrigger()?.description}
         </p>
       </Show>

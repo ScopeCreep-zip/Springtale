@@ -23,6 +23,41 @@ pub struct FormationInfo {
     /// Real momentum tier from runtime — "Cold", "Warming", "Hot", "Fever".
     /// Persisted via config store key `momentum:{formation_id}`.
     pub momentum_tier: String,
+    /// Human label for momentum tier.
+    pub momentum_label: String,
+    /// Capabilities unlocked at current tier.
+    pub capabilities: Vec<String>,
+    /// Guard readiness: "OK" if any member active, "--" otherwise.
+    pub guard_status: String,
+}
+
+/// Capabilities unlocked at each momentum tier.
+fn tier_capabilities(tier: &str) -> Vec<String> {
+    match tier {
+        "Cold" => vec!["read env"],
+        "Warming" => vec!["read env", "neighbors", "chain"],
+        "Hot" => vec!["read env", "neighbors", "chain", "write env", "commit"],
+        "Fever" => vec![
+            "read env", "neighbors", "chain", "write env", "commit",
+            "consensus", "AI", "recruit",
+        ],
+        _ => vec!["read env"],
+    }
+    .into_iter()
+    .map(String::from)
+    .collect()
+}
+
+/// Human label for momentum tier.
+fn tier_label(tier: &str) -> String {
+    match tier {
+        "Cold" => "COLD",
+        "Warming" => "WARM",
+        "Hot" => "HOT",
+        "Fever" => "FEVER",
+        _ => "COLD",
+    }
+    .to_owned()
 }
 
 /// Create a new formation — stores config, creates member entries.
@@ -126,6 +161,10 @@ pub async fn list_formations(state: &RuntimeState) -> Result<Vec<FormationInfo>,
             .and_then(|v| serde_json::from_value::<String>(v).ok())
             .unwrap_or_else(|| "Cold".to_owned());
 
+        let momentum_label = tier_label(&momentum_tier);
+        let capabilities = tier_capabilities(&momentum_tier);
+        let guard_status = if f.status == "active" { "OK" } else { "--" }.to_owned();
+
         infos.push(FormationInfo {
             id: f.id,
             name: f.name,
@@ -134,6 +173,9 @@ pub async fn list_formations(state: &RuntimeState) -> Result<Vec<FormationInfo>,
             member_count: member_names.len(),
             members: member_names,
             momentum_tier,
+            momentum_label,
+            capabilities,
+            guard_status,
         });
     }
 

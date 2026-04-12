@@ -38,12 +38,12 @@ export const ActionPicker: Component<ActionPickerProps> = (props) => {
   return (
     <div class="space-y-3">
       <div>
-        <label for="action-connector" class="block text-sm font-medium text-gray-300">
+        <label for="action-connector" class="block colony-text-xs font-medium text-text-secondary">
           {t("picker.connector")}
         </label>
         <select
           id="action-connector"
-          class="mt-1 w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-white"
+          class="mt-1 w-full rounded border border-bark bg-soil-deep px-3 py-2 text-text-primary"
           value={selectedConnector()}
           onChange={(e) => handleConnectorChange(e.currentTarget.value)}
         >
@@ -56,12 +56,12 @@ export const ActionPicker: Component<ActionPickerProps> = (props) => {
 
       <Show when={currentConnector()}>
         <div>
-          <label for="action-name" class="block text-sm font-medium text-gray-300">
+          <label for="action-name" class="block colony-text-xs font-medium text-text-secondary">
             {t("picker.action")}
           </label>
           <select
             id="action-name"
-            class="mt-1 w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-white"
+            class="mt-1 w-full rounded border border-bark bg-soil-deep px-3 py-2 text-text-primary"
             value={selectedAction()}
             onChange={(e) => handleActionChange(e.currentTarget.value)}
           >
@@ -74,7 +74,7 @@ export const ActionPicker: Component<ActionPickerProps> = (props) => {
       </Show>
 
       <Show when={currentAction()}>
-        <p class="text-sm text-gray-400" aria-live="polite">
+        <p class="colony-text-xs text-text-dim" aria-live="polite">
           {currentAction()?.description}
         </p>
       </Show>

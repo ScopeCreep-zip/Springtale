@@ -43,16 +43,12 @@ export type { TeamConfig } from "./colony/TeamBuilder";
 export { createDashboardState, DashboardProvider, useDashboard } from "./dashboard/context";
 export type { DataProvider, DashboardState, FormationInfo, RuleSummary, ConfigSchema, ConfigSchemaProperty, AvailableConnector } from "./dashboard/types";
 
-// Form components (rendered inside colony detail panel)
-export { TriggerPicker } from "./TriggerPicker";
-export { ActionPicker } from "./ActionPicker";
+// Form components (rendered inside colony panels)
 export { ConditionEditor } from "./ConditionEditor";
 export type { ConditionDef } from "./ConditionEditor";
+export { TriggerPicker } from "./TriggerPicker";
+export { ActionPicker } from "./ActionPicker";
 export { RulePreview } from "./RulePreview";
-export { Canvas } from "./Canvas";
-// Types still needed by dashboard state internals
-export type { EventItem } from "./CommandPanel";
-export type { ConnectorStatus } from "./ResourceBar";
-export type { RuleItem } from "./Roster";
-export type { RuleDetail } from "./CommandPanel";
-export type { SwarmInfo } from "./SwarmCard";
+
+// Dashboard data model types
+export type { ConnectorStatus, RuleItem, RuleDetail, EventItem, SwarmInfo } from "./dashboard/model";

@@ -19,6 +19,10 @@ export interface AgentState {
   activity: "firing" | "error" | "active" | "waiting" | "idle";
   /** Autonomy level index: 0=observe, 1=suggest, 2=approve, 3=autonomous. */
   autonomy: number;
+  /** Human label for autonomy level from backend. */
+  autonomy_label: string;
+  /** Fuel status from backend threshold: "ok" | "warn" | "critical". */
+  fuel_status: "ok" | "warn" | "critical";
   /** Pre-formatted task description from backend. */
   task_display: string;
 }

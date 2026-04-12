@@ -1,7 +1,7 @@
 import { For, createSignal, createEffect } from "solid-js";
 import type { Component } from "solid-js";
 import type { ColonyAgent, ColonyTree, ColonyFormation, ColonySelection } from "./types";
-import type { EventItem } from "../CommandPanel";
+import type { EventItem } from "../dashboard/model";
 
 export interface TopBarProps {
   agents: ColonyAgent[];

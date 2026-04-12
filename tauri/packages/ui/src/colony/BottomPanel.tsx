@@ -3,11 +3,11 @@ import type { Component } from "solid-js";
 import type {
   ColonyTree, ColonyAgent, ColonyConnection, ColonyFormation, ColonySelection, ColonyCommand, DetailView,
 } from "./types";
-import type { EventItem } from "../CommandPanel";
+import type { EventItem } from "../dashboard/model";
 import { getAgentPosition, getFormationBounds, type ConnectorPositions } from "./geometry";
 import {
-  COMMANDS, ROLE_SPRITES, ROLE_COLORS, AUTONOMY_LABELS,
-  MOMENTUM_NAMES, MOMENTUM_COLORS, MOMENTUM_UNLOCKS,
+  COMMANDS, ROLE_SPRITES, ROLE_COLORS,
+  MOMENTUM_NAMES, MOMENTUM_COLORS, MOMENTUM_UNLOCKS, TIER_CAPABILITIES,
   TREE_SPRITES, seeded,
 } from "./types";
 
@@ -172,7 +172,7 @@ const Minimap: Component<{
                 left: `${pos().x - 1}%`, top: `${pos().y - 1}%`,
                 width: "4px", height: "4px",
                 background: tree.status === "active" ? "var(--color-canopy)"
-                  : tree.status === "paused" ? "var(--color-canopy-degraded)" : "#333",
+                  : tree.status === "paused" ? "var(--color-canopy-degraded)" : "var(--color-minimap-idle)",
               }}
             />
           );
@@ -252,7 +252,7 @@ const DetailPanel: Component<{
           };
           if (!agent()) return null;
           const a = agent()!;
-          const fuelColor = a.fuel > 50 ? "var(--color-status-ok)" : "var(--color-status-warn)";
+          const fuelColor = a.fuelStatus === "ok" ? "var(--color-status-ok)" : a.fuelStatus === "warn" ? "var(--color-status-warn)" : "var(--color-status-error)";
 
           return (
             <div>
@@ -301,7 +301,7 @@ const DetailPanel: Component<{
                             background: a.autonomy === level
                               ? ["var(--color-status-ok)", "var(--color-role-scout)", "var(--color-status-warn)", "var(--color-status-error)", "var(--color-role-analyst)"][level]
                               : undefined,
-                            color: a.autonomy === level ? "#000" : undefined,
+                            color: a.autonomy === level ? "var(--color-soil-deep)" : undefined,
                           }}
                         >
                           {level}
@@ -310,7 +310,7 @@ const DetailPanel: Component<{
                     </For>
                   </div>
                   <div class="colony-text-3xs mt-0.5 text-text-dim">
-                    {AUTONOMY_LABELS[a.autonomy]}
+                    {a.autonomyLabel}
                   </div>
                 </div>
               </div>
@@ -387,7 +387,7 @@ const DetailPanel: Component<{
                     <div
                       class="h-[5px] flex-1"
                       style={{
-                        background: i() <= f.momentum ? MOMENTUM_COLORS[i()] : "#120f08",
+                        background: i() <= f.momentum ? MOMENTUM_COLORS[i()] : "var(--color-soil-darker)",
                       }}
                     />
                   )}
@@ -398,15 +398,32 @@ const DetailPanel: Component<{
               </div>
               <For each={members()}>
                 {(a) => {
-                  const fuelColor = a.fuel > 50 ? "var(--color-status-ok)" : "var(--color-status-warn)";
+                  const fuelColor = a.fuelStatus === "ok" ? "var(--color-status-ok)" : a.fuelStatus === "warn" ? "var(--color-status-warn)" : "var(--color-status-error)";
+                  const healthIcon = a.status === "ok" ? "●" : a.status === "warn" ? "◐" : a.status === "error" ? "○" : "·";
+                  const healthClass = a.status === "ok" ? "text-status-ok" : a.status === "warn" ? "text-status-warn" : a.status === "error" ? "text-status-error" : "text-text-dim";
                   return (
                     <div class="colony-text-2xs flex justify-between border-b border-bark py-0.5">
-                      <span>* {a.name} <span class="text-text-dim">{a.role}</span></span>
+                      <span>
+                        <span class={healthClass}>{healthIcon}</span>
+                        {" "}{a.name} <span class="text-text-dim">{a.role}</span>
+                      </span>
                       <span style={{ color: fuelColor }}>{a.fuel} fuel</span>
                     </div>
                   );
                 }}
               </For>
+
+              {/* Capability unlocks for current momentum tier */}
+              <div class="colony-label mt-2 mb-1">CAPABILITIES ({f.momentumLabel})</div>
+              <div class="flex flex-wrap gap-1">
+                <For each={TIER_CAPABILITIES[f.momentum] ?? []}>
+                  {(cap) => (
+                    <span class="colony-text-5xs rounded border border-bark bg-soil-deep px-1.5 py-0.5 text-text-secondary">
+                      {cap}
+                    </span>
+                  )}
+                </For>
+              </div>
             </div>
           );
         })()}
@@ -476,7 +493,7 @@ const BotsListView: Component<{
                   <div class="colony-stat-bar" style={{ height: "3px" }}>
                     <div class="colony-stat-fill" style={{
                       width: `${agent.fuel}%`,
-                      background: agent.fuel > 50 ? "var(--color-status-ok)" : "var(--color-status-warn)",
+                      background: agent.fuelStatus === "ok" ? "var(--color-status-ok)" : agent.fuelStatus === "warn" ? "var(--color-status-warn)" : "var(--color-status-error)",
                     }} />
                   </div>
                 </div>
@@ -600,7 +617,7 @@ const EventsListView: Component<{
                   {new Date(event.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                 </span>
                 <span class={`colony-text-2xs shrink-0 font-bold ${
-                  /error|fail|block/i.test(event.actionTaken) ? "text-status-warn" : "text-status-ok"
+                  event.severity === "error" ? "text-status-warn" : "text-status-ok"
                 }`}>
                   {event.connectorName}
                 </span>

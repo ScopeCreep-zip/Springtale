@@ -18,10 +18,10 @@ export const RulePreview: Component<RulePreviewProps> = (props) => {
 
   return (
     <div role="region" aria-label={t("preview.label")}>
-      <label class="block text-sm font-medium text-gray-300">
+      <label class="block colony-text-xs font-medium text-text-secondary">
         {t("preview.label")}
       </label>
-      <pre class="mt-1 max-h-64 overflow-auto rounded border border-gray-700 bg-gray-900 p-3 text-sm text-gray-300">
+      <pre class="colony-textarea mt-1 max-h-64 overflow-auto rounded border border-bark bg-soil-deep p-3 colony-text-2xs text-text-secondary">
         {props.toml || t("preview.placeholder")}
       </pre>
     </div>

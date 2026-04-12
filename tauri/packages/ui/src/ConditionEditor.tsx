@@ -53,9 +53,9 @@ export const ConditionEditor: Component<ConditionEditorProps> = (props) => {
   return (
     <div class="space-y-3">
       <div class="flex items-center justify-between">
-        <label class="text-sm font-medium text-gray-300">{t("condition.title")}</label>
+        <label class="colony-text-xs font-medium text-text-secondary">{t("condition.title")}</label>
         <button
-          class="rounded bg-gray-700 px-3 py-1 text-xs text-gray-200 hover:bg-gray-600"
+          class="rounded border border-bark bg-soil-light px-3 py-1 colony-text-3xs text-text-primary hover:border-bark-light"
           onClick={addCondition}
         >
           {t("condition.add")}
@@ -64,14 +64,14 @@ export const ConditionEditor: Component<ConditionEditorProps> = (props) => {
 
       <For each={props.conditions}>
         {(condition, index) => (
-          <fieldset class="flex gap-2 rounded border border-gray-700 bg-gray-800/50 p-3">
+          <fieldset class="flex gap-2 rounded border border-bark bg-soil-light/50 p-3">
             <legend class="sr-only">
               {t("condition.removeN", { n: String(index() + 1) })}
             </legend>
 
             <select
               aria-label={t("condition.conditionType")}
-              class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-sm text-white"
+              class="rounded border border-bark bg-soil-deep px-2 py-1 colony-text-2xs text-text-primary"
               value={condition.type}
               onChange={(e) => updateCondition(index(), { type: e.currentTarget.value })}
             >
@@ -83,14 +83,14 @@ export const ConditionEditor: Component<ConditionEditorProps> = (props) => {
             {(condition.type === "FieldEquals" || condition.type === "Contains" || condition.type === "Regex") && (
               <>
                 <input
-                  class="flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-sm text-white"
+                  class="flex-1 rounded border border-bark bg-soil-deep px-2 py-1 colony-text-2xs text-text-primary"
                   aria-label={t("condition.field")}
                   placeholder={t("condition.field")}
                   value={condition.field ?? ""}
                   onInput={(e) => updateCondition(index(), { field: e.currentTarget.value })}
                 />
                 <input
-                  class="flex-1 rounded border border-gray-700 bg-gray-800 px-2 py-1 text-sm text-white"
+                  class="flex-1 rounded border border-bark bg-soil-deep px-2 py-1 colony-text-2xs text-text-primary"
                   aria-label={condition.type === "Regex" ? t("condition.pattern") : t("condition.value")}
                   placeholder={condition.type === "Regex" ? t("condition.pattern") : t("condition.value")}
                   value={condition.type === "Regex" ? (condition.pattern ?? "") : (condition.value ?? "")}
@@ -104,15 +104,15 @@ export const ConditionEditor: Component<ConditionEditorProps> = (props) => {
             {condition.type === "TimeInRange" && (
               <>
                 <input
-                  class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-sm text-white"
+                  class="rounded border border-bark bg-soil-deep px-2 py-1 colony-text-2xs text-text-primary"
                   aria-label={t("condition.startTime")}
                   placeholder={t("condition.timeFormat")}
                   value={condition.start ?? ""}
                   onInput={(e) => updateCondition(index(), { start: e.currentTarget.value })}
                 />
-                <span class="self-center text-gray-500">{t("common.to")}</span>
+                <span class="self-center text-text-dim">{t("common.to")}</span>
                 <input
-                  class="rounded border border-gray-700 bg-gray-800 px-2 py-1 text-sm text-white"
+                  class="rounded border border-bark bg-soil-deep px-2 py-1 colony-text-2xs text-text-primary"
                   aria-label={t("condition.endTime")}
                   placeholder={t("condition.timeFormat")}
                   value={condition.end ?? ""}
@@ -129,10 +129,10 @@ export const ConditionEditor: Component<ConditionEditorProps> = (props) => {
                     return (
                       <button
                         aria-pressed={isSelected()}
-                        class={`rounded px-2 py-1 text-xs ${
+                        class={`rounded px-2 py-1 colony-text-3xs ${
                           isSelected()
-                            ? "bg-blue-600 text-white"
-                            : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                            ? "bg-accent text-soil-deep"
+                            : "border border-bark bg-soil-light text-text-secondary hover:border-bark-light"
                         }`}
                         onClick={() => {
                           const current = condition.days ?? [];
@@ -151,7 +151,7 @@ export const ConditionEditor: Component<ConditionEditorProps> = (props) => {
             )}
 
             <button
-              class="rounded px-2 py-1 text-xs text-red-400 hover:bg-red-900/30"
+              class="rounded px-2 py-1 colony-text-3xs text-status-error hover:bg-status-error/10"
               aria-label={t("condition.removeN", { n: String(index() + 1) })}
               onClick={() => removeCondition(index())}
             >
@@ -162,7 +162,7 @@ export const ConditionEditor: Component<ConditionEditorProps> = (props) => {
       </For>
 
       {props.conditions.length === 0 && (
-        <p role="status" class="text-sm text-gray-500">{t("condition.noConditions")}</p>
+        <p role="status" class="colony-text-xs text-text-dim">{t("condition.noConditions")}</p>
       )}
     </div>
   );
