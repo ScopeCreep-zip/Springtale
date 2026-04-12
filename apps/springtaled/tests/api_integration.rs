@@ -57,6 +57,10 @@ fn build_test_app(ready: bool) -> (Router, String) {
     )));
 
     let (event_tx, _) = tokio::sync::broadcast::channel(256);
+    let (bot_msg_tx, _bot_msg_rx) = mpsc::channel(256);
+    let trigger_registry = springtaled::runtime::boot::connector_events::TriggerRegistry::new(
+        trigger_tx.clone(),
+    );
 
     let heartbeat_monitor = std::sync::Arc::new(tokio::sync::Mutex::new(
         springtale_scheduler::HeartbeatMonitor::new(0, trigger_tx.clone()),
@@ -90,13 +94,12 @@ fn build_test_app(ready: bool) -> (Router, String) {
         api_token_hash,
         ready: ready_flag,
         trigger_tx,
-        scheduler: springtaled::scheduler::AppScheduler {
-            cron,
-            fs_watcher,
-        },
+        scheduler: springtaled::scheduler::AppScheduler { cron, fs_watcher },
         rate_limit_per_sec: 1000,
         event_tx,
         heartbeat_monitor,
+        bot_msg_tx,
+        trigger_registry,
     };
 
     let router = build_router(state);
@@ -288,4 +291,227 @@ async fn test_webhook_endpoint() {
 
     // The connector is not in the registry, so the webhook handler returns 404.
     assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+// ── New operation tests (Phase 4) ──────────────────────────────────────────
+
+#[tokio::test]
+async fn test_list_intents() {
+    let (router, token) = build_test_app(true);
+    let req = Request::get("/formations/intents")
+        .header("Authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, body) = send(router, req).await;
+    assert_eq!(status, StatusCode::OK);
+    let intents = body["intents"].as_array().unwrap();
+    assert_eq!(intents.len(), 4);
+    assert_eq!(intents[0]["value"], "Reconnoiter");
+    assert_eq!(intents[1]["value"], "Execute");
+    assert_eq!(intents[2]["value"], "Stabilize");
+    assert_eq!(intents[3]["value"], "Surge");
+}
+
+#[tokio::test]
+async fn test_deploy_team_creates_rules_and_formation() {
+    let (router, token) = build_test_app(true);
+    let body = serde_json::json!({
+        "name": "Alpha Squad",
+        "intent": "Reconnoiter",
+        "guard_mode": false,
+        "agents": [{
+            "connector_name": "connector-test",
+            "trigger_name": "event_received",
+            "action_connector": "connector-test",
+            "action_name": "send_message"
+        }]
+    });
+    let req = Request::post("/formations/deploy-team")
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(serde_json::to_vec(&body).unwrap()))
+        .unwrap();
+    let (status, json) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert!(json["formation_id"].is_string());
+    assert!(json["rule_ids"].is_array());
+    assert_eq!(json["rule_ids"].as_array().unwrap().len(), 1);
+
+    // Verify formation was created
+    let list_req = Request::get("/formations")
+        .header("Authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, list_body) = send(router.clone(), list_req).await;
+    assert_eq!(status, StatusCode::OK);
+    let formations = list_body["formations"].as_array().unwrap();
+    assert_eq!(formations.len(), 1);
+    assert_eq!(formations[0]["name"], "Alpha Squad");
+    assert_eq!(formations[0]["status"], "active");
+}
+
+#[tokio::test]
+async fn test_deploy_team_rejects_empty_name() {
+    let (router, token) = build_test_app(true);
+    let body = serde_json::json!({
+        "name": "",
+        "intent": "Reconnoiter",
+        "guard_mode": false,
+        "agents": [{
+            "connector_name": "test",
+            "trigger_name": "event",
+            "action_connector": "test",
+            "action_name": "act"
+        }]
+    });
+    let req = Request::post("/formations/deploy-team")
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(serde_json::to_vec(&body).unwrap()))
+        .unwrap();
+    let (status, _) = send(router, req).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
+async fn test_create_connector_rule() {
+    let (router, token) = build_test_app(true);
+    let body = serde_json::json!({
+        "name": "Watch Files",
+        "trigger_connector": "connector-filesystem",
+        "trigger_event": "file_changed",
+        "action_connector": "connector-shell",
+        "action_name": "exec",
+        "conditions": []
+    });
+    let req = Request::post("/rules/connector")
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(serde_json::to_vec(&body).unwrap()))
+        .unwrap();
+    let (status, json) = send(router, req).await;
+    assert_eq!(status, StatusCode::CREATED);
+    assert!(json["id"].is_string());
+}
+
+#[tokio::test]
+async fn test_step_autonomy_up_down() {
+    let (router, token) = build_test_app(true);
+
+    // Step up from default "suggest" to "act-with-approval"
+    let body = serde_json::json!({ "direction": "up" });
+    let req = Request::post("/agents/test-agent/autonomy/step")
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(serde_json::to_vec(&body).unwrap()))
+        .unwrap();
+    let (status, json) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["level"], "act-with-approval");
+
+    // Step down back to "suggest"
+    let body = serde_json::json!({ "direction": "down" });
+    let req = Request::post("/agents/test-agent/autonomy/step")
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(serde_json::to_vec(&body).unwrap()))
+        .unwrap();
+    let (status, json) = send(router, req).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["level"], "suggest");
+}
+
+#[tokio::test]
+async fn test_toggle_formation_guard() {
+    let (router, token) = build_test_app(true);
+
+    // Create a formation first
+    let create_body = serde_json::json!({
+        "name": "Guard Test",
+        "intent": "Stabilize",
+        "connectors": []
+    });
+    let req = Request::post("/formations")
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(serde_json::to_vec(&create_body).unwrap()))
+        .unwrap();
+    let (status, json) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let formation_id = json["id"].as_str().unwrap().to_owned();
+
+    // Toggle guard on
+    let req = Request::post(format!("/formations/{formation_id}/toggle-guard"))
+        .header("Authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, json) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["enabled"], true);
+
+    // Toggle guard off
+    let req = Request::post(format!("/formations/{formation_id}/toggle-guard"))
+        .header("Authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, json) = send(router, req).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["enabled"], false);
+}
+
+#[tokio::test]
+async fn test_cycle_intent_progression() {
+    let (router, token) = build_test_app(true);
+
+    // Create formation
+    let body =
+        serde_json::json!({ "name": "Intent Cycle", "intent": "Reconnoiter", "connectors": [] });
+    let req = Request::post("/formations")
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(serde_json::to_vec(&body).unwrap()))
+        .unwrap();
+    let (_, json) = send(router.clone(), req).await;
+    let id = json["id"].as_str().unwrap().to_owned();
+
+    // Cycle: Reconnoiter → Execute
+    let req = Request::post(format!("/formations/{id}/cycle-intent"))
+        .header("Authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, json) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["intent"], "Execute");
+
+    // Cycle: Execute → Stabilize
+    let req = Request::post(format!("/formations/{id}/cycle-intent"))
+        .header("Authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (_, json) = send(router, req).await;
+    assert_eq!(json["intent"], "Stabilize");
+}
+
+#[tokio::test]
+async fn test_cycle_autonomy() {
+    let (router, token) = build_test_app(true);
+
+    // Create formation
+    let body = serde_json::json!({ "name": "Auto Cycle", "intent": "Execute", "connectors": [] });
+    let req = Request::post("/formations")
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(serde_json::to_vec(&body).unwrap()))
+        .unwrap();
+    let (_, json) = send(router.clone(), req).await;
+    let id = json["id"].as_str().unwrap().to_owned();
+
+    // Cycle autonomy: suggest → act-with-approval
+    let req = Request::post(format!("/formations/{id}/cycle-autonomy"))
+        .header("Authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, json) = send(router, req).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(json["level"].is_string());
 }

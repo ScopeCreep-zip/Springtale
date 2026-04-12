@@ -9,9 +9,7 @@ use super::extractors::ValidatedPath;
 use super::state::AppState;
 
 /// GET /agents/states
-pub async fn list_states(
-    State(state): State<AppState>,
-) -> Result<impl IntoResponse, StatusCode> {
+pub async fn list_states(State(state): State<AppState>) -> Result<impl IntoResponse, StatusCode> {
     let states = operations::agent::list_agent_states(&state.runtime)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;

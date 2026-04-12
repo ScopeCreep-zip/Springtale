@@ -21,6 +21,9 @@ hex = { workspace = true }
 toml = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
+secrecy = { workspace = true }
+reqwest = { workspace = true }
+futures-util = { workspace = true }
 springtale-core = { workspace = true }
 springtale-crypto = { workspace = true }
 springtale-connector = { workspace = true }

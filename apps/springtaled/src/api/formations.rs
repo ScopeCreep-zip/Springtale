@@ -11,7 +11,10 @@ use super::state::AppState;
 /// GET /formations — list all formations.
 pub async fn list(State(state): State<AppState>) -> impl IntoResponse {
     match operations::formations::list_formations(&state.runtime).await {
-        Ok(formations) => (StatusCode::OK, Json(serde_json::json!({ "formations": formations }))),
+        Ok(formations) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "formations": formations })),
+        ),
         Err(e) => (
             StatusCode::INTERNAL_SERVER_ERROR,
             Json(serde_json::json!({ "error": e.to_string() })),
@@ -47,10 +50,7 @@ pub async fn create(
         StatusCode::INTERNAL_SERVER_ERROR
     })?;
 
-    Ok((
-        StatusCode::CREATED,
-        Json(serde_json::json!({ "id": id })),
-    ))
+    Ok((StatusCode::CREATED, Json(serde_json::json!({ "id": id }))))
 }
 
 /// POST /formations/{id}/deploy — deploy a formation.
@@ -105,11 +105,16 @@ pub async fn add_member(
     ValidatedPath(id): ValidatedPath,
     Json(body): Json<serde_json::Value>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let connector_name = body["connector_name"].as_str().ok_or(StatusCode::BAD_REQUEST)?;
+    let connector_name = body["connector_name"]
+        .as_str()
+        .ok_or(StatusCode::BAD_REQUEST)?;
     operations::formations::add_member(&state.runtime, &id, connector_name)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok((StatusCode::OK, Json(serde_json::json!({ "added": connector_name }))))
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "added": connector_name })),
+    ))
 }
 
 /// POST /formations/{id}/dissolve — dissolve a formation.
@@ -126,7 +131,10 @@ pub async fn dissolve(
 /// GET /formations/intents — list valid formation intents.
 pub async fn list_intents() -> impl IntoResponse {
     let intents = operations::formations::list_intents();
-    (StatusCode::OK, Json(serde_json::json!({ "intents": intents })))
+    (
+        StatusCode::OK,
+        Json(serde_json::json!({ "intents": intents })),
+    )
 }
 
 /// POST /formations/deploy-team — deploy a complete team atomically.
@@ -151,7 +159,10 @@ pub async fn cycle_intent(
     let intent = operations::formations::cycle_intent(&state.runtime, &id)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
-    Ok((StatusCode::OK, Json(serde_json::json!({ "intent": intent }))))
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "intent": intent })),
+    ))
 }
 
 /// POST /formations/{id}/cycle-autonomy — cycle formation autonomy.

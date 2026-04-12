@@ -36,7 +36,6 @@ pub async fn add(
     ValidatedPath(name): ValidatedPath,
     Json(body): Json<serde_json::Value>,
 ) -> Result<impl IntoResponse, StatusCode> {
-
     let pubkey = body
         .get("pubkey")
         .and_then(|v| v.as_str())
@@ -67,7 +66,6 @@ pub async fn remove(
     State(state): State<AppState>,
     ValidatedPath(name): ValidatedPath,
 ) -> Result<impl IntoResponse, StatusCode> {
-
     let key = format!("trusted-author:{name}");
     state
         .runtime

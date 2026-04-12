@@ -30,7 +30,10 @@ pub async fn setup(
     let registered = operations::connectors::setup_connector(&state.runtime, name, config)
         .await
         .map_err(|_| StatusCode::BAD_REQUEST)?;
-    Ok((StatusCode::CREATED, Json(serde_json::json!({ "name": registered }))))
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "name": registered })),
+    ))
 }
 
 /// DELETE /connectors/{name} — remove a connector.
@@ -52,7 +55,10 @@ pub async fn remove_cascade(
     let deleted = operations::connectors::remove_connector_cascade(&state.runtime, &name)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
-    Ok((StatusCode::OK, Json(serde_json::json!({ "removed": name, "rules_deleted": deleted }))))
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "removed": name, "rules_deleted": deleted })),
+    ))
 }
 
 /// GET /connectors/{name}/config — get connector config.
@@ -63,7 +69,9 @@ pub async fn get_config(
     let config = operations::connectors::get_connector_config(&*state.runtime.store, &name)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
-    Ok(Json(serde_json::json!({ "connector": name, "config": config })))
+    Ok(Json(
+        serde_json::json!({ "connector": name, "config": config }),
+    ))
 }
 
 /// GET /connectors/{name}/outputs — list recent execution results.

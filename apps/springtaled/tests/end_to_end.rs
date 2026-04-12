@@ -17,8 +17,8 @@ use springtale_core::rule::types::{Rule, RuleId, RuleStatus, RuleVersion};
 use springtale_crypto::identity::keypair::Keypair;
 use springtale_crypto::signature::sign::sign_canonical_json;
 use springtale_scheduler::cron::executor::CronExecutor;
-use springtale_store::backend::InMemoryBackend;
 use springtale_store::StorageBackend;
+use springtale_store::backend::InMemoryBackend;
 
 // ────────────────────────────────────────────────────────────────────────────────
 // Rule Engine + Dispatch
@@ -173,8 +173,7 @@ fn test_manifest_signature_verification() {
 #[tokio::test]
 async fn test_full_rule_pipeline_with_store() {
     // 1. Initialize in-memory store
-    let store: std::sync::Arc<dyn StorageBackend> =
-        std::sync::Arc::new(InMemoryBackend::new());
+    let store: std::sync::Arc<dyn StorageBackend> = std::sync::Arc::new(InMemoryBackend::new());
 
     // 2. Create a rule and persist it
     let rule = Rule {
@@ -205,7 +204,9 @@ async fn test_full_rule_pipeline_with_store() {
 
     let mut engine = RuleEngine::new();
     for r in &rules {
-        engine.add_rule(r.clone()).expect("add rule to engine failed");
+        engine
+            .add_rule(r.clone())
+            .expect("add rule to engine failed");
     }
 
     // 4. Simulate a trigger event
@@ -234,7 +235,10 @@ async fn test_full_rule_pipeline_with_store() {
         timestamp: chrono::Utc::now(),
         action_taken: "SendMessage: New push to repo".into(),
     };
-    store.log_event(&event_entry).await.expect("log event failed");
+    store
+        .log_event(&event_entry)
+        .await
+        .expect("log event failed");
 
     // 7. Verify event was persisted
     let events = store
@@ -261,16 +265,15 @@ async fn test_full_rule_pipeline_with_store() {
     // 9. Disabled rule should NOT match
     let mut engine2 = RuleEngine::new();
     for r in &updated {
-        engine2.add_rule(r.clone()).expect("add rule to engine failed");
+        engine2
+            .add_rule(r.clone())
+            .expect("add rule to engine failed");
     }
     let matches2 = dispatch_event(&engine2, &event);
     assert_eq!(matches2.len(), 0, "disabled rule should not match");
 
     // 10. Verify rule can be deleted
-    store
-        .delete_rule(&rule_id)
-        .await
-        .expect("delete failed");
+    store.delete_rule(&rule_id).await.expect("delete failed");
 
     let remaining = store.list_rules().await.expect("list after delete failed");
     assert!(remaining.is_empty(), "rule should be deleted");
@@ -278,8 +281,7 @@ async fn test_full_rule_pipeline_with_store() {
 
 #[tokio::test]
 async fn test_connector_lifecycle_with_store() {
-    let store: std::sync::Arc<dyn StorageBackend> =
-        std::sync::Arc::new(InMemoryBackend::new());
+    let store: std::sync::Arc<dyn StorageBackend> = std::sync::Arc::new(InMemoryBackend::new());
 
     // 1. Register connector manifest
     let row = springtale_store::schema::connectors::ConnectorRow {
@@ -291,7 +293,10 @@ async fn test_connector_lifecycle_with_store() {
         enabled: true,
         installed_at: chrono::Utc::now(),
     };
-    store.register_connector(&row).await.expect("register failed");
+    store
+        .register_connector(&row)
+        .await
+        .expect("register failed");
 
     // 2. Verify it's listed
     let connectors = store.list_connectors().await.expect("list failed");
@@ -299,12 +304,18 @@ async fn test_connector_lifecycle_with_store() {
     assert_eq!(connectors[0].name, "connector-test");
 
     // 3. Disable
-    store.set_connector_enabled("connector-test", false).await.expect("disable failed");
+    store
+        .set_connector_enabled("connector-test", false)
+        .await
+        .expect("disable failed");
     let connectors = store.list_connectors().await.expect("list after disable");
     assert!(!connectors[0].enabled);
 
     // 4. Remove
-    store.remove_connector("connector-test").await.expect("remove failed");
+    store
+        .remove_connector("connector-test")
+        .await
+        .expect("remove failed");
     let connectors = store.list_connectors().await.expect("list after remove");
     assert!(connectors.is_empty());
 }

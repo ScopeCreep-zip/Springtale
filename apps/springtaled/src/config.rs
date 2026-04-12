@@ -91,12 +91,18 @@ pub struct StoreConfig {
     #[serde(default = "paths::default_db_path")]
     #[garde(custom(validate_path))]
     pub path: PathBuf,
+
+    /// Days to retain events and audit logs. None = keep forever.
+    #[serde(default)]
+    #[garde(skip)]
+    pub retention_days: Option<u32>,
 }
 
 impl Default for StoreConfig {
     fn default() -> Self {
         Self {
             path: paths::default_db_path(),
+            retention_days: None,
         }
     }
 }

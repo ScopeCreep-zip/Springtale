@@ -39,7 +39,32 @@ pub enum Command {
         action: ServerAction,
     },
     /// Initialize Springtale (create data directory, vault, config).
+    /// After setup, optionally links a chat platform and starts the daemon.
     Init,
+    /// Create a new project from a starter template.
+    New {
+        /// Template name: telegram-bot, github-monitor, cron-runner, llm-assistant
+        template: String,
+        /// Output directory (default: current directory).
+        #[arg(long, default_value = ".")]
+        dir: std::path::PathBuf,
+    },
+    /// Diagnose configuration and connectivity issues.
+    Doctor,
+    /// Attempt to fix a Springtale error by its ID (E001-E009).
+    Fix {
+        /// Error ID (e.g., E001).
+        error_id: String,
+    },
+    /// Real-time execution trace — watch rule triggers, action dispatches, sentinel verdicts.
+    Trace {
+        /// Filter by connector name.
+        #[arg(long)]
+        connector: Option<String>,
+        /// Filter by rule name.
+        #[arg(long)]
+        rule: Option<String>,
+    },
     /// Emergency data destruction — overwrites vault + database with random bytes.
     /// NO confirmation prompt. This is for emergencies (IPV, device seizure).
     Panic,

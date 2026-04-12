@@ -12,31 +12,7 @@ use super::state::AppState;
 ///
 /// Used by the visual rule builder to generate input forms for each type.
 pub async fn schema() -> impl IntoResponse {
-    Json(serde_json::json!({
-        "triggers": {
-            "Cron": { "fields": { "expression": { "type": "string", "description": "Cron expression (6 fields)" } } },
-            "FileWatch": { "fields": { "path": { "type": "string" }, "event": { "type": "string", "enum": ["create", "modify", "delete"] } } },
-            "Webhook": { "fields": { "path": { "type": "string" } } },
-            "ConnectorEvent": { "fields": { "connector": { "type": "string" }, "event": { "type": "string" } } },
-            "SystemEvent": { "fields": { "event": { "type": "string" } } },
-            "Heartbeat": { "fields": {} },
-        },
-        "conditions": {
-            "FieldEquals": { "fields": { "field": { "type": "string" }, "value": { "type": "any" } } },
-            "Contains": { "fields": { "field": { "type": "string" }, "value": { "type": "string" } } },
-            "Regex": { "fields": { "field": { "type": "string" }, "pattern": { "type": "string" } } },
-            "TimeInRange": { "fields": { "start": { "type": "string", "description": "HH:MM" }, "end": { "type": "string" } } },
-            "DayOfWeek": { "fields": { "days": { "type": "array", "items": { "type": "integer", "min": 0, "max": 6 } } } },
-        },
-        "actions": {
-            "RunConnector": { "fields": { "connector": { "type": "string" }, "action": { "type": "string" }, "params": { "type": "object" } } },
-            "SendMessage": { "fields": { "text": { "type": "string" } } },
-            "WriteFile": { "fields": { "destination": { "type": "string" }, "content": { "type": "string" } } },
-            "Notify": { "fields": { "title": { "type": "string" }, "body": { "type": "string" } } },
-            "Delay": { "fields": { "seconds": { "type": "integer" } } },
-            "AiComplete": { "fields": { "prompt": { "type": "string" }, "adapter": { "type": "string", "optional": true } } },
-        },
-    }))
+    Json(operations::rules::get_rule_schema())
 }
 
 /// GET /rules — list all rules.
@@ -53,11 +29,15 @@ pub async fn create(
     let rule: springtale_core::rule::types::Rule =
         serde_json::from_value(body).map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    // Schedule trigger (app-specific: cron/fs_watcher)
+    // Schedule trigger (app-specific: cron/fs_watcher + connector events)
     if let Err(e) = state.scheduler.schedule(&rule).await {
         tracing::error!(rule = %rule.name, error = %e, "trigger scheduling failed");
         return Err(StatusCode::INTERNAL_SERVER_ERROR);
     }
+    state
+        .trigger_registry
+        .attach_rule(&rule, &state.runtime.registry)
+        .await;
 
     let rule_id = match operations::rules::create_rule(&state.runtime, rule).await {
         Ok(id) => id,
@@ -85,7 +65,7 @@ pub async fn update(
     let rule: springtale_core::rule::types::Rule =
         serde_json::from_value(body).map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    // Unschedule old triggers (app-specific)
+    // Unschedule old triggers (app-specific: cron/fs + connector events)
     let old_rule = {
         let engine = state.runtime.engine.read().await;
         engine
@@ -97,6 +77,10 @@ pub async fn update(
     if let Some(ref old) = old_rule {
         state.scheduler.unschedule(old).await;
     }
+    state
+        .trigger_registry
+        .detach_rule(&rule_id, &state.runtime.registry)
+        .await;
 
     // Delegate store+engine update to operations
     operations::rules::update_rule(&state.runtime, &rule_id, rule.clone())
@@ -106,10 +90,14 @@ pub async fn update(
             StatusCode::INTERNAL_SERVER_ERROR
         })?;
 
-    // Schedule new triggers (app-specific)
+    // Schedule new triggers (app-specific: cron/fs + connector events)
     if let Err(e) = state.scheduler.schedule(&rule).await {
         tracing::warn!(rule = %rule.name, error = %e, "failed to schedule updated rule trigger");
     }
+    state
+        .trigger_registry
+        .attach_rule(&rule, &state.runtime.registry)
+        .await;
 
     Ok((StatusCode::OK, Json(serde_json::json!({ "updated": id }))))
 }
@@ -122,7 +110,7 @@ pub async fn delete(
     let uuid = uuid::Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let rule_id = springtale_core::rule::types::RuleId(uuid);
 
-    // Unschedule triggers (app-specific)
+    // Unschedule triggers (app-specific: cron/fs + connector events)
     let old_rule = {
         let engine = state.runtime.engine.read().await;
         engine
@@ -134,6 +122,10 @@ pub async fn delete(
     if let Some(ref old) = old_rule {
         state.scheduler.unschedule(old).await;
     }
+    state
+        .trigger_registry
+        .detach_rule(&rule_id, &state.runtime.registry)
+        .await;
 
     // Delegate store+engine deletion to operations
     operations::rules::delete_rule(&state.runtime, &rule_id)
@@ -157,9 +149,44 @@ pub async fn toggle(
         .and_then(|v| v.as_bool())
         .ok_or(StatusCode::BAD_REQUEST)?;
 
+    // Get the rule before toggling (for scheduler management)
+    let rule = {
+        let engine = state.runtime.engine.read().await;
+        engine
+            .list_rules()
+            .iter()
+            .find(|r| r.id == rule_id)
+            .map(|r| (*r).clone())
+    };
+
     operations::rules::toggle_rule(&state.runtime, &rule_id, enabled)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    // Attach or detach ALL trigger types based on new state
+    if enabled {
+        if let Some(ref rule) = rule {
+            // Schedule cron/fs triggers
+            if let Err(e) = state.scheduler.schedule(rule).await {
+                tracing::warn!(rule_id = %id, error = %e, "failed to schedule trigger on enable");
+            }
+            // Attach connector event handlers
+            state
+                .trigger_registry
+                .attach_rule(rule, &state.runtime.registry)
+                .await;
+        }
+    } else {
+        if let Some(ref rule) = rule {
+            // Unschedule cron/fs triggers
+            state.scheduler.unschedule(rule).await;
+        }
+        // Detach connector event handlers
+        state
+            .trigger_registry
+            .detach_rule(&rule_id, &state.runtime.registry)
+            .await;
+    }
 
     Ok((
         StatusCode::OK,
@@ -220,8 +247,31 @@ pub async fn create_connector_rule(
     Json(req): Json<operations::rules::CreateConnectorRuleRequest>,
 ) -> impl IntoResponse {
     match operations::rules::create_connector_rule(&state.runtime, req).await {
-        Ok(id) => (StatusCode::CREATED, Json(serde_json::json!({ "id": id.to_string() }))),
-        Err(e) => (StatusCode::BAD_REQUEST, Json(serde_json::json!({ "error": e.to_string() }))),
+        Ok(id) => {
+            // Attach connector event handler for the new rule
+            let rule = {
+                let engine = state.runtime.engine.read().await;
+                engine
+                    .list_rules()
+                    .iter()
+                    .find(|r| r.id == id)
+                    .map(|r| (*r).clone())
+            };
+            if let Some(rule) = rule {
+                state
+                    .trigger_registry
+                    .attach_rule(&rule, &state.runtime.registry)
+                    .await;
+            }
+            (
+                StatusCode::CREATED,
+                Json(serde_json::json!({ "id": id.to_string() })),
+            )
+        }
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ),
     }
 }
 
@@ -251,14 +301,40 @@ pub async fn reassign(
     ValidatedPath(id): ValidatedPath,
     Json(body): Json<serde_json::Value>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let new_connector = body["new_connector"].as_str().ok_or(StatusCode::BAD_REQUEST)?;
+    let new_connector = body["new_connector"]
+        .as_str()
+        .ok_or(StatusCode::BAD_REQUEST)?;
     let rule_id = id
         .parse::<uuid::Uuid>()
         .map(springtale_core::rule::types::RuleId)
         .map_err(|_| StatusCode::BAD_REQUEST)?;
+
+    // Detach old connector event handlers before reassignment
+    state
+        .trigger_registry
+        .detach_rule(&rule_id, &state.runtime.registry)
+        .await;
+
     operations::rules::reassign_rule_connector(&state.runtime, &rule_id, new_connector)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
+
+    // Attach new connector event handlers after reassignment
+    let rule = {
+        let engine = state.runtime.engine.read().await;
+        engine
+            .list_rules()
+            .iter()
+            .find(|r| r.id == rule_id)
+            .map(|r| (*r).clone())
+    };
+    if let Some(rule) = rule {
+        state
+            .trigger_registry
+            .attach_rule(&rule, &state.runtime.registry)
+            .await;
+    }
+
     Ok(Json(serde_json::json!({ "reassigned": id })))
 }
 

@@ -8,9 +8,7 @@ use springtale_runtime::operations;
 use super::state::AppState;
 
 /// POST /memory/audit
-pub async fn audit_memory(
-    State(state): State<AppState>,
-) -> Result<impl IntoResponse, StatusCode> {
+pub async fn audit_memory(State(state): State<AppState>) -> Result<impl IntoResponse, StatusCode> {
     let result = operations::memory::audit_memory(&*state.runtime.store)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;

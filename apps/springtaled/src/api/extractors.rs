@@ -15,18 +15,13 @@ pub struct ValidatedPath(pub String);
 impl<S: Send + Sync> FromRequestParts<S> for ValidatedPath {
     type Rejection = StatusCode;
 
-    fn from_request_parts(
-        parts: &mut Parts,
-        state: &S,
-    ) -> impl std::future::Future<Output = Result<Self, Self::Rejection>> + Send {
-        async move {
-            let Path(param) = Path::<String>::from_request_parts(parts, state)
-                .await
-                .map_err(|_| StatusCode::BAD_REQUEST)?;
-            if param.len() > super::MAX_PATH_SEGMENT_LEN {
-                return Err(StatusCode::BAD_REQUEST);
-            }
-            Ok(ValidatedPath(param))
+    async fn from_request_parts(parts: &mut Parts, state: &S) -> Result<Self, Self::Rejection> {
+        let Path(param) = Path::<String>::from_request_parts(parts, state)
+            .await
+            .map_err(|_| StatusCode::BAD_REQUEST)?;
+        if param.len() > super::MAX_PATH_SEGMENT_LEN {
+            return Err(StatusCode::BAD_REQUEST);
         }
+        Ok(ValidatedPath(param))
     }
 }

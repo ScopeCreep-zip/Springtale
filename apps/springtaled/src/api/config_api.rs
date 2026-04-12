@@ -100,7 +100,10 @@ pub async fn configure_ai_adapter(
     Json(body): Json<serde_json::Value>,
 ) -> Result<impl IntoResponse, StatusCode> {
     let target = body["target"].as_str().unwrap_or("ai:global");
-    let config = body.get("config").cloned().unwrap_or(serde_json::Value::Null);
+    let config = body
+        .get("config")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
     operations::config::configure_ai_adapter(&state.runtime, target, config)
         .await
         .map_err(|_| StatusCode::BAD_REQUEST)?;

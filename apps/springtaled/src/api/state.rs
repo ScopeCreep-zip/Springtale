@@ -3,8 +3,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tokio::sync::{Mutex, broadcast, mpsc};
 
-use springtale_core::rule::engine::TriggerEvent;
 use crate::scheduler::AppScheduler;
+use springtale_core::rule::engine::TriggerEvent;
 
 /// Shared application state for all API handlers.
 ///
@@ -31,6 +31,12 @@ pub struct AppState {
     pub event_tx: broadcast::Sender<springtale_store::schema::events::EventEntry>,
     /// Heartbeat monitor — periodic rule evaluation.
     pub heartbeat_monitor: Arc<Mutex<springtale_scheduler::HeartbeatMonitor>>,
+    /// Trigger registry — manages ConnectorEvent subscriptions per-rule.
+    /// Attach on rule create/enable, detach on rule disable/delete.
+    pub trigger_registry: crate::runtime::boot::connector_events::TriggerRegistry,
+    /// Channel for routing webhook-delivered chat messages to the bot runtime.
+    /// Required for Telegram/Discord webhook mode (polling mode uses gateway bridge directly).
+    pub bot_msg_tx: mpsc::Sender<springtale_bot::IncomingMessage>,
 }
 
 impl AppState {

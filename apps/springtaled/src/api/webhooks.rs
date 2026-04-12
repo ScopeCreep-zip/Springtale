@@ -90,6 +90,24 @@ pub async fn receive(
     // Drop the registry lock before sending to the channel
     drop(registry);
 
+    // For chat connectors delivering user messages via webhook, also route
+    // to the bot runtime so handlers (`/help`, command dispatch, AI fallback)
+    // can respond. Without this, webhook-mode chat is receive-only.
+    //
+    // Polling-mode gateways handle this via their own dispatcher (see
+    // runtime/connectors/telegram.rs). This branch covers webhook mode.
+    if matches!(
+        trigger_name.as_str(),
+        "message_received" | "command_received" | "callback_query_received"
+    ) && let Some(incoming) = extract_bot_message(&connector_name, &payload)
+        && let Err(e) = state.bot_msg_tx.try_send(incoming)
+    {
+        tracing::warn!(
+            error = %e,
+            "failed to forward webhook message to bot — may be dropped"
+        );
+    }
+
     // Dispatch trigger event to the rule engine via the trigger channel.
     // This is the same path used by cron and file-watch triggers.
     // trigger_type must match what the rule engine expects for ConnectorEvent triggers.
@@ -127,6 +145,83 @@ pub async fn receive(
             "trigger": trigger_name,
         })),
     ))
+}
+
+/// Extract an IncomingMessage from a webhook payload for chat connectors.
+///
+/// Matches the field extraction performed by the polling gateway dispatchers
+/// so webhook-delivered messages flow through the same bot runtime path.
+fn extract_bot_message(
+    connector_name: &str,
+    payload: &serde_json::Value,
+) -> Option<springtale_bot::IncomingMessage> {
+    match connector_name {
+        "connector-telegram" => extract_telegram_message(payload),
+        // Discord and Slack normally use gateway/socket mode, not webhooks,
+        // but future webhook support can extract their fields here.
+        _ => None,
+    }
+}
+
+fn extract_telegram_message(
+    payload: &serde_json::Value,
+) -> Option<springtale_bot::IncomingMessage> {
+    // Regular message or command
+    if let Some(message) = payload.get("message") {
+        let user_id = message
+            .get("from")
+            .and_then(|f| f.get("id"))
+            .and_then(|i| i.as_i64())?
+            .to_string();
+        let channel_id = message
+            .get("chat")
+            .and_then(|c| c.get("id"))
+            .and_then(|i| i.as_i64())?
+            .to_string();
+        let text = message
+            .get("text")
+            .and_then(|t| t.as_str())
+            .unwrap_or("")
+            .to_owned();
+
+        return Some(springtale_bot::IncomingMessage {
+            user_id,
+            channel_id,
+            text,
+            source_connector: "connector-telegram".to_owned(),
+            raw: payload.clone(),
+        });
+    }
+
+    // Inline keyboard button press (callback_query)
+    if let Some(callback) = payload.get("callback_query") {
+        let user_id = callback
+            .get("from")
+            .and_then(|f| f.get("id"))
+            .and_then(|i| i.as_i64())?
+            .to_string();
+        let channel_id = callback
+            .get("message")
+            .and_then(|m| m.get("chat"))
+            .and_then(|c| c.get("id"))
+            .and_then(|i| i.as_i64())?
+            .to_string();
+        let text = callback
+            .get("data")
+            .and_then(|d| d.as_str())
+            .unwrap_or("")
+            .to_owned();
+
+        return Some(springtale_bot::IncomingMessage {
+            user_id,
+            channel_id,
+            text,
+            source_connector: "connector-telegram".to_owned(),
+            raw: payload.clone(),
+        });
+    }
+
+    None
 }
 
 /// Calculate the maximum nesting depth of a JSON value.

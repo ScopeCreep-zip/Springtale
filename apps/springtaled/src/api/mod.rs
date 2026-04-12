@@ -1,7 +1,6 @@
 pub mod agents;
 pub mod auth;
 pub mod authors;
-pub mod extractors;
 pub mod bot;
 pub mod canvas;
 pub mod canvas_stream;
@@ -11,11 +10,13 @@ pub mod dashboard;
 pub mod data;
 pub mod events;
 pub mod events_stream;
+pub mod extractors;
 pub mod formations;
 pub mod health;
 pub mod memory;
 pub mod rules;
 pub mod safety;
+pub mod send;
 pub mod sessions;
 pub mod state;
 pub mod webhooks;
@@ -73,13 +74,19 @@ pub fn build_router(state: AppState) -> Router {
         .route("/connectors/setup", post(connectors::setup))
         .route("/connectors/install", post(connectors::install))
         .route("/connectors/{name}", delete(connectors::remove))
-        .route("/connectors/{name}/cascade", delete(connectors::remove_cascade))
+        .route(
+            "/connectors/{name}/cascade",
+            delete(connectors::remove_cascade),
+        )
         .route("/connectors/{name}/config", get(connectors::get_config))
         .route("/connectors/{name}/outputs", get(connectors::list_outputs))
         .route("/connectors/{name}/enable", post(connectors::enable))
         .route("/connectors/{name}/disable", post(connectors::disable))
         .route("/connectors/{name}/test", post(rules::test_connector))
-        .route("/connectors/{name}/upsert-config", post(config_api::upsert_connector_config))
+        .route(
+            "/connectors/{name}/upsert-config",
+            post(config_api::upsert_connector_config),
+        )
         .route("/rules", get(rules::list).post(rules::create))
         .route("/rules/parse", post(rules::parse))
         .route("/rules/schema", get(rules::schema))
@@ -97,10 +104,15 @@ pub fn build_router(state: AppState) -> Router {
             get(config_api::get_heartbeat).put(config_api::set_heartbeat),
         )
         .route("/canvas", get(canvas::get_canvas))
+        .route("/canvas/connections", get(canvas::get_connections))
         .route("/canvas/update", post(canvas::update_canvas))
         .route("/canvas/stream", get(canvas_stream::stream))
         .route("/webhook/{connector}/{trigger}", post(webhooks::receive))
-        .route("/formations", get(formations::list).post(formations::create))
+        .route("/send", post(send::send))
+        .route(
+            "/formations",
+            get(formations::list).post(formations::create),
+        )
         .route("/formations/{id}/deploy", post(formations::deploy))
         .route("/formations/{id}/pause", post(formations::pause))
         .route("/formations/{id}/resume", post(formations::resume))
@@ -109,23 +121,47 @@ pub fn build_router(state: AppState) -> Router {
         .route("/formations/{id}/members", post(formations::add_member))
         .route("/formations/intents", get(formations::list_intents))
         .route("/formations/deploy-team", post(formations::deploy_team))
-        .route("/formations/{id}/cycle-intent", post(formations::cycle_intent))
-        .route("/formations/{id}/cycle-autonomy", post(formations::cycle_autonomy))
-        .route("/formations/{id}/toggle-guard", post(config_api::toggle_formation_guard))
+        .route(
+            "/formations/{id}/cycle-intent",
+            post(formations::cycle_intent),
+        )
+        .route(
+            "/formations/{id}/cycle-autonomy",
+            post(formations::cycle_autonomy),
+        )
+        .route(
+            "/formations/{id}/toggle-guard",
+            post(config_api::toggle_formation_guard),
+        )
         .route("/safety", get(safety::get_config).put(safety::save_config))
         // Config management
         .route("/config", get(config_api::list_config))
-        .route("/config/{key}", get(config_api::get_config).put(config_api::set_config))
+        .route(
+            "/config/{key}",
+            get(config_api::get_config).put(config_api::set_config),
+        )
         .route("/config/ai", post(config_api::set_ai_adapter))
-        .route("/config/ai/configure", post(config_api::configure_ai_adapter))
-        .route("/config/connector/{name}", post(config_api::set_connector_config))
+        .route(
+            "/config/ai/configure",
+            post(config_api::configure_ai_adapter),
+        )
+        .route(
+            "/config/connector/{name}",
+            post(config_api::set_connector_config),
+        )
         // Agents — state aggregation + autonomy
         .route("/agents/states", get(agents::list_states))
-        .route("/agents/{name}/autonomy", get(agents::get_autonomy).put(agents::set_autonomy))
+        .route(
+            "/agents/{name}/autonomy",
+            get(agents::get_autonomy).put(agents::set_autonomy),
+        )
         .route("/agents/{name}/autonomy/step", post(agents::step_autonomy))
         // Author key registry
         .route("/authors", get(authors::list))
-        .route("/authors/{name}", post(authors::add).delete(authors::remove))
+        .route(
+            "/authors/{name}",
+            post(authors::add).delete(authors::remove),
+        )
         // Bot admin
         .route("/bot/status", get(bot::status))
         .route("/bot/formations", get(bot::formations))
@@ -173,6 +209,23 @@ pub fn build_router(state: AppState) -> Router {
                          frame-ancestors 'none'",
                     ),
                 ))
+                .layer(SetResponseHeaderLayer::overriding(
+                    header::HeaderName::from_static("x-content-type-options"),
+                    header::HeaderValue::from_static("nosniff"),
+                ))
+                .layer(SetResponseHeaderLayer::overriding(
+                    header::HeaderName::from_static("referrer-policy"),
+                    header::HeaderValue::from_static("no-referrer"),
+                ))
+                .layer(SetResponseHeaderLayer::overriding(
+                    header::HeaderName::from_static("permissions-policy"),
+                    header::HeaderValue::from_static(
+                        "camera=(), microphone=(), geolocation=(), accelerometer=(), gyroscope=()",
+                    ),
+                ))
+                // NOTE: HSTS (Strict-Transport-Security) deliberately omitted.
+                // RFC 6797 §8.1: HSTS MUST NOT be sent over plain HTTP.
+                // springtaled binds 127.0.0.1 without TLS by default.
                 .layer(RequestBodyLimitLayer::new(1024 * 1024))
                 .layer(axum::error_handling::HandleErrorLayer::new(
                     |_err: tower::BoxError| async move { StatusCode::TOO_MANY_REQUESTS },

@@ -17,6 +17,18 @@ async fn main() -> Result<()> {
         Command::Init => {
             commands::init::run().await?;
         }
+        Command::New { template, dir } => {
+            commands::new::run(&template, &dir)?;
+        }
+        Command::Doctor => {
+            commands::doctor::run().await?;
+        }
+        Command::Fix { error_id } => {
+            commands::fix::run(&error_id).await?;
+        }
+        Command::Trace { connector, rule } => {
+            commands::trace::run(connector.as_deref(), rule.as_deref()).await?;
+        }
         Command::Server { action } => match action {
             ServerAction::Start => {
                 commands::server::run().await?;
