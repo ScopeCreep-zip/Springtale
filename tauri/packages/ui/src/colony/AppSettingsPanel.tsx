@@ -57,6 +57,13 @@ export const AppSettingsPanel: Component<AppSettingsPanelProps> = (props) => {
                 Emergency Wipe
               </button>
             </div>
+            <div class="mt-2 rounded border border-bark-light bg-soil-deep p-2">
+              <p class="colony-text-3xs text-text-dim">
+                If you think your device might be monitored, consider using a
+                different device to set up Springtale. For tech safety resources
+                visit techsafety.org
+              </p>
+            </div>
           </section>
         </Show>
 

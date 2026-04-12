@@ -14,16 +14,10 @@ export interface ConditionDef {
 
 export interface ConditionEditorProps {
   conditions: ConditionDef[];
+  /** Valid condition type names — must come from backend schema. */
+  conditionTypes: string[];
   onChange: (conditions: ConditionDef[]) => void;
 }
-
-const CONDITION_TYPES = [
-  "FieldEquals",
-  "Contains",
-  "Regex",
-  "TimeInRange",
-  "DayOfWeek",
-];
 
 /**
  * Condition editor — add and configure rule conditions.
@@ -38,7 +32,9 @@ export const ConditionEditor: Component<ConditionEditorProps> = (props) => {
   const DAY_KEYS = ["days.sun", "days.mon", "days.tue", "days.wed", "days.thu", "days.fri", "days.sat"];
 
   const addCondition = () => {
-    props.onChange([...props.conditions, { type: "FieldEquals", field: "", value: "" }]);
+    const firstType = props.conditionTypes[0];
+    if (!firstType) return;
+    props.onChange([...props.conditions, { type: firstType, field: "", value: "" }]);
   };
 
   const removeCondition = (index: number) => {
@@ -79,7 +75,7 @@ export const ConditionEditor: Component<ConditionEditorProps> = (props) => {
               value={condition.type}
               onChange={(e) => updateCondition(index(), { type: e.currentTarget.value })}
             >
-              <For each={CONDITION_TYPES}>
+              <For each={props.conditionTypes}>
                 {(type) => <option value={type}>{type}</option>}
               </For>
             </select>

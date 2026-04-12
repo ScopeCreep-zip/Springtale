@@ -4,6 +4,12 @@ use springtale_core::rule::types::RuleId;
 
 use crate::state::AppState;
 
+/// Get rule schema — trigger, condition, and action type definitions.
+#[tauri::command]
+pub async fn get_rule_schema() -> serde_json::Value {
+    springtale_runtime::operations::rules::get_rule_schema()
+}
+
 /// List all automation rules.
 #[tauri::command]
 pub async fn list_rules(

@@ -30,7 +30,7 @@ export { getConnectorPosition, getAgentPosition, getFormationAgents, getFormatio
 export type { ConnectorPositions } from "./colony/geometry";
 
 // Colony data mappers (DashboardState → colony visual model)
-export { mapTrees, mapAgents, mapConnections, mapFormations } from "./colony/mappers";
+export { mapTrees, mapAgents, mapFormations } from "./colony/mappers";
 
 // Colony panels
 export { AiConfigPanel } from "./colony/AiConfigPanel";

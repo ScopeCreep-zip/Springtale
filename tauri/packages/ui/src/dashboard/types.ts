@@ -22,7 +22,7 @@ export interface RuleSummary {
   name: string;
   status: string;
   trigger_type: string;
-  /** Connector name (from ConnectorEvent trigger). Null for cron/webhook/system triggers. */
+  /** Connector name (from trigger). Null for cron/webhook/system triggers. */
   connector_name: string | null;
 }
 
@@ -94,6 +94,7 @@ export interface DataProvider {
   updateRule(id: string, rule: Record<string, unknown>): Promise<void>;
   runRule(id: string): Promise<{ matched: boolean }>;
   parseRuleFromIntent(intent: string): Promise<Record<string, unknown>>;
+  getRuleSchema(): Promise<Record<string, unknown>>;
   createConnectorRule(rule: { name: string; trigger_connector: string; trigger_event: string; action_connector: string; action_name: string; conditions?: unknown[] }): Promise<string>;
   listRulesForConnector(connectorName: string): Promise<RuleSummary[]>;
   testConnector(connectorName: string): Promise<{ matched: boolean; rule_name: string | null }>;
@@ -128,6 +129,7 @@ export interface DataProvider {
   compactMemory(maxEntries: number): Promise<void>;
 
   // Canvas
+  getConnections(): Promise<Array<{ a: string; b: string; pipes: Array<{ id: string; dir: 1 | -1; status: string }> }>>;
   getCanvasState(): Promise<CanvasState>;
   subscribeToCanvasUpdates(callback: (update: CanvasUpdate) => void): () => void;
 }

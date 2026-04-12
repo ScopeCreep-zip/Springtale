@@ -47,6 +47,10 @@ export async function createConnectorRule(rule: {
   return invoke<string>("create_connector_rule", { rule });
 }
 
+export async function getRuleSchema(): Promise<Record<string, unknown>> {
+  return invoke("get_rule_schema");
+}
+
 export async function listRulesForConnector(connectorName: string): Promise<RuleSummary[]> {
   return invoke<RuleSummary[]>("list_rules_for_connector", { connectorName });
 }

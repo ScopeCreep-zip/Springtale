@@ -44,9 +44,7 @@ export function mapAgents(rules: RuleItem[], agentStates: AgentState[] = []): Co
       fuel: state?.fuel ?? (r.status === "enabled" ? 100 : 0),
       hp: 100,
       connectorId: r.connector ?? r.triggerType,
-      task: state?.activity === "idle"
-        ? "Idle"
-        : `${r.triggerType} → ${state?.activity ?? "waiting"}`,
+      task: state?.task_display ?? "Idle",
       status: r.status === "enabled" ? "ok" as const : "idle" as const,
       pipeline: r.triggerType,
       activity: state?.activity ?? "waiting",
@@ -54,70 +52,8 @@ export function mapAgents(rules: RuleItem[], agentStates: AgentState[] = []): Co
   });
 }
 
-/**
- * Build real connections from connector schemas.
- *
- * Connectors with triggers connect to connectors with actions.
- * This creates a natural spiderweb topology based on actual
- * connector capabilities, not a fake linear chain.
- */
-export function mapConnections(
-  trees: ColonyTree[],
-  schemas: ConnectorSchema[],
-  rules: RuleItem[],
-): ColonyConnection[] {
-  const conns: ColonyConnection[] = [];
-  const seen = new Set<string>();
-
-  // First: create connections from actual rules (trigger → action connector)
-  for (const rule of rules) {
-    const trigConn = rule.connector ?? rule.triggerType;
-    const sourceTree = trees.find((t) => t.id === trigConn);
-    if (!sourceTree) continue;
-
-    // Find any other tree this rule could connect to
-    // Rules connect their trigger connector to other connectors
-    for (const destTree of trees) {
-      if (destTree.id === sourceTree.id) continue;
-
-      const key = [sourceTree.id, destTree.id].sort().join(":");
-      if (seen.has(key)) {
-        // Add pipe to existing connection
-        const existing = conns.find((c) =>
-          [c.a, c.b].sort().join(":") === key
-        );
-        if (existing) {
-          existing.pipes.push({
-            id: rule.id,
-            dir: sourceTree.id === existing.a ? 1 : -1,
-            status: rule.status === "enabled" ? "active" : "idle",
-          });
-        }
-        break;
-      }
-
-      // Only connect if schemas show complementary capabilities
-      const sourceSchema = schemas.find((s) => s.name === sourceTree.id);
-      const destSchema = schemas.find((s) => s.name === destTree.id);
-      if (!sourceSchema || !destSchema) continue;
-      if (sourceSchema.triggers.length === 0 && destSchema.actions.length === 0) continue;
-
-      seen.add(key);
-      conns.push({
-        a: sourceTree.id,
-        b: destTree.id,
-        pipes: [{
-          id: rule.id,
-          dir: 1,
-          status: rule.status === "enabled" ? "active" : "idle",
-        }],
-      });
-      break;
-    }
-  }
-
-  return conns;
-}
+// Connection graph moved to backend: springtale_runtime::operations::canvas::compute_connections()
+// Frontend receives pre-computed connections via provider.getConnections().
 
 const TIER_TO_INDEX: Record<string, number> = {
   Cold: 0, Warming: 1, Hot: 2, Fever: 3,

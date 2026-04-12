@@ -12,7 +12,6 @@ import {
   useI18n,
   mapTrees,
   mapAgents,
-  mapConnections,
   mapFormations,
 } from "@springtale/ui";
 import type { ColonySelection, TeamConfig } from "@springtale/ui";
@@ -55,6 +54,7 @@ export const App = () => {
   const [connectorOutputs, setConnectorOutputs] = createSignal<unknown[]>([]);
   const [availableConnectors, setAvailableConnectors] = createSignal<import("@springtale/types").AvailableConnector[]>([]);
   const [intents, setIntents] = createSignal<Array<{ value: string; label: string }>>([]);
+  const [conditionTypes, setConditionTypes] = createSignal<string[]>([]);
 
   let connectorDragTimer: ReturnType<typeof setTimeout> | undefined;
   const handleConnectorDrag = (id: string, x: number, y: number) => {
@@ -93,6 +93,13 @@ export const App = () => {
         setAiConfigAgent(null);
         setConnectorConfigData(null);
       }
+      // Quick-exit: Ctrl+Shift+Q — instant hide + auto-lock
+      // For IPV survivors who need to hide the app immediately
+      if (key === "q" && e.ctrlKey && e.shiftKey) {
+        e.preventDefault();
+        invoke("lock_vault").catch(() => {});
+        invoke("plugin:window|hide").catch(() => {});
+      }
     };
     document.addEventListener("keydown", handleKeyDown);
 
@@ -116,6 +123,11 @@ export const App = () => {
     await db.refresh();
     setAvailableConnectors(await db.provider.listAvailableConnectors());
     setIntents(await db.provider.listIntents());
+    const schema = await db.provider.getRuleSchema() as Record<string, Record<string, unknown>>;
+    if (schema.conditions) {
+      setConditionTypes(Object.keys(schema.conditions));
+    }
+    setConnections(await db.provider.getConnections() as import("@springtale/ui").ColonyConnection[]);
 
     // Load saved tree positions from config store
     try {
@@ -162,7 +174,7 @@ export const App = () => {
   // ── Data → Colony visual model (real data, no fakes) ───
   const trees = () => mapTrees(db.connectors());
   const agents = () => mapAgents(db.rules(), db.agentStates());
-  const connections = () => mapConnections(trees(), db.schemas(), db.rules());
+  const [connections, setConnections] = createSignal<import("@springtale/ui").ColonyConnection[]>([]);
   const formations = () => mapFormations(db.swarms());
 
   // ── Command dispatch — context:action pattern ───────────
@@ -179,6 +191,7 @@ export const App = () => {
           break;
         case "global:refresh":
           await db.refresh();
+          setConnections(await db.provider.getConnections() as import("@springtale/ui").ColonyConnection[]);
           break;
         case "global:connectors":
           setSelection({ id: null, type: null });
@@ -416,6 +429,7 @@ export const App = () => {
         <ConnectorConfigPanel
           connectorId={ccd.id}
           schemas={db.schemas()}
+          conditionTypes={conditionTypes()}
           rules={db.rules().filter((r) => (r.connector ?? r.triggerType) === ccd.id)}
           currentConfig={ccd.config}
           configSchema={ccd.configSchema}

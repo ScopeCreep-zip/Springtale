@@ -60,6 +60,7 @@ export function createWebProvider(): DataProvider {
       const data = await post<{ rule: Record<string, unknown> }>("/rules/parse", { intent });
       return data.rule;
     },
+    async getRuleSchema() { return get("/rules/schema"); },
     async createConnectorRule(rule) {
       return (await post<{ id: string }>("/rules/connector", rule)).id;
     },
@@ -133,6 +134,9 @@ export function createWebProvider(): DataProvider {
 
     // Data
     async exportData() { return post("/data/export"); },
+
+    // Canvas
+    async getConnections() { return (await get<{ connections: Array<{ a: string; b: string; pipes: Array<{ id: string; dir: 1 | -1; status: string }> }> }>("/canvas/connections")).connections ?? []; },
 
     // Memory
     async auditMemory() { return post("/memory/audit"); },

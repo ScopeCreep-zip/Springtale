@@ -9,7 +9,7 @@ import {
 import type { ConnectorSchema } from "@springtale/types";
 import type { ConditionDef } from "@springtale/ui";
 import { getConnectorSchemas } from "../ipc/connectors";
-import { createRule } from "../ipc/rules";
+import { createConnectorRule, getRuleSchema } from "../ipc/rules";
 
 /**
  * Rule Builder page for Tauri desktop — same UI as dashboard,
@@ -25,12 +25,18 @@ export function RuleBuilderPage() {
   const [actionConnector, setActionConnector] = createSignal("");
   const [actionName, setActionName] = createSignal("");
   const [conditions, setConditions] = createSignal<ConditionDef[]>([]);
+  const [conditionTypes, setConditionTypes] = createSignal<string[]>([]);
   const [error, setError] = createSignal("");
   const [saved, setSaved] = createSignal(false);
 
   onMount(async () => {
     try {
       setConnectors(await getConnectorSchemas());
+      const schema = await getRuleSchema();
+      const condObj = (schema as Record<string, unknown>).conditions as Record<string, unknown> | undefined;
+      if (condObj) {
+        setConditionTypes(Object.keys(condObj));
+      }
     } catch (e) {
       setError(String(e));
     }
@@ -40,20 +46,12 @@ export function RuleBuilderPage() {
     if (!name() || !triggerConnector() || !triggerName()) return "";
     const conditionsToml = conditions()
       .map((c) => {
-        switch (c.type) {
-          case "FieldEquals":
-            return `{ type = "FieldEquals", field = "${c.field ?? ""}", value = "${c.value ?? ""}" }`;
-          case "Contains":
-            return `{ type = "Contains", field = "${c.field ?? ""}", value = "${c.value ?? ""}" }`;
-          case "Regex":
-            return `{ type = "Regex", field = "${c.field ?? ""}", pattern = "${c.pattern ?? ""}" }`;
-          case "TimeInRange":
-            return `{ type = "TimeInRange", start = "${c.start ?? ""}", end = "${c.end ?? ""}" }`;
-          case "DayOfWeek":
-            return `{ type = "DayOfWeek", days = [${(c.days ?? []).join(", ")}] }`;
-          default:
-            return "";
-        }
+        const entries = Object.entries(c)
+          .filter(([k]) => k !== "type")
+          .filter(([, v]) => v !== undefined && v !== "")
+          .map(([k, v]) => `${k} = ${JSON.stringify(v)}`)
+          .join(", ");
+        return `{ type = "${c.type}", ${entries} }`;
       })
       .filter(Boolean)
       .join(",\n  ");
@@ -82,42 +80,14 @@ params = {}
 
   const saveRule = async () => {
     try {
-      const rule = {
+      await createConnectorRule({
         name: name(),
-        description: description(),
-        status: "disabled",
-        trigger: {
-          type: "ConnectorEvent",
-          connector: triggerConnector(),
-          event: triggerName(),
-        },
-        conditions: conditions().map((c) => {
-          switch (c.type) {
-            case "FieldEquals":
-              return { type: "FieldEquals", field: c.field, value: c.value };
-            case "Contains":
-              return { type: "Contains", field: c.field, value: c.value };
-            case "Regex":
-              return { type: "Regex", field: c.field, pattern: c.pattern };
-            case "TimeInRange":
-              return { type: "TimeInRange", start: c.start, end: c.end };
-            case "DayOfWeek":
-              return { type: "DayOfWeek", days: c.days ?? [] };
-            default:
-              return {};
-          }
-        }),
-        actions: [
-          {
-            type: "RunConnector",
-            connector: actionConnector(),
-            action: actionName(),
-            params: {},
-          },
-        ],
-      };
-
-      await createRule(rule);
+        trigger_connector: triggerConnector(),
+        trigger_event: triggerName(),
+        action_connector: actionConnector(),
+        action_name: actionName(),
+        conditions: conditions(),
+      });
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
       setError("");
@@ -176,7 +146,7 @@ params = {}
               />
             </div>
           </div>
-          <ConditionEditor conditions={conditions()} onChange={setConditions} />
+          <ConditionEditor conditions={conditions()} conditionTypes={conditionTypes()} onChange={setConditions} />
           <div>
             <h3 class="text-sm font-semibold text-gray-200">{t("builder.thenAction")}</h3>
             <div class="mt-2">

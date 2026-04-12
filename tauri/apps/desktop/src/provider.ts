@@ -9,7 +9,7 @@ import { listen } from "@tauri-apps/api/event";
 import type { EventEntry, CanvasUpdate } from "@springtale/types";
 
 import { listConnectors, listAvailableConnectors, setupConnector, getConnectorSchemas, enableConnector, disableConnector, removeConnector, removeConnectorCascade, getConnectorConfig, listConnectorOutputs } from "./ipc/connectors";
-import { listRules, createRule, toggleRule, deleteRule, updateRule, runRule, parseRuleFromIntent, listRulesForConnector, testConnector, reassignRuleConnector, createConnectorRule } from "./ipc/rules";
+import { listRules, createRule, toggleRule, deleteRule, updateRule, runRule, parseRuleFromIntent, listRulesForConnector, testConnector, reassignRuleConnector, createConnectorRule, getRuleSchema } from "./ipc/rules";
 import { listEvents } from "./ipc/events";
 import {
   listFormations,
@@ -25,7 +25,7 @@ import {
   cycleFormationIntent,
   cycleFormationAutonomy,
 } from "./ipc/formations";
-import { getCanvasState } from "./ipc/canvas";
+import { getCanvasState, getConnections } from "./ipc/canvas";
 import {
   getConfig, setConfig, listConfig, setAiAdapter, setConnectorConfig,
   configureAiAdapter, upsertConnectorConfig, toggleFormationGuard,
@@ -57,6 +57,7 @@ export function createDesktopProvider(): DataProvider {
     runRule,
     parseRuleFromIntent,
     createConnectorRule,
+    getRuleSchema,
     listRulesForConnector,
     testConnector,
     reassignRuleConnector,
@@ -114,6 +115,7 @@ export function createDesktopProvider(): DataProvider {
     compactMemory,
 
     // Canvas
+    getConnections,
     getCanvasState,
     subscribeToCanvasUpdates(callback) {
       let unlisten: (() => void) | undefined;

@@ -19,4 +19,6 @@ export interface AgentState {
   activity: "firing" | "error" | "active" | "waiting" | "idle";
   /** Autonomy level index: 0=observe, 1=suggest, 2=approve, 3=autonomous. */
   autonomy: number;
+  /** Pre-formatted task description from backend. */
+  task_display: string;
 }

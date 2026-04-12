@@ -19,6 +19,8 @@ export interface ConnectorConfigPanelProps {
   onCreateRule: (rule: { name: string; trigger_connector: string; trigger_event: string; action_connector: string; action_name: string; conditions?: unknown[] }) => Promise<void>;
   onTest: (connectorId: string) => Promise<void>;
   onClose: () => void;
+  /** Condition type names from backend schema. */
+  conditionTypes: string[];
 }
 
 /**
@@ -448,7 +450,7 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
             <div>
               <label class="colony-text-3xs text-text-secondary">Conditions (optional)</label>
               <div class="mt-0.5">
-                <ConditionEditor conditions={conditions()} onChange={setConditions} />
+                <ConditionEditor conditions={conditions()} conditionTypes={props.conditionTypes} onChange={setConditions} />
               </div>
             </div>
             <button onClick={handleCreateRule} disabled={!newRuleName() || !triggerName()}
