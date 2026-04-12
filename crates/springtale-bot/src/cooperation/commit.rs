@@ -47,7 +47,9 @@ mod tests {
         // Verify the state machine compiles and variants exist
         let _p = CommitPhase::Prepare;
         let _r = CommitPhase::Ready;
-        let _c = CommitPhase::Countdown { remaining: Duration::from_secs(3) };
+        let _c = CommitPhase::Countdown {
+            remaining: Duration::from_secs(3),
+        };
         let _e = CommitPhase::Execute;
         let _co = CommitPhase::Collect;
     }

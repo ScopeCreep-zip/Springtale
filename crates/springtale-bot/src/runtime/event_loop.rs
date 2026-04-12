@@ -1,29 +1,7 @@
-use tokio::sync::mpsc;
-
 use crate::cooperation::cadence::Tick;
-use crate::handler::registry::HandlerContext;
-use crate::router::AliasResolver;
-use crate::runtime::lifecycle::{Bot, OutgoingResponse};
-use crate::state::session::SessionKey;
+use crate::runtime::lifecycle::Bot;
 
-/// Send a response through the response channel, logging on failure.
-async fn send_response(
-    tx: &mpsc::Sender<OutgoingResponse>,
-    channel_id: &str,
-    text: String,
-    connector: &str,
-) {
-    if let Err(e) = tx
-        .send(OutgoingResponse {
-            channel_id: channel_id.to_owned(),
-            text,
-            connector: connector.to_owned(),
-        })
-        .await
-    {
-        tracing::warn!(error = %e, "response channel closed — response dropped");
-    }
-}
+use super::handlers::handle_incoming_message;
 
 /// Main event loop: receives messages and trigger events, routes
 /// them to handlers, and sends responses back.
@@ -55,8 +33,18 @@ pub async fn run_event_loop(bot: &mut Bot) {
             }
 
             // Source 3: Cadence ticks from cooperation module (§5)
-            Ok(tick) = bot.cadence_rx.recv() => {
-                handle_cadence_tick(bot, &tick).await;
+            result = bot.cadence_rx.recv() => {
+                match result {
+                    Ok(tick) => {
+                        handle_cadence_tick(bot, &tick).await;
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(count)) => {
+                        tracing::warn!(skipped = count, "cadence receiver lagged — skipping ticks");
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => {
+                        tracing::debug!("cadence channel closed");
+                    }
+                }
             }
 
             // All channels closed — shutdown
@@ -68,179 +56,8 @@ pub async fn run_event_loop(bot: &mut Bot) {
     }
 }
 
-async fn handle_incoming_message(
-    bot: &mut Bot,
-    msg: &crate::runtime::lifecycle::IncomingMessage,
-) -> Result<(), crate::error::BotError> {
-    let session_key = SessionKey {
-        user_id: msg.user_id.clone(),
-        channel_id: msg.channel_id.clone(),
-    };
-
-    // Store in conversation context
-    let _ = bot.context.push(&session_key, "user", &msg.text).await;
-
-    // Route the message
-    let route = bot.router.route(&msg.text, bot.config.persona.prefix);
-
-    match route {
-        crate::router::RouteResult::Command { name, args } => {
-            if let Some(handler) = bot.handlers.get(&name) {
-                let ctx = HandlerContext {
-                    user_id: msg.user_id.clone(),
-                    channel_id: msg.channel_id.clone(),
-                    store: bot.store.clone(),
-                    registry: bot.registry.clone(),
-                    engine: bot.engine.clone(),
-                };
-
-                match handler.handle(&args, &ctx).await {
-                    Ok(result) => {
-                        // Reload aliases if the alias command was just executed
-                        if name == "alias"
-                            && let Ok(alias_pairs) = bot.store.list_aliases().await
-                        {
-                            let aliases = alias_pairs.into_iter().collect();
-                            *bot.router.aliases_mut() = AliasResolver::new(aliases);
-                        }
-
-                        // Store bot response in context
-                        let _ = bot
-                            .context
-                            .push(&session_key, "assistant", &result.response)
-                            .await;
-
-                        // Send response
-                        send_response(
-                            &bot.response_tx,
-                            &msg.channel_id,
-                            result.response,
-                            &msg.source_connector,
-                        )
-                        .await;
-                    }
-                    Err(e) => {
-                        tracing::error!(command = %name, error = %e, "handler error");
-                        send_response(
-                            &bot.response_tx,
-                            &msg.channel_id,
-                            format!("Error: {e}"),
-                            &msg.source_connector,
-                        )
-                        .await;
-                    }
-                }
-            } else {
-                send_response(
-                    &bot.response_tx,
-                    &msg.channel_id,
-                    format!("Command not found: {name}"),
-                    &msg.source_connector,
-                )
-                .await;
-            }
-        }
-        crate::router::RouteResult::NoMatch { suggestion } => {
-            // Phase 2a: try AI fallback before static suggestion
-            if let Some(response) = ai_fallback(bot, &session_key, &msg.text).await {
-                let _ = bot.context.push(&session_key, "assistant", &response).await;
-                send_response(
-                    &bot.response_tx,
-                    &msg.channel_id,
-                    response,
-                    &msg.source_connector,
-                )
-                .await;
-            } else {
-                send_response(
-                    &bot.response_tx,
-                    &msg.channel_id,
-                    suggestion,
-                    &msg.source_connector,
-                )
-                .await;
-            }
-        }
-    }
-
-    // Compact if needed
-    let _ = bot.context.compact(&session_key).await;
-
-    Ok(())
-}
-
-/// Try AI fallback for an unmatched message.
-///
-/// Returns `Some(response)` if AI is available and responds successfully.
-/// Returns `None` if AI is unavailable, disabled, or errors — caller
-/// should fall back to the static "Unknown command" suggestion.
-async fn ai_fallback(
-    bot: &mut Bot,
-    session_key: &crate::state::session::SessionKey,
-    user_text: &str,
-) -> Option<String> {
-    // Check if AI is available (NoopAdapter returns false → skip)
-    if !bot.ai_adapter.is_available().await {
-        return None;
-    }
-
-    // Gather recent conversation context
-    let recent = bot.context.recent(session_key, 10).await.ok()?;
-
-    // Build command list for the system prompt
-    let commands: Vec<String> = bot
-        .handlers
-        .list_commands()
-        .iter()
-        .map(|(name, desc, _)| format!("/{name} — {desc}"))
-        .collect();
-    let command_list = commands.join("\n");
-
-    // Build chat messages
-    let mut messages = vec![springtale_ai::ChatMessage {
-        role: "system".into(),
-        content: format!(
-            "You are {}, a helpful bot. The user sent a message that didn't match any command. \
-             Respond conversationally. If they seem to want a command, suggest the right one.\n\n\
-             Available commands:\n{}",
-            bot.config.persona.name, command_list
-        ),
-    }];
-
-    // Add conversation history
-    for entry in recent.iter().rev() {
-        messages.push(springtale_ai::ChatMessage {
-            role: entry.author.clone(),
-            content: String::from_utf8_lossy(&entry.content_encrypted).into_owned(),
-        });
-    }
-
-    // Add the current user message
-    messages.push(springtale_ai::ChatMessage {
-        role: "user".into(),
-        content: user_text.to_owned(),
-    });
-
-    let request = springtale_ai::AiRequest::Chat { messages };
-    let options = springtale_ai::AiOptions {
-        max_tokens: 512,
-        timeout: std::time::Duration::from_secs(10),
-        temperature: Some(0.7),
-    };
-
-    match bot.ai_adapter.complete(request, options).await {
-        Ok(response) if !response.content.is_empty() => Some(response.content),
-        Ok(_) => {
-            tracing::debug!("AI fallback returned empty response");
-            None
-        }
-        Err(springtale_ai::AiError::Disabled) => None, // Expected for NoopAdapter
-        Err(e) => {
-            tracing::warn!(error = %e, "AI fallback failed — using static suggestion");
-            None
-        }
-    }
-}
+// Message handling (handle_incoming_message, ai_fallback, send_response)
+// extracted to runtime/handlers.rs — single concern per module.
 
 async fn handle_trigger_event(
     bot: &mut Bot,
@@ -258,7 +75,13 @@ async fn handle_trigger_event(
         );
 
         for action in rule_match.actions.iter() {
-            match springtale_runtime::dispatch::dispatch_action(action, &bot.registry).await {
+            match springtale_runtime::dispatch::dispatch_action(
+                action,
+                &bot.registry,
+                &bot.sentinel,
+            )
+            .await
+            {
                 Ok(msg) => {
                     tracing::info!(
                         rule = %rule_match.rule_name,
@@ -315,12 +138,8 @@ async fn handle_cadence_tick(bot: &mut Bot, tick: &Tick) {
 
         // 2. Persist momentum tier to config store
         let key = format!("momentum:{}", formation.id.0);
-        let tier_json = serde_json::json!(format!("{:?}", formation.momentum.tier));
-        if let Err(e) = bot
-            .store
-            .set_config(&key, &tier_json.to_string())
-            .await
-        {
+        let tier_json = serde_json::json!(formation.momentum.tier);
+        if let Err(e) = bot.store.set_config(&key, &tier_json.to_string()).await {
             tracing::warn!(formation_id = %formation.id.0, error = %e, "failed to persist momentum tier");
         }
 

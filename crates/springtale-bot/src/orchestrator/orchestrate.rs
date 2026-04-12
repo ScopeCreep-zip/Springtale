@@ -78,24 +78,19 @@ pub async fn orchestrate_formation(
 
     let request = AiRequest::Chat {
         messages: vec![
-            ChatMessage {
-                role: "system".to_owned(),
-                content: system_prompt,
-            },
-            ChatMessage {
-                role: "user".to_owned(),
-                content: format!(
+            ChatMessage::text("system", system_prompt),
+            ChatMessage::text(
+                "user",
+                format!(
                     "Generate subtasks for intent {:?} with {} members.",
                     formation.intent,
                     formation.operational_count(),
                 ),
-            },
+            ),
         ],
     };
 
-    let response = orchestrator
-        .complete(request, AiOptions::default())
-        .await?;
+    let response = orchestrator.complete(request, AiOptions::default()).await?;
 
     // Parse the AI response into subtasks
     parse_subtasks(&response.content, formation)
@@ -208,10 +203,7 @@ fn parse_subtasks(content: &str, formation: &Formation) -> Result<Vec<SubTask>, 
             .cloned()
             .unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
 
-        let priority = val
-            .get("priority")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(5) as u8;
+        let priority = val.get("priority").and_then(|v| v.as_u64()).unwrap_or(5) as u8;
 
         let description = val
             .get("description")

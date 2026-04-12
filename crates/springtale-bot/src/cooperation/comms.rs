@@ -41,9 +41,7 @@ pub enum CommChannel {
 
     /// Social cohesion signal. DRG Rock and Stone.
     /// No information content. Maintains formation morale.
-    CohesionSignal {
-        source: AgentId,
-    },
+    CohesionSignal { source: AgentId },
 
     /// Intent confirmation. Patapon sing-back.
     /// Agent acknowledges receipt of cadence intent.
@@ -123,7 +121,10 @@ mod tests {
         let _broadcast = CommChannel::StateBroadcast {
             source,
             condition: BroadcastTrigger::HealthBelowThreshold(0.2),
-            message: StateMessage { content: "low fuel".into(), severity: 0.8 },
+            message: StateMessage {
+                content: "low fuel".into(),
+                severity: 0.8,
+            },
         };
 
         let _cohesion = CommChannel::CohesionSignal { source };

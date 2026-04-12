@@ -10,8 +10,8 @@
 //! available. What happens once they're in the field is cooperation."
 
 use crate::cooperation::cadence::AgentId;
-use crate::cooperation::formation::{FormationConstraints, FormationId};
 use crate::cooperation::cadence::IntentPattern;
+use crate::cooperation::formation::{FormationConstraints, FormationId};
 
 /// Pre-mission composition — which agents form a group.
 ///
@@ -90,7 +90,9 @@ mod tests {
                     ai_config: None,
                 },
             ],
-            intent: IntentPattern::Reconnoiter { target: "open_issues".into() },
+            intent: IntentPattern::Reconnoiter {
+                target: "open_issues".into(),
+            },
             constraints: FormationConstraints::default(),
         };
         assert_eq!(comp.members.len(), 2);

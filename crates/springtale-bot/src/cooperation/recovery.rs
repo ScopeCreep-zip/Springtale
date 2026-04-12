@@ -26,11 +26,20 @@ pub enum DistressSignal {
     /// Agent health below threshold. Total War: morale dropping.
     HealthLow { agent_id: AgentId, health_pct: f32 },
     /// Agent incapacitated. L4D: downed state. DRG: downed dwarf.
-    Incapacitated { agent_id: AgentId, bleedout_remaining: Duration },
+    Incapacitated {
+        agent_id: AgentId,
+        bleedout_remaining: Duration,
+    },
     /// Agent dead/disconnected. Helldivers: needs reinforce.
-    Dead { agent_id: AgentId, recoverable: bool },
+    Dead {
+        agent_id: AgentId,
+        recoverable: bool,
+    },
     /// Agent capability degraded. Siege: DBNO with limited actions.
-    Degraded { agent_id: AgentId, remaining_capabilities: Vec<String> },
+    Degraded {
+        agent_id: AgentId,
+        remaining_capabilities: Vec<String>,
+    },
 }
 
 /// How recovery is delivered.
@@ -103,7 +112,10 @@ pub enum RecoveryCost {
     /// Recovery costs time (Overcooked error correction).
     Time(Duration),
     /// Recovery costs a scarce token (As Dusk Falls override, DRG Iron Will).
-    Token { token_type: String, remaining_after: u32 },
+    Token {
+        token_type: String,
+        remaining_after: u32,
+    },
     /// Recovery is free (It Takes Two checkpoint).
     Free,
 }
@@ -140,12 +152,18 @@ mod tests {
     #[test]
     fn test_distress_signals() {
         let agent = AgentId::new();
-        let _low = DistressSignal::HealthLow { agent_id: agent, health_pct: 0.2 };
+        let _low = DistressSignal::HealthLow {
+            agent_id: agent,
+            health_pct: 0.2,
+        };
         let _incap = DistressSignal::Incapacitated {
             agent_id: agent,
             bleedout_remaining: Duration::from_secs(30),
         };
-        let _dead = DistressSignal::Dead { agent_id: agent, recoverable: true };
+        let _dead = DistressSignal::Dead {
+            agent_id: agent,
+            recoverable: true,
+        };
         let _degraded = DistressSignal::Degraded {
             agent_id: agent,
             remaining_capabilities: vec!["monitoring".into()],
@@ -158,7 +176,8 @@ mod tests {
         let target = AgentId::new();
 
         let _revive = RecoveryAction::PeerRevive {
-            healer, target,
+            healer,
+            target,
             duration: Duration::from_secs(5),
             healer_vulnerability: 0.8,
         };
@@ -181,7 +200,9 @@ mod tests {
     #[test]
     fn test_failure_modes() {
         let _instant = FailureMode::InstantDeath;
-        let _degraded = FailureMode::Degraded { recovery_window: Duration::from_secs(30) };
+        let _degraded = FailureMode::Degraded {
+            recovery_window: Duration::from_secs(30),
+        };
         let _transform = FailureMode::RoleTransformation;
     }
 }

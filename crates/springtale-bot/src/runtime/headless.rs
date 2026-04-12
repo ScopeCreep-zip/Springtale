@@ -34,6 +34,14 @@ impl HeadlessBot {
         let store: Arc<dyn springtale_store::StorageBackend> = Arc::new(
             SqliteBackend::open_in_memory().map_err(|e| BotError::NotInitialized(e.to_string()))?,
         );
+        // Open access by default in headless tests — the DM pairing
+        // gate (check_access) is about hardening real deployments
+        // against unknown senders, not simulated test users. Tests that
+        // want to exercise the pairing flow can overwrite this.
+        store
+            .set_config("bot:access_mode", "\"open\"")
+            .await
+            .map_err(|e| BotError::NotInitialized(e.to_string()))?;
         let registry = Arc::new(RwLock::new(ConnectorRegistry::new(
             CapabilityPolicy::Interactive,
         )));
@@ -43,10 +51,16 @@ impl HeadlessBot {
         let (response_tx, response_rx) = mpsc::channel::<OutgoingResponse>(256);
         let (rule_tx, rule_rx) = mpsc::channel(256);
 
+        let sentinel = std::sync::Arc::new(springtale_sentinel::Sentinel::new(
+            springtale_sentinel::SentinelConfig::default(),
+            store.clone(),
+        ));
+
         let bot = BotBuilder::new()
             .store(store.clone())
             .registry(registry)
             .engine(engine)
+            .sentinel(sentinel)
             .config(config)
             .connector_rx(msg_rx)
             .rule_rx(rule_rx)

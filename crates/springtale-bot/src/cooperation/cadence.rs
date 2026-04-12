@@ -11,8 +11,8 @@
 //! agents should have generous windows to commit actions — the hard
 //! part is choosing the RIGHT action, not hitting the timing.
 
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -21,6 +21,12 @@ use tokio::sync::{RwLock, broadcast};
 /// Unique identifier for an agent in a formation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AgentId(pub uuid::Uuid);
+
+impl Default for AgentId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl AgentId {
     pub fn new() -> Self {

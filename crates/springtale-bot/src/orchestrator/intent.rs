@@ -28,9 +28,9 @@ pub async fn publish_intent(cadence: &CadenceBus, intent: IntentPattern) {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use tokio::sync::broadcast;
-    use std::time::Duration;
     use crate::cooperation::cadence::Tick;
+    use std::time::Duration;
+    use tokio::sync::broadcast;
 
     #[tokio::test]
     async fn test_publish_intent() {

@@ -30,7 +30,11 @@ pub enum PacingPhase {
 
     /// Peak intensity. Maximum output, high fuel consumption.
     /// L4D: Tank encounter. Helldivers: extraction. Siege: execute.
-    Peak { intensity: f32, fuel_rate: f32, started: Instant },
+    Peak {
+        intensity: f32,
+        fuel_rate: f32,
+        started: Instant,
+    },
 
     /// Mandatory rest. Recovery, consolidation.
     /// Total War: fatigued units resting. L4D: safe room. DRG: resupply convergence.
@@ -59,7 +63,9 @@ pub struct PacingManager {
 impl Default for PacingManager {
     fn default() -> Self {
         Self {
-            current_phase: PacingPhase::Preparation { started: Instant::now() },
+            current_phase: PacingPhase::Preparation {
+                started: Instant::now(),
+            },
             cumulative_intensity: 0.0,
             time_since_last_recovery: Duration::ZERO,
             disruption_count: 0,
@@ -85,10 +91,23 @@ mod tests {
 
     #[test]
     fn test_pacing_phases() {
-        let _prep = PacingPhase::Preparation { started: Instant::now() };
-        let _active = PacingPhase::Active { intensity: 0.5, started: Instant::now() };
-        let _peak = PacingPhase::Peak { intensity: 0.9, fuel_rate: 2.0, started: Instant::now() };
-        let _recovery = PacingPhase::Recovery { remaining: Duration::from_secs(30) };
-        let _disruption = PacingPhase::Disruption { event: "connector_timeout".into() };
+        let _prep = PacingPhase::Preparation {
+            started: Instant::now(),
+        };
+        let _active = PacingPhase::Active {
+            intensity: 0.5,
+            started: Instant::now(),
+        };
+        let _peak = PacingPhase::Peak {
+            intensity: 0.9,
+            fuel_rate: 2.0,
+            started: Instant::now(),
+        };
+        let _recovery = PacingPhase::Recovery {
+            remaining: Duration::from_secs(30),
+        };
+        let _disruption = PacingPhase::Disruption {
+            event: "connector_timeout".into(),
+        };
     }
 }

@@ -11,6 +11,7 @@ pub mod orchestrator;
 pub mod router;
 pub mod runtime;
 pub mod state;
+pub mod tool_runner;
 
 pub use error::BotError;
 pub use router::RouteResult;

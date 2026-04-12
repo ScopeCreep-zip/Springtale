@@ -83,7 +83,10 @@ mod tests {
     fn test_default_constraints() {
         let c = OrchestratorConstraints::default();
         assert!(!c.guard_mode);
-        assert!(matches!(c.destructive_action_policy, ApprovalPolicy::AlwaysApprove));
+        assert!(matches!(
+            c.destructive_action_policy,
+            ApprovalPolicy::AlwaysApprove
+        ));
         assert!(matches!(c.autonomy_ceiling, AutonomyLevel::PlanApproval));
     }
 }

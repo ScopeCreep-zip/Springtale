@@ -13,8 +13,8 @@
 //! tokens consumed, Cold momentum, multiple agents failing —
 //! does the orchestrator step in.
 
-use crate::cooperation::cadence::IntentPattern;
 use super::fuel::FuelBudget;
+use crate::cooperation::cadence::IntentPattern;
 
 /// Orchestrator interventions — reactive, not proactive.
 ///
@@ -52,9 +52,9 @@ mod tests {
 
     #[test]
     fn test_intervention_variants() {
-        let _change = Intervention::ChangeIntent(
-            IntentPattern::Stabilize { reason: "cascade detected".into() }
-        );
+        let _change = Intervention::ChangeIntent(IntentPattern::Stabilize {
+            reason: "cascade detected".into(),
+        });
         let _fuel = Intervention::InjectFuel(FuelBudget::new(5000));
         let _dissolve = Intervention::ForcedDissolve {
             reason: "all agents incapacitated".into(),

@@ -24,6 +24,7 @@ use super::cadence::AgentId;
 ///     pub surfaces: Vec<Surface>,
 /// }
 /// ```
+#[derive(Default)]
 pub struct SharedEnvironment {
     pub workspace: HashMap<String, serde_json::Value>,
     pub write_log: Vec<EnvironmentWrite>,
@@ -74,16 +75,6 @@ pub enum SurfaceType {
     Active { remaining: Duration },
 }
 
-impl Default for SharedEnvironment {
-    fn default() -> Self {
-        Self {
-            workspace: HashMap::new(),
-            write_log: Vec::new(),
-            surfaces: Vec::new(),
-        }
-    }
-}
-
 impl SharedEnvironment {
     /// Read a value from the workspace.
     pub fn read(&self, key: &str) -> Option<&serde_json::Value> {
@@ -108,9 +99,8 @@ impl SharedEnvironment {
     /// Remove expired surfaces.
     pub fn expire_surfaces(&mut self) {
         let now = Instant::now();
-        self.surfaces.retain(|s| {
-            s.expires.map_or(true, |exp| exp > now)
-        });
+        self.surfaces
+            .retain(|s| s.expires.is_none_or(|exp| exp > now));
     }
 
     /// Find surfaces that can be triggered (Primed state).
@@ -152,7 +142,9 @@ mod tests {
         // Agent B primes with oil
         env.add_surface(Surface {
             created_by: AgentId::new(),
-            surface_type: SurfaceType::Primed { trigger: "fire".into() },
+            surface_type: SurfaceType::Primed {
+                trigger: "fire".into(),
+            },
             data: serde_json::json!({"element": "oil"}),
             expires: None,
         });
@@ -165,7 +157,9 @@ mod tests {
         let mut env = SharedEnvironment::default();
         env.add_surface(Surface {
             created_by: AgentId::new(),
-            surface_type: SurfaceType::Active { remaining: Duration::from_secs(0) },
+            surface_type: SurfaceType::Active {
+                remaining: Duration::from_secs(0),
+            },
             data: serde_json::json!({}),
             expires: Some(Instant::now() - Duration::from_secs(1)), // already expired
         });

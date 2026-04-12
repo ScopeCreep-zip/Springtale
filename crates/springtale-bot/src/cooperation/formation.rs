@@ -15,8 +15,8 @@ use std::time::Duration;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::orchestrator::fuel::FuelBudget;
 use crate::orchestrator::coordinator::CooperativeBlackboard;
+use crate::orchestrator::fuel::FuelBudget;
 
 use super::cadence::{AgentId, IntentPattern};
 use super::momentum::{MomentumState, MomentumTier};
@@ -24,6 +24,12 @@ use super::momentum::{MomentumState, MomentumTier};
 /// Unique identifier for a formation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FormationId(pub Uuid);
+
+impl Default for FormationId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl FormationId {
     pub fn new() -> Self {
@@ -36,9 +42,10 @@ impl FormationId {
 /// Per COOPERATION.pdf §18.3 (L4D-inspired escalating fragility):
 /// Quick-fix recovery leaves the agent degraded. Proper recovery
 /// restores full capability. Repeated quick-fixes increase fragility.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum AgentHealth {
     /// Full operational capability.
+    #[default]
     Operational,
     /// Reduced capability after quick-fix recovery.
     Degraded { recovery_count: u32 },
@@ -48,20 +55,15 @@ pub enum AgentHealth {
     Dead { recoverable: bool },
 }
 
-impl Default for AgentHealth {
-    fn default() -> Self {
-        Self::Operational
-    }
-}
-
 /// Dynamic role of an agent — emerges from context, not assignment.
 ///
 /// Per §23 (Specialization vs Generalization): "The role_hint in
 /// the composer (§3.1) should bias, not mandate." Roles are
 /// tendencies, not locks. Like Army of Two's weapon-based specialization.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub enum DynamicRole {
     /// Default — role not yet determined.
+    #[default]
     Unassigned,
     /// Primary task executor.
     Primary { task: String },
@@ -71,12 +73,6 @@ pub enum DynamicRole {
     Information,
     /// Custom role (connector-specific).
     Custom { name: String },
-}
-
-impl Default for DynamicRole {
-    fn default() -> Self {
-        Self::Unassigned
-    }
 }
 
 /// A member of a formation.
@@ -121,7 +117,10 @@ impl FormationMember {
     }
 
     /// Create a member with a per-agent AI adapter.
-    pub fn with_ai_adapter(mut self, adapter: std::sync::Arc<dyn springtale_ai::AiAdapter>) -> Self {
+    pub fn with_ai_adapter(
+        mut self,
+        adapter: std::sync::Arc<dyn springtale_ai::AiAdapter>,
+    ) -> Self {
         self.ai_adapter = Some(adapter);
         self.capabilities.push("ai_call".to_owned());
         self
@@ -140,7 +139,10 @@ impl FormationMember {
 
     /// Check if this agent is operational (can participate in ticks).
     pub fn is_operational(&self) -> bool {
-        matches!(self.health, AgentHealth::Operational | AgentHealth::Degraded { .. })
+        matches!(
+            self.health,
+            AgentHealth::Operational | AgentHealth::Degraded { .. }
+        )
     }
 }
 
@@ -279,7 +281,9 @@ mod tests {
     fn test_formation_creation() {
         let formation = Formation::new(
             vec![test_member("slack"), test_member("github")],
-            IntentPattern::Reconnoiter { target: "issues".to_owned() },
+            IntentPattern::Reconnoiter {
+                target: "issues".to_owned(),
+            },
             FormationConstraints::default(),
             FuelBudget::new(10_000),
         );
@@ -313,7 +317,9 @@ mod tests {
     fn test_formation_viability() {
         let mut formation = Formation::new(
             vec![test_member("slack")],
-            IntentPattern::Stabilize { reason: "test".to_owned() },
+            IntentPattern::Stabilize {
+                reason: "test".to_owned(),
+            },
             FormationConstraints::default(),
             FuelBudget::new(1000),
         );

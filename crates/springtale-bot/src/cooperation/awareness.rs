@@ -78,7 +78,12 @@ impl LocalAwareness {
     pub fn healthy_neighbor_count(&self) -> usize {
         self.neighbor_states
             .values()
-            .filter(|n| matches!(n.health, AgentHealth::Operational | AgentHealth::Degraded { .. }))
+            .filter(|n| {
+                matches!(
+                    n.health,
+                    AgentHealth::Operational | AgentHealth::Degraded { .. }
+                )
+            })
             .count()
     }
 
@@ -86,7 +91,12 @@ impl LocalAwareness {
     pub fn distressed_neighbor_count(&self) -> usize {
         self.neighbor_states
             .values()
-            .filter(|n| matches!(n.health, AgentHealth::Incapacitated | AgentHealth::Dead { .. }))
+            .filter(|n| {
+                matches!(
+                    n.health,
+                    AgentHealth::Incapacitated | AgentHealth::Dead { .. }
+                )
+            })
             .count()
     }
 

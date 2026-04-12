@@ -167,8 +167,14 @@ mod tests {
     fn test_canvas_apply_remove_block() {
         let mut state = CanvasState {
             blocks: vec![
-                CanvasBlock::Text { id: "1".to_owned(), content: "a".to_owned() },
-                CanvasBlock::Text { id: "2".to_owned(), content: "b".to_owned() },
+                CanvasBlock::Text {
+                    id: "1".to_owned(),
+                    content: "a".to_owned(),
+                },
+                CanvasBlock::Text {
+                    id: "2".to_owned(),
+                    content: "b".to_owned(),
+                },
             ],
             ..Default::default()
         };
@@ -180,7 +186,10 @@ mod tests {
     #[test]
     fn test_canvas_apply_clear() {
         let mut state = CanvasState {
-            blocks: vec![CanvasBlock::Text { id: "1".to_owned(), content: "a".to_owned() }],
+            blocks: vec![CanvasBlock::Text {
+                id: "1".to_owned(),
+                content: "a".to_owned(),
+            }],
             ..Default::default()
         };
         state.apply(&CanvasUpdate::Clear);
@@ -191,7 +200,10 @@ mod tests {
     fn test_canvas_serialization_roundtrip() {
         let state = CanvasState {
             blocks: vec![
-                CanvasBlock::Text { id: "t1".to_owned(), content: "Hello".to_owned() },
+                CanvasBlock::Text {
+                    id: "t1".to_owned(),
+                    content: "Hello".to_owned(),
+                },
                 CanvasBlock::Table {
                     id: "t2".to_owned(),
                     headers: vec!["Name".to_owned(), "Value".to_owned()],

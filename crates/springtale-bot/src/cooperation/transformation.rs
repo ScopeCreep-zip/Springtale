@@ -44,9 +44,7 @@ mod tests {
     fn test_transformation_variants() {
         let _info = RoleTransformation::ToInformationAgent;
         let _support = RoleTransformation::ToSupportAgent;
-        let _reassign = RoleTransformation::ReassignCapabilities(vec![
-            "monitoring".into(),
-            "logging".into(),
-        ]);
+        let _reassign =
+            RoleTransformation::ReassignCapabilities(vec!["monitoring".into(), "logging".into()]);
     }
 }

@@ -82,6 +82,7 @@ impl RetryState {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
 
@@ -150,7 +151,7 @@ mod tests {
         assert!(delay.is_some());
         let d = delay.unwrap_or(0.0);
         assert!(
-            d >= 9.0 && d <= 11.0,
+            (9.0..=11.0).contains(&d),
             "delay {d} not in expected range 9-11"
         );
     }

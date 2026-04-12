@@ -78,6 +78,7 @@ pub struct Bot {
     pub(crate) config: BotConfig,
     pub(crate) context: ConversationContext,
     pub(crate) ai_adapter: Arc<dyn springtale_ai::AiAdapter>,
+    pub(crate) sentinel: Arc<springtale_sentinel::Sentinel>,
     pub(crate) connector_rx: mpsc::Receiver<IncomingMessage>,
     pub(crate) rule_rx: mpsc::Receiver<TriggerEvent>,
     pub(crate) response_tx: mpsc::Sender<OutgoingResponse>,
@@ -104,6 +105,7 @@ pub struct BotBuilder {
     engine: Option<Arc<RwLock<RuleEngine>>>,
     config: BotConfig,
     ai_adapter: Option<Arc<dyn springtale_ai::AiAdapter>>,
+    sentinel: Option<Arc<springtale_sentinel::Sentinel>>,
     connector_rx: Option<mpsc::Receiver<IncomingMessage>>,
     rule_rx: Option<mpsc::Receiver<TriggerEvent>>,
     response_tx: Option<mpsc::Sender<OutgoingResponse>>,
@@ -117,6 +119,7 @@ impl BotBuilder {
             engine: None,
             config: BotConfig::default(),
             ai_adapter: None,
+            sentinel: None,
             connector_rx: None,
             rule_rx: None,
             response_tx: None,
@@ -160,6 +163,11 @@ impl BotBuilder {
 
     pub fn ai_adapter(mut self, adapter: Arc<dyn springtale_ai::AiAdapter>) -> Self {
         self.ai_adapter = Some(adapter);
+        self
+    }
+
+    pub fn sentinel(mut self, sentinel: Arc<springtale_sentinel::Sentinel>) -> Self {
+        self.sentinel = Some(sentinel);
         self
     }
 
@@ -232,7 +240,10 @@ impl BotBuilder {
                 let mut key = [0u8; 32];
                 rand::thread_rng().fill_bytes(&mut key);
                 let key_hex = hex::encode(key);
-                if let Err(e) = store.set_config("memory:encryption_key", &format!("\"{key_hex}\"")).await {
+                if let Err(e) = store
+                    .set_config("memory:encryption_key", &format!("\"{key_hex}\""))
+                    .await
+                {
                     tracing::warn!(error = %e, "failed to persist memory encryption key");
                 }
                 key
@@ -266,6 +277,9 @@ impl BotBuilder {
             config: self.config,
             context,
             ai_adapter,
+            sentinel: self
+                .sentinel
+                .ok_or_else(|| BotError::NotInitialized("sentinel required".into()))?,
             connector_rx,
             rule_rx,
             response_tx,

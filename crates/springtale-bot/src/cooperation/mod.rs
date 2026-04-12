@@ -16,14 +16,14 @@ pub mod cadence;
 pub mod formation;
 pub mod momentum;
 
-pub mod awareness;
 pub mod attention;
+pub mod awareness;
 
-pub mod environment;
 pub mod comms;
+pub mod environment;
 
-pub mod consensus;
 pub mod commit;
+pub mod consensus;
 
 pub mod interference;
 pub mod transformation;
@@ -37,11 +37,11 @@ pub mod mental_model;
 pub mod pacing;
 pub mod sacrifice;
 
+pub use action::{SubTask, SubTaskResult};
+pub use attention::AttentionEconomy;
+pub use awareness::{LocalAwareness, NeighborSnapshot};
 pub use cadence::{AgentId, CadenceBus, IntentPattern, Tick, TickReport};
 pub use formation::{
     AgentHealth, DynamicRole, Formation, FormationConstraints, FormationId, FormationMember,
 };
 pub use momentum::{MomentumState, MomentumTier};
-pub use awareness::{LocalAwareness, NeighborSnapshot};
-pub use action::{SubTask, SubTaskResult};
-pub use attention::AttentionEconomy;

@@ -21,6 +21,7 @@ use super::cadence::AgentId;
 /// What a formation has collectively learned.
 ///
 /// From COOPERATION.pdf §21.2:
+#[derive(Default)]
 pub struct SharedMentalModel {
     /// What the formation has learned about its task domain.
     /// Grows over time. MH: monster patterns. Siege: map knowledge.
@@ -41,18 +42,6 @@ pub struct SharedMentalModel {
     /// Formation-specific conventions that emerged from experience.
     /// "In this formation, agent A usually handles X while agent B handles Y."
     pub conventions: Vec<Convention>,
-}
-
-impl Default for SharedMentalModel {
-    fn default() -> Self {
-        Self {
-            domain_knowledge: HashMap::new(),
-            capability_awareness: HashMap::new(),
-            cooperation_patterns: Vec::new(),
-            shared_vocabulary: HashMap::new(),
-            conventions: Vec::new(),
-        }
-    }
 }
 
 /// A piece of domain knowledge.
@@ -106,7 +95,9 @@ mod tests {
     fn test_capability_awareness() {
         let mut model = SharedMentalModel::default();
         let agent = AgentId::new();
-        model.capability_awareness.insert(agent, vec!["slack_send".into(), "github_read".into()]);
+        model
+            .capability_awareness
+            .insert(agent, vec!["slack_send".into(), "github_read".into()]);
         assert_eq!(model.capability_awareness.get(&agent).unwrap().len(), 2);
     }
 }

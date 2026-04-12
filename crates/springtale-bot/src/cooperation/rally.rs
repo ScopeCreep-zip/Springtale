@@ -9,8 +9,9 @@
 //!   2. Transform roles (§14) for failed agent
 //!   3. Reduce momentum tier to match reduced coherence
 //!   4. Consume rally token (limited, like Monster Hunter carts)
+//!
 //! §15.3 Escalation: Only if self-rally fails (tokens consumed, Cold momentum,
-//!   multiple agents failing) does the formation escalate to orchestrator::intervention.
+//! multiple agents failing) does the formation escalate to orchestrator::intervention.
 
 /// Rally attempt result.
 pub enum RallyResult {

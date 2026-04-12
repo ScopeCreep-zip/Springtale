@@ -33,7 +33,8 @@ pub struct DynamicCapabilitySet {
 impl DynamicCapabilitySet {
     /// Get all currently available capabilities (union of all layers).
     pub fn all(&self) -> Vec<&str> {
-        self.base_capabilities.iter()
+        self.base_capabilities
+            .iter()
             .chain(self.context_capabilities.iter())
             .chain(self.momentum_unlocked.iter())
             .chain(self.transformed_capabilities.iter())

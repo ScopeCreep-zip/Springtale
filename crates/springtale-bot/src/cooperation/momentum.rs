@@ -75,10 +75,14 @@ impl MomentumState {
     fn try_promote(&mut self) {
         let new_tier = match self.tier {
             MomentumTier::Cold if self.consecutive_successes >= 3 => MomentumTier::Warming,
-            MomentumTier::Warming if self.consecutive_successes >= 8 && self.interference_count == 0 => {
+            MomentumTier::Warming
+                if self.consecutive_successes >= 8 && self.interference_count == 0 =>
+            {
                 MomentumTier::Hot
             }
-            MomentumTier::Hot if self.consecutive_successes >= 15 && self.interference_count == 0 => {
+            MomentumTier::Hot
+                if self.consecutive_successes >= 15 && self.interference_count == 0 =>
+            {
                 MomentumTier::Fever
             }
             _ => return,

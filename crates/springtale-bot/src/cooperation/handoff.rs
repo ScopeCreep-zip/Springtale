@@ -92,7 +92,11 @@ mod tests {
             expires: None,
         };
 
-        let _direct = HandoffType::Direct { sender: a, receiver: b, payload };
+        let _direct = HandoffType::Direct {
+            sender: a,
+            receiver: b,
+            payload,
+        };
 
         let _info = HandoffType::InformationTransfer {
             source: a,

@@ -71,12 +71,12 @@ pub struct SacrificeCost {
     pub duration: std::time::Duration,
 }
 
-/// Sacrifice Decision Framework (§24.3):
-/// An agent evaluates using attention economy (§9) and awareness (§8):
-/// 1. Net positive check: Does the formation's total output improve?
-/// 2. Recovery path check: Is there a way back? (Helldivers reinforce exists)
-/// 3. Capability preservation: Does the sacrifice eliminate a unique capability?
-/// 4. Momentum impact: Does the sacrifice risk breaking momentum?
+// Sacrifice Decision Framework (§24.3):
+// An agent evaluates using attention economy (§9) and awareness (§8):
+// 1. Net positive check: Does the formation's total output improve?
+// 2. Recovery path check: Is there a way back? (Helldivers reinforce exists)
+// 3. Capability preservation: Does the sacrifice eliminate a unique capability?
+// 4. Momentum impact: Does the sacrifice risk breaking momentum?
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]

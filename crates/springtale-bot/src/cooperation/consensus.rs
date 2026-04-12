@@ -62,7 +62,11 @@ pub enum VoteResolution {
     /// Majority of votes selected this choice.
     Majority(VoteChoice),
     /// An agent used their override (scarce resource).
-    Override { by: AgentId, choice: VoteChoice, cost: u32 },
+    Override {
+        by: AgentId,
+        choice: VoteChoice,
+        cost: u32,
+    },
     /// Deadline expired — most popular choice wins.
     Timeout(VoteChoice),
 }
@@ -74,7 +78,11 @@ impl ConsensusVote {
     }
 
     /// Attempt an override (costs a scarce resource).
-    pub fn try_override(&mut self, agent_id: AgentId, choice: VoteChoice) -> Option<VoteResolution> {
+    pub fn try_override(
+        &mut self,
+        agent_id: AgentId,
+        choice: VoteChoice,
+    ) -> Option<VoteResolution> {
         let remaining = self.overrides_remaining.get_mut(&agent_id)?;
         if *remaining == 0 {
             return None;
@@ -137,7 +145,10 @@ mod tests {
         vote.vote(c, VoteChoice::Option(1)); // discord
 
         let result = vote.resolve();
-        assert!(matches!(result, VoteResolution::Majority(VoteChoice::Option(0))));
+        assert!(matches!(
+            result,
+            VoteResolution::Majority(VoteChoice::Option(0))
+        ));
     }
 
     #[test]

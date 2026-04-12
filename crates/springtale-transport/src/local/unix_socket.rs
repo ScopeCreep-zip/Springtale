@@ -205,6 +205,7 @@ fn set_socket_permissions(path: &Path) -> Result<(), TransportError> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
     use std::sync::Arc;
