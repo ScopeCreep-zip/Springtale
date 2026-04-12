@@ -311,17 +311,17 @@ mod tests {
     async fn apply_platform_stores_connector_config() {
         let store = store();
         let mut answers = BTreeMap::new();
-        answers.insert("bot_token".into(), "fake-token".into());
+        // Must match Telegram bot_token regex: ^\d+:[A-Za-z0-9_-]+$
+        answers.insert("bot_token".into(), "123456789:ABCdefGHI-jkl_MNO".into());
         let report = apply_platform(&*store, "telegram", answers).await.unwrap();
         assert_eq!(report.platform, "telegram");
         assert_eq!(report.stored_key, "connector:telegram");
         assert!(report.fields_stored.contains(&"bot_token".to_owned()));
-        // update_mode should have been defaulted in
         assert!(report.fields_stored.contains(&"update_mode".to_owned()));
 
         let stored = store.get_config("connector:telegram").await.unwrap().unwrap();
         let json: serde_json::Value = serde_json::from_str(&stored).unwrap();
-        assert_eq!(json["bot_token"], "fake-token");
+        assert_eq!(json["bot_token"], "123456789:ABCdefGHI-jkl_MNO");
         assert_eq!(json["update_mode"], "polling");
     }
 
@@ -329,7 +329,7 @@ mod tests {
     async fn apply_platform_rejects_unknown_field() {
         let store = store();
         let mut answers = BTreeMap::new();
-        answers.insert("bot_token".into(), "tok".into());
+        answers.insert("bot_token".into(), "111:abc".into());
         answers.insert("hacker_payload".into(), "!!".into());
         let err = apply_platform(&*store, "telegram", answers).await.unwrap_err();
         assert!(matches!(err, OperationError::Validation(_)));

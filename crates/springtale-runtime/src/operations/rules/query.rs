@@ -7,15 +7,25 @@ use crate::error::OperationError;
 /// List all rules from the engine (authoritative source).
 pub async fn list_rules(state: &RuntimeState) -> Vec<RuleSummary> {
     let engine = state.engine.read().await;
+    let activation_errors = state
+        .store
+        .get_rule_activation_errors()
+        .await
+        .unwrap_or_default();
     engine
         .list_rules()
         .iter()
-        .map(|r| RuleSummary {
-            id: r.id.to_string(),
-            name: r.name.clone(),
-            status: format!("{:?}", r.status).to_lowercase(),
-            trigger_type: r.trigger.trigger_type().to_owned(),
-            connector_name: r.trigger.connector_name(),
+        .map(|r| {
+            let id_str = r.id.to_string();
+            let activation_error = activation_errors.get(&id_str).cloned();
+            RuleSummary {
+                id: id_str,
+                name: r.name.clone(),
+                status: format!("{:?}", r.status).to_lowercase(),
+                trigger_type: r.trigger.trigger_type().to_owned(),
+                connector_name: r.trigger.connector_name(),
+                activation_error,
+            }
         })
         .collect()
 }

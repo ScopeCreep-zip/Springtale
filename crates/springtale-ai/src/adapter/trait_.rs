@@ -176,12 +176,26 @@ impl ToolPolicy {
     }
 }
 
-/// Minimal glob: trailing `*` only.
+/// Minimal glob: supports `*` at start (suffix match), end (prefix match),
+/// or both (contains match). Single `*` matches everything.
 fn glob_match(pattern: &str, name: &str) -> bool {
-    if let Some(prefix) = pattern.strip_suffix('*') {
-        name.starts_with(prefix)
-    } else {
-        pattern == name
+    if pattern == "*" {
+        return true;
+    }
+    match (pattern.starts_with('*'), pattern.ends_with('*')) {
+        (true, true) => {
+            let inner = &pattern[1..pattern.len() - 1];
+            name.contains(inner)
+        }
+        (true, false) => {
+            let suffix = &pattern[1..];
+            name.ends_with(suffix)
+        }
+        (false, true) => {
+            let prefix = &pattern[..pattern.len() - 1];
+            name.starts_with(prefix)
+        }
+        (false, false) => pattern == name,
     }
 }
 

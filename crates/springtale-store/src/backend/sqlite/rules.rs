@@ -148,6 +148,30 @@ impl SqliteBackend {
         .map_err(|e| StoreError::Database(format!("spawn_blocking join: {e}")))?
     }
 
+    pub(super) async fn get_rule_activation_errors_impl(
+        &self,
+    ) -> Result<std::collections::HashMap<String, String>, StoreError> {
+        let conn = self.conn.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = conn
+                .lock()
+                .map_err(|_| StoreError::Database("lock poisoned".into()))?;
+            let mut stmt = conn.prepare(
+                "SELECT id, activation_error FROM rules WHERE activation_error IS NOT NULL",
+            )?;
+            let rows = stmt
+                .query_map([], |row| {
+                    let id: String = row.get(0)?;
+                    let error: String = row.get(1)?;
+                    Ok((id, error))
+                })?
+                .collect::<Result<Vec<(String, String)>, _>>()?;
+            Ok(rows.into_iter().collect())
+        })
+        .await
+        .map_err(|e| StoreError::Database(format!("spawn_blocking join: {e}")))?
+    }
+
     pub(super) async fn delete_rule_impl(&self, id: &RuleId) -> Result<(), StoreError> {
         let conn = self.conn.clone();
         let id = *id;

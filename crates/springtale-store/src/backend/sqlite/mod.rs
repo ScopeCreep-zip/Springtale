@@ -165,6 +165,12 @@ impl super::trait_::StorageBackend for SqliteBackend {
         self.set_rule_activation_error_impl(id, error).await
     }
 
+    async fn get_rule_activation_errors(
+        &self,
+    ) -> Result<std::collections::HashMap<String, String>, StoreError> {
+        self.get_rule_activation_errors_impl().await
+    }
+
     // ── Connectors ─────────────────────────────────────────────
 
     async fn register_connector(&self, row: &ConnectorRow) -> Result<(), StoreError> {

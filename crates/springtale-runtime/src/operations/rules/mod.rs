@@ -40,6 +40,8 @@ pub struct RuleSummary {
     pub trigger_type: String,
     /// Connector name from trigger (if ConnectorEvent trigger).
     pub connector_name: Option<String>,
+    /// Activation error from trigger attach (if any).
+    pub activation_error: Option<String>,
 }
 
 /// Parse natural language intent into a structured Rule via AI adapter.

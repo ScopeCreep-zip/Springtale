@@ -44,6 +44,12 @@ pub trait StorageBackend: Send + Sync + 'static {
         error: Option<&str>,
     ) -> Result<(), StoreError>;
 
+    /// Get activation errors for all rules that have one.
+    /// Returns a map of rule ID → error message.
+    async fn get_rule_activation_errors(
+        &self,
+    ) -> Result<std::collections::HashMap<String, String>, StoreError>;
+
     // ── Connectors ─────────────────────────────────────────────
 
     /// Register a connector's manifest.

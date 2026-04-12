@@ -110,6 +110,13 @@ impl super::trait_::StorageBackend for InMemoryBackend {
         Ok(())
     }
 
+    async fn get_rule_activation_errors(
+        &self,
+    ) -> Result<std::collections::HashMap<String, String>, StoreError> {
+        // In-memory backend doesn't track activation errors.
+        Ok(std::collections::HashMap::new())
+    }
+
     // ── Connectors ─────────────────────────────────────────────
 
     async fn register_connector(&self, row: &ConnectorRow) -> Result<(), StoreError> {
