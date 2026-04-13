@@ -8,7 +8,7 @@ import { getAgentPosition, getFormationBounds, type ConnectorPositions } from ".
 import {
   COMMANDS, ROLE_SPRITES, ROLE_COLORS,
   MOMENTUM_NAMES, MOMENTUM_COLORS, MOMENTUM_UNLOCKS, TIER_CAPABILITIES,
-  NODE_SPRITES, seeded,
+  NODE_SPRITES, NODE_SIZES, seeded,
 } from "./types";
 
 export interface BottomPanelProps {
@@ -533,25 +533,30 @@ const ConnectorsListView: Component<{
       }>
         <div class="colony-card-strip mb-3">
           <For each={props.nodes}>
-            {(tree) => {
-              const spriteClass = NODE_SPRITES[tree.type] ?? "sprite-tree-deciduous";
+            {(node) => {
+              const spriteClass = NODE_SPRITES[node.type] ?? "sprite-tree-deciduous";
+              const size = NODE_SIZES[node.type] ?? { width: 36, height: 44 };
               const statusClass = () =>
-                tree.status === "active" ? "is-active" : tree.status === "paused" ? "is-warn" : "";
+                node.status === "active" ? "is-active" : node.status === "paused" ? "is-warn" : "";
               return (
-                <button
+                <div
                   class={`colony-card ${statusClass()}`}
-                  onClick={() => props.onSelect?.(tree.id)}
+                  role="button"
+                  tabindex="0"
+                  onClick={() => props.onSelect?.(node.id)}
                 >
-                  <div class={`pixel-sprite ${spriteClass}`} style={{ transform: "scale(2)" }} />
+                  <div style={{ width: `${size.width / 2}px`, height: "26px", position: "relative", "flex-shrink": "0" }}>
+                    <div class={`pixel-sprite ${spriteClass}`} style={{ transform: "scale(2)" }} />
+                  </div>
                   <div class="colony-text-3xs font-bold text-text-primary truncate w-full">
-                    {tree.label.replace("connector-", "")}
+                    {node.label.replace("connector-", "")}
                   </div>
                   <div class={`colony-text-5xs uppercase ${
-                    tree.status === "active" ? "text-status-ok" : tree.status === "paused" ? "text-status-warn" : "text-text-dim"
+                    node.status === "active" ? "text-status-ok" : node.status === "paused" ? "text-status-warn" : "text-text-dim"
                   }`}>
-                    {tree.status}
+                    {node.status}
                   </div>
-                </button>
+                </div>
               );
             }}
           </For>
@@ -564,21 +569,26 @@ const ConnectorsListView: Component<{
         <div class="colony-card-strip">
           <For each={notLoaded()}>
             {(connector) => {
-              const treeType = ["conifer", "deciduous", "shrub"][seeded(connector.name + "type", 0, 3)] ?? "deciduous";
-              const spriteClass = NODE_SPRITES[treeType as keyof typeof NODE_SPRITES] ?? "sprite-tree-deciduous";
+              const nodeType = ["conifer", "deciduous", "shrub"][seeded(connector.name + "type", 0, 3)] ?? "deciduous";
+              const spriteClass = NODE_SPRITES[nodeType as keyof typeof NODE_SPRITES] ?? "sprite-tree-deciduous";
+              const size = NODE_SIZES[nodeType] ?? { width: 36, height: 44 };
               return (
-                <button
+                <div
                   class="colony-card is-available"
+                  role="button"
+                  tabindex="0"
                   onClick={() => props.onSetup?.(connector.name)}
                 >
-                  <div class={`pixel-sprite ${spriteClass}`} style={{ transform: "scale(2)", opacity: 0.5 }} />
+                  <div style={{ width: `${size.width / 2}px`, height: "26px", position: "relative", "flex-shrink": "0" }}>
+                    <div class={`pixel-sprite ${spriteClass}`} style={{ transform: "scale(2)", opacity: 0.5 }} />
+                  </div>
                   <div class="colony-text-3xs text-text-secondary truncate w-full">
                     {connector.name.replace("connector-", "")}
                   </div>
                   <div class="colony-text-5xs text-status-ok">
                     {connector.requires_config ? "Configure" : "Enable"}
                   </div>
-                </button>
+                </div>
               );
             }}
           </For>
