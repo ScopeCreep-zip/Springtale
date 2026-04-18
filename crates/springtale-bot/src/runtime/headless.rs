@@ -50,6 +50,8 @@ impl HeadlessBot {
         let (msg_tx, msg_rx) = mpsc::channel::<IncomingMessage>(256);
         let (response_tx, response_rx) = mpsc::channel::<OutgoingResponse>(256);
         let (rule_tx, rule_rx) = mpsc::channel(256);
+        let (_formation_cmd_tx, formation_cmd_rx) =
+            mpsc::channel::<springtale_cooperation::command::FormationCommand>(32);
 
         let sentinel = std::sync::Arc::new(springtale_sentinel::Sentinel::new(
             springtale_sentinel::SentinelConfig::default(),
@@ -65,6 +67,7 @@ impl HeadlessBot {
             .connector_rx(msg_rx)
             .rule_rx(rule_rx)
             .response_tx(response_tx)
+            .formation_cmd_rx(formation_cmd_rx)
             .build()
             .await?;
 

@@ -8,7 +8,9 @@ use springtale_connector::registry::store::ConnectorRegistry;
 use springtale_core::rule::engine::{RuleEngine, TriggerEvent};
 use springtale_store::StorageBackend;
 
-use crate::cooperation::cadence::{CadenceBus, Tick};
+use springtale_cooperation::command::FormationCommand;
+
+use crate::cooperation::cadence::{CadenceBus, Tick, TickReport};
 use crate::cooperation::formation::Formation;
 use crate::error::BotError;
 use crate::handler::HandlerRegistry;
@@ -89,11 +91,17 @@ pub struct Bot {
     pub(crate) response_tx: mpsc::Sender<OutgoingResponse>,
     /// Active formations (cooperation module).
     pub(crate) formations: Arc<RwLock<Vec<Formation>>>,
-    /// Cadence bus — used by orchestrator::composer when creating formations.
-    #[allow(dead_code)]
-    pub(crate) cadence: CadenceBus,
+    /// Cadence bus — wrapped in Arc per spec §5.4 pattern since the bus
+    /// is shared across the spawned run task and the event loop.
+    pub(crate) cadence: Arc<CadenceBus>,
     /// Receiver for cadence ticks (event loop select! branch).
     pub(crate) cadence_rx: broadcast::Receiver<Tick>,
+    /// Fan-in receiver for agent tick reports (spec §5.4). Agents send
+    /// TickReports through `cadence.reports_sender()`; the event loop drains
+    /// this receiver during tick processing.
+    pub(crate) cadence_reports_rx: tokio::sync::mpsc::Receiver<TickReport>,
+    /// Receiver for formation commands from runtime operations.
+    pub(crate) formation_cmd_rx: mpsc::Receiver<FormationCommand>,
 }
 
 impl Bot {
@@ -114,6 +122,11 @@ pub struct BotBuilder {
     connector_rx: Option<mpsc::Receiver<IncomingMessage>>,
     rule_rx: Option<mpsc::Receiver<TriggerEvent>>,
     response_tx: Option<mpsc::Sender<OutgoingResponse>>,
+    formation_cmd_rx: Option<mpsc::Receiver<FormationCommand>>,
+    /// Pre-created formations handle — allows the caller to retain an
+    /// `Arc<RwLock<Vec<Formation>>>` that the built `Bot` will use. This
+    /// is how the daemon wires `BotFormationReader` to read live data.
+    formations_handle: Option<Arc<RwLock<Vec<Formation>>>>,
 }
 
 impl BotBuilder {
@@ -128,7 +141,21 @@ impl BotBuilder {
             connector_rx: None,
             rule_rx: None,
             response_tx: None,
+            formation_cmd_rx: None,
+            formations_handle: None,
         }
+    }
+
+    /// Create and return a shared formations handle.
+    ///
+    /// The caller retains the `Arc` to build a `LiveFormationReader` from it.
+    /// When `build()` is called, the bot will use this handle instead of
+    /// creating its own. This allows the daemon to read live formation data
+    /// without locking or duplicating state.
+    pub fn create_formations_handle(&mut self) -> Arc<RwLock<Vec<Formation>>> {
+        let handle = Arc::new(RwLock::new(Vec::new()));
+        self.formations_handle = Some(handle.clone());
+        handle
     }
 
     pub fn store(mut self, store: Arc<dyn StorageBackend>) -> Self {
@@ -173,6 +200,20 @@ impl BotBuilder {
 
     pub fn sentinel(mut self, sentinel: Arc<springtale_sentinel::Sentinel>) -> Self {
         self.sentinel = Some(sentinel);
+        self
+    }
+
+    pub fn formation_cmd_rx(mut self, rx: mpsc::Receiver<FormationCommand>) -> Self {
+        self.formation_cmd_rx = Some(rx);
+        self
+    }
+
+    /// Set a pre-created shared formations handle.
+    ///
+    /// When set, `build()` uses this Arc instead of creating a fresh one.
+    /// The caller retains a clone to build a `LiveFormationReader` from it.
+    pub fn formations_handle(mut self, handle: Arc<RwLock<Vec<Formation>>>) -> Self {
+        self.formations_handle = Some(handle);
         self
     }
 
@@ -262,16 +303,27 @@ impl BotBuilder {
             encryption_key,
         );
 
-        // Create cadence bus for cooperation (§5)
-        let (cadence_tx, _) = broadcast::channel::<Tick>(64);
-        let cadence = CadenceBus::new(Duration::from_secs(1), cadence_tx);
+        // Create cadence bus for cooperation (§5.4)
+        let (cadence, cadence_reports_rx) = CadenceBus::new(Duration::from_secs(1), 64);
+        let cadence = Arc::new(cadence);
         let cadence_rx = cadence.subscribe();
 
+        // Formation command receiver — provided by caller who passes the
+        // sender to RuntimeState so operations can reach the bot event loop.
+        let formation_cmd_rx = self
+            .formation_cmd_rx
+            .ok_or_else(|| BotError::NotInitialized("formation_cmd_rx required".into()))?;
+
         // Spawn cadence tick task (external clock, Necrodancer pattern)
-        let cadence_clone = cadence.clone();
+        let cadence_run = cadence.clone();
         tokio::spawn(async move {
-            cadence_clone.run().await;
+            cadence_run.run().await;
         });
+
+        // Use pre-created formations handle if provided, otherwise create fresh.
+        let formations = self
+            .formations_handle
+            .unwrap_or_else(|| Arc::new(RwLock::new(Vec::new())));
 
         Ok(Bot {
             router,
@@ -288,9 +340,11 @@ impl BotBuilder {
             connector_rx,
             rule_rx,
             response_tx,
-            formations: Arc::new(RwLock::new(Vec::new())),
+            formations,
             cadence,
             cadence_rx,
+            cadence_reports_rx,
+            formation_cmd_rx,
         })
     }
 }
