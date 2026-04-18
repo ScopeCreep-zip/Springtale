@@ -270,6 +270,14 @@ const DetailPanel: Component<{
                   <div class="colony-text-xs mt-0.5 overflow-hidden text-ellipsis whitespace-nowrap text-status-warn">
                     {a.task}
                   </div>
+                  {/* Health badge */}
+                  <div class="colony-text-5xs mt-0.5 uppercase tracking-wider" style={{
+                    color: a.healthState === "healthy" ? "var(--color-status-ok)"
+                      : a.healthState === "degraded" ? "var(--color-status-warn)"
+                      : "var(--color-status-error)",
+                  }}>
+                    {a.healthState ?? "healthy"} {(a.liveness ?? 1) < 0.5 ? `| SUSPECT` : ""}
+                  </div>
                   {/* Stat bars */}
                   <div class="colony-stat-grid mt-1">
                     <span class="colony-text-3xs text-text-dim">FUEL</span>
@@ -279,9 +287,28 @@ const DetailPanel: Component<{
                     <span class="colony-text-5xs text-right" style={{ color: fuelColor }}>{a.fuel}</span>
                     <span class="colony-text-3xs text-text-dim">HP</span>
                     <div class="colony-stat-bar">
-                      <div class="colony-stat-fill" style={{ width: `${a.hp}%`, background: "var(--color-role-scout)" }} />
+                      <div class="colony-stat-fill" style={{
+                        width: `${a.hp}%`,
+                        background: a.healthState === "degraded" ? "var(--color-status-warn)"
+                          : a.healthState === "critical" ? "var(--color-status-error)"
+                          : "var(--color-role-scout)",
+                      }} />
                     </div>
-                    <span class="colony-text-2xs text-right text-role-scout">{a.hp}</span>
+                    <span class="colony-text-2xs text-right" style={{
+                      color: a.healthState === "degraded" ? "var(--color-status-warn)"
+                        : a.healthState === "critical" ? "var(--color-status-error)"
+                        : "var(--color-role-scout)",
+                    }}>{a.hp}</span>
+                    <span class="colony-text-3xs text-text-dim">LOAD</span>
+                    <div class="colony-stat-bar">
+                      <div class="colony-stat-fill" style={{
+                        width: `${Math.round((a.attentionLoad ?? 0) * 100)}%`,
+                        background: (a.attentionLoad ?? 0) > 0.8 ? "var(--color-status-error)"
+                          : (a.attentionLoad ?? 0) > 0.5 ? "var(--color-status-warn)"
+                          : "var(--color-status-ok)",
+                      }} />
+                    </div>
+                    <span class="colony-text-5xs text-right text-text-dim">{Math.round((a.attentionLoad ?? 0) * 100)}%</span>
                   </div>
                   <Show when={a.pipeline}>
                     <div class="colony-text-2xs mt-0.5 text-mycelium-active">
@@ -378,8 +405,20 @@ const DetailPanel: Component<{
           return (
             <div>
               <div class="colony-label mb-1 text-text-dim">FORMATION</div>
-              <div class="font-bold" style={{ "font-size": "9px", color: f.color }}>{f.name}</div>
+              <div class="flex items-center gap-2">
+                <div class="font-bold" style={{ "font-size": "9px", color: f.color }}>{f.name}</div>
+                <Show when={f.status === "paused"}>
+                  <span class="colony-text-5xs rounded bg-status-warn px-1 text-soil-deep">PAUSED</span>
+                </Show>
+                <Show when={f.status === "draft"}>
+                  <span class="colony-text-5xs rounded border border-bark px-1 text-text-dim">DRAFT</span>
+                </Show>
+                <Show when={f.guardStatus === "OK"}>
+                  <span class="colony-text-5xs rounded bg-status-ok px-1 text-soil-deep">GUARD</span>
+                </Show>
+              </div>
               <div class="colony-text-2xs text-text-dim">{f.intent}: {f.description}</div>
+
               {/* Momentum bar */}
               <div class="my-1.5 flex gap-0.5">
                 <For each={MOMENTUM_NAMES}>
@@ -396,25 +435,94 @@ const DetailPanel: Component<{
               <div class="colony-text-5xs mb-1" style={{ color: f.color }}>
                 {f.momentumLabel} — {MOMENTUM_UNLOCKS[f.momentum]}
               </div>
+
+              {/* Rally pips (Monster Hunter carts) */}
+              <div class="mb-1 flex items-center gap-1">
+                <span class="colony-text-3xs text-text-dim">RALLY</span>
+                <div class="flex gap-0.5">
+                  <For each={Array.from({ length: f.rallyMax })}>
+                    {(_, i) => (
+                      <div
+                        class="h-[6px] w-[6px] rounded-sm"
+                        style={{
+                          background: i() < f.rallyTokens ? "var(--color-status-warn)" : "var(--color-soil-darker)",
+                          border: "1px solid var(--color-bark)",
+                        }}
+                      />
+                    )}
+                  </For>
+                </div>
+                <span class="colony-text-5xs text-text-dim">{f.rallyTokens}/{f.rallyMax}</span>
+              </div>
+
+              {/* Aggregate stats row */}
+              {(() => {
+                const operational = members().filter((a) => a.healthState === "healthy").length;
+                const avgLoad = members().length > 0
+                  ? Math.round(members().reduce((sum, a) => sum + (a.attentionLoad ?? 0), 0) / members().length * 100)
+                  : 0;
+                const totalFuel = members().reduce((sum, a) => sum + a.fuel, 0);
+                return (
+                  <div class="colony-text-5xs mb-1 flex gap-2 text-text-dim">
+                    <span>{operational}/{members().length} OPS</span>
+                    <span>LOAD {avgLoad}%</span>
+                    <span>FUEL {totalFuel}</span>
+                  </div>
+                );
+              })()}
+
+              {/* Member traffic-light grid (SC2 wireframe pattern) */}
+              <div class="colony-label mb-0.5">MEMBERS</div>
               <For each={members()}>
                 {(a) => {
+                  const healthColor = a.healthState === "healthy" ? "var(--color-status-ok)"
+                    : a.healthState === "degraded" ? "var(--color-status-warn)"
+                    : a.healthState === "critical" ? "var(--color-status-error)"
+                    : "var(--color-text-dim)";
+                  const livenessIcon = (a.liveness ?? 1) > 0.8 ? "●"
+                    : (a.liveness ?? 1) > 0.3 ? "◐"
+                    : "○";
                   const fuelColor = a.fuelStatus === "ok" ? "var(--color-status-ok)" : a.fuelStatus === "warn" ? "var(--color-status-warn)" : "var(--color-status-error)";
-                  const healthIcon = a.status === "ok" ? "●" : a.status === "warn" ? "◐" : a.status === "error" ? "○" : "·";
-                  const healthClass = a.status === "ok" ? "text-status-ok" : a.status === "warn" ? "text-status-warn" : a.status === "error" ? "text-status-error" : "text-text-dim";
                   return (
                     <div class="colony-text-2xs flex justify-between border-b border-bark py-0.5">
                       <span>
-                        <span class={healthClass}>{healthIcon}</span>
+                        <span style={{ color: healthColor }}>{livenessIcon}</span>
                         {" "}{a.name} <span class="text-text-dim">{a.role}</span>
                       </span>
-                      <span style={{ color: fuelColor }}>{a.fuel} fuel</span>
+                      <span class="flex gap-1.5">
+                        <Show when={(a.attentionLoad ?? 0) > 0.5}>
+                          <span class="text-status-warn">{Math.round((a.attentionLoad ?? 0) * 100)}%</span>
+                        </Show>
+                        <span style={{ color: fuelColor }}>{a.fuel}</span>
+                      </span>
                     </div>
                   );
                 }}
               </For>
 
+              {/* Attention distribution bar (Army of Two aggro meter) */}
+              <Show when={members().length > 1}>
+                <div class="colony-label mt-1.5 mb-0.5">ATTENTION</div>
+                <div class="flex h-[6px] w-full overflow-hidden rounded-sm border border-bark">
+                  <For each={members()}>
+                    {(a) => {
+                      const share = (a.attentionLoad ?? 0) * 100;
+                      return (
+                        <div
+                          style={{
+                            width: `${Math.max(share, 5)}%`,
+                            background: ROLE_COLORS[a.role] ?? "var(--color-text-dim)",
+                          }}
+                          title={`${a.name}: ${Math.round(share)}%`}
+                        />
+                      );
+                    }}
+                  </For>
+                </div>
+              </Show>
+
               {/* Capability unlocks for current momentum tier */}
-              <div class="colony-label mt-2 mb-1">CAPABILITIES ({f.momentumLabel})</div>
+              <div class="colony-label mt-1.5 mb-0.5">CAPABILITIES ({f.momentumLabel})</div>
               <div class="flex flex-wrap gap-1">
                 <For each={TIER_CAPABILITIES[f.momentum] ?? []}>
                   {(cap) => (

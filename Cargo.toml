@@ -9,6 +9,8 @@ members = [
   "crates/springtale-store",
   "crates/springtale-ai",
   "crates/springtale-mcp",
+  # Cooperation primitives (game-informed multi-agent coordination)
+  "crates/springtale-cooperation",
   # Phase 1b
   "crates/springtale-bot",
   # Phase 2a
@@ -166,6 +168,16 @@ figment          = { version = "0.10", features = ["toml", "env"] }
 # ── Compile-time Registration ─────────────────────────────────────────────────
 inventory        = "0.3"
 
+# ── Graph / Rate Limiting ──────────────────────────────────────────────────────
+petgraph         = "0.7"
+governor         = { version = "0.8", features = ["std"] }
+crossbeam-deque  = "0.8"
+
+# ── Cooperation (Phase M) ─────────────────────────────────────────────────────
+dyn-clone        = "1"          # DynClone supertrait for Box<dyn DynamicRole>
+chitchat         = "0.10"       # §8 scuttlebutt gossip for awareness
+foca             = "1.0"        # §8 SWIM liveness detection
+
 # ── Concurrency ────────────────────────────────────────────────────────────────
 dashmap          = "6"
 
@@ -188,6 +200,7 @@ springtale-connector  = { path = "crates/springtale-connector" }
 springtale-scheduler  = { path = "crates/springtale-scheduler" }
 springtale-store      = { path = "crates/springtale-store" }
 springtale-ai         = { path = "crates/springtale-ai" }
+springtale-cooperation = { path = "crates/springtale-cooperation" }
 springtale-bot        = { path = "crates/springtale-bot" }
 springtale-mcp        = { path = "crates/springtale-mcp" }
 springtale-sentinel   = { path = "crates/springtale-sentinel" }

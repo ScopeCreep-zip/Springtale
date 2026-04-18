@@ -31,6 +31,12 @@ export interface ColonyAgent {
   pipeline: string | null;
   /** Activity state from backend: "firing" | "error" | "active" | "waiting" | "idle". */
   activity?: string;
+  /** Attention load from cooperation layer (0.0-1.0). */
+  attentionLoad: number;
+  /** Liveness score (1.0 = alive, 0.0 = dead). */
+  liveness: number;
+  /** Health state: "healthy" | "degraded" | "incapacitated" | "dead". */
+  healthState: string;
 }
 
 export interface ColonyPipe {
@@ -55,6 +61,10 @@ export interface ColonyFormation {
   color: string;
   members: string[];
   zone: { x: number; y: number };
+  status: string;
+  rallyTokens: number;
+  rallyMax: number;
+  guardStatus: string;
 }
 
 export interface ColonySelection {
@@ -145,7 +155,7 @@ export const COMMANDS: Record<string, (ColonyCommand | null)[]> = {
     cmd("!", "RALLY", "R", "formation", "formation:rally"),
     cmd("@", "AI", "Q", "formation", "formation:ai_config"),
     cmd("^", "AUTONOMY", "U", "formation", "formation:autonomy"),
-    null,
+    cmd("-", "REMOVE", "X", "formation", "formation:remove_member"),
   ],
 };
 

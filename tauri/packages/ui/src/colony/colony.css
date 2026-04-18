@@ -576,6 +576,36 @@
     background: color-mix(in srgb, var(--color-accent) 25%, transparent);
   }
 
+  /* Formation status states */
+  .colony-formation[data-status="draft"] {
+    opacity: 0.4;
+  }
+  .colony-formation[data-status="draft"] ellipse {
+    stroke-dasharray: 2 4;
+  }
+  .colony-formation[data-status="paused"] {
+    opacity: 0.55;
+  }
+  .colony-formation[data-status="paused"] ellipse {
+    stroke-dasharray: 8 4;
+  }
+  .colony-formation[data-status="active"] {
+    opacity: 1;
+  }
+
+  /* Agent health states */
+  .colony-agent.is-health-degraded {
+    filter: saturate(0.5) brightness(0.85);
+  }
+  .colony-agent.is-health-incapacitated {
+    filter: saturate(0.15) brightness(0.6);
+    animation: agent-warning-pulse 1.5s ease infinite;
+  }
+  .colony-agent.is-health-dead {
+    filter: grayscale(1) brightness(0.4);
+    pointer-events: none;
+  }
+
   /* Underground mode */
   .colony-underground .colony-tree .pixel-sprite { opacity: .15 !important; }
   .colony-underground .colony-tree .colony-tree-label { opacity: .3; }

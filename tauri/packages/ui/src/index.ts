@@ -41,7 +41,9 @@ export type { TeamConfig } from "./colony/TeamBuilder";
 
 // Dashboard state (data layer — platform-agnostic)
 export { createDashboardState, DashboardProvider, useDashboard } from "./dashboard/context";
-export type { DataProvider, DashboardState, FormationInfo, RuleSummary, ConfigSchema, ConfigSchemaProperty, AvailableConnector } from "./dashboard/types";
+export type { DataProvider, DashboardState, FormationInfo, FormationMemberDetail, FormationDetail, RuleSummary, ConfigSchema, ConfigSchemaProperty, AvailableConnector } from "./dashboard/types";
+export { createProviderQuery, createProviderMutation } from "./dashboard/query";
+export type { MutationResult } from "./dashboard/query";
 
 // Form components (rendered inside colony panels)
 export { ConditionEditor } from "./ConditionEditor";

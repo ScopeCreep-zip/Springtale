@@ -42,12 +42,15 @@ export function mapAgents(rules: RuleItem[], agentStates: AgentState[] = []): Co
       autonomyLabel: state?.autonomy_label ?? "SUGGEST",
       fuel: state?.fuel ?? 0,
       fuelStatus: (state?.fuel_status ?? "ok") as ColonyAgent["fuelStatus"],
-      hp: 100,
+      hp: state ? Math.round(state.liveness * 100) : 100,
       connectorId: r.connector ?? r.triggerType,
       task: state?.task_display ?? "",
       status: r.status === "enabled" ? "ok" as const : "idle" as const,
       pipeline: r.triggerType,
       activity: state?.activity ?? "waiting",
+      attentionLoad: state?.attention_load ?? 0,
+      liveness: state?.liveness ?? 1,
+      healthState: state?.health_state ?? "healthy",
     };
   });
 }
@@ -74,6 +77,10 @@ export function mapFormations(swarms: SwarmInfo[]): ColonyFormation[] {
       color: MOMENTUM_COLORS[momentum] ?? "var(--color-momentum-cold)",
       members: s.members ?? [],
       zone: { x: seeded(s.id + "zx", 20, 80), y: seeded(s.id + "zy", 20, 60) },
+      status: s.status ?? "draft",
+      rallyTokens: s.rally_tokens ?? 3,
+      rallyMax: s.rally_max ?? 3,
+      guardStatus: s.guard_status ?? "--",
     };
   });
 }

@@ -402,7 +402,7 @@ export const App = () => {
           }
           break;
         case "formation:rally":
-          if (sel.id) { await db.handleResumeFormation(sel.id); await db.refresh(); }
+          if (sel.id) { await db.handleRallyFormation(sel.id); }
           break;
         case "formation:ai_config":
           if (sel.id) {

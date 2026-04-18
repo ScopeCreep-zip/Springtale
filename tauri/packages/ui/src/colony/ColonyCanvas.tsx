@@ -298,6 +298,7 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
               {/* Ring — SVG ellipse, stroke-only hit testing */}
               <svg
                 class="colony-formation"
+                data-status={formation.status}
                 style={{
                   left: `calc(${bounds().cx}% - ${bounds().rx}% - 8px)`,
                   top: `calc(${bounds().cy}% - ${bounds().ry}% - 8px)`,
@@ -454,10 +455,11 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
 
           return (
             <div
-              class={`colony-agent is-${act()} ${walkingAgents().has(agent.id) ? "is-walking" : ""} ${isSelected() ? "is-selected" : ""}`}
+              class={`colony-agent is-${act()} ${walkingAgents().has(agent.id) ? "is-walking" : ""} ${isSelected() ? "is-selected" : ""} ${agent.healthState !== "healthy" ? `is-health-${agent.healthState}` : ""}`}
               style={{
                 left: `calc(${pos().x}% - 14px)`,
                 top: `calc(${pos().y}% - 10px)`,
+                opacity: agent.liveness < 1 ? `${0.3 + agent.liveness * 0.7}` : undefined,
               }}
               data-agent-id={agent.id}
             >
@@ -497,6 +499,19 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                 </Show>
                 <span class="colony-text-3xs text-text-dim">{agent.name}</span>
               </div>
+              {/* Attention overload dot */}
+              <Show when={agent.attentionLoad > 0.7}>
+                <div
+                  class="absolute"
+                  style={{
+                    top: "-2px", right: "-2px",
+                    width: "5px", height: "5px",
+                    background: "var(--color-status-warn)",
+                    "border-radius": "50%",
+                    "pointer-events": "none",
+                  }}
+                />
+              </Show>
               {/* Sprite */}
               <div class={`pixel-sprite ${spriteClass}`} />
             </div>
