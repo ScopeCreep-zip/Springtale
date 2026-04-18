@@ -10,7 +10,7 @@ import type {
   Report, PlatformForm, ApplyReport, Template, WriteReport,
   FixGuide, FixOutcome, SendRequest, SendOutcome,
 } from "@springtale/types";
-import type { RuleSummary, FormationInfo } from "@springtale/ui";
+import type { RuleSummary, FormationInfo, FormationDetail } from "@springtale/ui";
 import { get, post, put, del, getBaseUrl, getToken } from "./api/client";
 import { subscribeToEvents } from "./api/events";
 import { getCanvasState, subscribeToCanvasUpdates } from "./api/canvas";
@@ -91,6 +91,9 @@ export function createWebProvider(): DataProvider {
     },
 
     // Formations
+    async getFormation(id: string) {
+      return get<FormationDetail>(`/formations/${id}`);
+    },
     async listFormations() {
       const data = await get<{ formations: FormationInfo[] }>("/formations");
       return data.formations ?? [];
@@ -102,8 +105,21 @@ export function createWebProvider(): DataProvider {
     async pauseFormation(id) { await post(`/formations/${id}/pause`); },
     async resumeFormation(id) { await post(`/formations/${id}/resume`); },
     async dissolveFormation(id) { await post(`/formations/${id}/dissolve`); },
+    async rallyFormation(id) { await post(`/formations/${id}/rally`); },
     async updateFormationIntent(id, intent) { await put(`/formations/${id}/intent`, { intent }); },
     async addFormationMember(formationId, connectorName) { await post(`/formations/${formationId}/members`, { connector_name: connectorName }); },
+    async removeFormationMember(formationId, connectorName) {
+      // DELETE with JSON body — use fetch directly since del() helper doesn't support body
+      const response = await fetch(`${getBaseUrl()}/formations/${formationId}/members`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${getToken()}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ connector_name: connectorName }),
+      });
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
+    },
     async listIntents() { return (await get<{ intents: Array<{ value: string; label: string }> }>("/formations/intents")).intents ?? []; },
     async deployTeam(team) { return post("/formations/deploy-team", team); },
     async cycleFormationIntent(id) { return (await post<{ intent: string }>(`/formations/${id}/cycle-intent`)).intent; },

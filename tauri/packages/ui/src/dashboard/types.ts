@@ -28,6 +28,23 @@ export interface RuleSummary {
   connector_name: string | null;
 }
 
+/** Enriched per-member detail from live formation data. */
+export interface FormationMemberDetail {
+  connector_name: string;
+  role: string;
+  health: string;
+  fuel_remaining: number;
+  liveness: string;
+  attention_load: number;
+  active_task: string | null;
+  consecutive_failures: number;
+}
+
+/** Enriched formation detail — FormationInfo plus live member details. */
+export interface FormationDetail extends FormationInfo {
+  member_details: FormationMemberDetail[];
+}
+
 /** Wire-format formation info from both IPC and HTTP. */
 export interface FormationInfo {
   id: string;
@@ -39,6 +56,12 @@ export interface FormationInfo {
   members: string[];
   /** Real momentum tier from backend: "Cold", "Warming", "Hot", "Fever". */
   momentum_tier: string;
+  momentum_label?: string;
+  capabilities?: string[];
+  guard_status?: string;
+  /** Rally tokens remaining (Monster Hunter carts, §15). */
+  rally_tokens?: number;
+  rally_max?: number;
 }
 
 /**
@@ -79,14 +102,17 @@ export interface DataProvider {
   subscribeToEvents(callback: (event: EventEntry) => void): () => void;
 
   // Formations (swarms)
+  getFormation(id: string): Promise<FormationDetail>;
   listFormations(): Promise<FormationInfo[]>;
   createFormation(name: string, intent: string, connectors: string[]): Promise<string>;
   deployFormation(id: string): Promise<void>;
   pauseFormation(id: string): Promise<void>;
   resumeFormation(id: string): Promise<void>;
   dissolveFormation(id: string): Promise<void>;
+  rallyFormation(id: string): Promise<void>;
   updateFormationIntent(id: string, intent: string): Promise<void>;
   addFormationMember(formationId: string, connectorName: string): Promise<void>;
+  removeFormationMember(formationId: string, connectorName: string): Promise<void>;
   listIntents(): Promise<Array<{ value: string; label: string }>>;
   deployTeam(team: { name: string; intent: string; agents: Array<{ connector_name: string; trigger_name: string; action_connector: string; action_name: string }>; guard_mode: boolean }): Promise<{ formation_id: string; rule_ids: string[] }>;
   cycleFormationIntent(id: string): Promise<string>;
@@ -219,6 +245,7 @@ export interface DashboardState {
   handlePauseFormation: (id: string) => Promise<void>;
   handleResumeFormation: (id: string) => Promise<void>;
   handleDissolveFormation: (id: string) => Promise<void>;
+  handleRallyFormation: (id: string) => Promise<void>;
 
   // Derived
   selectedRule: () => RuleDetail | null;

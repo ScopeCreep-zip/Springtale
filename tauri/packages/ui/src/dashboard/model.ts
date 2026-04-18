@@ -50,4 +50,6 @@ export interface SwarmInfo {
   momentum_label?: string;
   capabilities?: string[];
   guard_status?: string;
+  rally_tokens?: number;
+  rally_max?: number;
 }

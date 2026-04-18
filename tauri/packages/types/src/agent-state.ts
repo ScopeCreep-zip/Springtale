@@ -25,4 +25,10 @@ export interface AgentState {
   fuel_status: "ok" | "warn" | "critical";
   /** Pre-formatted task description from backend. */
   task_display: string;
+  /** Attention load from formation's AttentionBroker (0.0-1.0). */
+  attention_load: number;
+  /** Liveness score (1.0 = alive, 0.0 = dead). */
+  liveness: number;
+  /** Health state: "healthy" | "degraded" | "incapacitated" | "dead". */
+  health_state: string;
 }

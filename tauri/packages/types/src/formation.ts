@@ -37,6 +37,10 @@ export interface FormationSummary {
   momentum_tier: MomentumTier;
   intent: string;
   is_viable: boolean;
+  /** Rally tokens remaining (Monster Hunter carts, §15). */
+  rally_tokens: number;
+  /** Maximum rally tokens. */
+  rally_max: number;
 }
 
 export interface FormationDetail {
@@ -45,6 +49,10 @@ export interface FormationDetail {
   momentum_tier: MomentumTier;
   intent: string;
   is_viable: boolean;
+  /** Rally tokens remaining (Monster Hunter carts, §15). */
+  rally_tokens: number;
+  /** Maximum rally tokens. */
+  rally_max: number;
 }
 
 export type IntentPattern =

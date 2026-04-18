@@ -281,6 +281,15 @@ export function createDashboardState(provider: DataProvider): DashboardState {
     }
   };
 
+  const handleRallyFormation = async (id: string) => {
+    try {
+      await provider.rallyFormation(id);
+      await refresh();
+    } catch (e) {
+      setError(String(e));
+    }
+  };
+
   // ── Derived ──
 
   const selectedRule = (): RuleDetail | null => {
@@ -315,7 +324,7 @@ export function createDashboardState(provider: DataProvider): DashboardState {
     setError, clearError: () => setError(""),
     // Actions
     refresh, handleToggle, handleDelete, handleSaveNewRule, handleHatch,
-    handleDeployFormation, handlePauseFormation, handleResumeFormation, handleDissolveFormation,
+    handleDeployFormation, handlePauseFormation, handleResumeFormation, handleDissolveFormation, handleRallyFormation,
     // Derived
     selectedRule,
     // Provider + resubscribe

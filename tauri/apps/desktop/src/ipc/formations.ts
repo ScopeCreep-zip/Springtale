@@ -16,6 +16,35 @@ export interface FormationInfo {
   members: string[];
   /** Real momentum tier from backend: "Cold", "Warming", "Hot", "Fever". */
   momentum_tier: string;
+  /** Human label for momentum tier: "COLD", "WARM", "HOT", "FEVER". */
+  momentum_label: string;
+  /** Capabilities unlocked at current tier. */
+  capabilities: string[];
+  /** Guard readiness: "OK" if any member active, "--" otherwise. */
+  guard_status: string;
+  /** Rally tokens remaining (Monster Hunter carts, section 15). */
+  rally_tokens: number;
+  /** Maximum rally tokens. */
+  rally_max: number;
+}
+
+export interface FormationMemberDetail {
+  connector_name: string;
+  role: string;
+  health: string;
+  fuel_remaining: number;
+  liveness: string;
+  attention_load: number;
+  active_task: string | null;
+  consecutive_failures: number;
+}
+
+export interface FormationDetail extends FormationInfo {
+  member_details: FormationMemberDetail[];
+}
+
+export async function getFormation(id: string): Promise<FormationDetail> {
+  return invoke<FormationDetail>("get_formation", { id });
 }
 
 export async function createFormation(
@@ -40,6 +69,10 @@ export async function resumeFormation(id: string): Promise<void> {
 
 export async function dissolveFormation(id: string): Promise<void> {
   return invoke("dissolve_formation", { id });
+}
+
+export async function rallyFormation(id: string): Promise<void> {
+  return invoke("rally_formation", { id });
 }
 
 export async function listFormations(): Promise<FormationInfo[]> {
@@ -92,4 +125,8 @@ export async function cycleFormationIntent(id: string): Promise<string> {
 
 export async function cycleFormationAutonomy(id: string): Promise<string> {
   return invoke<string>("cycle_formation_autonomy", { id });
+}
+
+export async function removeFormationMember(formationId: string, connectorName: string): Promise<void> {
+  return invoke("remove_formation_member", { formationId, connectorName });
 }
