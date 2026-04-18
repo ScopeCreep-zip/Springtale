@@ -11,12 +11,37 @@ pub struct FuelBudget {
     initial: u64,
 }
 
+impl Clone for FuelBudget {
+    fn clone(&self) -> Self {
+        Self {
+            remaining: AtomicU64::new(self.remaining.load(Ordering::Acquire)),
+            initial: self.initial,
+        }
+    }
+}
+
 impl FuelBudget {
     /// Create a new fuel budget with the given total.
     pub fn new(total: u64) -> Self {
         Self {
             remaining: AtomicU64::new(total),
             initial: total,
+        }
+    }
+
+    /// Replenish fuel — used by L6 `InjectFuel` interventions. Saturates at
+    /// u64::MAX so a misconfigured intervention cannot overflow the counter.
+    pub fn replenish(&self, amount: u64) {
+        loop {
+            let current = self.remaining.load(Ordering::Acquire);
+            let next = current.saturating_add(amount);
+            if self
+                .remaining
+                .compare_exchange(current, next, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+            {
+                return;
+            }
         }
     }
 

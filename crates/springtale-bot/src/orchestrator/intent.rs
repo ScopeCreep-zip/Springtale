@@ -28,18 +28,28 @@ pub async fn publish_intent(cadence: &CadenceBus, intent: IntentPattern) {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::cooperation::cadence::Tick;
     use std::time::Duration;
-    use tokio::sync::broadcast;
 
     #[tokio::test]
     async fn test_publish_intent() {
-        let (tx, _rx) = broadcast::channel::<Tick>(16);
-        let bus = CadenceBus::new(Duration::from_millis(100), tx);
+        let (bus, mut reports_rx) = CadenceBus::new(Duration::from_millis(100), 16);
 
         publish_intent(&bus, IntentPattern::Execute { plan_id: None }).await;
 
         let intent = bus.current_intent.read().await;
         assert!(matches!(&*intent, IntentPattern::Execute { .. }));
+
+        // Verify reports channel is functional (not just created)
+        let sender = bus.reports_sender();
+        sender.send(springtale_cooperation::cadence::TickReport {
+            agent_id: springtale_cooperation::cadence::AgentId::new(),
+            tick_sequence: 0,
+            action_taken: None,
+            latency: Duration::from_millis(0),
+            intent_alignment: 1.0,
+            interference_with: vec![],
+        }).await.expect("report send");
+        let report = reports_rx.recv().await.expect("report recv");
+        assert!((report.intent_alignment - 1.0).abs() < f32::EPSILON);
     }
 }

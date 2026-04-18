@@ -18,7 +18,6 @@ use uuid::Uuid;
 
 use springtale_ai::adapter::{AiOptions, AiRequest, ChatMessage};
 use springtale_connector::registry::store::ConnectorRegistry;
-use springtale_store::StorageBackend;
 
 use crate::cooperation::action::SubTask;
 use crate::cooperation::formation::Formation;
@@ -38,7 +37,6 @@ use crate::error::BotError;
 /// parsed and posted to the blackboard for members to pull.
 pub async fn orchestrate_formation(
     formation: &Formation,
-    _store: &Arc<dyn StorageBackend>,
     registry: &Arc<RwLock<ConnectorRegistry>>,
 ) -> Result<Vec<SubTask>, BotError> {
     let orchestrator = formation
@@ -109,21 +107,21 @@ async fn build_member_summary(
             continue;
         }
 
-        let caps = member.capabilities.join(", ");
-        let role = format!("{:?}", member.current_role);
+        let cap_names: Vec<&str> = member.capabilities.iter().map(|c| c.name.as_str()).collect();
+        let caps = cap_names.join(", ");
+        let role = member.role.name().to_owned();
 
         // Look up connector capabilities from registry
         let connector_actions: Vec<String> = member
             .capabilities
             .iter()
             .filter_map(|cap| {
-                // Capabilities may include connector names
-                let entry = registry.get(cap)?;
+                let entry = registry.get(&cap.name)?;
                 let actions: Vec<String> = entry
                     .host
                     .actions()
                     .iter()
-                    .map(|a| format!("{}:{}", cap, a.name))
+                    .map(|a| format!("{}:{}", cap.name, a.name))
                     .collect();
                 Some(actions)
             })
@@ -173,7 +171,7 @@ fn parse_subtasks(content: &str, formation: &Formation) -> Result<Vec<SubTask>, 
     let member_connectors: Vec<&str> = formation
         .members
         .iter()
-        .flat_map(|m| m.capabilities.iter().map(|c| c.as_str()))
+        .flat_map(|m| m.capabilities.iter().map(|c| c.name.as_str()))
         .collect();
 
     for val in parsed {
@@ -213,7 +211,7 @@ fn parse_subtasks(content: &str, formation: &Formation) -> Result<Vec<SubTask>, 
 
         subtasks.push(SubTask {
             id: Uuid::new_v4(),
-            target_connector: target,
+            target_connector: springtale_cooperation::capability::CapabilityDecl::new(target),
             action_name,
             params,
             priority,
@@ -229,19 +227,20 @@ fn parse_subtasks(content: &str, formation: &Formation) -> Result<Vec<SubTask>, 
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::cooperation::cadence::{AgentId, IntentPattern};
-    use crate::cooperation::formation::{FormationConstraints, FormationMember};
-    use crate::orchestrator::fuel::FuelBudget;
+    use crate::cooperation::{AgentId, IntentPattern, FormationConstraints};
+    use crate::cooperation::formation::FormationMember;
 
     fn test_formation() -> Formation {
         Formation::new(
             vec![
-                FormationMember::new(AgentId::new(), vec!["connector-github".to_owned()]),
-                FormationMember::new(AgentId::new(), vec!["connector-telegram".to_owned()]),
+                FormationMember::new(AgentId::new(), vec!["connector-github".into()]),
+                FormationMember::new(AgentId::new(), vec!["connector-telegram".into()]),
             ],
             IntentPattern::Execute { plan_id: None },
-            FormationConstraints::default(),
-            FuelBudget::new(1_000_000),
+            FormationConstraints {
+                fuel_budget: springtale_cooperation::FuelAmount(1_000_000),
+                ..Default::default()
+            },
         )
     }
 
@@ -260,7 +259,7 @@ mod tests {
 
         let subtasks = parse_subtasks(json, &formation).unwrap();
         assert_eq!(subtasks.len(), 1);
-        assert_eq!(subtasks[0].target_connector, "connector-github");
+        assert_eq!(subtasks[0].target_connector, *"connector-github");
         assert_eq!(subtasks[0].action_name, "create_issue");
         assert_eq!(subtasks[0].priority, 1);
     }

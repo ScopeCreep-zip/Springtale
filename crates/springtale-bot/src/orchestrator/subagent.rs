@@ -1,7 +1,6 @@
 use springtale_core::pipeline::context::PipelineContext;
 
 use super::error::OrchestratorError;
-use super::fuel::FuelBudget;
 use super::recursive::ChildTask;
 
 /// Create a child task from a parent context with a scoped fuel budget.
@@ -12,7 +11,6 @@ use super::recursive::ChildTask;
 pub fn spawn_child_task(
     parent_ctx: &PipelineContext,
     label: &str,
-    _fuel: &FuelBudget,
 ) -> Result<ChildTask, OrchestratorError> {
     let child_ctx = parent_ctx.child()?;
 
@@ -30,8 +28,7 @@ mod tests {
     #[test]
     fn test_spawn_child_task() {
         let parent = PipelineContext::new(serde_json::json!({"data": "test"}));
-        let fuel = FuelBudget::new(1000);
-        let task = spawn_child_task(&parent, "test-child", &fuel).unwrap();
+        let task = spawn_child_task(&parent, "test-child").unwrap();
         assert_eq!(task.label, "test-child");
     }
 
@@ -39,8 +36,7 @@ mod tests {
     fn test_child_inherits_parent_output() {
         let mut parent = PipelineContext::new(serde_json::json!({}));
         parent.output = serde_json::json!({"result": 42});
-        let fuel = FuelBudget::new(1000);
-        let task = spawn_child_task(&parent, "child", &fuel).unwrap();
+        let task = spawn_child_task(&parent, "child").unwrap();
         // Child's input is parent's output
         assert_eq!(task.context.input, serde_json::json!({"result": 42}));
     }
@@ -48,8 +44,7 @@ mod tests {
     #[test]
     fn test_child_depth_incremented() {
         let parent = PipelineContext::new(serde_json::json!({}));
-        let fuel = FuelBudget::new(1000);
-        let task = spawn_child_task(&parent, "child", &fuel).unwrap();
+        let task = spawn_child_task(&parent, "child").unwrap();
         assert_eq!(task.context.chain_depth, 1);
     }
 }
