@@ -86,7 +86,14 @@ pub async fn init_runtime(
         config.ai_anthropic = Some(val);
     }
 
-    let runtime = springtale_runtime::init(&config)
+    // Desktop connects to daemon via HTTP — it doesn't run a bot event loop.
+    // Create a channel and drop the receiver so sends just silently fail.
+    let (formation_cmd_tx, _formation_cmd_rx) =
+        tokio::sync::mpsc::channel::<springtale_cooperation::command::FormationCommand>(32);
+
+    // Desktop connects to daemon via HTTP — no bot event loop in-process,
+    // so no live formation reader available.
+    let runtime = springtale_runtime::init(&config, formation_cmd_tx, None)
         .await
         .map_err(|e| format!("failed to initialize runtime: {e}"))?;
 

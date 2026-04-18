@@ -68,12 +68,35 @@ pub async fn update_formation_intent(state: State<'_, AppState>, id: String, int
         .map_err(|e| e.to_string())
 }
 
+/// Manually trigger self-rally for a formation.
+#[tauri::command]
+pub async fn rally_formation(state: State<'_, AppState>, id: String) -> Result<(), String> {
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::formations::rally_formation(rt, &id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Add a member to a formation.
 #[tauri::command]
 pub async fn add_formation_member(state: State<'_, AppState>, formation_id: String, connector_name: String) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
     springtale_runtime::operations::formations::add_member(rt, &formation_id, &connector_name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Get a single formation with enriched member details.
+#[tauri::command]
+pub async fn get_formation(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<springtale_runtime::operations::formations::FormationDetail, String> {
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::formations::get_formation(rt, &id)
         .await
         .map_err(|e| e.to_string())
 }
@@ -105,6 +128,16 @@ pub async fn deploy_team(
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
     springtale_runtime::operations::formations::deploy_team(rt, team)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Remove a member from a formation.
+#[tauri::command]
+pub async fn remove_formation_member(state: State<'_, AppState>, formation_id: String, connector_name: String) -> Result<(), String> {
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::formations::remove_member(rt, &formation_id, &connector_name)
         .await
         .map_err(|e| e.to_string())
 }

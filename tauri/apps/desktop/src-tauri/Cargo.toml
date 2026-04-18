@@ -30,4 +30,5 @@ springtale-store = { path = "../../../../crates/springtale-store" }
 springtale-connector = { path = "../../../../crates/springtale-connector" }
 springtale-runtime = { path = "../../../../crates/springtale-runtime" }
 springtale-ai = { path = "../../../../crates/springtale-ai" }
+springtale-cooperation = { path = "../../../../crates/springtale-cooperation" }
 springtale-sentinel = { path = "../../../../crates/springtale-sentinel" }
