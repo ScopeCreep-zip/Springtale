@@ -14,7 +14,8 @@ springtale-store     = { workspace = true }
 springtale-transport = { workspace = true }
 springtale-ai        = { workspace = true }
 springtale-runtime   = { workspace = true }
-springtale-sentinel  = { workspace = true }
+springtale-sentinel     = { workspace = true }
+springtale-cooperation  = { workspace = true }
 
 async-trait = { workspace = true }
 tokio       = { workspace = true }

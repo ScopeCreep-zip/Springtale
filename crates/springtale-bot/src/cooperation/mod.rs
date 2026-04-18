@@ -1,47 +1,16 @@
 //! Cooperative agent architecture — game-informed multi-agent coordination.
 //!
-//! Per COOPERATION.pdf: "Game developers are the most experienced
-//! practitioners of multi-agent cooperative systems in existence.
-//! This document treats game designs as engineering references,
-//! not analogies."
-//!
-//! This module handles everything between intent and outcome.
-//! The orchestrator (§3) owns composition, intent, constraints,
-//! and intervention. Cooperation owns task decomposition, timing
-//! coordination, role adaptation, information fusion, failure
-//! recovery, and resource allocation within constraints.
+//! Cooperation primitives live in the dedicated `springtale-cooperation` crate.
+//! This module re-exports them for internal use and provides the `Formation`
+//! composition type that binds cooperation primitives to orchestrator
+//! infrastructure (AiAdapter, CooperativeBlackboard, FuelBudget).
 
-pub mod action;
-pub mod cadence;
+// Re-export all cooperation primitives from the dedicated crate.
+pub use springtale_cooperation::*;
+
+// Formation stays here — it's the composition layer binding cooperation
+// primitives to orchestrator infrastructure (AiAdapter, Blackboard, Fuel).
+pub mod blackboard;
 pub mod formation;
-pub mod momentum;
-
-pub mod attention;
-pub mod awareness;
-
-pub mod comms;
-pub mod environment;
-
-pub mod commit;
-pub mod consensus;
-
-pub mod interference;
-pub mod transformation;
-
-pub mod rally;
-pub mod recovery;
-
-pub mod capability;
-pub mod handoff;
-pub mod mental_model;
-pub mod pacing;
-pub mod sacrifice;
-
-pub use action::{SubTask, SubTaskResult};
-pub use attention::AttentionEconomy;
-pub use awareness::{LocalAwareness, NeighborSnapshot};
-pub use cadence::{AgentId, CadenceBus, IntentPattern, Tick, TickReport};
-pub use formation::{
-    AgentHealth, DynamicRole, Formation, FormationConstraints, FormationId, FormationMember,
-};
-pub use momentum::{MomentumState, MomentumTier};
+pub mod lifecycle;
+pub mod task_dispatch;
