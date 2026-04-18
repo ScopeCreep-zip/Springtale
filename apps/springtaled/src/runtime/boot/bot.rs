@@ -1,5 +1,69 @@
+use std::sync::Arc;
+
 use anyhow::{Context, Result};
-use tokio::sync::mpsc;
+use tokio::sync::{RwLock, mpsc};
+
+use springtale_bot::cooperation::formation::Formation;
+use springtale_runtime::operations::formations::FormationMemberDetail;
+
+/// Live formation reader backed by the bot's in-memory formation list.
+///
+/// Reads `Arc<RwLock<Vec<Formation>>>` shared with the bot event loop
+/// to provide enriched per-member data to the `get_formation()` API.
+pub(crate) struct BotFormationReader {
+    formations: Arc<RwLock<Vec<Formation>>>,
+}
+
+impl BotFormationReader {
+    pub(crate) fn new(formations: Arc<RwLock<Vec<Formation>>>) -> Self {
+        Self { formations }
+    }
+}
+
+#[async_trait::async_trait]
+impl springtale_runtime::LiveFormationReader for BotFormationReader {
+    async fn read_member_details(&self, formation_id: &str) -> Vec<FormationMemberDetail> {
+        let formations = self.formations.read().await;
+        let Some(formation) = formations.iter().find(|f| f.id.to_string() == formation_id) else {
+            return Vec::new();
+        };
+
+        let attention = formation.attention_broker.current();
+
+        formation
+            .members
+            .iter()
+            .map(|m| {
+                let connector_name = m
+                    .capabilities
+                    .first()
+                    .map(|c| c.to_string())
+                    .unwrap_or_default();
+
+                let role = m.role.name().to_owned();
+                let health = format!("{:?}", m.health);
+                let fuel_remaining = m.fuel_remaining.remaining();
+                let liveness = format!("{:?}", m.liveness);
+                let attention_load = attention.load(&m.agent_id);
+                let active_task = m.active_task.as_ref().map(|t| {
+                    format!("{}:{}", t.task.target_connector, t.task.action_name)
+                });
+                let consecutive_failures = m.consecutive_failures;
+
+                FormationMemberDetail {
+                    connector_name,
+                    role,
+                    health,
+                    fuel_remaining,
+                    liveness,
+                    attention_load,
+                    active_task,
+                    consecutive_failures,
+                }
+            })
+            .collect()
+    }
+}
 
 /// Holds optional connector configs for wiring during boot.
 /// Avoids partial-move issues with the top-level `SpringtaleConfig`.
@@ -22,6 +86,8 @@ pub(super) async fn init_bot(
     connectors: &ConnectorWiring,
     bot_msg_tx: mpsc::Sender<springtale_bot::IncomingMessage>,
     bot_msg_rx: mpsc::Receiver<springtale_bot::IncomingMessage>,
+    formation_cmd_rx: tokio::sync::mpsc::Receiver<springtale_cooperation::command::FormationCommand>,
+    formations_handle: Arc<RwLock<Vec<Formation>>>,
 ) -> Result<(
     tokio::task::JoinHandle<()>,
     Vec<tokio::sync::watch::Sender<bool>>,
@@ -43,6 +109,8 @@ pub(super) async fn init_bot(
         .connector_rx(bot_msg_rx)
         .rule_rx(bot_rule_rx)
         .response_tx(bot_response_tx)
+        .formation_cmd_rx(formation_cmd_rx)
+        .formations_handle(formations_handle)
         .build()
         .await
         .context("failed to initialize bot runtime")?;

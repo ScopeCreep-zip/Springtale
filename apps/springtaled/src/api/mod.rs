@@ -125,12 +125,17 @@ pub fn build_router(state: AppState) -> Router {
             "/formations",
             get(formations::list).post(formations::create),
         )
+        .route("/formations/{id}", get(formations::get))
         .route("/formations/{id}/deploy", post(formations::deploy))
         .route("/formations/{id}/pause", post(formations::pause))
         .route("/formations/{id}/resume", post(formations::resume))
         .route("/formations/{id}/dissolve", post(formations::dissolve))
+        .route("/formations/{id}/rally", post(formations::rally))
         .route("/formations/{id}/intent", put(formations::update_intent))
-        .route("/formations/{id}/members", post(formations::add_member))
+        .route(
+            "/formations/{id}/members",
+            post(formations::add_member).delete(formations::remove_member),
+        )
         .route("/formations/intents", get(formations::list_intents))
         .route("/formations/deploy-team", post(formations::deploy_team))
         .route(

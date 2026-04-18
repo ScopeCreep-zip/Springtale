@@ -79,6 +79,9 @@ fn build_test_app(ready: bool) -> (Router, String) {
         .expect("WASM engine creation"),
     );
 
+    let (formation_cmd_tx, _formation_cmd_rx) =
+        mpsc::channel::<springtale_cooperation::command::FormationCommand>(32);
+
     let runtime = springtale_runtime::RuntimeState {
         store,
         registry,
@@ -88,6 +91,8 @@ fn build_test_app(ready: bool) -> (Router, String) {
         wasm_engine,
         canvas,
         canvas_tx,
+        formation_cmd_tx,
+        live_formations: None,
     };
 
     let state = AppState {

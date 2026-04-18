@@ -11,6 +11,7 @@ tokio-stream = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
+async-trait = { workspace = true }
 axum = { workspace = true }
 rust-embed = { workspace = true }
 rustls = { workspace = true }
@@ -38,6 +39,7 @@ springtale-bot = { workspace = true }
 springtale-mcp = { workspace = true }
 springtale-sentinel = { workspace = true }
 springtale-runtime = { workspace = true }
+springtale-cooperation = { workspace = true }
 connector-telegram = { workspace = true }
 connector-nostr = { workspace = true }
 connector-irc = { workspace = true }

@@ -22,6 +22,17 @@ pub async fn list(State(state): State<AppState>) -> impl IntoResponse {
     }
 }
 
+/// GET /formations/{id} — get a single formation.
+pub async fn get(
+    State(state): State<AppState>,
+    ValidatedPath(id): ValidatedPath,
+) -> Result<impl IntoResponse, StatusCode> {
+    match operations::formations::get_formation(&state.runtime, &id).await {
+        Ok(formation) => Ok((StatusCode::OK, Json(serde_json::json!(formation)))),
+        Err(_) => Err(StatusCode::NOT_FOUND),
+    }
+}
+
 /// POST /formations — create a new formation.
 pub async fn create(
     State(state): State<AppState>,
@@ -117,6 +128,24 @@ pub async fn add_member(
     ))
 }
 
+/// DELETE /formations/{id}/members — remove a member from a formation.
+pub async fn remove_member(
+    State(state): State<AppState>,
+    ValidatedPath(id): ValidatedPath,
+    Json(body): Json<serde_json::Value>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let connector_name = body["connector_name"]
+        .as_str()
+        .ok_or(StatusCode::BAD_REQUEST)?;
+    operations::formations::remove_member(&state.runtime, &id, connector_name)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "removed": connector_name })),
+    ))
+}
+
 /// POST /formations/{id}/dissolve — dissolve a formation.
 pub async fn dissolve(
     State(state): State<AppState>,
@@ -126,6 +155,17 @@ pub async fn dissolve(
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
     Ok((StatusCode::OK, Json(serde_json::json!({ "dissolved": id }))))
+}
+
+/// POST /formations/{id}/rally — manually trigger self-rally.
+pub async fn rally(
+    State(state): State<AppState>,
+    ValidatedPath(id): ValidatedPath,
+) -> Result<impl IntoResponse, StatusCode> {
+    operations::formations::rally_formation(&state.runtime, &id)
+        .await
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok((StatusCode::OK, Json(serde_json::json!({ "rallied": id }))))
 }
 
 /// GET /formations/intents — list valid formation intents.

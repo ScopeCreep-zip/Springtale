@@ -73,7 +73,18 @@ pub async fn boot(
         sentinel,
         connector_configs,
     };
-    let runtime = springtale_runtime::init(&runtime_config)
+    // Formation command channel: sender goes to runtime (operations send commands),
+    // receiver goes to bot (event loop materializes/removes formations).
+    let (formation_cmd_tx, formation_cmd_rx) =
+        tokio::sync::mpsc::channel::<springtale_cooperation::command::FormationCommand>(32);
+
+    // Create the shared formations handle BEFORE runtime init.
+    // The BotBuilder will use this same Arc, and BotFormationReader reads from it.
+    let formations_handle = Arc::new(tokio::sync::RwLock::new(Vec::new()));
+    let live_reader: Option<Arc<dyn springtale_runtime::LiveFormationReader>> =
+        Some(Arc::new(bot::BotFormationReader::new(formations_handle.clone())));
+
+    let runtime = springtale_runtime::init(&runtime_config, formation_cmd_tx, live_reader)
         .await
         .context("failed to initialize runtime")?;
 
@@ -106,6 +117,8 @@ pub async fn boot(
         &connector_wiring,
         bot_msg_tx,
         bot_msg_rx,
+        formation_cmd_rx,
+        formations_handle,
     )
     .await?;
 
