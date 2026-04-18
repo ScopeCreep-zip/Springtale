@@ -132,6 +132,12 @@ pub struct AgentState {
     pub fuel_status: String,
     /// Pre-formatted task description for display.
     pub task_display: String,
+    /// Attention load from formation's AttentionBroker (0.0–1.0).
+    pub attention_load: f32,
+    /// Liveness score (1.0 = alive, 0.0 = dead).
+    pub liveness: f32,
+    /// Health state: "healthy", "degraded", "incapacitated", "dead".
+    pub health_state: String,
 }
 
 /// Infer an agent's role from its trigger type.
@@ -206,11 +212,23 @@ fn autonomy_to_index(level: &str) -> u8 {
     }
 }
 
+/// Live formation member data — used to enrich AgentState with
+/// real cooperation data when formations are active.
+struct LiveAgentEnrichment {
+    attention_load: f32,
+    liveness: f32,
+    health_state: String,
+}
+
 /// List aggregated agent states for all rules.
 ///
 /// Joins rule data (from engine) with recent events (from store)
 /// and autonomy levels (from alias table) into a single response
 /// the frontend can render without computing any business logic.
+///
+/// When `state.live_formations` is available, cross-references agents
+/// with live formation members to populate attention, liveness, and
+/// health from real cooperation data.
 pub async fn list_agent_states(state: &RuntimeState) -> Result<Vec<AgentState>, OperationError> {
     // Gather rules from engine
     let rules = super::rules::list_rules(state).await;
@@ -231,6 +249,31 @@ pub async fn list_agent_states(state: &RuntimeState) -> Result<Vec<AgentState>, 
         .list_aliases()
         .await
         .map_err(OperationError::Store)?;
+
+    // Build enrichment map from live formations when available.
+    // Maps connector_name → live agent data.
+    let mut enrichment_map: std::collections::HashMap<String, LiveAgentEnrichment> =
+        std::collections::HashMap::new();
+    if let Some(reader) = &state.live_formations {
+        let formations = state.store.list_formations().await.unwrap_or_default();
+        for f in &formations {
+            let details = reader.read_member_details(&f.id).await;
+            for detail in details {
+                enrichment_map.insert(
+                    detail.connector_name.clone(),
+                    LiveAgentEnrichment {
+                        attention_load: detail.attention_load,
+                        liveness: match detail.liveness.as_str() {
+                            "Alive" => 1.0,
+                            "Suspect" => 0.5,
+                            _ => 0.0,
+                        },
+                        health_state: detail.health.to_lowercase(),
+                    },
+                );
+            }
+        }
+    }
 
     let agents = rules
         .iter()
@@ -269,6 +312,12 @@ pub async fn list_agent_states(state: &RuntimeState) -> Result<Vec<AgentState>, 
             }
             .to_owned();
 
+            // Enrich from live formation data when available
+            let enrichment = r
+                .connector_name
+                .as_ref()
+                .and_then(|cn| enrichment_map.get(cn));
+
             AgentState {
                 rule_id: r.id.clone(),
                 name: r.name.clone(),
@@ -282,6 +331,11 @@ pub async fn list_agent_states(state: &RuntimeState) -> Result<Vec<AgentState>, 
                 autonomy_label,
                 fuel_status,
                 task_display,
+                attention_load: enrichment.map(|e| e.attention_load).unwrap_or(0.0),
+                liveness: enrichment.map(|e| e.liveness).unwrap_or(1.0),
+                health_state: enrichment
+                    .map(|e| e.health_state.clone())
+                    .unwrap_or_else(|| "healthy".to_owned()),
             }
         })
         .collect();

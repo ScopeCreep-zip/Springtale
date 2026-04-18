@@ -42,4 +42,4 @@ pub use client_config::{ClientConfig, ClientConfigError};
 pub use config::{RuntimeConfig, StoreConfig};
 pub use error::OperationError;
 pub use init::init;
-pub use state::RuntimeState;
+pub use state::{LiveFormationReader, RuntimeState};

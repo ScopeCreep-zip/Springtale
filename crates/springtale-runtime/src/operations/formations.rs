@@ -10,6 +10,28 @@ use springtale_core::rule::{Action, Rule, RuleId, RuleStatus, RuleVersion, Trigg
 use crate::error::OperationError;
 use crate::state::RuntimeState;
 
+/// Enriched per-member detail — populated from the bot event loop's
+/// in-memory `Formation` data when available.
+#[derive(Debug, Clone, Serialize)]
+pub struct FormationMemberDetail {
+    pub connector_name: String,
+    pub role: String,
+    pub health: String,
+    pub fuel_remaining: u64,
+    pub liveness: String,
+    pub attention_load: f32,
+    pub active_task: Option<String>,
+    pub consecutive_failures: usize,
+}
+
+/// Enriched formation detail — `FormationInfo` plus live member details.
+#[derive(Debug, Serialize)]
+pub struct FormationDetail {
+    #[serde(flatten)]
+    pub info: FormationInfo,
+    pub member_details: Vec<FormationMemberDetail>,
+}
+
 /// Formation info for listing.
 #[derive(Debug, Serialize)]
 pub struct FormationInfo {
@@ -21,7 +43,6 @@ pub struct FormationInfo {
     /// Connector names of formation members.
     pub members: Vec<String>,
     /// Real momentum tier from runtime — "Cold", "Warming", "Hot", "Fever".
-    /// Persisted via config store key `momentum:{formation_id}`.
     pub momentum_tier: String,
     /// Human label for momentum tier.
     pub momentum_label: String,
@@ -29,6 +50,10 @@ pub struct FormationInfo {
     pub capabilities: Vec<String>,
     /// Guard readiness: "OK" if any member active, "--" otherwise.
     pub guard_status: String,
+    /// Rally tokens remaining (Monster Hunter carts, §15).
+    pub rally_tokens: i64,
+    /// Maximum rally tokens.
+    pub rally_max: i64,
 }
 
 /// Capabilities unlocked at each momentum tier.
@@ -94,27 +119,60 @@ pub async fn create_formation(
     Ok(formation_id)
 }
 
-/// Deploy a formation — changes status to active.
+/// Deploy a formation — changes status to active and notifies bot event loop.
 pub async fn deploy_formation(state: &RuntimeState, id: &str) -> Result<(), OperationError> {
     state.store.update_formation_status(id, "active").await?;
+    let fid = springtale_cooperation::types::FormationId::parse(id)
+        .map_err(|e| OperationError::Validation(format!("invalid formation id: {e}")))?;
+    let _ = state
+        .formation_cmd_tx
+        .send(springtale_cooperation::command::FormationCommand::Deploy {
+            formation_id: fid,
+        })
+        .await;
     Ok(())
 }
 
 /// Pause a formation.
 pub async fn pause_formation(state: &RuntimeState, id: &str) -> Result<(), OperationError> {
     state.store.update_formation_status(id, "paused").await?;
+    let fid = springtale_cooperation::types::FormationId::parse(id)
+        .map_err(|e| OperationError::Validation(format!("invalid formation id: {e}")))?;
+    let _ = state
+        .formation_cmd_tx
+        .send(springtale_cooperation::command::FormationCommand::Pause {
+            formation_id: fid,
+        })
+        .await;
     Ok(())
 }
 
 /// Resume a paused formation.
 pub async fn resume_formation(state: &RuntimeState, id: &str) -> Result<(), OperationError> {
     state.store.update_formation_status(id, "active").await?;
+    let fid = springtale_cooperation::types::FormationId::parse(id)
+        .map_err(|e| OperationError::Validation(format!("invalid formation id: {e}")))?;
+    let _ = state
+        .formation_cmd_tx
+        .send(springtale_cooperation::command::FormationCommand::Resume {
+            formation_id: fid,
+        })
+        .await;
     Ok(())
 }
 
-/// Dissolve a formation — removes formation and all its members.
+/// Dissolve a formation — removes from DB and notifies bot event loop.
 pub async fn dissolve_formation(state: &RuntimeState, id: &str) -> Result<(), OperationError> {
     state.store.delete_formation(id).await?;
+    let fid = springtale_cooperation::types::FormationId::parse(id)
+        .map_err(|e| OperationError::Validation(format!("invalid formation id: {e}")))?;
+    let _ = state
+        .formation_cmd_tx
+        .send(springtale_cooperation::command::FormationCommand::Dissolve {
+            formation_id: fid,
+            reason: "user requested".to_owned(),
+        })
+        .await;
     Ok(())
 }
 
@@ -125,6 +183,32 @@ pub async fn update_intent(
     intent: &str,
 ) -> Result<(), OperationError> {
     state.store.update_formation_intent(id, intent).await?;
+    let fid = springtale_cooperation::types::FormationId::parse(id)
+        .map_err(|e| OperationError::Validation(format!("invalid formation id: {e}")))?;
+    let parsed = springtale_cooperation::command::parse_intent(intent);
+    let _ = state
+        .formation_cmd_tx
+        .send(springtale_cooperation::command::FormationCommand::ChangeIntent {
+            formation_id: fid,
+            intent: parsed,
+        })
+        .await;
+    Ok(())
+}
+
+/// Manually trigger a self-rally for a formation.
+///
+/// Sends a Rally command to the bot event loop. The event loop
+/// will consume a rally token and redistribute attention.
+pub async fn rally_formation(state: &RuntimeState, id: &str) -> Result<(), OperationError> {
+    let fid = springtale_cooperation::types::FormationId::parse(id)
+        .map_err(|e| OperationError::Validation(format!("invalid formation id: {e}")))?;
+    let _ = state
+        .formation_cmd_tx
+        .send(springtale_cooperation::command::FormationCommand::Rally {
+            formation_id: fid,
+        })
+        .await;
     Ok(())
 }
 
@@ -141,7 +225,64 @@ pub async fn add_member(
         role_hint: None,
     };
     state.store.insert_formation_member(&member).await?;
+    let fid = springtale_cooperation::types::FormationId::parse(formation_id)
+        .map_err(|e| OperationError::Validation(format!("invalid formation id: {e}")))?;
+    let _ = state
+        .formation_cmd_tx
+        .send(springtale_cooperation::command::FormationCommand::AddMember {
+            formation_id: fid,
+            connector_name: connector_name.to_owned(),
+        })
+        .await;
     Ok(())
+}
+
+/// Remove a member (connector) from a formation.
+pub async fn remove_member(
+    state: &RuntimeState,
+    formation_id: &str,
+    connector_name: &str,
+) -> Result<(), OperationError> {
+    state
+        .store
+        .delete_formation_member(formation_id, connector_name)
+        .await?;
+    let fid = springtale_cooperation::types::FormationId::parse(formation_id)
+        .map_err(|e| OperationError::Validation(format!("invalid formation id: {e}")))?;
+    let _ = state
+        .formation_cmd_tx
+        .send(springtale_cooperation::command::FormationCommand::RemoveMember {
+            formation_id: fid,
+            connector_name: connector_name.to_owned(),
+        })
+        .await;
+    Ok(())
+}
+
+/// Get a single formation by ID with enriched member details.
+///
+/// When `state.live_formations` is set (daemon mode), this returns
+/// live per-member data (role, health, fuel, liveness, attention, task).
+/// When `None` (desktop mode), `member_details` is empty.
+pub async fn get_formation(
+    state: &RuntimeState,
+    id: &str,
+) -> Result<FormationDetail, OperationError> {
+    let formations = list_formations(state).await?;
+    let info = formations
+        .into_iter()
+        .find(|f| f.id == id)
+        .ok_or_else(|| OperationError::NotFound(format!("formation {id}")))?;
+
+    let member_details = match &state.live_formations {
+        Some(reader) => reader.read_member_details(id).await,
+        None => Vec::new(),
+    };
+
+    Ok(FormationDetail {
+        info,
+        member_details,
+    })
 }
 
 /// List all formations with member counts.
@@ -153,13 +294,21 @@ pub async fn list_formations(state: &RuntimeState) -> Result<Vec<FormationInfo>,
         let members = state.store.list_formation_members(&f.id).await?;
         let member_names: Vec<String> = members.iter().map(|m| m.connector_name.clone()).collect();
 
-        // Read persisted momentum tier from config store (written by bot event loop)
-        let momentum_key = format!("momentum:{}", f.id);
-        let momentum_tier = super::config::get_config(&*state.store, &momentum_key)
-            .await
-            .ok()
-            .and_then(|v| serde_json::from_value::<String>(v).ok())
+        // Read persisted momentum from dedicated table (written by bot event loop).
+        // Falls back to config store for backwards compatibility during migration.
+        let momentum_row = state.store.get_formation_momentum(&f.id).await.ok().flatten();
+        let momentum_tier = momentum_row
+            .as_ref()
+            .map(|r| r.tier.clone())
+            // Falls back to Cold when no momentum table row exists yet.
+            // Old config-store keys (momentum:{id}) are no longer read —
+            // the event loop writes to the new table on every tick.
             .unwrap_or_else(|| "Cold".to_owned());
+
+        // Read rally state from dedicated table
+        let rally_row = state.store.get_formation_rally(&f.id).await.ok().flatten();
+        let rally_tokens = rally_row.as_ref().map(|r| r.tokens_remaining).unwrap_or(3);
+        let rally_max = rally_row.as_ref().map(|r| r.max_tokens).unwrap_or(3);
 
         let momentum_label = tier_label(&momentum_tier);
         let capabilities = tier_capabilities(&momentum_tier);
@@ -176,6 +325,8 @@ pub async fn list_formations(state: &RuntimeState) -> Result<Vec<FormationInfo>,
             momentum_label,
             capabilities,
             guard_status,
+            rally_tokens,
+            rally_max,
         });
     }
 
@@ -365,6 +516,17 @@ pub async fn cycle_intent(
         .store
         .update_formation_intent(formation_id, next)
         .await?;
+
+    let fid = springtale_cooperation::types::FormationId::parse(formation_id)
+        .map_err(|e| OperationError::Validation(format!("invalid formation id: {e}")))?;
+    let parsed = springtale_cooperation::command::parse_intent(next);
+    let _ = state
+        .formation_cmd_tx
+        .send(springtale_cooperation::command::FormationCommand::ChangeIntent {
+            formation_id: fid,
+            intent: parsed,
+        })
+        .await;
 
     Ok(next.to_owned())
 }

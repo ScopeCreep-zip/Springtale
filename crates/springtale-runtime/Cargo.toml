@@ -12,7 +12,8 @@ springtale-crypto = { workspace = true }
 springtale-store = { workspace = true }
 springtale-connector = { workspace = true }
 springtale-ai = { workspace = true }
-springtale-sentinel = { workspace = true }
+springtale-sentinel     = { workspace = true }
+springtale-cooperation  = { workspace = true }
 
 # Connector crates — linked so their inventory::submit! registrations are
 # discovered by init_registry(). The crates are not called directly;
@@ -32,6 +33,7 @@ connector-slack = { workspace = true }
 connector-signal = { workspace = true }
 connector-browser = { workspace = true }
 
+async-trait = { workspace = true }
 arc-swap = { workspace = true }
 cap-std = { workspace = true }
 ed25519-dalek = { workspace = true }

@@ -25,7 +25,11 @@ use crate::state::RuntimeState;
 ///
 /// Vault is NOT initialized here — desktop handles it via UI
 /// (user types passphrase), springtaled reads from env/file.
-pub async fn init(config: &RuntimeConfig) -> Result<RuntimeState, OperationError> {
+pub async fn init(
+    config: &RuntimeConfig,
+    formation_cmd_tx: tokio::sync::mpsc::Sender<springtale_cooperation::command::FormationCommand>,
+    live_formations: Option<Arc<dyn crate::state::LiveFormationReader>>,
+) -> Result<RuntimeState, OperationError> {
     let store = init_store(&config.store).await?;
     tracing::info!("store initialized");
 
@@ -74,6 +78,8 @@ pub async fn init(config: &RuntimeConfig) -> Result<RuntimeState, OperationError
         wasm_engine,
         canvas,
         canvas_tx,
+        formation_cmd_tx,
+        live_formations,
     })
 }
 
