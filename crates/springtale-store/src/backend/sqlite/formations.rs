@@ -2,7 +2,9 @@ use chrono::Utc;
 use rusqlite::params;
 
 use crate::error::StoreError;
-use crate::schema::formations::{FormationMemberRow, FormationRow};
+use crate::schema::formations::{
+    FormationMemberRow, FormationMomentumRow, FormationRallyRow, FormationRow,
+};
 
 use super::SqliteBackend;
 
@@ -238,6 +240,161 @@ impl SqliteBackend {
                 members.push(row?);
             }
             Ok(members)
+        })
+        .await
+        .map_err(|e| StoreError::Database(format!("spawn_blocking join: {e}")))?
+    }
+
+    pub(super) async fn delete_formation_member_impl(
+        &self,
+        formation_id: &str,
+        connector_name: &str,
+    ) -> Result<(), StoreError> {
+        let conn = self.conn.clone();
+        let formation_id = formation_id.to_owned();
+        let connector_name = connector_name.to_owned();
+        tokio::task::spawn_blocking(move || {
+            let conn = conn
+                .lock()
+                .map_err(|_| StoreError::Database("lock poisoned".into()))?;
+            conn.execute(
+                "DELETE FROM formation_members WHERE formation_id = ?1 AND connector_name = ?2",
+                params![formation_id, connector_name],
+            )?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| StoreError::Database(format!("spawn_blocking join: {e}")))?
+    }
+
+    pub(super) async fn get_formation_momentum_impl(
+        &self,
+        formation_id: &str,
+    ) -> Result<Option<FormationMomentumRow>, StoreError> {
+        let conn = self.conn.clone();
+        let formation_id = formation_id.to_owned();
+        tokio::task::spawn_blocking(move || {
+            let conn = conn
+                .lock()
+                .map_err(|_| StoreError::Database("lock poisoned".into()))?;
+            let result = conn.query_row(
+                "SELECT formation_id, tier, consecutive_successes, interference_count, updated_at
+                 FROM formation_momentum WHERE formation_id = ?1",
+                params![formation_id],
+                |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, String>(1)?,
+                        row.get::<_, i64>(2)?,
+                        row.get::<_, i64>(3)?,
+                        row.get::<_, String>(4)?,
+                    ))
+                },
+            );
+            match result {
+                Ok((fid, tier, successes, interference, updated)) => {
+                    let updated_at = chrono::DateTime::parse_from_rfc3339(&updated)
+                        .map(|dt| dt.with_timezone(&Utc))
+                        .map_err(|e| StoreError::Serialization(e.to_string()))?;
+                    Ok(Some(FormationMomentumRow {
+                        formation_id: fid,
+                        tier,
+                        consecutive_successes: successes,
+                        interference_count: interference,
+                        updated_at,
+                    }))
+                }
+                Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                Err(e) => Err(e.into()),
+            }
+        })
+        .await
+        .map_err(|e| StoreError::Database(format!("spawn_blocking join: {e}")))?
+    }
+
+    pub(super) async fn upsert_formation_momentum_impl(
+        &self,
+        row: &FormationMomentumRow,
+    ) -> Result<(), StoreError> {
+        let conn = self.conn.clone();
+        let row = row.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = conn
+                .lock()
+                .map_err(|_| StoreError::Database("lock poisoned".into()))?;
+            conn.execute(
+                "INSERT INTO formation_momentum (formation_id, tier, consecutive_successes, interference_count, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(formation_id) DO UPDATE SET
+                     tier = excluded.tier,
+                     consecutive_successes = excluded.consecutive_successes,
+                     interference_count = excluded.interference_count,
+                     updated_at = excluded.updated_at",
+                params![
+                    row.formation_id,
+                    row.tier,
+                    row.consecutive_successes,
+                    row.interference_count,
+                    row.updated_at.to_rfc3339(),
+                ],
+            )?;
+            Ok(())
+        })
+        .await
+        .map_err(|e| StoreError::Database(format!("spawn_blocking join: {e}")))?
+    }
+
+    pub(super) async fn get_formation_rally_impl(
+        &self,
+        formation_id: &str,
+    ) -> Result<Option<FormationRallyRow>, StoreError> {
+        let conn = self.conn.clone();
+        let formation_id = formation_id.to_owned();
+        tokio::task::spawn_blocking(move || {
+            let conn = conn
+                .lock()
+                .map_err(|_| StoreError::Database("lock poisoned".into()))?;
+            let result = conn.query_row(
+                "SELECT formation_id, tokens_remaining, max_tokens
+                 FROM formation_rally WHERE formation_id = ?1",
+                params![formation_id],
+                |row| {
+                    Ok(FormationRallyRow {
+                        formation_id: row.get(0)?,
+                        tokens_remaining: row.get(1)?,
+                        max_tokens: row.get(2)?,
+                    })
+                },
+            );
+            match result {
+                Ok(row) => Ok(Some(row)),
+                Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+                Err(e) => Err(e.into()),
+            }
+        })
+        .await
+        .map_err(|e| StoreError::Database(format!("spawn_blocking join: {e}")))?
+    }
+
+    pub(super) async fn upsert_formation_rally_impl(
+        &self,
+        row: &FormationRallyRow,
+    ) -> Result<(), StoreError> {
+        let conn = self.conn.clone();
+        let row = row.clone();
+        tokio::task::spawn_blocking(move || {
+            let conn = conn
+                .lock()
+                .map_err(|_| StoreError::Database("lock poisoned".into()))?;
+            conn.execute(
+                "INSERT INTO formation_rally (formation_id, tokens_remaining, max_tokens)
+                 VALUES (?1, ?2, ?3)
+                 ON CONFLICT(formation_id) DO UPDATE SET
+                     tokens_remaining = excluded.tokens_remaining,
+                     max_tokens = excluded.max_tokens",
+                params![row.formation_id, row.tokens_remaining, row.max_tokens],
+            )?;
+            Ok(())
         })
         .await
         .map_err(|e| StoreError::Database(format!("spawn_blocking join: {e}")))?

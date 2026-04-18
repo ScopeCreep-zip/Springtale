@@ -82,4 +82,16 @@ impl InMemoryBackend {
             .cloned()
             .collect())
     }
+
+    pub(super) async fn delete_formation_member_impl(
+        &self,
+        formation_id: &str,
+        connector_name: &str,
+    ) -> Result<(), StoreError> {
+        self.formation_members
+            .write()
+            .await
+            .retain(|m| !(m.formation_id == formation_id && m.connector_name == connector_name));
+        Ok(())
+    }
 }

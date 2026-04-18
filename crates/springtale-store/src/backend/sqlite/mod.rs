@@ -373,6 +373,43 @@ impl super::trait_::StorageBackend for SqliteBackend {
         self.list_formation_members_impl(formation_id).await
     }
 
+    async fn delete_formation_member(
+        &self,
+        formation_id: &str,
+        connector_name: &str,
+    ) -> Result<(), StoreError> {
+        self.delete_formation_member_impl(formation_id, connector_name)
+            .await
+    }
+
+    async fn get_formation_momentum(
+        &self,
+        formation_id: &str,
+    ) -> Result<Option<crate::schema::formations::FormationMomentumRow>, StoreError> {
+        self.get_formation_momentum_impl(formation_id).await
+    }
+
+    async fn upsert_formation_momentum(
+        &self,
+        row: &crate::schema::formations::FormationMomentumRow,
+    ) -> Result<(), StoreError> {
+        self.upsert_formation_momentum_impl(row).await
+    }
+
+    async fn get_formation_rally(
+        &self,
+        formation_id: &str,
+    ) -> Result<Option<crate::schema::formations::FormationRallyRow>, StoreError> {
+        self.get_formation_rally_impl(formation_id).await
+    }
+
+    async fn upsert_formation_rally(
+        &self,
+        row: &crate::schema::formations::FormationRallyRow,
+    ) -> Result<(), StoreError> {
+        self.upsert_formation_rally_impl(row).await
+    }
+
     // ── Config Store ────────────────────────────────────────────
 
     async fn get_config(&self, key: &str) -> Result<Option<String>, StoreError> {

@@ -16,6 +16,8 @@ pub use safety::SafetyConfigRow;
 pub mod execution;
 pub mod formations;
 pub use execution::ExecutionResultRow;
-pub use formations::{FormationMemberRow, FormationRow};
+pub use formations::{
+    FormationMemberRow, FormationMomentumRow, FormationRallyRow, FormationRow,
+};
 pub mod wasm;
 pub use wasm::WasmBinaryRow;

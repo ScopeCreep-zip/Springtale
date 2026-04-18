@@ -7,7 +7,9 @@ use crate::schema::bot::{MemoryRow, SessionRow, UserPrefsRow};
 use crate::schema::connectors::ConnectorRow;
 use crate::schema::events::{EventEntry, EventFilter};
 use crate::schema::execution::ExecutionResultRow;
-use crate::schema::formations::{FormationMemberRow, FormationRow};
+use crate::schema::formations::{
+    FormationMemberRow, FormationMomentumRow, FormationRallyRow, FormationRow,
+};
 use crate::schema::jobs::{JobId, JobRow};
 use crate::schema::safety::SafetyConfigRow;
 use springtale_core::rule::types::{Rule, RuleId};
@@ -234,6 +236,46 @@ pub trait StorageBackend: Send + Sync + 'static {
         _formation_id: &str,
     ) -> Result<Vec<FormationMemberRow>, StoreError> {
         Ok(Vec::new())
+    }
+
+    /// Delete a single formation member by formation ID and connector name.
+    async fn delete_formation_member(
+        &self,
+        _formation_id: &str,
+        _connector_name: &str,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    // ── Formation Cooperation State ──────────────────────────────
+
+    /// Get momentum state for a formation.
+    async fn get_formation_momentum(
+        &self,
+        _formation_id: &str,
+    ) -> Result<Option<FormationMomentumRow>, StoreError> {
+        Ok(None)
+    }
+
+    /// Insert or update momentum state for a formation.
+    async fn upsert_formation_momentum(
+        &self,
+        _row: &FormationMomentumRow,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Get rally state for a formation.
+    async fn get_formation_rally(
+        &self,
+        _formation_id: &str,
+    ) -> Result<Option<FormationRallyRow>, StoreError> {
+        Ok(None)
+    }
+
+    /// Insert or update rally state for a formation.
+    async fn upsert_formation_rally(&self, _row: &FormationRallyRow) -> Result<(), StoreError> {
+        Ok(())
     }
 
     // ── Config Store ────────────────────────────────────────────

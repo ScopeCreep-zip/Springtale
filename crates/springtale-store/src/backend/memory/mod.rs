@@ -20,7 +20,9 @@ use crate::schema::audit::{AuditEntry, AuditFilter};
 use crate::schema::bot::{MemoryRow, SessionRow, UserPrefsRow};
 use crate::schema::connectors::ConnectorRow;
 use crate::schema::events::{EventEntry, EventFilter};
-use crate::schema::formations::{FormationMemberRow, FormationRow};
+use crate::schema::formations::{
+    FormationMemberRow, FormationMomentumRow, FormationRallyRow, FormationRow,
+};
 use crate::schema::jobs::{JobId, JobRow};
 use crate::schema::safety::SafetyConfigRow;
 use springtale_core::rule::types::{Rule, RuleId};
@@ -48,6 +50,8 @@ pub struct InMemoryBackend {
     safety_config: RwLock<Option<SafetyConfigRow>>,
     formations: RwLock<Vec<FormationRow>>,
     formation_members: RwLock<Vec<FormationMemberRow>>,
+    formation_momentum: RwLock<HashMap<String, FormationMomentumRow>>,
+    formation_rally: RwLock<HashMap<String, FormationRallyRow>>,
     config: RwLock<HashMap<String, String>>,
 }
 
@@ -67,6 +71,8 @@ impl InMemoryBackend {
             safety_config: RwLock::new(None),
             formations: RwLock::new(Vec::new()),
             formation_members: RwLock::new(Vec::new()),
+            formation_momentum: RwLock::new(HashMap::new()),
+            formation_rally: RwLock::new(HashMap::new()),
             config: RwLock::new(HashMap::new()),
         }
     }
@@ -317,6 +323,48 @@ impl super::trait_::StorageBackend for InMemoryBackend {
         formation_id: &str,
     ) -> Result<Vec<FormationMemberRow>, StoreError> {
         self.list_formation_members_impl(formation_id).await
+    }
+
+    async fn delete_formation_member(
+        &self,
+        formation_id: &str,
+        connector_name: &str,
+    ) -> Result<(), StoreError> {
+        self.delete_formation_member_impl(formation_id, connector_name)
+            .await
+    }
+
+    async fn get_formation_momentum(
+        &self,
+        formation_id: &str,
+    ) -> Result<Option<FormationMomentumRow>, StoreError> {
+        Ok(self.formation_momentum.read().await.get(formation_id).cloned())
+    }
+
+    async fn upsert_formation_momentum(
+        &self,
+        row: &FormationMomentumRow,
+    ) -> Result<(), StoreError> {
+        self.formation_momentum
+            .write()
+            .await
+            .insert(row.formation_id.clone(), row.clone());
+        Ok(())
+    }
+
+    async fn get_formation_rally(
+        &self,
+        formation_id: &str,
+    ) -> Result<Option<FormationRallyRow>, StoreError> {
+        Ok(self.formation_rally.read().await.get(formation_id).cloned())
+    }
+
+    async fn upsert_formation_rally(&self, row: &FormationRallyRow) -> Result<(), StoreError> {
+        self.formation_rally
+            .write()
+            .await
+            .insert(row.formation_id.clone(), row.clone());
+        Ok(())
     }
 
     // ── Config Store ────────────────────────────────────────────

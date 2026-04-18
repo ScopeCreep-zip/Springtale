@@ -29,6 +29,9 @@ const MIGRATION_008: &str = include_str!("008_wasm_binaries.sql");
 /// Embedded SQL for schema version 9.
 const MIGRATION_009: &str = include_str!("009_rule_errors.sql");
 
+/// Embedded SQL for schema version 10.
+const MIGRATION_010: &str = include_str!("010_cooperation.sql");
+
 /// All migrations in order.
 const MIGRATIONS: &[(i64, &str)] = &[
     (1, MIGRATION_001),
@@ -40,6 +43,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (7, MIGRATION_007),
     (8, MIGRATION_008),
     (9, MIGRATION_009),
+    (10, MIGRATION_010),
 ];
 
 /// Run all pending migrations on the given connection.
@@ -126,7 +130,7 @@ mod tests {
         let version: i64 = conn
             .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 9);
+        assert_eq!(version, 10);
     }
 
     #[test]

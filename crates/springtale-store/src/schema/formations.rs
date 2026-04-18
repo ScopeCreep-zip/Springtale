@@ -33,3 +33,21 @@ pub const STATUS_DRAFT: &str = "draft";
 pub const STATUS_ACTIVE: &str = "active";
 pub const STATUS_PAUSED: &str = "paused";
 pub const STATUS_DISSOLVED: &str = "dissolved";
+
+/// Momentum state for a formation (replaces config-store hack).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FormationMomentumRow {
+    pub formation_id: String,
+    pub tier: String,
+    pub consecutive_successes: i64,
+    pub interference_count: i64,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// Rally token state for a formation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FormationRallyRow {
+    pub formation_id: String,
+    pub tokens_remaining: i64,
+    pub max_tokens: i64,
+}
