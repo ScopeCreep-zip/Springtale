@@ -161,6 +161,7 @@ rustls           = { version = "0.23", default-features = false, features = ["ri
 tokio-rustls     = "0.26"
 rustls-pemfile   = "2"
 rustls-pki-types = "1"
+ring             = "0.17"
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 figment          = { version = "0.10", features = ["toml", "env"] }
@@ -169,28 +170,28 @@ figment          = { version = "0.10", features = ["toml", "env"] }
 inventory        = "0.3"
 
 # ── Graph / Rate Limiting ──────────────────────────────────────────────────────
-petgraph         = "0.7"
-governor         = { version = "0.8", features = ["std"] }
+petgraph         = "0.8"
+governor         = { version = "0.10", features = ["std"] }
 crossbeam-deque  = "0.8"
 
 # ── Cooperation (Phase M) ─────────────────────────────────────────────────────
 dyn-clone        = "1"          # DynClone supertrait for Box<dyn DynamicRole>
 chitchat         = "0.10"       # §8 scuttlebutt gossip for awareness
-foca             = "1.0"        # §8 SWIM liveness detection
+foca             = { version = "1.0", default-features = false, features = ["std", "tracing", "bincode-codec"] }  # §8 SWIM liveness
+bincode          = "2"          # foca 1.0's BincodeCodec wire format (matches foca's internal dep)
 
 # ── Concurrency ────────────────────────────────────────────────────────────────
-dashmap          = "6"
+dashmap          = "6.1"
 
 # ── Encoding ───────────────────────────────────────────────────────────────────
 hex              = "0.4"
 base64           = "0.22"
 bytes            = "1"
 
-# ── RSA (Kick webhook verification) ──────────────────────────────────────────
-rsa              = { version = "0.9", features = ["sha2"] }
-
 # ── Testing ────────────────────────────────────────────────────────────────────
 tempfile         = "3"
+criterion        = { version = "0.5", features = ["html_reports", "async_tokio"] }
+proptest         = "1"
 
 # ── Internal Crates ────────────────────────────────────────────────────────────
 springtale-core       = { path = "crates/springtale-core" }

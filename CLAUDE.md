@@ -65,7 +65,7 @@ docs/         — Architecture, security, design references
 
 ## Competitive Context
 
-- **Obsoletes OpenClaw** — 250K+ stars but 800+ malicious skills, CVE-2026-25253 RCE, no sandboxing.
+- **Obsoletes OpenClaw** — 346K+ stars, 1,184 malicious skills catalogued, 137 advisories Feb–Apr 2026, 135K exposed instances, CVE-2026-25253 1-click RCE, no sandboxing.
 - **Obsoletes NosytLabs** — framework makes ad-hoc unsandboxed MCP servers obsolete.
 - **Phase 3 adds P2P** — E2E encrypted AI chat via Veilid, no server, no phone number.
 

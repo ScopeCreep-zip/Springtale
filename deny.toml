@@ -38,6 +38,12 @@ deny = [
   { name = "native-tls", wrappers = [] },
   { name = "openssl-sys", wrappers = [] },
   { name = "openssl", wrappers = [] },
+  # E3: rsa crate is affected by RUSTSEC-2023-0071 (Marvin Attack timing
+  # sidechannel). No upstream fix exists. Springtale targets vulnerable
+  # populations under active surveillance — any pulled-in `rsa` is a
+  # supply-chain CVE waiting to land. Block at the workspace level so
+  # transitive pulls fail audit before merge.
+  { name = "rsa", wrappers = [] },
 ]
 skip = []
 skip-tree = []
