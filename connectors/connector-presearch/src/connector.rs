@@ -109,6 +109,7 @@ fn build_manifest(config: &PresearchConfig, actions: &[ActionDecl]) -> Connector
             purpose: "executing web searches as directed by automation rules".to_owned(),
             destination: "presearch.com".to_owned(),
         }],
+        roles: vec![],
         wasm_hash: None,
         signature: None,
     }

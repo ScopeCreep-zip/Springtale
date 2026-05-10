@@ -2,6 +2,7 @@ use std::collections::HashSet;
 
 use crate::error::ConnectorError;
 use crate::manifest::types::Capability;
+use crate::tier::WasmTier;
 
 /// A granted capability for a specific connector.
 #[derive(Debug, Clone)]
@@ -44,16 +45,50 @@ pub enum CapabilityPolicy {
 /// Derives `Clone` so the dispatch layer can clone the checker and drop the
 /// registry lock before executing connector actions (avoids holding the lock
 /// across potentially long network calls).
+///
+/// The `tier` field carries the active momentum tier for this specific
+/// invocation (COOPERATION.md §16). The WASM sandbox uses it to select
+/// which per-tier `InstancePre` to instantiate; native connectors can
+/// inspect it too if they want to adjust behavior under Cold vs Hot.
+/// Per-invocation scoping (not per-host) is what lets a single WASM
+/// connector be shared across formations that sit at different tiers.
 #[derive(Clone)]
 pub struct CapabilityChecker {
     grants: std::collections::HashMap<String, CapabilityGrant>,
+    tier: WasmTier,
 }
 
 impl CapabilityChecker {
+    /// New checker with the permissive default tier (Warming).
+    ///
+    /// Non-formation connector calls (chat-command handlers, CLI, one-shot
+    /// API actions) aren't bound to any momentum state, so they start
+    /// with the same host primitives they had before Phase 16 landed —
+    /// i.e. HTTP is allowed. Formation-scoped executions override via
+    /// `with_tier(...)` (driven by `CapabilityBridge` from the calling
+    /// formation's `MomentumTier`). A caller that wants the strictest
+    /// gate builds `CapabilityChecker::new().with_tier(WasmTier::Cold)`.
     pub fn new() -> Self {
         Self {
             grants: std::collections::HashMap::new(),
+            tier: WasmTier::Warming,
         }
+    }
+
+    /// Set the momentum tier for this invocation. Consumes and returns
+    /// `self` so callers can chain `checker.clone().with_tier(t)` right
+    /// before `execute_checked`.
+    #[must_use]
+    pub fn with_tier(mut self, tier: WasmTier) -> Self {
+        self.tier = tier;
+        self
+    }
+
+    /// Momentum tier bound to this checker — consulted by
+    /// `WasmConnectorHost::execute_checked` to pick the right tier
+    /// cache entry.
+    pub fn tier(&self) -> WasmTier {
+        self.tier
     }
 
     /// Register a connector's approved capabilities.

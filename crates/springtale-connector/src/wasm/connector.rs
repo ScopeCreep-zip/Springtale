@@ -16,11 +16,11 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use wasmtime::{Linker, Module, Store};
+use wasmtime::{Module, Store};
 
-use super::host_functions::register_host_functions;
 use super::limits::SandboxLimits;
 use super::runtime::WasmEngine;
+use super::tier::WasmTierCache;
 use crate::capability::grant::CapabilityChecker;
 use crate::connector::trait_::{ActionResult, EventHandler};
 use crate::error::ConnectorError;
@@ -31,10 +31,16 @@ use crate::manifest::types::{ActionDecl, ConnectorManifest, TriggerDecl};
 ///
 /// Accessible from host functions via `Caller::data()`. Contains the
 /// capability checker and connector name for gating host calls.
-pub(super) struct HostState {
-    pub(super) connector_name: String,
-    pub(super) checker: CapabilityChecker,
-    pub(super) limits: wasmtime::StoreLimits,
+///
+/// Crate-visible so `wasm::tier::WasmTierCache` methods can name
+/// `Store<HostState>` / `Linker<HostState>` in their crate-public
+/// signatures without `private-interfaces` errors. Still not part of
+/// the *external* connector API — outside callers go through
+/// `WasmConnectorHost`.
+pub(crate) struct HostState {
+    pub(crate) connector_name: String,
+    pub(crate) checker: CapabilityChecker,
+    pub(crate) limits: wasmtime::StoreLimits,
 }
 
 /// WASM connector host — sandboxed execution of community connectors.
@@ -42,29 +48,42 @@ pub(super) struct HostState {
 /// Each invocation creates a fresh `Store` with per-call resource limits
 /// (fuel, memory, timeout). The compiled `Module` is shared across
 /// invocations — compilation is expensive, execution is cheap.
+///
+/// Per COOPERATION.md §16, host-function availability is gated by the
+/// formation's momentum tier. The tier is read per-invocation from the
+/// `CapabilityChecker` (set by `CapabilityBridge` in springtale-runtime
+/// based on the calling formation's momentum), NOT stored on the host
+/// — that way the same WASM connector can be shared across formations
+/// sitting at different tiers without races.
 pub struct WasmConnectorHost {
     /// Shared Wasmtime engine (compiled once, reused).
     wasm_engine: Arc<WasmEngine>,
-    /// Compiled WASM module (thread-safe, cloneable via Arc internally).
-    module: Module,
     /// Connector manifest (triggers, actions, capabilities).
     manifest: ConnectorManifest,
-    /// Pre-configured linker with host functions.
-    linker: Arc<Linker<HostState>>,
+    /// Shared per-tier `InstancePre` cache. Instantiation at a tier is a
+    /// hash lookup + `InstancePre::instantiate(store)` — no Linker rebuild.
+    ///
+    /// The compiled `Module` lives inside this cache as four `InstancePre`
+    /// entries (one per tier), so we don't need to keep a separate
+    /// `Module` field on the host.
+    tier_cache: Arc<WasmTierCache>,
     /// Per-invocation sandbox limits.
     sandbox_limits: SandboxLimits,
 }
 
 impl WasmConnectorHost {
-    /// Create a new WASM connector host from compiled module + manifest.
+    /// Create a new WASM connector host from compiled module + manifest,
+    /// registering the module against a shared tier cache.
     ///
-    /// The module is validated and compiled at this point. Each `execute()`
-    /// call creates a fresh `Store` with per-invocation limits.
+    /// The module is validated and compiled at this point; the shared
+    /// `WasmTierCache` pre-instantiates against each tier's Linker so
+    /// subsequent `execute()` calls pay only `InstancePre::instantiate`.
     pub fn new(
         wasm_engine: Arc<WasmEngine>,
         wasm_bytes: &[u8],
         manifest: ConnectorManifest,
         sandbox_limits: SandboxLimits,
+        tier_cache: Arc<WasmTierCache>,
     ) -> Result<Self, ConnectorError> {
         // Verify WASM hash against manifest if declared
         if let Some(ref expected_hash) = manifest.wasm_hash {
@@ -75,21 +94,22 @@ impl WasmConnectorHost {
         let module = Module::new(wasm_engine.engine(), wasm_bytes)
             .map_err(|e| ConnectorError::Sandbox(format!("module compilation failed: {e}")))?;
 
-        // Build linker with host functions
-        let mut linker: Linker<HostState> = Linker::new(wasm_engine.engine());
-
-        // Register host functions that WASM guests can call.
-        // Each function gates through the capability checker before
-        // performing the actual operation.
-        register_host_functions(&mut linker)?;
+        // Register this module against every tier's Linker so momentum
+        // transitions are a cheap `InstancePre::instantiate` away. The
+        // cache keeps the Module internally — no need to retain it here.
+        tier_cache.register_module(&manifest.name, &module)?;
 
         Ok(Self {
             wasm_engine,
-            module,
             manifest,
-            linker: Arc::new(linker),
+            tier_cache,
             sandbox_limits,
         })
+    }
+
+    /// Module identity used as cache key.
+    fn module_key(&self) -> &str {
+        &self.manifest.name
     }
 
     /// Create a fresh store with per-invocation resource limits.
@@ -144,11 +164,13 @@ impl ConnectorHost for WasmConnectorHost {
         // Create a fresh store with per-invocation limits
         let mut store = self.create_store(checker);
 
-        // Instantiate module in this store
+        // Instantiate module at the tier carried by this invocation's
+        // capability checker. Tier determines which host primitives were
+        // linked (see `wasm::tier::primitives` + §16 of COOPERATION.md).
+        let tier = checker.tier();
         let instance = self
-            .linker
-            .instantiate(&mut store, &self.module)
-            .map_err(|e| ConnectorError::Sandbox(format!("instantiation failed: {e}")))?;
+            .tier_cache
+            .instantiate_at_tier(self.module_key(), tier, &mut store)?;
 
         // Serialize input to JSON bytes for the guest
         let input_json = serde_json::to_string(&input)
@@ -328,6 +350,7 @@ mod tests {
     #[test]
     fn test_wasm_connector_host_rejects_hash_mismatch() {
         let engine = Arc::new(WasmEngine::new(SandboxLimits::default()).unwrap());
+        let tier_cache = Arc::new(WasmTierCache::new(engine.clone()).unwrap());
 
         // Minimal valid WASM module (empty module)
         let wasm_bytes = wat::parse_str("(module)").unwrap();
@@ -341,20 +364,27 @@ mod tests {
             triggers: vec![],
             actions: vec![],
             data_disclosure: vec![],
+            roles: vec![],
             wasm_hash: Some(
                 "0000000000000000000000000000000000000000000000000000000000000000".into(),
             ),
             signature: None,
         };
 
-        let result =
-            WasmConnectorHost::new(engine, &wasm_bytes, manifest, SandboxLimits::default());
+        let result = WasmConnectorHost::new(
+            engine,
+            &wasm_bytes,
+            manifest,
+            SandboxLimits::default(),
+            tier_cache,
+        );
         assert!(result.is_err());
     }
 
     #[test]
     fn test_wasm_connector_host_creation_valid() {
         let engine = Arc::new(WasmEngine::new(SandboxLimits::default()).unwrap());
+        let tier_cache = Arc::new(WasmTierCache::new(engine.clone()).unwrap());
 
         let wasm_bytes = wat::parse_str("(module (memory (export \"memory\") 1))").unwrap();
 
@@ -371,12 +401,33 @@ mod tests {
             triggers: vec![],
             actions: vec![],
             data_disclosure: vec![],
+            roles: vec![],
             wasm_hash: Some(hash),
             signature: None,
         };
 
-        let result =
-            WasmConnectorHost::new(engine, &wasm_bytes, manifest, SandboxLimits::default());
+        let result = WasmConnectorHost::new(
+            engine,
+            &wasm_bytes,
+            manifest,
+            SandboxLimits::default(),
+            tier_cache,
+        );
         assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_checker_tier_defaults_to_warming_and_roundtrips() {
+        let checker = CapabilityChecker::new();
+        // Warming is the permissive default — non-formation callers keep
+        // HTTP capability (pre-Phase-16 behavior). Formations drop to Cold
+        // via `with_tier` before execution.
+        assert_eq!(checker.tier(), crate::tier::WasmTier::Warming);
+        let hot = checker.clone().with_tier(crate::tier::WasmTier::Hot);
+        assert_eq!(hot.tier(), crate::tier::WasmTier::Hot);
+        // Original checker is unchanged — tier is per-clone, not shared.
+        assert_eq!(checker.tier(), crate::tier::WasmTier::Warming);
+        let cold = checker.with_tier(crate::tier::WasmTier::Cold);
+        assert_eq!(cold.tier(), crate::tier::WasmTier::Cold);
     }
 }

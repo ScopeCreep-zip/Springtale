@@ -92,6 +92,7 @@ impl SignalConnector {
                         .to_owned(),
                 },
             ],
+            roles: vec![],
             wasm_hash: None,
             signature: None,
         };

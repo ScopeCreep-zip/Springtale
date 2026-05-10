@@ -178,6 +178,7 @@ mod tests {
                         output_schema: None,
                     }],
                     data_disclosure: vec![],
+                    roles: vec![],
                     wasm_hash: None,
                     signature: None,
                 },

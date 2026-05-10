@@ -101,6 +101,7 @@ fn build_manifest(actions: &[ActionDecl]) -> ConnectorManifest {
                 .to_owned(),
             destination: "local only".to_owned(),
         }],
+        roles: vec![],
         wasm_hash: None,
         signature: None,
     }

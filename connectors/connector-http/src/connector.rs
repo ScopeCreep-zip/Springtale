@@ -105,6 +105,7 @@ fn build_manifest(config: &HttpConfig, actions: &[ActionDecl]) -> ConnectorManif
             purpose: "making HTTP requests as directed by automation rules".to_owned(),
             destination: "configured allow-listed hosts".to_owned(),
         }],
+        roles: vec![],
         wasm_hash: None,
         signature: None,
     }

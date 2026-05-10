@@ -40,7 +40,9 @@ impl ConnectorRegistry {
     ///
     /// The WASM binary is compiled, hash-verified against the manifest,
     /// and loaded into a sandboxed host. Capabilities are registered
-    /// from the manifest's declarations.
+    /// from the manifest's declarations. The shared `WasmTierCache`
+    /// pre-instantiates the module at every momentum tier so subsequent
+    /// tier flips are a cheap `InstancePre::instantiate` (see §16).
     #[cfg(feature = "wasm-sandbox")]
     pub fn install_wasm(
         &mut self,
@@ -48,6 +50,7 @@ impl ConnectorRegistry {
         wasm_bytes: &[u8],
         manifest: crate::manifest::types::ConnectorManifest,
         sandbox_limits: crate::wasm::SandboxLimits,
+        tier_cache: std::sync::Arc<crate::wasm::WasmTierCache>,
     ) -> Result<String, ConnectorError> {
         // Register capabilities from manifest
         self.capability_checker.register(
@@ -62,6 +65,7 @@ impl ConnectorRegistry {
             wasm_bytes,
             manifest.clone(),
             sandbox_limits,
+            tier_cache,
         )?;
 
         let name = manifest.name.clone();

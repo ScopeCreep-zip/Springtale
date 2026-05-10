@@ -1,8 +1,14 @@
 use base64::Engine;
-use rsa::pkcs1v15::VerifyingKey;
-use rsa::signature::Verifier;
-use rsa::{RsaPublicKey, pkcs8::DecodePublicKey};
-use sha2::Sha256;
+// SECURITY (E3 audit-fix): switched from `rsa` crate to `ring` for the
+// signature verification path. The `rsa` crate's PKCS1v15 implementation
+// has RUSTSEC-2023-0071 (Marvin Attack timing sidechannel) with no
+// upstream fix. The Marvin Attack only affects PKCS1v15 *decryption*,
+// which this module never invokes — but the cargo-deny ban
+// (`deny.toml`) blocks the whole crate so we replaced the dep entirely.
+// `ring` provides constant-time RSA-PKCS1v15-SHA256 verification via
+// `signature::RSA_PKCS1_2048_8192_SHA256`, used by rustls itself.
+use ring::signature;
+use rustls_pemfile::Item;
 
 use crate::error::KickError;
 
@@ -10,7 +16,7 @@ use crate::error::KickError;
 ///
 /// Kick signs webhooks with RSA-PKCS1v15 over SHA256. The process:
 /// 1. Concatenate `{message_id}.{timestamp}.{body}` with dots
-/// 2. Hash with SHA256
+/// 2. Hash with SHA256 (ring computes this internally as part of verify)
 /// 3. Verify RSA-PKCS1v15 signature using Kick's public key
 ///
 /// # Arguments
@@ -26,9 +32,19 @@ pub fn verify_webhook(
     body: &[u8],
     signature_b64: &str,
 ) -> Result<(), KickError> {
-    // Parse the RSA public key from PEM
-    let public_key = RsaPublicKey::from_public_key_pem(public_key_pem)
-        .map_err(|e| KickError::RequestFailed(format!("invalid public key: {e}")))?;
+    // Extract DER-encoded SubjectPublicKeyInfo from the PEM blob.
+    let mut reader = std::io::BufReader::new(public_key_pem.as_bytes());
+    let item = rustls_pemfile::read_one(&mut reader)
+        .map_err(|e| KickError::RequestFailed(format!("invalid public key PEM: {e}")))?
+        .ok_or_else(|| KickError::RequestFailed("public key PEM is empty".to_owned()))?;
+    let spki_der = match item {
+        Item::SubjectPublicKeyInfo(spki) => spki,
+        _ => {
+            return Err(KickError::RequestFailed(
+                "public key PEM must contain a SubjectPublicKeyInfo block".to_owned(),
+            ))
+        }
+    };
 
     // Construct the signed message: "{message_id}.{timestamp}.{body}"
     let body_str = std::str::from_utf8(body)
@@ -40,13 +56,14 @@ pub fn verify_webhook(
         .decode(signature_b64)
         .map_err(|e| KickError::RequestFailed(format!("invalid signature encoding: {e}")))?;
 
-    // Verify RSA-PKCS1v15 with SHA256
-    let verifying_key = VerifyingKey::<Sha256>::new(public_key);
-    let signature = rsa::pkcs1v15::Signature::try_from(signature_bytes.as_slice())
-        .map_err(|e| KickError::RequestFailed(format!("invalid signature format: {e}")))?;
-
-    verifying_key
-        .verify(message.as_bytes(), &signature)
+    // Verify RSA-PKCS1v15 with SHA256. ring's verifier is constant-time
+    // and does not exercise the Marvin Attack code path.
+    let public_key = signature::UnparsedPublicKey::new(
+        &signature::RSA_PKCS1_2048_8192_SHA256,
+        spki_der.as_ref(),
+    );
+    public_key
+        .verify(message.as_bytes(), &signature_bytes)
         .map_err(|_| KickError::RequestFailed("webhook signature verification failed".to_owned()))
 }
 

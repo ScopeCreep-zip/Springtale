@@ -65,6 +65,19 @@ pub trait ConnectorFactory: Send + Sync + 'static {
         Vec::new()
     }
 
+    /// First-run onboarding form declaration. Platform connectors
+    /// (telegram, discord, slack, signal) override to return
+    /// `Some(&FORM)`; non-platform connectors (filesystem, shell, http,
+    /// browser) return `None` so the wizard skips them.
+    ///
+    /// Per plan §F-conn-1: this is how `springtale-runtime`'s onboarding
+    /// list stays connector-universal — it iterates `inventory::iter::<FactoryEntry>`
+    /// and collects every `Some(form)` instead of hardcoding a 4-entry
+    /// table.
+    fn onboarding_form(&self) -> Option<&'static crate::factory::onboarding::PlatformForm> {
+        None
+    }
+
     /// Create a connector instance from a JSON config value.
     ///
     /// The JSON value comes from deserializing the TOML config section

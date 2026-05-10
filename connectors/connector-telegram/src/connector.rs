@@ -223,6 +223,7 @@ fn build_manifest(triggers: &[TriggerDecl], actions: &[ActionDecl]) -> Connector
             purpose: "sending and receiving messages via Telegram Bot API".to_owned(),
             destination: "api.telegram.org".to_owned(),
         }],
+        roles: vec![],
         wasm_hash: None,
         signature: None,
     }

@@ -155,6 +155,7 @@ fn build_manifest(triggers: &[TriggerDecl], actions: &[ActionDecl]) -> Connector
                 destination: "local only".to_owned(),
             },
         ],
+        roles: vec![],
         wasm_hash: None,
         signature: None,
     }

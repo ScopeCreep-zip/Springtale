@@ -8,11 +8,10 @@ use wasmtime::Linker;
 use super::connector::HostState;
 use crate::error::ConnectorError;
 
-/// Register host functions in the linker.
-///
-/// WASM guests import these as `"springtale" "function_name"`.
-/// Each function checks capabilities before executing.
-pub(super) fn register_host_functions(
+/// Register only `springtale.http_request`. Tier-aware linkers pull this
+/// in for Warming/Hot/Fever; Cold omits it so Cold-tier guests trap at
+/// instantiation when they import network I/O.
+pub(crate) fn register_http_request(
     linker: &mut Linker<HostState>,
 ) -> Result<(), ConnectorError> {
     // Network outbound — gated by NetworkOutbound capability.

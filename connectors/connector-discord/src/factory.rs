@@ -1,9 +1,38 @@
 use springtale_connector::Connector;
 use springtale_connector::error::ConnectorError;
-use springtale_connector::factory::{ConnectorFactory, FactoryEntry};
+use springtale_connector::factory::{ConnectorFactory, FactoryEntry, FormField, PlatformForm};
 use springtale_connector::manifest::types::{ActionDecl, TriggerDecl};
 
 struct DiscordFactory;
+
+static DISCORD_FORM: PlatformForm = PlatformForm {
+    id: "discord",
+    config_key: "discord",
+    label: "Discord",
+    description: "Connect a Discord bot",
+    setup_help:
+        "Create an application at discord.com/developers, then copy the Bot token and Application ID.",
+    fields: &[
+        FormField {
+            name: "bot_token",
+            label: "Bot token",
+            description: "Discord bot token",
+            secret: true,
+            default: None,
+            required: true,
+            validation: None,
+        },
+        FormField {
+            name: "application_id",
+            label: "Application ID",
+            description: "Discord application (client) ID",
+            secret: false,
+            default: None,
+            required: true,
+            validation: Some(r"^\d{17,20}$"),
+        },
+    ],
+};
 
 #[async_trait::async_trait]
 impl ConnectorFactory for DiscordFactory {
@@ -18,6 +47,9 @@ impl ConnectorFactory for DiscordFactory {
     }
     fn action_declarations(&self) -> Vec<ActionDecl> {
         crate::actions::action_declarations()
+    }
+    fn onboarding_form(&self) -> Option<&'static PlatformForm> {
+        Some(&DISCORD_FORM)
     }
     fn config_schema(&self) -> Option<serde_json::Value> {
         Some(serde_json::json!({

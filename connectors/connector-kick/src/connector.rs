@@ -250,6 +250,7 @@ fn build_manifest(triggers: &[TriggerDecl], actions: &[ActionDecl]) -> Connector
                 destination: "api.kick.com".to_owned(),
             },
         ],
+        roles: vec![],
         wasm_hash: None,
         signature: None,
     }

@@ -1,9 +1,38 @@
 use springtale_connector::Connector;
 use springtale_connector::error::ConnectorError;
-use springtale_connector::factory::{ConnectorFactory, FactoryEntry};
+use springtale_connector::factory::{ConnectorFactory, FactoryEntry, FormField, PlatformForm};
 use springtale_connector::manifest::types::{ActionDecl, TriggerDecl};
 
 struct SlackFactory;
+
+static SLACK_FORM: PlatformForm = PlatformForm {
+    id: "slack",
+    config_key: "slack",
+    label: "Slack",
+    description: "Connect a Slack app (Socket Mode)",
+    setup_help:
+        "Create an app at api.slack.com/apps, enable Socket Mode, generate a Bot token (xoxb-) and App token (xapp-).",
+    fields: &[
+        FormField {
+            name: "bot_token",
+            label: "Bot token",
+            description: "xoxb-... bot user OAuth token",
+            secret: true,
+            default: None,
+            required: true,
+            validation: Some(r"^xoxb-"),
+        },
+        FormField {
+            name: "app_token",
+            label: "App token",
+            description: "xapp-... app-level token (Socket Mode)",
+            secret: true,
+            default: None,
+            required: true,
+            validation: Some(r"^xapp-"),
+        },
+    ],
+};
 
 #[async_trait::async_trait]
 impl ConnectorFactory for SlackFactory {
@@ -18,6 +47,9 @@ impl ConnectorFactory for SlackFactory {
     }
     fn action_declarations(&self) -> Vec<ActionDecl> {
         crate::actions::action_declarations()
+    }
+    fn onboarding_form(&self) -> Option<&'static PlatformForm> {
+        Some(&SLACK_FORM)
     }
     fn config_schema(&self) -> Option<serde_json::Value> {
         Some(serde_json::json!({

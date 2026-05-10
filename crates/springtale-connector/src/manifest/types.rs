@@ -36,6 +36,14 @@ pub struct ConnectorManifest {
     #[serde(default)]
     pub data_disclosure: Vec<DataDisclosure>,
 
+    /// Custom cooperation roles this connector contributes to the
+    /// shared `RoleRegistry` (§14.4). Each role is identified by name
+    /// and carries an action-glob allowlist; they're exposed alongside
+    /// the built-in General/Information/Support roles once the
+    /// connector is installed.
+    #[serde(default)]
+    pub roles: Vec<RoleDecl>,
+
     /// SHA-256 hash of the WASM binary (for WASM connectors only).
     #[serde(default)]
     pub wasm_hash: Option<String>,
@@ -125,6 +133,37 @@ pub struct DataDisclosure {
 
     /// Where the data is sent (e.g., "api.kick.com", "local only").
     pub destination: String,
+}
+
+/// A custom cooperation role contributed by a connector.
+///
+/// Registered into `springtale_cooperation::role::RoleRegistry` at
+/// install time. See the registry module for semantics; see
+/// `CommunityRole` for how `allowed_actions` patterns are matched.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(deny_unknown_fields)]
+pub struct RoleDecl {
+    /// Human-readable role name. Namespaced by convention (e.g.,
+    /// `"github/read-only-auditor"`) to avoid clobbering the built-in
+    /// `General`/`Information`/`Support` roles.
+    pub name: String,
+
+    /// Short description for the role picker UI.
+    #[serde(default)]
+    pub description: String,
+
+    /// Capabilities this role exposes. When empty, the role inherits
+    /// whatever capabilities the member already holds — useful for
+    /// filter-only roles like "Watcher" that don't change the cap set.
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+
+    /// Action-name allowlist. Trailing `*` is a prefix wildcard; no
+    /// other patterns are supported. An empty list denies everything
+    /// (the role can hold capabilities but never dispatch actions —
+    /// rarely useful outside quarantine scenarios).
+    #[serde(default)]
+    pub allowed_actions: Vec<String>,
 }
 
 #[cfg(test)]
