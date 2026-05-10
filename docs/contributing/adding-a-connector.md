@@ -24,9 +24,15 @@ connectors/connector-{name}/
     ├── lib.rs              # pub mod + re-exports ONLY
     ├── config.rs           # Config struct (Deserialize only, Secret<String> for credentials)
     ├── connector.rs        # Connector trait implementation
+    ├── factory.rs          # (optional) ConnectorFactory impl — needed if the connector
+    │                       #   is constructed from a typed config struct rather than a
+    │                       #   bare config map. Most chat connectors have one; see
+    │                       #   connector-discord, connector-kick, connector-telegram.
     ├── error.rs            # Typed error enum (thiserror)
-    ├── auth/               # Auth flows (OAuth, API key, bearer)
-    │   └── mod.rs
+    ├── auth/               # (optional) Auth flow modules — present when the flow is
+    │   └── mod.rs          #   complex enough to warrant its own module (OAuth 2.1 PKCE,
+    │                       #   SASL, etc.). For simple bearer-token auth, inline it
+    │                       #   into client/. See connector-kick for a full OAuth flow.
     ├── client/             # Typed HTTP client (all network calls here)
     │   ├── mod.rs
     │   └── api.rs
@@ -36,15 +42,16 @@ connectors/connector-{name}/
         └── mod.rs
 ```
 
-*Fig. 1. Standard connector directory layout.*
+*Fig. 1. Standard connector directory layout. `factory.rs` and `auth/` are optional but common — include them when their concern is non-trivial.*
 
 ### 2.1. Cargo.toml
 
 ```toml
 [package]
 name = "connector-{name}"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
 
 [dependencies]
 springtale-connector = { workspace = true }
@@ -75,15 +82,46 @@ The `Connector` trait lives in `springtale-connector`:
 pub trait Connector: Send + Sync + 'static {
     fn triggers(&self) -> &[TriggerDecl];
     fn actions(&self) -> &[ActionDecl];
+
     async fn execute(&self, action: &str, input: serde_json::Value)
         -> Result<ActionResult, ConnectorError>;
+
+    /// Register a trigger handler. Returns a Subscription handle that
+    /// the caller stores per-rule and passes to `remove_event()` when
+    /// the rule is disabled, deleted, or updated (Home Assistant
+    /// attach_trigger → detach pattern).
     async fn on_event(&self, trigger: &str, handler: EventHandler)
+        -> Result<Subscription, ConnectorError>;
+
+    /// Remove a previously registered handler by its subscription.
+    async fn remove_event(&self, sub: &Subscription)
         -> Result<(), ConnectorError>;
+
     fn manifest(&self) -> &ConnectorManifest;
+
+    async fn verify_webhook(&self, headers: &HeaderMap, body: &[u8])
+        -> Result<(), ConnectorError>;  // default: reject
 }
 ```
 
-Implement this in `connector.rs`. The struct should hold the config, an HTTP client, and any runtime state (auth tokens, caches).
+Implement this in `connector.rs`. The struct should hold the config, an HTTP client, and any runtime state (auth tokens, caches, a `SubscriptionCounter`, a handler list keyed by `SubscriptionId`).
+
+### 3.1. Subscription lifecycle
+
+`on_event()` must return a `Subscription` that uniquely identifies the
+handler. Use `SubscriptionCounter` from `springtale-connector` to mint
+ids. Store handlers in an internal `HashMap<SubscriptionId,
+EventHandler>` (or a per-trigger `Vec<(SubscriptionId, EventHandler)>`).
+
+`remove_event()` removes the handler matching the subscription's id.
+The bot calls `remove_event()` from its rule lifecycle — when a rule is
+disabled or deleted, every `Subscription` it owns is torn down in one
+sweep. Connectors that forget to implement `remove_event()` will leak
+handlers; the capability layer will not catch that.
+
+The trait is shared by native and WASM connectors. WASM host functions
+marshal `SubscriptionId` across the sandbox boundary so subscription
+bookkeeping works uniformly on both execution paths.
 
 ---
 

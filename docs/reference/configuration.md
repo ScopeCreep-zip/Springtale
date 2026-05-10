@@ -27,6 +27,7 @@ A minimal config is **empty** — every section has safe defaults. You only writ
   │     └── [bot.persona]  name, tone, prefix          ─── §8.1
   │
   ├── [sentinel]           rate limits, breaker, dead-man ─── §9
+  ├── [cooperation]        cross-process gossip (chitchat+SWIM) ─── §9.1
   │
   ├── [telegram]  [discord]  [slack]  [irc]  [nostr]  [signal]    ─── §10
   │    chat connectors — absent section = connector not loaded
@@ -56,6 +57,9 @@ A minimal config is **empty** — every section has safe defaults. You only writ
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `path` | `PathBuf` | `~/.local/share/springtale/springtale.db` | SQLite database file path. Validated as a safe path. |
+| `ephemeral` | `bool` | `false` | In-memory backend. Lost on exit. Equivalent to the top-level `ephemeral` for just the store. |
+| `encryption_key_hex` | `Option<String>` | `None` | Hex-encoded 32-byte key for SQLite encryption at rest via SQLite3MultipleCiphers (ChaCha20-Poly1305). Normally derived from the vault passphrase during boot — setting this manually bypasses derivation. |
+| `retention_days` | `Option<u32>` | `None` | Purge events and audit logs older than N days. Hourly background task; `None` keeps forever. |
 
 ---
 
@@ -111,7 +115,7 @@ Any OpenAI-compatible endpoint (OpenAI, Gemini, DeepSeek, llama.cpp, vLLM).
 | `api_key` | `Secret<String>` | (required) | API key — stored encrypted in the vault, never serialized |
 | `model` | `String` | (required) | Model name |
 
-Non-streaming only. Streaming support is tracked in `docs/arch/AUDIT-NOTES.md §7`.
+SSE streaming is fully supported. Tool calling routes through `complete_with_tools()` (non-streaming) since argument JSON must be complete before tool execution — the streaming path returns text deltas and final `finish_reason`.
 
 ### 7.3 `[ai_anthropic]`
 
@@ -165,6 +169,37 @@ The sentinel also checks toxic capability pairs at manifest install time and wri
 
 ---
 
+## 9.1. `[cooperation]`
+
+Cooperation-layer runtime config. Controls how formations gossip when
+multiple `springtaled` processes run on the same machine or LAN. Default
+is single-process with an in-memory gossip store — nothing to configure.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `cross_process` | `bool` | `false` | `false` = in-process `InMemoryGossipStore` (DashMap, zero network). `true` = chitchat gossip node + SWIM liveness over UDP. |
+| `chitchat_listen_addr` | `Option<String>` | `None` | `host:port` the chitchat node binds and advertises. Required when `cross_process = true`. |
+| `chitchat_seeds` | `Vec<String>` | `[]` | Peer `host:port`s to reach at startup. |
+| `cluster_id` | `String` | `"springtale"` | Two nodes with different cluster ids won't peer. |
+| `swim_listen_addr` | `Option<String>` | `None` (ephemeral loopback) | SWIM liveness bind. |
+| `swim_seeds` | `Vec<String>` | `[]` | SWIM seeds to announce to at startup. |
+
+Single-machine multi-process example:
+
+```toml
+[cooperation]
+cross_process = true
+chitchat_listen_addr = "127.0.0.1:9601"
+chitchat_seeds = ["127.0.0.1:9602"]
+swim_listen_addr = "127.0.0.1:9701"
+swim_seeds = ["127.0.0.1:9702"]
+```
+
+See [`docs/guide/cooperation.md`](../guide/cooperation.md) for how the
+gossip substrate feeds neighbour awareness.
+
+---
+
 ## 10. Chat Connector Sections
 
 Each is optional. If a section is absent, that connector is not loaded. All credential fields are `Secret<String>` — stored encrypted, never appearing in logs or API responses.
@@ -179,6 +214,7 @@ Telegram Bot API connector.
 | `api_base` | `String` | `"https://api.telegram.org"` | Telegram API base URL |
 | `update_mode` | `String` | `"polling"` | `"polling"` or `"webhook"` |
 | `webhook_url` | `Option<String>` | `None` | Required when `update_mode = "webhook"` |
+| `webhook_secret` | `Option<Secret<String>>` | `None` | Required when `update_mode = "webhook"`. Used to authenticate Telegram webhook callbacks via the `X-Telegram-Bot-Api-Secret-Token` header. |
 | `poll_timeout` | `u64` | `30` | Long-polling timeout in seconds |
 
 ### 10.2 `[discord]`
@@ -346,17 +382,19 @@ bind = "127.0.0.1:8080"
 rate_limit_per_sec = 100
 
 [ai_ollama]
-endpoint = "http://127.0.0.1:11434"
+base_url = "http://127.0.0.1:11434"
 model = "llama3.1:8b"
 
 [telegram]
 bot_token = "123456:ABC-..."
-mode = "polling"
+update_mode = "polling"
 
 [bot]
+context_window = 50
+vault_timeout_secs = 300
 persona.name = "Spring"
-persona.description = "Helpful automation bot."
-cadence_interval_secs = 30
+persona.tone = "neutral"
+persona.prefix = "/"
 ```
 
 ---

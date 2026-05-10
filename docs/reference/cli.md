@@ -5,17 +5,22 @@
 ```
    springtale
      │
-     ├── init                         create vault + DB
+     ├── init                         create vault + DB, optional onboarding
+     ├── new TEMPLATE                 scaffold from starter template
      ├── server start                 run springtaled inline
-     ├── panic                        emergency wipe
+     ├── doctor                       diagnostic checks
+     ├── fix ERROR_ID                 apply an auto-repair for E001..E009
+     ├── trace [--connector --rule]   real-time execution trace
+     ├── panic                        emergency wipe (no confirm)
      │
-     ├── connector { list, install, enable, disable, remove }
-     ├── rule      { list, add, toggle, run, update, delete }
+     ├── connector { list, install PATH, enable NAME, disable NAME, remove NAME }
+     ├── rule      { list, add FILE, toggle ID, run ID, update ID FILE, delete ID }
      ├── events    [--limit N --connector NAME]
      ├── agent     set-autonomy NAME LEVEL
      │
      ├── vault     duress-setup
      ├── crypto    rotate-vault-key
+     ├── bot       { pair-init, panic-unpair }
      │
      ├── travel    { prepare --backup-to, restore --from }
      ├── memory    { audit, compact --max-entries N }
@@ -54,6 +59,78 @@ Start the `springtaled` daemon inline (foreground). Useful for development.
 $ springtale server start
 INFO springtaled: listening on 127.0.0.1:8080
 INFO springtaled: READY
+```
+
+---
+
+## 3.1. `springtale new <template>`
+
+Scaffold a project from a starter template. 14 templates ship; pick whichever is closest to what you need and edit from there. Definitions live in `crates/springtale-runtime/src/operations/templates.rs`.
+
+**TABLE I. STARTER TEMPLATES**
+
+| Template | Description |
+|---|---|
+| `telegram-bot` | Telegram bot with a `/start` welcome rule |
+| `github-monitor` | GitHub webhook → Telegram push notifications |
+| `cron-runner` | Scheduled task automation (no chat connector) |
+| `llm-assistant` | AI-powered chat assistant (Ollama / OpenAI / Anthropic) |
+| `blank-bot` | Empty skeleton for experts — no connectors, no rules |
+| `cli-runner` | Headless CLI task runner — spawns a formation per task |
+| `llm-swarm` | 3-agent LLM swarm (researcher / writer / critic) on a single prompt |
+| `discord-bot` | Discord bot with a `!start` welcome rule |
+| `matrix-bot` | Matrix / Element chatbot skeleton — ready for `connector-matrix` |
+| `webhook-receiver` | HTTP webhook → cooperation formation fan-out |
+| `file-watcher` | Filesystem event → cooperation formation |
+| `research-assistant` | Multi-source research LLM swarm with cited output |
+| `code-review-swarm` | Git diff → 3-agent code review (readability / correctness / security) |
+| `meeting-summarizer` | Audio / transcript → structured summary LLM swarm |
+
+```
+$ springtale new telegram-bot
+Scaffolded telegram-bot project.
+  rules/     — starter rules
+  config/    — connector config skeleton
+Next: edit config/connector-telegram.toml with your bot token.
+```
+
+See [`../guide/templates.md`](../guide/templates.md) for worked walkthroughs and prerequisites per template.
+
+---
+
+## 3.2. `springtale doctor`
+
+Run the same diagnostic checks exposed by `GET /diagnostics`. Reports
+configuration, connectivity, capability, and schema issues with a
+stable error id (`E001` through `E009`).
+
+```
+$ springtale doctor
+✓ vault reachable
+✗ E003: connector-telegram missing bot token
+✓ rule engine loaded
+```
+
+## 3.3. `springtale fix <error-id>`
+
+Apply the bundled auto-repair for a diagnostic error id. Same logic as
+`POST /fixes/{id}/apply`.
+
+```
+$ springtale fix E003
+Fixed E003 — connector-telegram config stub written.
+```
+
+## 3.4. `springtale trace`
+
+Real-time execution trace — tails rule triggers, action dispatches, and
+sentinel verdicts. Filter by connector or rule.
+
+```
+$ springtale trace --connector connector-telegram
+TRIG connector-telegram.message_received → rule: weather-command
+ACT  connector-presearch.search ok (410ms)
+OUT  connector-telegram.send_message ok
 ```
 
 ---
@@ -211,6 +288,35 @@ Vault re-encrypted. Update API clients with the new token.
 
 ---
 
+## 9.1. `springtale bot`
+
+Bot pairing management. Covers code generation and emergency revocation
+for users paired through chat connectors. No chat access is required to
+revoke — `panic-unpair` works from a recovered terminal.
+
+### 9.1.1 `bot pair-init`
+
+Generate a pairing code for a new user. The code is displayed on the
+terminal only — never in chat — so the operator must convey it out of
+band.
+
+```
+$ springtale bot pair-init
+Pairing code: 847-291-530  (valid 10 min)
+```
+
+### 9.1.2 `bot panic-unpair`
+
+Revoke ALL paired users and invalidate every outstanding pairing code.
+For emergencies — no chat access needed.
+
+```
+$ springtale bot panic-unpair
+Revoked 4 paired users, invalidated 1 outstanding code.
+```
+
+---
+
 ## 10. `springtale travel`
 
 Travel mode prepares Springtale for a border crossing or device inspection: encrypt a backup, wipe the local install, then restore at destination.
@@ -274,7 +380,18 @@ Delete oldest entries beyond the per-session cap (default 100).
 
 Export all user data as JSON. With `--encrypt`, the output is encrypted with the vault passphrase.
 
-### 13.2 `data purge`
+### 13.2 `data import --input <path>`
+
+Re-import a previously exported JSON archive. Replays rules, connector configs, and event history into the current store. The vault is untouched.
+
+```
+$ springtale data import --input backup.json
+Imported: 12 rules, 4 connectors, 8421 events
+```
+
+If the input was produced with `data export --encrypt`, decrypt first or use `springtale travel restore --from <path>` instead.
+
+### 13.3 `data purge`
 
 Delete all user data (rules, events, memory, formations) without touching the vault.
 

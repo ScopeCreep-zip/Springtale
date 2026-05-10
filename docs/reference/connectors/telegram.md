@@ -32,6 +32,7 @@ Telegram Bot API integration. Polling or webhook message ingestion, commands, in
 | `api_base` | `String` | `"https://api.telegram.org"` | Telegram Bot API base URL |
 | `update_mode` | `String` | `"polling"` | `"polling"` or `"webhook"` |
 | `webhook_url` | `Option<String>` | `None` | Callback URL, required when `update_mode = "webhook"` |
+| `webhook_secret` | `Option<Secret<String>>` | `None` | Webhook secret token, required when `update_mode = "webhook"`. Telegram echoes this on every callback in the `X-Telegram-Bot-Api-Secret-Token` header; the daemon rejects requests where it doesn't match. |
 | `poll_timeout` | `u64` | `30` | Long-polling timeout in seconds |
 
 ## 2. Authentication
@@ -46,6 +47,9 @@ Bot token passed as a URL path segment in Bot API requests. The token is wrapped
 |---|---|---|
 | `message_received` | Any message in a chat the bot can see | `message_id`, `chat` (object), `from` (object), `text`, `date` |
 | `command_received` | Bot command (`/command`) received | `message_id`, `chat`, `from`, `command`, `args`, `text`, `date` |
+| `callback_query_received` | A user tapped an inline keyboard button (Telegram callback query) | `callback_query_id`, `from`, `message`, `data` |
+
+Handlers for `callback_query_received` should call `answer_callback_query` within 10 seconds, per the Bot API spec — otherwise Telegram's UI spins indefinitely.
 
 ## 4. Actions
 
@@ -58,6 +62,7 @@ Bot token passed as a URL path segment in Bot API requests. The token is wrapped
 | `edit_message` | `chat_id`, `message_id`, `text` |
 | `delete_message` | `chat_id`, `message_id` |
 | `send_inline_keyboard` | `chat_id`, `text`, `keyboard` (array of button arrays) |
+| `answer_callback_query` | `callback_query_id`, `text` (toast), `show_alert` (bool) |
 
 ## 5. Capabilities Required
 

@@ -48,6 +48,11 @@ token = hex(HMAC-SHA256(passphrase, "springtale-api-token"))
 
 Verification uses constant-time comparison (`subtle::ConstantTimeEq`). There is no separate API key — rotating the token rotates the passphrase.
 
+Authenticated routes also go through a CSRF-protection middleware
+(`require_csrf_protection`) that rejects cross-origin requests with
+unsafe methods. SSE readers are exempt because the browser `EventSource`
+cannot originate a state-changing request.
+
 ```bash
 # Typical client
 curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/connectors
@@ -69,9 +74,12 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/connectors
       ┌─────────┬──────────┬────────┼────────┬──────────┬──────────┐
       ▼         ▼          ▼        ▼        ▼          ▼          ▼
    Agents   Authors   Bot admin Sessions   Memory    Safety       Data
-      ┌─────────┬──────────┐
-      ▼         ▼          ▼
-   Webhooks  Dashboard  (SPA)
+      ┌─────────┬──────────┬──────────┬──────────┬─────────────┐
+      ▼         ▼          ▼          ▼          ▼             ▼
+   Send    Diagnostics  Fixes    Onboarding  Templates     Webhooks
+                                                                 │
+                                                                 ▼
+                                                          Dashboard (SPA)
 ```
 
 *Fig. 3. Route groups at a glance. Public routes: health, ready, `/ui`, `/ui/*`. Everything else requires the bearer token.*
@@ -119,22 +127,27 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/connectors
 
 ### 3.4 Formations
 
-Formations are cooperating groups of agents with a shared intent. See [`docs/intended-arch/COOPERATION.md`](../intended-arch/COOPERATION.md).
+Formations are cooperating groups of agents with a shared intent. See [`docs/guide/cooperation.md`](../guide/cooperation.md). Every formation command pushes onto the bot's `FormationCommand` channel; the bot is the only code path that materialises live `Formation` structs from DB rows.
 
 | Method | Path | Description |
 |---|---|---|
 | GET | `/formations` | List all formations with member count, intent, momentum tier |
 | POST | `/formations` | Create a formation |
+| GET | `/formations/{id}` | Live formation detail (momentum, rally tokens, attention load, guard status, member health + liveness) via `LiveFormationReader` |
+| GET | `/formations/{id}/commands` | 3×3 colony-canvas command grid for this formation, with status-aware enable flags. Used by the dashboard formation detail card. |
+| GET | `/formations/{id}/members/eligible` | Eligible-for-removal member list for the formation member overlay. |
 | GET | `/formations/intents` | List available intent templates (Reconnoiter / Execute / Stabilize / Surge / Dissolve) |
 | POST | `/formations/deploy-team` | Deploy a multi-agent team in one call |
 | POST | `/formations/{id}/deploy` | Move formation to deployed state |
 | POST | `/formations/{id}/pause` | Pause (members stop acting on cadence ticks) |
 | POST | `/formations/{id}/resume` | Resume from paused |
-| POST | `/formations/{id}/dissolve` | Dissolve team, stop all members |
+| POST | `/formations/{id}/dissolve` | Dissolve, persist mental model first, stop all members |
+| POST | `/formations/{id}/rally` | Manual rally — consume a rally token around the weakest member |
 | PUT | `/formations/{id}/intent` | Change intent |
-| POST | `/formations/{id}/members` | Add a member |
+| POST | `/formations/{id}/members` | Add a member (by connector name) |
+| DELETE | `/formations/{id}/members` | Remove a member (by connector name) |
 | POST | `/formations/{id}/cycle-intent` | Cycle to the next intent template |
-| POST | `/formations/{id}/cycle-autonomy` | Cycle autonomy level of all members |
+| POST | `/formations/{id}/cycle-autonomy` | Cycle autonomy level of all members (observe → suggest → approve → autonomous → observe) |
 | POST | `/formations/{id}/toggle-guard` | Toggle the formation guard rails |
 
 ### 3.5 Agents
@@ -218,7 +231,28 @@ Author Ed25519 public keys used to verify signed manifests.
 |---|---|---|
 | POST | `/data/export` | Export all user data. Optional encryption with vault passphrase. |
 
-### 3.14 Webhooks
+### 3.14 Send
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/send` | Execute an `Action` directly against a connector. Capability-checked through the sentinel, same as rule-dispatched actions. No back door. |
+
+### 3.15 Diagnostics, Fixes, Onboarding, Templates
+
+These routes back the **Doctor** and **Onboarding** flows in the desktop shell.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/diagnostics` | Run the current set of runtime health checks; returns a list of issues with severity + description |
+| GET | `/fixes` | List available auto-repair suggestions bound to diagnostic ids |
+| GET | `/fixes/{id}` | Fetch a single fix with its proposed action |
+| POST | `/fixes/{id}/apply` | Apply a fix |
+| GET | `/onboarding/platforms` | List platforms that have onboarding templates (telegram, discord, github, etc.) |
+| POST | `/onboarding/{platform}` | Apply an onboarding template for the given platform |
+| GET | `/templates` | List rule / connector templates bundled with the daemon |
+| POST | `/templates/{name}` | Write a template into the current store |
+
+### 3.16 Webhooks
 
 | Method | Path | Description |
 |---|---|---|
@@ -226,7 +260,7 @@ Author Ed25519 public keys used to verify signed manifests.
 
 The endpoint requires the bearer token like every other authenticated route. External senders need the token in the `Authorization` header. In addition, each connector performs its own webhook signature verification on the body via `Connector::verify_webhook()` — HMAC-SHA256 for GitHub, RSA for Kick, and so on.
 
-### 3.15 Dashboard
+### 3.17 Dashboard
 
 | Method | Path | Auth | Description |
 |---|---|---|---|

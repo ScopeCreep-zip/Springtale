@@ -43,7 +43,7 @@ questions.
 |---|---|
 | [`ARCHITECTURE.md`](ARCHITECTURE.md) | What are the crates, how do they wire together, what's the boot sequence, what's the API surface, what's the data flow |
 | [`SECURITY.md`](SECURITY.md) | What crypto primitives ship, where are secrets handled, what does the WASM sandbox actually enforce, how does API auth work |
-| [`AUDIT-NOTES.md`](AUDIT-NOTES.md) | Known drift — type-defined but unwired cooperation modules, in-memory job queue, OpenAI streaming stub, etc. |
+| [`AUDIT-NOTES.md`](AUDIT-NOTES.md) | Known drift — in-memory job queue, formation→rules generation, blackboard log unbounded, etc. |
 
 ## When to update
 

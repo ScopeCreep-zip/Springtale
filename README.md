@@ -161,7 +161,7 @@ Security guide: [docs/guide/security.md](docs/guide/security.md) | Full threat m
 |---|---|---|
 | 1a | Framework + connectors. Daemon, CLI, rule engine, crypto vault, WASM sandbox, 7 baseline connectors, MCP bridge. | Present. |
 | 1b | Bot foundations. `springtale-bot` with command router, cooperation framework, `connector-telegram`. | Present. 12 of 20 cooperation modules are type-defined only; 3 unaudited. |
-| 2a | Chat + AI. Discord, Signal, IRC, Slack, Nostr connectors. Anthropic / Ollama / OpenAI-compat adapters. `HttpTransport` (rustls mTLS). `springtale-sentinel`. | Present except: OpenAI streaming is stubbed (non-streaming works). `connector-matrix` is not in the workspace — `matrix-sdk` pins a `rusqlite` with an open CVE. |
+| 2a | Chat + AI. Discord, Signal, IRC, Slack, Nostr connectors. Anthropic / Ollama / OpenAI-compat adapters (all three stream). `HttpTransport` (rustls mTLS). `springtale-sentinel`. | Present. `connector-matrix` is not in the workspace — `matrix-sdk` pins a `rusqlite` with an open CVE. |
 | 2b | Desktop + safety. Tauri 2 shell, SolidJS dashboard, canvas visualisation. Duress vault, panic wipe, travel mode. | Shell, dashboard, canvas, duress, panic wipe, travel mode all present. Visual rule builder, i18n, and a11y are not implemented. |
 | 3 | Veilid mesh. P2P transport, E2E encrypted AI chat, no server. | `VeilidTransport` is a stub — every method returns `TransportError::NotConnected`. |
 

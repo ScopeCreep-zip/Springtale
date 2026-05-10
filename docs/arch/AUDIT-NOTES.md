@@ -53,87 +53,81 @@ end-to-end. SDK dispatch example in `sdk/connector-sdk/src/lib.rs:9-24`.
 
 ---
 
-## 3. Cooperation modules: type-defined but not wired ⚠
+## 3. Cooperation framework fully wired ◆
 
-**Where:** `crates/springtale-bot/src/cooperation/`, consumed by
-`runtime/event_loop.rs`.
+**Where:** `crates/springtale-cooperation/` (crate),
+`crates/springtale-bot/src/runtime/event_loop.rs` (14-step tick),
+`crates/springtale-bot/src/cooperation/` (glue).
 
-The 20-file cooperation tree matches `docs/intended-arch/COOPERATION.md`
-closely. The momentum machinery, cadence bus, formation struct,
-environment blackboard, and orchestrator AI gating are **wired into the
-hot path**. Several modules ship as type definitions only — they exist
-and compile, but no site in the event loop invokes them yet.
+**State update (April 2026):** What this section previously described as
+"type-defined, not wired" is now wired. The cooperation code moved into
+its own crate (`springtale-cooperation`, 37 modules, zero internal deps)
+and `springtale-bot` gained a 14-step per-formation tick pipeline that
+exercises every module.
 
 ```
-  event_loop.rs  ───────────────────────────────────────────┐
-         │                                                   │
-         │  cadence_rx (broadcast)                            │
-         ▼                                                    │
-   cadence.rs   ◄─── WIRED                                    │
-         │                                                    │
-         ▼                                                    │
-   formation.rs ◄─── WIRED      for every active formation    │
-         │                                                    │
-         ▼                                                    │
-   momentum.rs  ◄─── WIRED      record_success, try_promote,  │
-         │                      persist tier                  │
-         ▼                                                    │
-   environment.rs ◄─ WIRED      orchestrator posts subtasks   │
-         │                      members pull them             │
-         ▼                                                    │
-   action.rs (SubTask) ◄─ WIRED (via orchestrator)            │
-                                                              │
-   ╔══════════════════════════════════════════════════════╗   │
-   ║  TYPE-ONLY — types defined, never invoked from event ║   │
-   ║  loop or any non-test code path                      ║   │
-   ║                                                      ║   │
-   ║  awareness    mental_model    attention              ║   │
-   ║  consensus    commit          interference           ║   │
-   ║  transformation  capability   rally                  ║   │
-   ║  recovery     sacrifice                              ║   │
-   ╚══════════════════════════════════════════════════════╝   │
-                                                              │
-   ╔══════════════════════════════════════════════════════╗   │
-   ║  UNAUDITED — declared modules, not examined           ║   │
-   ║                                                       ║   │
-   ║  comms    handoff    pacing                           ║   │
-   ╚═══════════════════════════════════════════════════════╝  │
-                                                              │
-                                                              ▼
-                                                         bot event loop
+  event_loop.rs::handle_cadence_tick() — 14 steps
+  ─────────────────────────────────────────────────
+   1.  per-agent loop   (sense / scan / react / respond_cfp / inbox)
+   2.  tick_processor   (action records, interference detection)
+   2b. rally supervise  (drain member outcomes → rally events)
+   3.  momentum         (decay check)
+   4.  momentum         (success / interference / failure)
+   4a-h. liveness, supervisor, fuel, implicit signals,
+         state broadcasts, cohesion signals
+   5.  persist momentum → SQLite
+   6.  broadcast FormationContext
+   7.  update awareness via gossip substrate
+   8.  pacing phase transition
+   9.  cascade detection + self-rally
+   9b. recovery (distress → helper selection)
+  10.  role transformation
+  11.  consensus deadlines
+  12.  expire commit barriers
+  13.  mental model update
+  14.  orchestrate (Fever tier only)
 ```
 
-*Fig. 1. Cooperation wiring. Only the first five modules are invoked from any non-test code path; the rest define the type system for future behavioural integration.*
+*Fig. 1. All cooperation modules are exercised somewhere in the tick pipeline or in the 5-step agent loop.*
 
-| Module | Status | Missing integration |
+| Module | Status | Notes |
 |---|---|---|
-| `cadence.rs` | ✓ wired | — |
-| `formation.rs` | ✓ wired | — |
-| `momentum.rs` | ✓ wired (promote/demote, persistence, capability gates) | — |
-| `environment.rs` | ✓ wired (orchestrator posts subtasks; members pull) | — |
-| `mental_model.rs` | ⚠ type only | Not persisted; not updated on tick |
-| `awareness.rs` | ⚠ type only | `NeighborSnapshot` never populated |
-| `rally.rs` | ⚠ type only | No dispatch on formation failure |
-| `sacrifice.rs` | ⚠ type only | No voluntary-sacrifice decision point |
-| `recovery.rs` | ⚠ type only | Distress signals never raised |
-| `consensus.rs` | ⚠ type only | Vote machinery not invoked |
-| `commit.rs` | ⚠ stub | `CommitPhase` enum present; no `tokio::sync::Barrier` |
-| `interference.rs` | ⚠ type only | Detection not called in event loop |
-| `transformation.rs` | ⚠ type only | Role transformation never triggered |
-| `capability.rs` (DynamicCapabilitySet) | ⚠ type only | Not applied to members |
-| `handoff.rs` | ? not audited | Spec says crossbeam-deque + sled |
-| `pacing.rs` | ? not audited | Spec says governor GCRA |
-| `comms.rs` | ? not audited | Spec says channel matrix |
+| `cadence` | ✓ wired | broadcast tick bus, TickReport channel |
+| `momentum` | ✓ wired | persisted, decay, capability gates |
+| `awareness` | ✓ wired | gossip substrate (InMemory / chitchat) |
+| `attention` | ✓ wired | zero-sum broker |
+| `state` (environment) | ✓ wired | blackboard, shared env, write log |
+| `consensus` | ✓ wired | deadlines checked step 11 |
+| `commit` | ✓ wired | barriers expired step 12 |
+| `interference` | ✓ wired | detected step 2 |
+| `transformation` | ✓ wired | step 10 |
+| `capability` | ✓ wired | DynamicCapabilitySet built per tick |
+| `rally` | ✓ wired | cascade + self-rally step 9 |
+| `recovery` | ✓ wired | distress evaluation step 9b |
+| `sacrifice` | ✓ wired | evaluator consulted in recovery |
+| `comms` | ✓ wired | implicit signals, state broadcasts, cohesion |
+| `handoff` | ✓ wired | direct / flex-chain / sequential |
+| `pacing` | ✓ wired | step 8 phase transitions |
+| `supervision` | ✓ wired | per-member checks step 4d |
+| `stigmergy` | ✓ wired | surfaces consumed in agent `react` |
+| `contract_net` | ✓ wired | agent `respond_cfp` step |
+| `routing` | ✓ wired | agent `scan` pulls via router |
+| `mental_model` | ✓ wired | updated step 13, persisted on dissolve |
+| `role` | ✓ wired | transformations apply updated role |
+| `dissemination` | ✓ wired | step 6 FormationContext broadcast |
+| `authority` | ✓ wired | momentum × layer permission matrix consulted |
+| `replan` (CBBA) | ⚠ ancillary | invoked only by orchestrator global replan path |
+| `agent_loop::AgentLoop::tick()` | ⚠ scaffolding | the 5 agent steps are invoked directly by `run_agent_loops` rather than through an `AgentLoop::tick()` facade |
 
-**Impact:** Formations today exercise cadence → momentum → orchestrator
-→ blackboard. Everything else in the cooperation spec is data-ready but
-not behavioural. Failure recovery in particular falls back to generic
-error handling rather than the rally / mutual-aid path in the spec.
+**Impact:** The behavioural integration gap this section previously
+tracked is closed. See `docs/guide/cooperation.md` and
+`docs/guide/architecture.md` §6 for a user-facing tour and architectural
+overview.
 
-**Fix path:** The cleanest first wire-up is distress signals — once
-`recovery::DistressSignal` raises from a failed member, rally tokens
-consume, role transformation becomes legible, and sacrifice gets a
-decision site.
+**Remaining work:** (1) wrap the 5 agent steps behind an explicit
+`AgentLoop::tick()` API instead of the ad-hoc `run_agent_loops` function;
+(2) invoke CBBA (`replan/cbba`) from a policy decision rather than only
+from orchestrator escalation. Both are ergonomic, not behavioural.
 
 ---
 
@@ -196,27 +190,7 @@ deadline honoured). Concern is only readability — a reader looking for
 
 ---
 
-## 7. OpenAI streaming stub ⚠
-
-**Where:** `crates/springtale-ai/src/adapter/openai_compat.rs:142-145`
-
-**State:** `OpenAiCompatAdapter::stream()` returns
-`AiError::NotImplemented("OpenAI streaming not yet implemented")`.
-`complete()`, `parse_rule()`, `is_available()` all work. Anthropic and
-Ollama both fully stream.
-
-**Impact:** Users who configure an OpenAI-compatible endpoint (OpenAI,
-Gemini, DeepSeek, llama.cpp) get non-streaming completions — their
-fallback-parser experience has no incremental token output. Works
-correctly, just feels laggy on long responses.
-
-**Fix path:** SSE parsing pattern is the same as
-`AnthropicAdapter::stream()` (`anthropic.rs:226-311`). The diff is the
-event format.
-
----
-
-## 8. Canvas broadcast drops old messages ⚠
+## 7. Canvas broadcast drops old messages ⚠
 
 **Where:** `crates/springtale-runtime/src/state.rs:66`
 
@@ -234,7 +208,7 @@ streaming). Dashboard already re-fetches on reconnect.
 
 ---
 
-## 9. Bot memory uncompressed ⚠
+## 8. Bot memory uncompressed ⚠
 
 **Where:** `crates/springtale-store/src/migrations/002_bot.sql`
 
@@ -249,7 +223,7 @@ a new column for forward compatibility.
 
 ---
 
-## 10. Audit trail retention is application-layer ⚠
+## 9. Audit trail retention is application-layer ⚠
 
 **Where:** `crates/springtale-store/src/migrations/003_sentinel.sql`
 
@@ -265,22 +239,26 @@ long-running deployments become common.
 
 ---
 
-## 11. Formation blackboard log unbounded ⚠
+## 10. Formation blackboard log unbounded ⚠
 
-**Where:** `crates/springtale-bot/src/cooperation/environment.rs`
+**Where:** `crates/springtale-bot/src/cooperation/blackboard.rs` +
+`crates/springtale-cooperation/src/state/`
 
-**State:** `CooperativeBlackboard` keeps a `Mutex<Vec<BlackboardOp>>`
-write log. No compaction, no bounded ring buffer.
+**State:** `CooperativeBlackboard` keeps a write log. No compaction, no
+bounded ring buffer. The tick pipeline uses
+`last_tick_write_count` to Lamport-split the log for interference
+detection, so the log is read during every tick.
 
 **Impact:** Long-running formations grow memory steadily. Sibling of §10
 but at the in-memory layer.
 
-**Fix path:** Cap at N entries with drop-oldest semantics, or compact
-after M operations.
+**Fix path:** Cap at N entries with drop-oldest semantics once the log's
+oldest prefix is older than the highest `last_tick_write_count` across
+all members.
 
 ---
 
-## 12. Orchestrator AI call latency ⚠
+## 11. Orchestrator AI call latency ⚠
 
 **Where:** `crates/springtale-bot/src/orchestrator/orchestrate.rs`
 
@@ -296,7 +274,7 @@ Cost and latency scale linearly with tick count.
 
 ---
 
-## 13. No graceful shutdown for WASM epoch ticker ⚠
+## 12. No graceful shutdown for WASM epoch ticker ⚠
 
 **Where:** `crates/springtale-runtime/src/init.rs:50-60`
 
@@ -309,7 +287,7 @@ architectural hygiene only.
 
 ---
 
-## 14. Rule creation is not transactional ⚠
+## 13. Rule creation is not transactional ⚠
 
 **Where:** `crates/springtale-runtime/src/operations/rules.rs`
 
@@ -332,12 +310,9 @@ The gaps cluster in three buckets:
 
 1. **Durability** (§1 jobs, §4 formations→rules) — mpsc is sufficient
    for current usage; persistence has a known path.
-2. **Cooperation hot-path wiring** (§3) — the `COOPERATION.md` type
-   system is present but only half the behaviour is invoked from the
-   event loop.
-3. **Ergonomics** (§7 OpenAI stream, §12 orchestrator caching, §9
-   compression) — non-blocking polish.
+2. **Cooperation ergonomics** (§3) — previously the largest gap, now
+   closed behaviourally. Remaining work is naming and orchestration
+   of already-wired primitives.
+3. **Ergonomics** (§11 orchestrator caching, §8 compression) — non-blocking polish.
 
-No critical, high, or security-relevant gaps. The cooperation framework
-is the largest open area and the most visible divergence from intended
-architecture.
+No critical, high, or security-relevant gaps.

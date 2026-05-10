@@ -1,6 +1,6 @@
 # Springtale — Architecture (As-Built)
 
-> **Status:** Reflects working tree · **Updated:** 2026-04-10 · **Source of truth:** the code
+> **Status:** Reflects working tree · **Updated:** 2026-04-19 · **Source of truth:** the code
 >
 > This document describes what **actually exists** in the repository today.
 > For design intent (threat-model philosophy, Veilid transport,
@@ -38,15 +38,18 @@ Springtale/
 │   ├── springtale-core/           #   rules, pipelines, router, transforms, canvas types
 │   ├── springtale-crypto/         #   vault (KDF, AEAD, duress), signatures
 │   ├── springtale-transport/      #   Transport trait + Local/Http/Veilid impls
-│   ├── springtale-store/          #   SQLite backend + 8 migrations
+│   ├── springtale-store/          #   SQLite backend + 11 migrations (incl. cooperation)
 │   ├── springtale-scheduler/      #   cron, fs-watch, job queue, heartbeat, backoff
-│   ├── springtale-connector/     #   native + WASM connector framework, capability checker
-│   ├── springtale-ai/             #   AiAdapter + Anthropic/Ollama/OpenAI-compat/Noop
-│   ├── springtale-mcp/            #   rmcp 1.x bridge (stdio)
-│   ├── springtale-sentinel/       #   behavioural monitor, toxic-pair detection
-│   ├── springtale-runtime/        #   shared init, dispatch, operations layer
-│   ├── springtale-bot/            #   runtime, router, cooperation, orchestrator, memory
-│   └── libsqlite3-sys-mc/         #   vendored sqlite shim
+│   ├── springtale-connector/      #   native + WASM connector framework, capability checker,
+│   │                              #   subscription lifecycle
+│   ├── springtale-ai/              #   AiAdapter + Anthropic/Ollama/OpenAI-compat/Noop + tool-calling
+│   ├── springtale-mcp/             #   rmcp 1.x bridge (stdio), split handler modules
+│   ├── springtale-sentinel/        #   behavioural monitor, toxic-pair detection
+│   ├── springtale-cooperation/     #   cooperation framework (37 modules, zero internal deps)
+│   ├── springtale-runtime/         #   shared init, dispatch, operations, LiveFormationReader
+│   ├── springtale-bot/             #   runtime, router, cooperation glue, orchestrator,
+│   │                              #   memory, tool_runner, 14-step formation tick
+│   └── libsqlite3-sys-mc/          #   vendored sqlite shim (SQLite3MultipleCiphers)
 │
 ├── connectors/                    # First-party connectors (all native Rust today)
 │   ├── connector-bluesky   connector-browser   connector-discord
@@ -83,32 +86,33 @@ rusqlite 0.39.
 ## 2. Dependency Graph
 
 ```
-                    springtale-core
-                   /       |       \
-                  /        |        \
-    springtale-store  springtale-crypto  (zero-dep peers)
-          |                 |
-          |                 +-----------+
-          |                 |           |
-  springtale-scheduler  springtale-transport
-          |                 |
-          +-------+---------+
-                  |
-        springtale-connector ──── springtale-sentinel
-                  |
-        springtale-ai        springtale-mcp
-                  \          /
-                   \        /
-                springtale-runtime
-                        |
-                 springtale-bot
+                    springtale-core     springtale-cooperation
+                   /       |       \           (zero-dep peer)
+                  /        |        \                 │
+    springtale-store  springtale-crypto               │
+          |                 |                         │
+          |                 +-----------+             │
+          |                 |           |             │
+  springtale-scheduler  springtale-transport          │
+          |                 |                         │
+          +-------+---------+                         │
+                  |                                   │
+        springtale-connector ──── springtale-sentinel │
+                  |                                   │
+        springtale-ai        springtale-mcp           │
+                  \          /                        │
+                   \        /                         │
+                springtale-runtime ───────────────────┤
+                        |                             │
+                 springtale-bot  ──────────────────────┘
                         |
                    springtaled
                         |
                  springtale-cli
 ```
 
-*Fig. 2. Crate dependency graph.*
+*Fig. 2. Crate dependency graph. `springtale-cooperation` is a zero-dep
+peer consumed by runtime, bot, and (for schema) store.*
 
 Dependencies flow downward only. No circular edges. Rule enforced by
 `.claude/rules/backend/crate-structure.md`.
@@ -142,9 +146,12 @@ main.rs (apps/springtaled/src/main.rs)
         ├─[5] init_schedulers()                           boot/schedulers.rs
         │       CronExecutor, FsWatcher, HeartbeatMonitor
         ├─[6] init_job_queue()                            boot/queue.rs
-        ├─[7] init_bot(wiring, msg channels)              boot/bot.rs
+        ├─[7] init_bot(wiring, msg channels, cooperation) boot/bot.rs
         │       bot handle + per-connector shutdowns
         │       (telegram, nostr, irc, discord, slack, signal)
+        │       FormationCommand channel installed; runtime
+        │       receives a LiveFormationReader impl backed by
+        │       the bot's formation set
         ├─[7c] data retention purge task (if configured)  boot/mod.rs
         │       spawned when [store] retention_days is set
         ├─[8] api::build_router(state) + bind             boot/mod.rs
@@ -214,18 +221,20 @@ core/src/
 
 ### 4.2 `springtale-store`
 
-SQLite-only backend behind a `StorageBackend` trait (40+ async methods).
-`SqliteBackend` uses `rusqlite 0.39` (WAL mode, `0o600` perms).
+SQLite-only backend behind a `StorageBackend` trait. `SqliteBackend`
+uses `rusqlite 0.39` via SQLite3MultipleCiphers (ChaCha20-Poly1305
+encryption at rest, WAL mode, `0o600` perms).
 
 ```
 store/src/backend/
 ├── trait_.rs               # StorageBackend trait
 ├── sqlite/
 │   ├── mod.rs              # SqliteBackend
-│   ├── migrations.rs       # apply_migrations()
+│   ├── cooperation.rs      # momentum / rally / mental_model queries
 │   └── {rules, connectors, events, jobs, sessions, memory,
 │        aliases, audit, safety, formations, execution, wasm}.rs
 ├── memory/                 # in-memory impl (tests)
+│   └── cooperation.rs      # in-memory cooperation tables
 └── wipe.rs                 # panic wipe hooks
 ```
 
@@ -393,68 +402,128 @@ All 15 are native Rust. Matrix is workspace-excluded (deferred).
 
 ## 6. Bot Runtime & Cooperation
 
+The cooperation architecture has two parts:
+
+- `crates/springtale-cooperation/` — the crate with 37 pub modules, zero
+  internal Springtale deps. Types, traits, and algorithms.
+- `crates/springtale-bot/src/cooperation/` — the glue. Holds the live
+  `Formation` struct (mutable runtime fields like `active_task`,
+  `fuel`, `liveness`) and the blackboard.
+
 ### 6.1 Bot event loop
 
-`crates/springtale-bot/src/runtime/event_loop.rs`. Three-way
+`crates/springtale-bot/src/runtime/event_loop.rs`. Four-way
 `tokio::select!`:
 
 ```
-           ┌─────────────────────────────┐
-           │   Bot::event_loop()         │
-           └──────────────┬──────────────┘
+           ┌─────────────────────────────────────┐
+           │   Bot::run_event_loop()             │
+           └──────────────┬──────────────────────┘
                           │
-         ┌────────────────┼─────────────────┐
-         │                │                 │
-   connector_rx      rule_rx           cadence_rx
-   (chat messages)   (triggers)        (CadenceBus ticks)
-         │                │                 │
-   handle_incoming   handle_trigger    handle_cadence_tick
-         │                │                 │
-   router dispatch   engine evaluate   for each formation:
-         │                │              • record_success
-         │                │              • persist momentum
-         │                │              • if Fever + orchestrator:
-         │                │                  orchestrate_formation()
-         └────────┬───────┴─────────────────┘
-                  ▼
-            handler registry → connector action
+         ┌────────────────┼────────────────┬──────────────────┐
+         │                │                │                  │
+   connector_rx      rule_rx          cadence_rx        formation_cmd_rx
+   (chat messages)   (triggers)       (Tick broadcast)  (FormationCommand)
+         │                │                │                  │
+   handle_incoming   handle_trigger   handle_cadence_tick  handle_formation_
+         │                │                │                  │  command
+   router dispatch   engine evaluate   14-step tick        deploy/pause/
+         │                │              pipeline          resume/dissolve/
+         └──────┬─────────┴─────────────┬──┘                 rally/intent/
+                ▼                       ▼                    members
+          registry.execute()      per-formation work
 ```
 
-*Fig. 6. Bot three-way event-loop select.*
+*Fig. 6. Bot four-way event-loop select.*
 
-Design constraint at `event_loop.rs:8`: never `?` individual message
-processing — a single bad message must never crash the bot.
+Design constraint at `event_loop.rs`: never `?` individual message
+processing — a single bad message must never crash the bot. The
+`formation_cmd_rx` branch is the **only** code path that materialises
+live `Formation` structs from DB rows.
 
-### 6.2 Cooperation module tree
-
-`crates/springtale-bot/src/cooperation/` — 20 files matching
-`docs/intended-arch/COOPERATION.md`:
+### 6.2 The cooperation crate
 
 ```
-cooperation/
-├── cadence.rs          § 5  tokio broadcast Tick bus + IntentPattern
-├── formation.rs        § 6  peer group, FormationMember, DynamicRole
-├── momentum.rs         § 7  Cold/Warming/Hot/Fever + capability gates
-├── awareness.rs        § 8  LocalAwareness, NeighborSnapshot
-├── attention.rs        § 9  AttentionEconomy (zero-sum aggro)
-├── environment.rs      §10  SharedEnvironment, Surface, SurfaceType
-├── consensus.rs        §11  ConsensusVote, VoteResolution
-├── commit.rs           §12  CommitPhase enum (5-phase)       ⚠ barrier stub
-├── interference.rs     §13  InterferenceEvent (4 types)
-├── transformation.rs   §14  RoleTransformation enum
-├── rally.rs            §15  RallyState, RallyResult           ⚠ not invoked
-├── capability.rs       §16  DynamicCapabilitySet (4 layers)
-├── recovery.rs         §18  DistressSignal, RecoveryAction    ⚠ not invoked
-├── comms.rs            §19  (not audited)                     ⚠ status TBD
-├── handoff.rs          §20  (not audited)                     ⚠ status TBD
-├── mental_model.rs     §21  SharedMentalModel, CooperationPattern
-├── pacing.rs           §22  (not audited)                     ⚠ status TBD
-├── sacrifice.rs        §24  SacrificeType, SacrificeCost      ⚠ not invoked
-├── action.rs                SubTask, SubTaskResult
-└── mod.rs                   declarations + re-exports
+springtale-cooperation/src/         ── zero internal Springtale deps
+├── lib.rs                          re-exports the public API
+├── cadence.rs                      §5  Tick bus, AgentId, TickReport
+├── momentum.rs / momentum/         §7  Cold/Warming/Hot/Fever gate
+├── awareness/                      §8  LocalAwareness, gossip substrate
+│   ├── store/                         (InMemory + chitchat)
+│   └── swim/                          (SWIM liveness)
+├── attention/                      §9  AttentionEconomy (zero-sum)
+├── state/                          §10 Workspace + SharedEnvironment
+├── consensus.rs                    §11 Ballot, weighted voting
+├── commit.rs                       §12 CommitPhase barrier
+├── interference/                   §13 4 kinds of conflict detection
+├── transformation/                 §14 Role change on capability loss
+├── rally/                          §15 Self-healing + supervise drain
+├── capability/                     §16 DynamicCapabilitySet (4 layers)
+├── recovery/                       §18 DistressSignal → helper
+├── comms/                          §19 Bus, dispatcher, state broadcast
+├── handoff/                        §20 Direct / flex-chain / sequential
+├── mental_model/                   §21 Learned domain knowledge
+├── pacing/                         §22 Work/rest (GCRA, L4D Director)
+├── sacrifice/                      §24 Deliberate self-cost
+├── contract_net/                   CNP (CFP / bid / award)
+├── routing/                        L1/L3 task routing
+├── stigmergy/                      L0 ambient surfaces
+├── supervision/                    Erlang OTP + K8s probes
+├── role/                           DynamicRoleTrait
+├── authority/                      momentum × layer perm matrix
+├── agent/                          per-agent 5-step loop
+├── action.rs, action_state.rs      SubTask + ActiveTask state
+├── tick_processor.rs               per-tick aggregation
+├── dissemination/                  L2 state dissemination
+├── peer.rs                         PeerMsg protocol
+├── replan/                         CBBA global re-plan
+├── utility/                        utility AI scoring
+├── layer.rs                        7-layer routing abstraction
+├── context.rs                      FormationContext (read-only share)
+├── command.rs                      FormationCommand (runtime → bot)
+├── types.rs                        FormationId, AgentHealth, etc.
+└── error/                          typed errors per concern
 ```
 
-### 6.3 Momentum capability gate
+### 6.3 The 14-step tick pipeline
+
+`springtale-bot::runtime::event_loop::handle_cadence_tick`:
+
+```
+ 1.  per-agent loop (sense / scan / react / respond_cfp / inbox)
+ 1b. drain async tick reports from cadence reports channel
+ 2.  tick_processor (action records, interference)
+ 2b. rally::supervise::drain (member outcomes → rally events)
+ 3.  momentum.check_decay (inactivity)
+ 4.  momentum update (success / interference / failure)
+ 4a. record_activity (only when real actions happened)
+ 4b. consecutive_failures per member
+ 4c. liveness (Alive / Suspect / Down)
+ 4d. supervisor.check_member → SupervisionAction
+ 4e. per-member fuel consumption
+ 4f. publish ImplicitSignal (Overcooked — peers watch bus)
+ 4g. broadcast_state on health threshold (L4D "I'm hurt")
+ 4h. signal_cohesion on momentum tier change (Rock-and-Stone)
+ 5.  persist momentum row → SQLite
+ 6.  formation.broadcast_context (FormationContext watchers)
+ 7.  update_member_awareness (gossip publish + snapshot)
+ 7b. log interference events
+ 8.  pacing.evaluate_transition (phase change)
+ 9.  cascade::detect_cascade + attempt_self_rally
+ 9b. recovery::evaluate_recovery per distress signal
+ 10. role transformation for failing members
+ 11. consensus.check_deadlines
+ 12. expire completed / timed-out commit barriers
+ 13. mental_model::learning::update_model
+ 14. orchestrate_formation (Fever tier + can_orchestrate())
+```
+
+Step 14 decomposes intent into sub-tasks, posts them to the blackboard
+under `task:*` keys; members pull via step 1's `scan` phase. Then
+`remove_dead_members()` reclaims slots and `formations.retain(is_viable)`
+prunes exhausted formations.
+
+### 6.4 Momentum capability gate
 
 The core differentiator: momentum tiers **gate runtime capabilities**.
 
@@ -467,42 +536,59 @@ The core differentiator: momentum tiers **gate runtime capabilities**.
 
 *Fig. 7. Momentum tiers gate runtime capabilities.*
 
-Source: `momentum.rs:16-134`. Gates are enforced via methods like
-`can_write_environment()`, `can_use_ai()`, `can_consensus()` — called
-before the corresponding action. Cold formations physically cannot reach
-the AI adapter because the dispatch predicate fails.
+Source: `springtale-cooperation/src/momentum.rs`. Gates are enforced via
+methods like `can_write_environment()`, `can_use_ai()`,
+`can_consensus()` — called before the corresponding action. Cold
+formations physically cannot reach the AI adapter because the dispatch
+predicate fails.
 
-### 6.4 Formation struct
+### 6.5 Formation struct (bot-side)
 
 ```rust
-pub struct Formation {                           // formation.rs:180
+pub struct Formation {                           // bot/cooperation/formation.rs
     pub id: FormationId,
     pub members: Vec<FormationMember>,           // peers, no hierarchy
-    pub intent: IntentPattern,                   // Reconnoiter/Execute/...
-    pub constraints: FormationConstraints,
+    pub intent: IntentPattern,
     pub momentum: MomentumState,
-    pub environment: Arc<CooperativeBlackboard>, // dashmap workspace
-    pub fuel: FuelBudget,                        // shared budget
-    pub orchestrator: Option<Arc<dyn AiAdapter>>, // Fever-gated decomposer
+    pub blackboard: CooperativeBlackboard,
+    pub shared_env: SharedEnvironment,
+    pub rally: FormationRally,
+    pub attention_broker: AttentionBroker,
+    pub gossip_store: Arc<dyn GossipStore>,      // InMemory or Chitchat
+    pub mental_model: SharedMentalModel,
+    pub consensus: ConsensusEngine,
+    pub pacing: PacingManager,
+    pub supervisor: FormationSupervisor,
+    pub bus: CommsBus,
+    pub fuel: FuelBudget,
+    pub paused: bool,
+    // orchestrator is looked up from bot.registry at tick time
 }
 ```
 
-Orchestrator is called only when `can_orchestrate()` returns true (Fever
-tier + orchestrator present), at which point it decomposes intent into
-subtasks posted to the shared blackboard (`orchestrate.rs:52-76`).
-Members pull from the blackboard (pull model, not push).
+### 6.6 LiveFormationReader
 
-### 6.5 Integration with other crates
+`springtale-runtime::LiveFormationReader` is how the Tauri IPC commands
+and the dashboard HTTP API read enriched formation state (momentum,
+rally tokens, attention load, guard status, member health, liveness)
+from the running bot. The bot installs an impl backed by its formation
+set during step 7 of boot; the runtime holds the reader through an
+`Arc<dyn LiveFormationReader>` so UI code paths never touch the bot's
+internal types.
 
-- **Store:** momentum persisted to `momentum:{id}` config key after every
-  successful tick (`event_loop.rs:123-127`).
-- **Registry:** bot owns `Arc<RwLock<ConnectorRegistry>>`; orchestrator
-  reads available actions per connector for decomposition context.
-- **AI:** two levels — per-formation orchestrator, per-member adapter.
-  Both behind the same `AiAdapter` trait, both Fever-gated.
+### 6.7 Cooperation persistence
 
-See [`AUDIT-NOTES.md §3`](AUDIT-NOTES.md) for the list of cooperation
-modules that are type-defined but not yet invoked from the hot path.
+Migrations 005, 010, 011 back the cooperation framework:
+
+- `005_formations.sql` — formations, formation_members,
+  formation_momentum, formation_rally
+- `010_cooperation.sql` — coop_writes, coop_deposits, coop_cas_outcome
+- `011_cooperation.sql` — mental_model_{domains, capabilities, patterns,
+  vocabulary, conventions}
+
+Momentum and rally are persisted every tick. Mental model is persisted
+on formation dissolve so later formations with the same id benefit from
+what prior instances learned.
 
 ---
 
@@ -514,7 +600,7 @@ modules that are type-defined but not yet invoked from the hot path.
 AiAdapter trait (adapter/trait_.rs:172)
     │
     ├── complete(AiRequest)          → Result<String, AiError>
-    ├── stream(AiRequest)             → Result<AiStream, AiError>
+    ├── stream(AiRequest)             → Result<AiStream, AiError>  (SSE / NDJSON deltas)
     ├── parse_rule(String)            → Result<Rule, AiError>
     └── is_available() -> bool
 
@@ -525,7 +611,7 @@ AiStream = Pin<Box<dyn futures_core::Stream<Item = Result<StreamChunk, AiError>>
 |---|---|---|
 | `AnthropicAdapter` | ✓ (SSE, Claude Sonnet 4) | Full |
 | `OllamaAdapter` | ✓ (NDJSON) | Full |
-| `OpenAiCompatAdapter` | ✗ (`stream()` stubs error) | Non-streaming only |
+| `OpenAiCompatAdapter` | ✓ (SSE) | Streaming for text deltas; tool calling via `complete_with_tools()` |
 | `NoopAdapter` | — | `AiError::Disabled` for everything |
 
 Factory at `factory.rs:16-38` — selection priority Anthropic → OpenAI →
@@ -600,7 +686,7 @@ All authenticated routes require `Authorization: Bearer <token>` or
 |---|---|
 | **Connectors** | `GET /connectors`, `/connectors/schemas`, `/connectors/available`; `POST /connectors/setup`, `/connectors/install`; `DELETE /{name}`, `/{name}/cascade`; `GET /{name}/config`, `/{name}/outputs`; `POST /{name}/enable`, `/{name}/disable`, `/{name}/test`, `/{name}/upsert-config` |
 | **Rules** | `GET|POST /rules`; `POST /rules/parse`; `GET /rules/schema`; `PUT|DELETE /rules/{id}`; `POST /rules/{id}/{toggle|run|reassign}`; `POST /rules/connector`; `GET /rules/connector/{name}` |
-| **Formations** | `GET|POST /formations`; `GET /formations/intents`; `POST /formations/deploy-team`; `POST /formations/{id}/{deploy|pause|resume|dissolve|cycle-intent|cycle-autonomy}`; `PUT /formations/{id}/intent`; `POST /formations/{id}/members`; `POST /formations/{id}/toggle-guard` |
+| **Formations** | `GET|POST /formations`; `GET /formations/{id}` (via `LiveFormationReader`); `GET /formations/intents`; `POST /formations/deploy-team`; `POST /formations/{id}/{deploy|pause|resume|dissolve|rally|cycle-intent|cycle-autonomy}`; `PUT /formations/{id}/intent`; `POST|DELETE /formations/{id}/members`; `POST /formations/{id}/toggle-guard` |
 | **Agents** | `GET /agents/states`; `GET|PUT /agents/{name}/autonomy`; `POST /agents/{name}/autonomy/step` |
 | **Canvas** | `GET /canvas`, `/canvas/connections`; `POST /canvas/update`; `GET /canvas/stream` (SSE) |
 | **Events** | `GET /events`; `GET /events/stream` (SSE) |
@@ -611,6 +697,14 @@ All authenticated routes require `Authorization: Bearer <token>` or
 | **Memory** | `POST /memory/audit`, `/memory/compact` |
 | **Safety** | `GET|PUT /safety` |
 | **Data** | `POST /data/export` |
+| **Send** | `POST /send` (capability-gated direct action dispatch) |
+| **Diagnostics** | `GET /diagnostics` (Doctor flow) |
+| **Fixes** | `GET /fixes`, `GET /fixes/{id}`, `POST /fixes/{id}/apply` |
+| **Onboarding** | `GET /onboarding/platforms`; `POST /onboarding/{platform}` |
+| **Templates** | `GET /templates`; `POST /templates/{name}` |
+
+CSRF protection middleware (`require_csrf_protection`) sits in front of
+all authenticated state-changing methods.
 
 Full auth + middleware + response header details in [`SECURITY.md §7`](SECURITY.md).
 
@@ -624,8 +718,12 @@ human-readable tables to JSON.
 ```
 springtale
 ├── init                                  create ~/.local/share/springtale
+├── new <template>                        scaffold from starter template
 ├── server start                          run daemon inline (dev)
-├── panic                                 emergency wipe
+├── doctor                                diagnostic checks (same as /diagnostics)
+├── fix <error-id>                        apply auto-repair (same as /fixes/apply)
+├── trace [--connector --rule]            real-time execution trace
+├── panic                                 emergency wipe (no confirm)
 │
 ├── connector
 │   ├── list
@@ -644,9 +742,11 @@ springtale
 │
 ├── events [--limit N] [--connector NAME]
 │
-├── vault
-│   ├── duress-setup
-│   └── crypto rotate-vault-key
+├── vault duress-setup
+├── crypto rotate-vault-key
+├── bot
+│   ├── pair-init                         generate pairing code
+│   └── panic-unpair                      revoke all paired users
 │
 ├── travel
 │   ├── prepare --backup-to <path>
@@ -669,7 +769,7 @@ Command handlers live in `apps/springtale-cli/src/commands/*`.
 
 ## 11. Storage Schema
 
-Eight migrations under `crates/springtale-store/src/migrations/`:
+Eleven migrations under `crates/springtale-store/src/migrations/`:
 
 | # | File | Tables / purpose |
 |---|---|---|
@@ -677,10 +777,13 @@ Eight migrations under `crates/springtale-store/src/migrations/`:
 | 002 | `002_bot.sql` | `bot_sessions`, `user_prefs`, `bot_memory` (encrypted BLOB), `bot_aliases` |
 | 003 | `003_sentinel.sql` | `audit_trail` (append-only, 3 indices) |
 | 004 | `004_safety.sql` | `safety_config` (single row, disguise-first defaults) |
-| 005 | `005_formations.sql` | `formations`, `formation_members` |
+| 005 | `005_formations.sql` | `formations`, `formation_members`, `formation_momentum`, `formation_rally` |
 | 006 | `006_config.sql` | `config_store` (KV, UI-driven runtime config) |
 | 007 | `007_execution_results.sql` | `execution_results` (capped at 100/connector) |
 | 008 | `008_wasm_binaries.sql` | `wasm_binaries` (content-addressed, SHA-256 + Ed25519 sig) |
+| 009 | `009_rule_errors.sql` | `rule_errors` (per-rule error tracking, feeds /diagnostics) |
+| 010 | `010_cooperation.sql` | `coop_writes`, `coop_deposits`, `coop_cas_outcome` |
+| 011 | `011_cooperation.sql` | `mental_model_domains / _capabilities / _patterns / _vocabulary / _conventions` |
 
 **Notes**
 
@@ -691,6 +794,13 @@ Eight migrations under `crates/springtale-store/src/migrations/`:
   connector exceeds 100 rows).
 - `jobs` schema is ready for persistent queues; the current `JobProducer`
   still uses in-memory mpsc (see AUDIT-NOTES §1).
+- `formation_momentum` is upserted every tick; `formation_rally` is
+  upserted on every token consumption.
+- `mental_model_*` tables are written on formation dissolve so later
+  formations with the same id recover accumulated conventions,
+  patterns, and vocabulary.
+- The whole DB file is encrypted at rest via SQLite3MultipleCiphers
+  (ChaCha20-Poly1305), key derived from the vault passphrase.
 
 ---
 
@@ -704,12 +814,25 @@ tauri/
 ├── packages/
 │   ├── types/              # TS types mirroring Rust schemas
 │   └── ui/                 # shared SolidJS components, DataProvider interface
-│        └── src/dashboard/types.ts:48-135   # DataProvider (~60 methods)
+│        └── src/
+│            ├── colony/    # ColonyShell, ColonyCanvas, Viewport,
+│            │              # BottomPanel, TopBar, TeamBuilder,
+│            │              # ConnectorConfigPanel, AiConfigPanel,
+│            │              # AppSettingsPanel; geometry + mappers;
+│            │              # colony.css + sprites.css
+│            └── dashboard/ # context, model, query, types (DataProvider ~60 methods)
 │
 └── apps/
     ├── desktop/
     │   ├── src/                              # SolidJS UI
-    │   └── src-tauri/src/commands/*.rs       # IPC handlers → springtale-runtime
+    │   └── src-tauri/src/commands/           # 23 command modules:
+    │                                         #   agent, authors, bot, canvas,
+    │                                         #   config, connectors, data,
+    │                                         #   diagnostics, events, fixes,
+    │                                         #   formations, heartbeat, memory,
+    │                                         #   onboarding, panic, rules, safety,
+    │                                         #   send, sessions, templates,
+    │                                         #   travel, vault; plus runtime_guard
     │
     └── dashboard/
         └── src/provider.ts                   # HTTP + SSE DataProvider
@@ -734,14 +857,15 @@ tauri/
               │               │
               └───────┬───────┘
                       ▼
-              springtale-runtime
+         springtale-runtime (LiveFormationReader, operations)
 ```
 
 *Fig. 10. DataProvider abstraction. The frontend never calls the backend directly — always through the provider.*
 
 - ~60 async methods on `DataProvider` covering connectors, rules,
-  events, formations, config, agents, canvas, memory, authors, data
-  export.
+  events, formations (including rich live state via
+  `LiveFormationReader`), config, agents, canvas, memory, authors, data
+  export, diagnostics, fixes, onboarding, templates, send.
 - Subscribe methods return `() => void` unsubscribe fns.
 - **Desktop**: `createDesktopProvider()` wraps `invoke()`; real-time via
   Tauri `listen("event-fired")` and `listen("canvas-update")`.
@@ -750,6 +874,45 @@ tauri/
   in the query param because `EventSource` cannot set custom headers.
 - Rule from `.claude/rules/frontend/solidjs-conventions.md`: components
   never call `invoke()` directly — always through the provider.
+
+### Colony canvas
+
+The primary UI surface is an RTS-style ecosystem view:
+
+- Connectors → pixel nodes
+- Rules / agents → springtails (sprites near their node)
+- Formations → zones (dashed ellipses)
+- Pipelines → mycelium (SVG paths)
+
+Live state flows through two channels:
+
+- `/canvas/stream` SSE → `CanvasState` delta updates
+- `LiveFormationReader` → rich formation state (momentum tier, rally
+  tokens, attention load, guard status, aggregate operational / load /
+  fuel, member health + liveness)
+
+**Formation command grid** (StarCraft-style 3×3): DEPLOY / PAUSE /
+RESUME / RALLY / INTENT / GUARD / ADD MBR / RM MBR / REMOVE. Each
+button maps to a `/formations/*` endpoint, which pushes a
+`FormationCommand` onto the bot's command channel.
+
+**Formation detail card** shows rally pips (Monster Hunter carts),
+attention distribution bar (Army of Two aggro meter), per-member health
++ liveness icons (K8s-style probe states encoded via opacity).
+
+### Themes
+
+Two CSS-only themes:
+
+- Colony (forest) — original, Silkscreen font, soil palette
+- Chiral diorama — Death-Stranding-inspired, default in Tauri desktop
+  since April 2026
+
+Switching themes changes zero backend behaviour. Theme selection lives
+in `AppSettingsPanel.tsx`.
+
+See [`../guide/colony-canvas.md`](../guide/colony-canvas.md) for a
+user-facing tour.
 
 ---
 

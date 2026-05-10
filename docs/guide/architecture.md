@@ -1,6 +1,6 @@
 # Architecture
 
-Springtale is a Rust workspace of ~28 crates — 11 library crates, 14 first-party connectors, 2 applications, plus a Tauri frontend (excluded from the workspace, built separately). This guide explains how they fit together.
+Springtale is a Rust workspace of ~30 crates — 12 library crates, 14 first-party connectors, 2 applications, plus a Tauri frontend (excluded from the workspace, built separately). This guide explains how they fit together.
 
 For the as-built architecture with file:line refs, see [`docs/arch/ARCHITECTURE.md`](../arch/ARCHITECTURE.md). For the locked design intent, see [`docs/current-arch/ARCHITECTURE.md`](../current-arch/ARCHITECTURE.md).
 
@@ -17,13 +17,25 @@ Every crate has a single responsibility. Dependencies flow strictly downward —
                            v                 v                │
                     ┌─────────────────────────────────────┐   │
                     │          springtale-bot             │   │
-                    │  runtime, router, cooperation,      │   │
-                    │  orchestrator, memory, handlers     │   │
-                    └──────────────────┬──────────────────┘   │
-                                       │                      │
-                    ┌──────────────────▼──────────────────┐   │
+                    │  runtime, router, cooperation       │   │
+                    │  glue, orchestrator, memory,        │   │
+                    │  handlers, tool_runner              │   │
+                    └──────────┬────────────────┬─────────┘   │
+                               │                │             │
+                               │                v             │
+                               │       ┌──────────────────┐   │
+                               │       │springtale-       │   │
+                               │       │cooperation       │   │
+                               │       │37 modules        │   │
+                               │       │(cadence, rally,  │   │
+                               │       │ momentum, …)     │   │
+                               │       │zero internal deps│   │
+                               │       └──────────────────┘   │
+                               │                              │
+                    ┌──────────▼──────────────────────────┐   │
                     │        springtale-runtime           │◄──┘
                     │  shared init, dispatch, operations  │
+                    │  LiveFormationReader                │
                     └──────┬───────────────────────┬──────┘
                            │                       │
          ┌─────────────────┼──────────┬────────────┼──────────┐
@@ -35,6 +47,7 @@ Every crate has a single responsibility. Dependencies flow strictly downward —
     │ bridge │        │ Ollama │  │ pairs  │  │ jobs, hb   │  │
     │        │        │ OpenAI │  │        │  │            │  │
     │        │        │ Anthro │  │        │  │            │  │
+    │        │        │+ tools │  │        │  │            │  │
     └────┬───┘        └───┬────┘  └───┬────┘  └─────┬──────┘  │
          │                │           │             │         │
          └────────────────┴─────┬─────┴─────────────┘         │
@@ -44,14 +57,15 @@ Every crate has a single responsibility. Dependencies flow strictly downward —
                     │  trait, registry,        │               │
                     │  manifest signing,       │               │
                     │  capability system,      │               │
-                    │  Wasmtime sandbox        │               │
+                    │  Wasmtime sandbox,       │               │
+                    │  subscription lifecycle  │               │
                     └──────┬──────────┬────────┘               │
                            │          │                        │
                            v          v                        │
                     ┌────────┐   ┌─────────┐                   │
                     │ store  │   │ crypto  │                   │
                     │ SQLite │   │ vault,  │                   │
-                    │ + 8    │   │ Ed25519,│                   │
+                    │ + 11   │   │ Ed25519,│                   │
                     │ migrs  │   │ Argon2id│                   │
                     └───┬────┘   └─────────┘                   │
                         │                                      │
@@ -70,7 +84,7 @@ Every crate has a single responsibility. Dependencies flow strictly downward —
                      directly via IPC command handlers)
 ```
 
-*Fig. 1. Crate dependency graph. Arrows point from dependent to dependency. `core` and `crypto` have zero internal Springtale dependencies — they're the foundation everything else builds on.*
+*Fig. 1. Crate dependency graph. Arrows point from dependent to dependency. `springtale-cooperation` has zero internal Springtale dependencies; `core` and `crypto` are the foundation everything else builds on.*
 
 ### 1.1. What Each Crate Does
 
@@ -81,14 +95,15 @@ Every crate has a single responsibility. Dependencies flow strictly downward —
 | `springtale-core` | Rule engine, pipeline composition, event routing, data transforms, canvas types |
 | `springtale-crypto` | Ed25519 keypairs, XChaCha20-Poly1305 vault, Argon2id KDF, manifest signatures, mlock |
 | `springtale-transport` | `Transport` trait + Local (Unix socket), HTTP (rustls mTLS), Veilid (stub) impls |
-| `springtale-connector` | `Connector` trait, Wasmtime WASM sandbox, manifest parser, capability system, registry |
-| `springtale-store` | SQLite backend with WAL mode, 8 migrations, AEAD-encrypted bot memory |
+| `springtale-connector` | `Connector` trait, Wasmtime WASM sandbox, manifest parser, capability system, registry, subscription lifecycle |
+| `springtale-store` | SQLite backend (SQLite3MultipleCiphers) with WAL mode, 11 migrations, AEAD-encrypted bot memory, cooperation + mental model schema |
 | `springtale-scheduler` | Cron executor, filesystem watcher, job queue, heartbeat monitor, exponential backoff |
-| `springtale-ai` | `AiAdapter` trait + Noop / Ollama / OpenAI-compat / Anthropic adapters + OWASP sanitiser |
-| `springtale-mcp` | MCP protocol bridge (`rmcp` 1.x) — wraps any `Connector` as an MCP server automatically |
+| `springtale-ai` | `AiAdapter` trait + Noop / Ollama / OpenAI-compat / Anthropic adapters + OWASP sanitiser + tool-calling (`ToolCall` / `ToolResult` / `ToolPolicy`) |
+| `springtale-mcp` | MCP protocol bridge (`rmcp` 1.x) — wraps any `Connector` as an MCP server automatically. Handler module split; each handler owns its capability check |
 | `springtale-sentinel` | Behavioural monitor, toxic-pair capability detection, audit trail |
-| `springtale-runtime` | Shared init / dispatch / operations layer used by both the daemon and the Tauri desktop app |
-| `springtale-bot` | Bot runtime, command router, handler registry, session memory, cooperation framework, orchestrator |
+| `springtale-cooperation` | Cooperation framework crate — 37 modules covering cadence, momentum, formations, rally, recovery, supervision, stigmergy, contract net, consensus, commit, interference, transformation, mental model, role dynamics, pacing, handoff, attention, awareness, authority, and more. Zero internal Springtale dependencies. See [cooperation.md](cooperation.md) |
+| `springtale-runtime` | Shared init / dispatch / operations layer used by both the daemon and the Tauri desktop app. Hosts `LiveFormationReader` trait for UI formation state |
+| `springtale-bot` | Bot runtime, command router, handler registry, session memory, tool_runner, orchestrator (composer + intervention), and the 14-step cooperation tick pipeline |
 
 ---
 
@@ -194,7 +209,7 @@ Three core traits define the extension points. Each has a working default and pl
   │  │   NoopAdapter         ── default, no AI                  │ │
   │  │   OllamaAdapter       ── local models (NDJSON stream)    │ │
   │  │   AnthropicAdapter    ── Claude (SSE stream)              │ │
-  │  │   OpenAiCompatAdapter ── non-streaming; stream() stubbed  │ │
+  │  │   OpenAiCompatAdapter ── OpenAI/Gemini/DeepSeek (SSE stream)│ │
   │  │   (hot-swappable at runtime via POST /config/ai)         │ │
   │  └──────────────────────────────────────────────────────────┘ │
   │                                                               │
@@ -244,6 +259,8 @@ The headless daemon that runs the show. Boot is a 9-step ordered pipeline split 
          │
   7. Bot init ────────> wire chat connectors (telegram,
          │              nostr, irc, discord, slack, signal)
+         │              install cooperation channel +
+         │              LiveFormationReader
          │              spawn bot event loop
          │
   8. API server ──────> axum::build_router + bind
@@ -255,44 +272,98 @@ The headless daemon that runs the show. Boot is a 9-step ordered pipeline split 
 
 *Fig. 5. Daemon boot sequence. See [`docs/arch/ARCHITECTURE.md`](../arch/ARCHITECTURE.md) §3 for file:line refs.*
 
-Exposes ~60 REST endpoints for connector management, rule CRUD, formation orchestration, canvas updates, event streaming, configuration, and webhook ingestion. See [reference/api.md](../reference/api.md) for the full endpoint catalogue.
+Exposes ~80 REST endpoints for connector management, rule CRUD, formation lifecycle (deploy / pause / resume / dissolve / rally / intent / members / toggle-guard / cycle-autonomy), canvas updates, event streaming, configuration, webhook ingestion, diagnostics, onboarding, templates, fixes, per-agent autonomy, author keys, bot admin, memory audit/compact, data export, and send/execute. See [reference/api.md](../reference/api.md) for the full endpoint catalogue.
 
 ### 5.2. springtale-cli (Terminal)
 
 The CLI for local configuration and management:
 
 ```
-  springtale init                    create vault + database
-  springtale server start            start daemon inline
-  springtale connector <subcmd>      install/list/enable/disable/remove
-  springtale rule <subcmd>           add/list/toggle/run/update/delete
-  springtale events --limit 50       query event log
-  springtale agent set-autonomy ...  change autonomy level
-  springtale vault duress-setup      configure decoy vault
-  springtale vault crypto rotate-vault-key
-  springtale travel prepare|restore  wipe/restore for device seizure
-  springtale memory audit|compact    inspect/trim bot memory
-  springtale data export|purge       export or erase user data
-  springtale panic                   emergency wipe (< 3 s)
+  springtale init                         create vault + database
+  springtale new <template>               scaffold a project from a template
+  springtale server start                 start daemon inline
+  springtale doctor                       run diagnostic checks
+  springtale fix <error-id>               apply an auto-repair suggestion
+  springtale trace <connector> <rule>     debug trace execution
+  springtale connector <subcmd>           install/list/config/test/enable/disable
+  springtale rule <subcmd>                create/list/delete/test/enable/disable
+  springtale events --limit 50            query event log
+  springtale agent <subcmd>               status/list
+  springtale sessions list                list bot sessions
+  springtale vault duress-setup           configure decoy vault
+  springtale crypto rotate-vault-key      rotate the vault KEK
+  springtale bot pair-init                pair-init subcommand
+  springtale bot panic-unpair             forcibly unpair
+  springtale travel prepare|restore       wipe/restore for device seizure
+  springtale memory audit|compact         inspect/trim bot memory
+  springtale data export                  export user data
+  springtale panic                        emergency wipe (< 3 s)
 ```
 
 Output defaults to formatted tables. Pass `--json` for machine-readable output. See [reference/cli.md](../reference/cli.md) for full details.
 
 ---
 
-## 6. Known Gaps
+## 6. The Cooperation Tick
+
+Every active formation runs a **14-step tick pipeline** when the cadence bus fires (`springtale-bot::runtime::event_loop::handle_cadence_tick`):
+
+```
+  1.  per-agent loop        (sense → scan → react → respond-cfp → inbox)
+  1b. drain async reports   from cadence reports channel
+  2.  tick_processor        action records + interference detection
+  2b. rally supervisor      drain member outcomes → rally events
+  3.  momentum decay        inactivity check
+  4.  momentum update       success / interference / failure
+  4a-h. liveness, supervisor checks, per-member fuel, implicit signals,
+        state broadcasts, cohesion signals
+  5.  persist momentum      → formation_momentum table
+  6.  broadcast context     to members watching FormationContext
+  7.  update awareness      via gossip substrate (Warming+)
+  7b. log interference      events
+  8.  evaluate pacing       phase transitions (GCRA / L4D Director)
+  9.  cascade detection     + self-rally (burn rally token)
+  9b. recovery              distress → helper selection
+  10. role transformation   failing members swap role
+  11. check consensus       deadlines
+  12. expire commit         barriers (completed or timed-out)
+  13. update mental model   from reports + interferences
+  14. orchestrate           decompose intent (Fever tier only)
+```
+
+Every cooperation module is exercised somewhere in this pipeline or in the agent-side 5-step loop (`sense`, `scan`, `react`, `respond_cfp`, `inbox` in `springtale-cooperation::agent::step::*`). See [guide/cooperation.md](cooperation.md) for a user-facing tour.
+
+---
+
+## 7. The Frontend
+
+The Tauri shell and the web dashboard share `tauri/packages/ui`. The **colony canvas** renders running formations as an RTS-style ecosystem. Connector nodes, rules/agents as springtails, formations as zones, pipelines as mycelium lines. Live data flows through two paths:
+
+- `/canvas/stream` SSE — delta updates to `CanvasState`
+- `LiveFormationReader` trait (`springtale-runtime`) — enriched per-formation state (momentum, rally tokens, attention load, guard status, member health/liveness)
+
+The desktop shell wraps these through Tauri IPC commands (23 modules in `tauri/apps/desktop/src-tauri/src/commands/`); the web dashboard wraps them through HTTP + SSE. Both sit behind the `DataProvider` abstraction so components don't care which transport they're on.
+
+Formation selection in the canvas opens a command grid (DEPLOY / PAUSE / RESUME / REMOVE) wired to `/formations/*` endpoints. Member detail shows rally pips (Monster Hunter carts), attention distribution bar (Army of Two aggro meter), guard status badge, aggregate operational/load/fuel row, and per-member health + liveness icons.
+
+Two themes ship: the original colony forest theme and a chiral diorama theme (default). Themes are CSS-only.
+
+Full reference: [guide/colony-canvas.md](colony-canvas.md).
+
+---
+
+## 8. Known Gaps
 
 The following areas diverge from the design intent in `docs/current-arch/`:
 
 | Area | State |
 |---|---|
 | `connector-matrix` | Not in the workspace. `matrix-sdk` pins `rusqlite` 0.37 with an open heap-leak CVE; Springtale uses the patched 0.39. |
-| WASM connectors | The Wasmtime host, capability gate, and SDK exist. All 14 first-party connectors are native Rust; no WASM connector rides the sandbox today. |
-| Cooperation wiring | Cadence, momentum, formations, environment, and the orchestrator are wired into the bot event loop. Rally, sacrifice, recovery, consensus, commit, interference, transformation, mental model, and dynamic capability are type-defined but not yet invoked from the hot path. |
+| WASM connectors | The Wasmtime host, capability gate, subscription lifecycle across the sandbox, and SDK all exist. All 14 first-party connectors are native Rust; no WASM connector rides the sandbox today. |
 | Job queue | `JobProducer` is an in-memory mpsc sender. The `jobs` SQLite table and `StorageBackend` method signatures exist, but the persistent-queue backing is not wired. |
-| OpenAI streaming | `OpenAiCompatAdapter::stream()` returns `AiError::NotImplemented`. `complete()` works. Anthropic and Ollama stream fully. |
 | `VeilidTransport` | Stub. Every method returns `TransportError::NotConnected`. |
-| i18n, a11y | English-only. Screen-reader and keyboard-nav work is not yet done. |
+| Formation → rules generation | Formations define intent; rules are still authored separately. Auto-derivation of rules from a formation's intent is not implemented. |
+| i18n, a11y, visual rule builder | English-only. Screen-reader and keyboard-nav work is not yet done. Drag-and-drop rule builder not implemented. |
 
 Full detail with rationale: [`docs/arch/AUDIT-NOTES.md`](../arch/AUDIT-NOTES.md). Delivery plan: [ROADMAP.md](../ROADMAP.md).
 

@@ -46,7 +46,7 @@ Personal Access Token (PAT) passed as `Authorization: Bearer` header on all API 
 | `issue_opened` | `issues` (action: opened) | `number`, `title`, `repository` (owner/repo), `author`, `url` |
 | `issue_comment` | `issue_comment` | `issue_number`, `body`, `repository` (owner/repo), `author` |
 
-Payloads are transformed from GitHub's nested webhook JSON into flat fields by the daemon's webhook handler.
+Payloads are transformed from GitHub's nested webhook JSON into flat fields by the daemon's webhook handler (`apps/springtaled/src/api/webhooks/github.rs`). Action filtering — e.g. only firing `pull_request_opened` when the GitHub `action` field is `"opened"` — happens at this transformation layer, not inside the connector.
 
 ## 4. Actions
 

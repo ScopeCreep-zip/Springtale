@@ -80,10 +80,6 @@ type = "Cron"
 expression = "0 2 * * *"
 
 [[actions]]
-type = "RunShell"
-command = "/usr/local/bin/backup.sh"
-
-[[actions]]
 type = "RunConnector"
 connector = "connector-signal"
 action = "send_message"
@@ -92,6 +88,8 @@ action = "send_message"
 chat_id = "+15551234567"
 text = "Nightly backup complete."
 ```
+
+If you want a shell command to run before the Signal notification (e.g. to run a backup), put a separate `RunShell` action *first* — see [`shell.md`](shell.md) for the action contract and the allow-list semantics.
 
 ## 7. Security & Privacy
 

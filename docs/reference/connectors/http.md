@@ -5,7 +5,7 @@ Generic HTTP client for making GET and POST requests to allow-listed hosts. Usef
 ```
    Rule engine                     connector-http                    Remote
         │                                 │                             │
-        │ execute(get / post / put / del, │                             │
+        │ execute(get / post,             │                             │
         │         {url, headers, body})   │                             │
         ├────────────────────────────────►│                             │
         │                                 │ parse url → host            │

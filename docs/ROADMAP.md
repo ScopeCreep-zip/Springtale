@@ -18,10 +18,10 @@ Springtale ships in five phases. Each phase builds on the last — no phase skip
 
 | Phase | Name | Deliverables | State |
 |---|---|---|---|
-| 1a | Framework + Connectors | Daemon, CLI, 12 crates, 7 baseline connectors, SQLite (8 migrations), crypto vault, WASM sandbox, MCP bridge | Present |
-| 1b | Bot Foundations | `springtale-bot`, command router (prefix / pattern / alias), cooperation framework (cadence, momentum, formations), `connector-telegram`, session memory | Present. 12 of 20 cooperation modules are type-defined only; see §3.2. |
-| 2a | Chat + AI | Discord, Slack, IRC, Signal, Nostr connectors. Anthropic / Ollama / OpenAI-compat adapters. `HttpTransport` (rustls mTLS). `springtale-sentinel`. | Present except: OpenAI streaming is a stub (non-streaming works). Matrix is held on upstream `rusqlite` CVE. |
-| 2b | Desktop + Safety | Tauri 2 shell, SolidJS dashboard + canvas, duress vault, panic wipe, travel mode. Visual rule builder, i18n, a11y. | Shell, dashboard, canvas, duress, panic wipe, travel mode present. Visual rule builder, i18n, a11y not implemented. |
+| 1a | Framework + Connectors | Daemon, CLI, 12 crates, 7 baseline connectors, SQLite (11 migrations), crypto vault, WASM sandbox, MCP bridge | Present |
+| 1b | Bot Foundations | `springtale-bot`, command router (prefix / pattern / alias), cooperation framework, `connector-telegram`, session memory | Present. Cooperation framework extracted to its own `springtale-cooperation` crate (37 modules) and wired into a 14-step formation tick; see §3.2. |
+| 2a | Chat + AI | Discord, Slack, IRC, Signal, Nostr connectors. Anthropic / Ollama / OpenAI-compat adapters (all three stream). `HttpTransport` (rustls mTLS). `springtale-sentinel`. Tool-calling across all AI adapters. | Present. Matrix is held on upstream `rusqlite` CVE. |
+| 2b | Desktop + Safety | Tauri 2 shell, SolidJS dashboard + colony canvas (RTS formation visualisation), duress vault, panic wipe, travel mode. Visual rule builder, i18n, a11y. | Shell, dashboard, colony canvas (with formation command grid, rally pips, attention bar, liveness/health encoding), duress, panic wipe, travel mode present. Visual rule builder, i18n, a11y not implemented. |
 | 3 | Veilid Mesh | `VeilidTransport`, P2P mesh, distributed registry, Rekindle integration | Not implemented. `VeilidTransport` exists as a stub — every method returns `TransportError::NotConnected`. |
 
 ---
@@ -39,12 +39,12 @@ The foundation. A single-binary daemon, CLI, rule engine, crypto vault, WASM san
 | `springtale-core` | library | Pipeline composition, rule engine, router, transforms, canvas types |
 | `springtale-crypto` | library | Ed25519 identity, vault (Argon2id + XChaCha20-Poly1305), manifest signatures |
 | `springtale-transport` | library | Transport trait + Local (Unix socket) implementation |
-| `springtale-connector` | library | Connector trait, WASM sandbox (Wasmtime), manifest verification, capability system |
-| `springtale-store` | library | SQLite backend with WAL mode, 8 migrations, encrypted bot memory |
+| `springtale-connector` | library | Connector trait, WASM sandbox (Wasmtime), manifest verification, capability system, subscription lifecycle |
+| `springtale-store` | library | SQLite backend (SQLite3MultipleCiphers) with WAL mode, 11 migrations, AEAD-encrypted bot memory, cooperation schema |
 | `springtale-scheduler` | library | Cron executor, file watcher, job queue, heartbeat monitor, retry with backoff |
 | `springtale-ai` | library | AI adapter trait + NoopAdapter (default). Adapters added in Phase 2a |
 | `springtale-mcp` | library | MCP protocol bridge (`rmcp` 1.x) — any connector becomes an MCP server |
-| `springtale-runtime` | library | Shared runtime init, dispatch, and operations layer used by daemon and desktop |
+| `springtale-runtime` | library | Shared runtime init, dispatch, operations layer, `LiveFormationReader` trait |
 | `connector-kick` | connector | Kick streaming — OAuth 2.1 PKCE, chat, streams, webhooks |
 | `connector-presearch` | connector | Presearch — search + scrape with caching |
 | `connector-bluesky` | connector | Bluesky/ATProto — posts, likes, reposts, Jetstream firehose |
@@ -77,19 +77,46 @@ Classical bot runtime with deterministic command routing. No AI needed — `/sea
 ### 3.1. Deliverables
 
 - `springtale-bot` — Command routing engine with prefix, pattern, alias, and fallback matching
+- `springtale-cooperation` — Standalone crate housing the full 37-module cooperation framework (see §3.2)
 - `connector-telegram` — First chat connector, Telegram Bot API (polling + webhooks)
-- Event loop: three-way `tokio::select!` over connector events, rule-engine triggers, and cadence ticks
+- Event loop: four-way `tokio::select!` over connector events, rule-engine triggers, cadence ticks, and formation commands
 - Session state: per-user, per-channel context in SQLite, AEAD-encrypted memory rows
-- Orchestrator + cooperation framework: formations, momentum tiers, shared blackboard, intent patterns (see [`docs/intended-arch/COOPERATION.md`](intended-arch/COOPERATION.md))
+- Orchestrator + cooperation framework: formations, momentum tiers, shared blackboard, intent patterns (see [`docs/intended-arch/COOPERATION.md`](intended-arch/COOPERATION.md) and [`docs/guide/cooperation.md`](guide/cooperation.md))
 - Built-in handler registry, persona config, memory compaction
+- Tool-calling loop with MCP handler split (AI adapters emit `ToolCall`, runtime re-enters capability gate per call)
 
 ### 3.2. Cooperation wiring state
 
-Five cooperation modules are wired into the bot event loop: `cadence`, `formation`, `momentum`, `environment`, and `action` (SubTask). The remaining twelve are type-defined but not invoked from any non-test code path:
+In April 2026 the cooperation architecture was lifted out of `springtale-bot` into its own crate, `springtale-cooperation` (37 public modules). The crate has zero internal Springtale dependencies and is consumed by `springtale-bot` and `springtale-runtime`. See [`docs/guide/cooperation.md`](guide/cooperation.md) for a user-facing tour.
 
-- `attention`, `awareness`, `mental_model`, `consensus`, `commit`, `interference`, `transformation`, `capability`, `rally`, `recovery`, `sacrifice`
+The formation tick runs a **14-step pipeline** inside `springtale-bot::runtime::event_loop::handle_cadence_tick`:
 
-Three modules are declared but not audited: `comms`, `handoff`, `pacing`.
+```
+  1.  per-agent loop (sense / scan / react / respond-cfp / inbox)
+  1b. drain async tick reports from cadence reports channel
+  2.  tick_processor — action records + interference detection
+  2b. rally supervisor drain (member outcomes → rally events)
+  3.  momentum decay check (inactivity)
+  4.  momentum update (success / interference / failure)
+  4a-h. liveness, supervisor checks, per-member fuel, implicit signals,
+        state broadcasts, cohesion signals
+  5.  persist momentum row to SQLite
+  6.  broadcast FormationContext to watchers
+  7.  update awareness via gossip substrate (Warming+ only)
+  7b. log interference events
+  8.  evaluate pacing phase transitions
+  9.  cascade detection + self-rally
+  9b. recovery evaluation (distress → helper selection)
+  10. role transformation for failing members
+  11. check consensus deadlines
+  12. expire completed / timed-out commit barriers
+  13. update mental model from observed reports + interferences
+  14. orchestrate — decompose intent into sub-tasks (Fever tier only)
+```
+
+**Every cooperation module is wired.** Modules participating in the tick: `cadence`, `momentum`, `attention`, `awareness`, `mental_model`, `consensus`, `commit`, `interference`, `transformation`, `capability`, `rally`, `recovery`, `sacrifice`, `comms`, `handoff`, `pacing`, `supervision`, `stigmergy`, `contract_net`, `routing`, `role`, `dissemination`, `tick_processor`, plus state / agent / authority / layer / utility / replan support modules.
+
+Not invoked from the bot hot path (deliberate — they are ancillary helpers or consumed elsewhere): `agent_loop::AgentLoop::tick()` scaffolding, `replan::cbba` (wired only when orchestrator is present and needs a global replan).
 
 Full detail: [`docs/arch/AUDIT-NOTES.md §3`](arch/AUDIT-NOTES.md).
 
@@ -147,7 +174,7 @@ AI is optional — it's a pipeline action and a bot fallback parser, never a req
 | `NoopAdapter` (default) | — | Present |
 | `OllamaAdapter` (local models) | NDJSON | Present, full streaming |
 | `AnthropicAdapter` (Claude API) | SSE | Present, full streaming |
-| `OpenAiCompatAdapter` (OpenAI / Gemini / DeepSeek / llama.cpp) | non-streaming | Present. `stream()` returns `AiError::NotImplemented`; `complete()` works. |
+| `OpenAiCompatAdapter` (OpenAI / Gemini / DeepSeek / llama.cpp) | SSE | Present, full streaming. Tool calling routed through `complete_with_tools()` (non-streaming) since argument JSON must be complete before tool execution. |
 
 Adapters are hot-swappable at runtime via `POST /config/ai`. Two-layer prompt sanitisation: closed `AiRequest` enum (compile-time) + OWASP-pattern scanner (runtime) detects PII, credentials, prompt injection, suspicious encoding.
 
@@ -157,7 +184,8 @@ Natural-language-to-rule conversion: `POST /rules/parse` sends a description to 
 
 - `springtale-sentinel` — present. Behavioural monitor evaluates every action in dispatch (circuit breaker, rate limiter, dead-man switch, destructive action gate). Toxic-pair detection runs at manifest install time. Audit trail in `audit_trail` table.
 - `HttpTransport` — present. rustls mTLS server and client via `axum-server` + `reqwest`.
-- Recursive orchestration — partial. Fever-tier formations invoke the AI adapter for intent decomposition; subtasks land on the shared blackboard and members pull. Role transformation, rally, and consensus are type-defined but not invoked (see §3.2).
+- Tool-calling — present across Anthropic, Ollama, and OpenAI-compat adapters. `springtale-ai::ToolCall` emitted by adapters; `springtale-bot::tool_runner` re-enters the capability gate on every call. MCP handler module split so each handler owns its capability check.
+- Recursive orchestration — present. Fever-tier formations invoke the AI adapter for intent decomposition; sub-tasks land on the shared blackboard; members pull via the agent loop (`sense → scan → react → respond_cfp → inbox`). Role transformation, rally, recovery, consensus, commit, interference, and pacing are fully wired — see §3.2 pipeline map.
 
 ---
 
@@ -167,10 +195,11 @@ Tauri 2 desktop shell with a SolidJS frontend that renders an RTS-inspired colon
 
 ### 5.1. Present
 
-- **Tauri 2 desktop shell** — `tauri/apps/desktop`. IPC via `invoke()` into the shared `springtale-runtime` crate.
+- **Tauri 2 desktop shell** — `tauri/apps/desktop`. IPC via `invoke()` into the shared `springtale-runtime` crate. 23 command modules (agent, authors, bot, canvas, config, connectors, data, diagnostics, events, fixes, formations, heartbeat, memory, onboarding, panic, rules, safety, send, sessions, templates, travel, vault, runtime guard).
 - **Web dashboard** — `tauri/apps/dashboard`. SPA served by `springtaled`, bearer-token auth, SSE for live event and canvas streams.
-- **Shared component library** — `tauri/packages/ui` with the `DataProvider` abstraction and ~60 typed methods. Desktop wraps Tauri IPC; web wraps HTTP + SSE.
-- **Colony canvas** — pixel-art ecosystem view mapping connectors → trees, rules/agents → springtails, formations → zones. Live via `/canvas/stream`.
+- **Shared component library** — `tauri/packages/ui` with `DataProvider` abstraction. Desktop wraps Tauri IPC; web wraps HTTP + SSE.
+- **Colony canvas** — RTS-style pixel-art ecosystem view: connectors → nodes, rules/agents → springtails, formations → zones, pipelines → mycelium. Live state over `/canvas/stream` (SSE) + `LiveFormationReader` for formation detail. Formation command grid (DEPLOY / PAUSE / RESUME / REMOVE), rally pips (Monster Hunter carts), attention distribution bar (Army of Two aggro), guard status badge, agent liveness / health encoding. See [`docs/guide/colony-canvas.md`](guide/colony-canvas.md).
+- **Chiral diorama theme** — default Tauri desktop theme; coexists with the original colony theme. Selected via settings.
 - **Duress passphrase** — dual encrypted regions, constant 131,152-byte file size, VeraCrypt-style plausible deniability.
 - **Panic wipe** — single-pass random overwrite + fsync + unlink, <3 s on 1 MB vault.
 - **Travel mode** — `springtale travel prepare --backup-to` and `travel restore --from`.
