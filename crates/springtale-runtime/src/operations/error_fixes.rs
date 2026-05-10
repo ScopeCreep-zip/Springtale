@@ -286,6 +286,292 @@ static GUIDES: &[FixGuide] = &[
         ],
         has_auto_fix: true,
     },
+
+    // ── Cooperation-layer guidance (COOP-XXXX) ──────────────────────────
+    // One entry per `CooperationError` sub-variant so `springtale fix
+    // COOP-NNNN` always returns something actionable. Required by plan
+    // §16.6 ("every variant has a stable ID and a fix entry").
+
+    // Cadence (COOP-1xxx)
+    FixGuide {
+        id: "COOP-1001",
+        title: "Cadence — tick bus channel closed",
+        causes: &[
+            "The formation owning the bus was dropped before all subscribers exited.",
+            "A panic in the cadence driver task closed the sender side.",
+        ],
+        suggestions: &[
+            "Redeploy the formation via `springtale formation deploy <id>`.",
+            "Check `springtale logs` for a preceding panic or supervisor restart.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-1002",
+        title: "Cadence — tick sequence wrapped",
+        causes: &["A single formation ran long enough for the u64 tick counter to wrap. This should be practically impossible but is guarded anyway."],
+        suggestions: &["Recycle the formation. Wrap-around on u64 at 30 Hz implies uptime on the order of billions of years."],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-1003",
+        title: "Cadence — subscriber lagged",
+        causes: &[
+            "An agent ran slower than the tick rate and lost ticks.",
+            "The cadence bus channel capacity is too small for the formation's burst workload.",
+        ],
+        suggestions: &[
+            "Drop the tick rate: `springtale config set cadence.rate_hz 15`.",
+            "Increase bus capacity in the formation constraints.",
+        ],
+        has_auto_fix: false,
+    },
+
+    // Formation (COOP-2xxx)
+    FixGuide {
+        id: "COOP-2001",
+        title: "Formation — agent not found",
+        causes: &["An operation referenced an AgentId that isn't a member of the formation."],
+        suggestions: &[
+            "List members with `springtale formation show <id>`.",
+            "Re-add the agent via `add_formation_member`.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-2002",
+        title: "Formation — empty formation",
+        causes: &["All members have been removed or died with no recovery."],
+        suggestions: &[
+            "Add members back: `springtale formation add-member <id> <connector>`.",
+            "Or dissolve with `springtale formation dissolve <id>`.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-2003",
+        title: "Formation — not viable",
+        causes: &["The formation has no operational members (all dead/disconnected)."],
+        suggestions: &[
+            "Check member health via `springtale formation show <id>`.",
+            "Dissolve and redeploy the formation.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-2004",
+        title: "Formation — missing required capability",
+        causes: &["The formation's intent requires a capability no member provides."],
+        suggestions: &[
+            "Add a member whose connector declares the missing capability.",
+            "Or relax the intent to one the existing capabilities cover.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-2005",
+        title: "Formation — context uninitialized",
+        causes: &["A formation was constructed but its FormationContext was never set."],
+        suggestions: &["This is a library-level bug. File an issue with the formation id and recent actions."],
+        has_auto_fix: false,
+    },
+
+    // Momentum (COOP-3xxx)
+    FixGuide {
+        id: "COOP-3001",
+        title: "Momentum — insufficient tier",
+        causes: &["An operation was attempted at a momentum tier that doesn't unlock it (e.g. environment writes require Hot)."],
+        suggestions: &[
+            "Keep the formation running with low interference so momentum climbs.",
+            "See docs/guide/cooperation.md for the §7 capability table.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-3002",
+        title: "Momentum — capability locked at tier",
+        causes: &["The requested capability is gated behind a higher tier (e.g. consensus requires Fever)."],
+        suggestions: &[
+            "Run more successful ticks to climb tier, or choose a capability available at current tier.",
+        ],
+        has_auto_fix: false,
+    },
+
+    // Awareness (COOP-4xxx)
+    FixGuide {
+        id: "COOP-4001",
+        title: "Awareness — stale neighbor",
+        causes: &[
+            "The neighbor hasn't reported for many ticks.",
+            "Gossip or SWIM dropped the neighbor's updates.",
+        ],
+        suggestions: &[
+            "Check neighbor liveness via the colony canvas or `/formations/{id}` API.",
+            "If cross-process: verify chitchat / SWIM seed reachability.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-4002",
+        title: "Awareness — gossip bridge disconnected",
+        causes: &["The chitchat gossip node lost its transport (usually network)."],
+        suggestions: &[
+            "For single-process: this shouldn't happen — file an issue.",
+            "For cross-process: check UDP connectivity to the seed list.",
+        ],
+        has_auto_fix: false,
+    },
+
+    // Consensus (COOP-5xxx)
+    FixGuide {
+        id: "COOP-5001",
+        title: "Consensus — no override tokens",
+        causes: &["An agent tried to override a vote but has already spent all their override tokens."],
+        suggestions: &["Wait for the vote deadline, accept the majority outcome, or dissolve the vote."],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-5002",
+        title: "Consensus — deadline expired",
+        causes: &["The vote timer elapsed before enough votes were cast."],
+        suggestions: &[
+            "Recycle the vote with a longer deadline.",
+            "Check member health — absent voters may be incapacitated.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-5003",
+        title: "Consensus — vote not found",
+        causes: &["A vote id was referenced that doesn't exist on the formation (typo, wrong formation)."],
+        suggestions: &["List open votes in the formation detail API."],
+        has_auto_fix: false,
+    },
+
+    // Commit (COOP-6xxx)
+    FixGuide {
+        id: "COOP-6001",
+        title: "Commit — barrier failed",
+        causes: &[
+            "One participant voted abort during Prepare → the whole commit aborts.",
+            "Ready phase never completed before the deadline.",
+        ],
+        suggestions: &[
+            "Review each participant's abort reason in the barrier's result map.",
+            "Increase the deadline or reduce participant count.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-6002",
+        title: "Commit — prepare timed out",
+        causes: &["Not every participant reached Ready within the deadline."],
+        suggestions: &[
+            "Investigate the pending agents' health / load.",
+            "Raise the per-tick commit deadline in formation constraints.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-6003",
+        title: "Commit — participant dropped",
+        causes: &["A barrier participant disappeared mid-commit (task abort / panic)."],
+        suggestions: &["Check the supervisor restart log for the dropped agent."],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-6004",
+        title: "Commit — agent not a participant",
+        causes: &["An agent tried to signal readiness on a barrier it wasn't listed in."],
+        suggestions: &["Verify the `begin_commit(participants, ...)` call included every agent that would signal."],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-6005",
+        title: "Commit — execution failed",
+        causes: &["A participant entered Execute phase but its operation errored."],
+        suggestions: &[
+            "Look at the failing agent's latest action log.",
+            "If the same agent fails repeatedly, consider role transformation.",
+        ],
+        has_auto_fix: false,
+    },
+
+    // Interference (COOP-7xxx)
+    FixGuide {
+        id: "COOP-7001",
+        title: "Interference — cross-agent conflict detected",
+        causes: &[
+            "Two agents wrote to the same workspace key the same tick (ResourceConflict).",
+            "An agent acted against another's in-flight action (ActionNegation).",
+        ],
+        suggestions: &[
+            "Inspect the InterferenceEvent for the conflicting agent pair.",
+            "Tune the attention broker to separate the agents' workloads.",
+        ],
+        has_auto_fix: false,
+    },
+
+    // Rally (COOP-8xxx)
+    FixGuide {
+        id: "COOP-8001",
+        title: "Rally — no tokens remaining",
+        causes: &["The formation has exhausted its rally budget (Monster Hunter cart threshold)."],
+        suggestions: &[
+            "The formation will escalate to orchestrator intervention.",
+            "Check `springtale logs` for the cascade reason.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-8002",
+        title: "Rally — cascade threshold exceeded",
+        causes: &["Too many agents failed in quick succession; the formation is cascading toward dissolution."],
+        suggestions: &[
+            "Pause the formation and investigate recent actions.",
+            "Consider sacrifice evaluation to preserve partial operation.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-8003",
+        title: "Rally — supervisor panicked",
+        causes: &["The rally supervisor task itself panicked — a library bug."],
+        suggestions: &["File an issue with the stack trace from `springtale logs`."],
+        has_auto_fix: false,
+    },
+
+    // Recovery (COOP-9xxx)
+    FixGuide {
+        id: "COOP-9001",
+        title: "Recovery — no path available",
+        causes: &["The recovery evaluator found no neighboring agent capable of helping."],
+        suggestions: &[
+            "Add a member with the required helper capability.",
+            "Accept terminal failure and dissolve the formation.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-9002",
+        title: "Recovery — cost exceeds budget",
+        causes: &["The cheapest recovery path would exhaust the formation's remaining fuel or rally tokens."],
+        suggestions: &[
+            "Increase the formation's fuel budget before redeploying.",
+            "Reduce recovery ambition — accept degraded operation instead.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-9003",
+        title: "Recovery — terminal failure",
+        causes: &["An agent reached max quick-fixes (L4D black & white) and died permanently."],
+        suggestions: &[
+            "Add a replacement member or dissolve the formation.",
+            "Review what caused the repeated failures — escalating fragility signals systemic issue.",
+        ],
+        has_auto_fix: false,
+    },
 ];
 
 #[cfg(test)]
@@ -305,6 +591,39 @@ mod tests {
             "E001", "E002", "E003", "E004", "E005", "E006", "E007", "E008", "E009",
         ] {
             assert!(lookup(id).is_some(), "missing guide for {id}");
+        }
+    }
+
+    #[test]
+    fn guides_cover_every_cooperation_error_variant() {
+        // Per COOPERATION_IMPLEMENTATION_PLAN.md §16.6 — every
+        // `CooperationError` variant must have a `springtale fix <id>`
+        // entry. These IDs mirror the `#[error("COOP-NNNN: ...")]`
+        // annotations in `crates/springtale-cooperation/src/error/*.rs`.
+        for id in [
+            // Cadence
+            "COOP-1001", "COOP-1002", "COOP-1003",
+            // Formation
+            "COOP-2001", "COOP-2002", "COOP-2003", "COOP-2004", "COOP-2005",
+            // Momentum
+            "COOP-3001", "COOP-3002",
+            // Awareness
+            "COOP-4001", "COOP-4002",
+            // Consensus
+            "COOP-5001", "COOP-5002", "COOP-5003",
+            // Commit
+            "COOP-6001", "COOP-6002", "COOP-6003", "COOP-6004", "COOP-6005",
+            // Interference
+            "COOP-7001",
+            // Rally
+            "COOP-8001", "COOP-8002", "COOP-8003",
+            // Recovery
+            "COOP-9001", "COOP-9002", "COOP-9003",
+        ] {
+            assert!(
+                lookup(id).is_some(),
+                "missing springtale-fix guide for cooperation error {id}"
+            );
         }
     }
 }

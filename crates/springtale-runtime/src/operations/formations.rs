@@ -10,13 +10,72 @@ use springtale_core::rule::{Action, Rule, RuleId, RuleStatus, RuleVersion, Trigg
 use crate::error::OperationError;
 use crate::state::RuntimeState;
 
+/// Agent health as a tagged union — mirrors
+/// `springtale_cooperation::types::AgentHealth` but owned by the
+/// runtime crate so the serialized shape is stable for the
+/// frontend/IPC layer (the cooperation type may change its internal
+/// representation freely). Matches the TS `AgentHealth` in
+/// `tauri/packages/types/src/formation.ts`.
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "type")]
+pub enum AgentHealthDetail {
+    Operational,
+    Degraded { recovery_count: u32 },
+    Incapacitated,
+    Dead { recoverable: bool },
+}
+
+impl From<&springtale_cooperation::types::AgentHealth> for AgentHealthDetail {
+    fn from(h: &springtale_cooperation::types::AgentHealth) -> Self {
+        use springtale_cooperation::types::AgentHealth;
+        match h {
+            AgentHealth::Operational => Self::Operational,
+            AgentHealth::Degraded { recovery_count } => Self::Degraded {
+                recovery_count: *recovery_count,
+            },
+            AgentHealth::Incapacitated => Self::Incapacitated,
+            AgentHealth::Dead { recoverable } => Self::Dead {
+                recoverable: *recoverable,
+            },
+        }
+    }
+}
+
+impl AgentHealthDetail {
+    /// Map to the frontend's CSS-class / data-attribute value. Values
+    /// are kept in sync with `tauri/packages/ui/src/colony/*`:
+    /// `healthy` = full capability; `degraded` = one quick-fix applied;
+    /// `critical` = two quick-fixes (L4D "black & white") OR incapacitated;
+    /// `dead` = removed from active work.
+    pub fn ui_state(&self) -> &'static str {
+        match self {
+            Self::Operational => "healthy",
+            Self::Degraded { recovery_count } => {
+                if *recovery_count >= 2 {
+                    "critical"
+                } else {
+                    "degraded"
+                }
+            }
+            Self::Incapacitated => "critical",
+            Self::Dead { .. } => "dead",
+        }
+    }
+}
+
 /// Enriched per-member detail — populated from the bot event loop's
 /// in-memory `Formation` data when available.
 #[derive(Debug, Clone, Serialize)]
 pub struct FormationMemberDetail {
+    /// Cooperation-layer agent id as a stable UUID string. Paired with
+    /// `connector_name` so UI layers can key by either.
+    pub agent_id: String,
     pub connector_name: String,
     pub role: String,
-    pub health: String,
+    /// Structured health — replaces the old `Debug`-stringified field.
+    /// Serialized as `{"type":"Degraded","recovery_count":2}` etc.,
+    /// matching the frontend `AgentHealth` tagged union.
+    pub health: AgentHealthDetail,
     pub fuel_remaining: u64,
     pub liveness: String,
     pub attention_load: f32,
@@ -40,12 +99,25 @@ pub struct FormationInfo {
     pub intent: String,
     pub status: String,
     pub member_count: usize,
+    /// Count of members whose health is Operational or Degraded
+    /// (still able to carry work) — drives the "X/Y operational"
+    /// row in the BottomPanel aggregate stats.
+    pub operational_count: usize,
     /// Connector names of formation members.
     pub members: Vec<String>,
     /// Real momentum tier from runtime — "Cold", "Warming", "Hot", "Fever".
     pub momentum_tier: String,
     /// Human label for momentum tier.
     pub momentum_label: String,
+    /// Consecutive successful ticks in the current run. Enables UI
+    /// progress bars of the form "5/8 to Hot".
+    pub momentum_consecutive_successes: i64,
+    /// Interference count accumulated in the current tier. Non-zero
+    /// blocks promotion; see `momentum.rs`.
+    pub momentum_interference_count: i64,
+    /// How many more consecutive successes (at zero interference) are
+    /// required to promote to the next tier. `None` at `Fever` (top).
+    pub momentum_successes_to_next_tier: Option<i64>,
     /// Capabilities unlocked at current tier.
     pub capabilities: Vec<String>,
     /// Guard readiness: "OK" if any member active, "--" otherwise.
@@ -285,6 +357,25 @@ pub async fn get_formation(
     })
 }
 
+/// Successes required at each tier (§7 promotion thresholds from
+/// `momentum.rs`). Kept as a const so frontend progress indicators can
+/// show "N more ticks to next tier" without a round-trip to cooperation.
+const SUCCESSES_REQUIRED_AT: &[(&str, i64)] = &[
+    ("Cold", 3),
+    ("Warming", 8),
+    ("Hot", 15),
+    // Fever has no next tier; absent entry → `None` in
+    // `momentum_successes_to_next_tier`.
+];
+
+fn successes_to_next_tier(tier: &str, consecutive: i64) -> Option<i64> {
+    let target = SUCCESSES_REQUIRED_AT
+        .iter()
+        .find(|(t, _)| *t == tier)
+        .map(|(_, n)| *n)?;
+    Some((target - consecutive).max(0))
+}
+
 /// List all formations with member counts.
 pub async fn list_formations(state: &RuntimeState) -> Result<Vec<FormationInfo>, OperationError> {
     let formations = state.store.list_formations().await?;
@@ -295,15 +386,22 @@ pub async fn list_formations(state: &RuntimeState) -> Result<Vec<FormationInfo>,
         let member_names: Vec<String> = members.iter().map(|m| m.connector_name.clone()).collect();
 
         // Read persisted momentum from dedicated table (written by bot event loop).
-        // Falls back to config store for backwards compatibility during migration.
         let momentum_row = state.store.get_formation_momentum(&f.id).await.ok().flatten();
-        let momentum_tier = momentum_row
-            .as_ref()
-            .map(|r| r.tier.clone())
-            // Falls back to Cold when no momentum table row exists yet.
-            // Old config-store keys (momentum:{id}) are no longer read —
-            // the event loop writes to the new table on every tick.
-            .unwrap_or_else(|| "Cold".to_owned());
+        let (momentum_tier, momentum_consecutive_successes, momentum_interference_count) =
+            match momentum_row.as_ref() {
+                Some(r) => (
+                    r.tier.clone(),
+                    r.consecutive_successes,
+                    r.interference_count,
+                ),
+                // No momentum row → brand-new formation still at Cold
+                // with zero counters. `list_formations` never writes, so
+                // this default is purely a display fallback.
+                None => ("Cold".to_owned(), 0, 0),
+            };
+
+        let momentum_successes_to_next_tier =
+            successes_to_next_tier(&momentum_tier, momentum_consecutive_successes);
 
         // Read rally state from dedicated table
         let rally_row = state.store.get_formation_rally(&f.id).await.ok().flatten();
@@ -314,15 +412,45 @@ pub async fn list_formations(state: &RuntimeState) -> Result<Vec<FormationInfo>,
         let capabilities = tier_capabilities(&momentum_tier);
         let guard_status = if f.status == "active" { "OK" } else { "--" }.to_owned();
 
+        // Operational count: prefer the live reader (accurate — reads
+        // current AgentHealth from in-memory Formation). Fall back to
+        // member_count when no reader is wired (desktop app before
+        // daemon connection). The fallback over-reports; the UI can
+        // still display something sensible in that case.
+        let operational_count = match &state.live_formations {
+            Some(reader) => {
+                let details = reader.read_member_details(&f.id).await;
+                if details.is_empty() {
+                    member_names.len()
+                } else {
+                    details
+                        .iter()
+                        .filter(|d| {
+                            matches!(
+                                d.health,
+                                AgentHealthDetail::Operational
+                                    | AgentHealthDetail::Degraded { .. }
+                            )
+                        })
+                        .count()
+                }
+            }
+            None => member_names.len(),
+        };
+
         infos.push(FormationInfo {
             id: f.id,
             name: f.name,
             intent: f.intent,
             status: f.status,
             member_count: member_names.len(),
+            operational_count,
             members: member_names,
             momentum_tier,
             momentum_label,
+            momentum_consecutive_successes,
+            momentum_interference_count,
+            momentum_successes_to_next_tier,
             capabilities,
             guard_status,
             rally_tokens,
@@ -555,4 +683,183 @@ pub async fn cycle_autonomy(
     super::agent::set_autonomy(&*state.store, &key, next).await?;
 
     Ok(next.to_owned())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn successes_to_next_tier_cold_to_warming() {
+        assert_eq!(successes_to_next_tier("Cold", 0), Some(3));
+        assert_eq!(successes_to_next_tier("Cold", 2), Some(1));
+        // Saturating — at threshold or past, remaining is 0.
+        assert_eq!(successes_to_next_tier("Cold", 3), Some(0));
+        assert_eq!(successes_to_next_tier("Cold", 5), Some(0));
+    }
+
+    #[test]
+    fn successes_to_next_tier_warming_and_hot() {
+        assert_eq!(successes_to_next_tier("Warming", 4), Some(4));
+        assert_eq!(successes_to_next_tier("Hot", 10), Some(5));
+    }
+
+    #[test]
+    fn successes_to_next_tier_fever_is_none() {
+        // Fever is the top tier — no promotion target, so no number
+        // makes sense. UI renders this as "MAX" or hides the row.
+        assert_eq!(successes_to_next_tier("Fever", 99), None);
+    }
+
+    #[test]
+    fn ui_state_maps_healthy_degraded_critical_dead() {
+        assert_eq!(AgentHealthDetail::Operational.ui_state(), "healthy");
+        assert_eq!(
+            AgentHealthDetail::Degraded { recovery_count: 1 }.ui_state(),
+            "degraded"
+        );
+        // L4D "black & white" — second quick-fix.
+        assert_eq!(
+            AgentHealthDetail::Degraded { recovery_count: 2 }.ui_state(),
+            "critical"
+        );
+        assert_eq!(AgentHealthDetail::Incapacitated.ui_state(), "critical");
+        assert_eq!(
+            AgentHealthDetail::Dead { recoverable: true }.ui_state(),
+            "dead"
+        );
+        assert_eq!(
+            AgentHealthDetail::Dead { recoverable: false }.ui_state(),
+            "dead"
+        );
+    }
+
+    #[test]
+    fn from_cooperation_agent_health_roundtrips() {
+        use springtale_cooperation::types::AgentHealth;
+
+        let cases = [
+            (AgentHealth::Operational, AgentHealthDetail::Operational),
+            (
+                AgentHealth::Degraded { recovery_count: 2 },
+                AgentHealthDetail::Degraded { recovery_count: 2 },
+            ),
+            (AgentHealth::Incapacitated, AgentHealthDetail::Incapacitated),
+            (
+                AgentHealth::Dead { recoverable: false },
+                AgentHealthDetail::Dead { recoverable: false },
+            ),
+        ];
+        for (coop, expected) in cases {
+            let converted = AgentHealthDetail::from(&coop);
+            // Compare via serde JSON — both implementations serialize
+            // to the same tagged shape, and `PartialEq` isn't derived
+            // on either side.
+            let got = serde_json::to_value(&converted).unwrap();
+            let want = serde_json::to_value(&expected).unwrap();
+            assert_eq!(got, want);
+        }
+    }
+
+    #[test]
+    fn agent_health_detail_serialization_matches_ts_shape() {
+        // The frontend TS type is
+        // `{ type: "Degraded"; recovery_count: number }` — serde's
+        // `#[serde(tag = "type")]` is what makes that compatible.
+        // Lock the shape in a test so any accidental change to the
+        // enum attributes is caught immediately.
+        let health = AgentHealthDetail::Degraded { recovery_count: 2 };
+        let json = serde_json::to_value(&health).unwrap();
+        assert_eq!(json["type"], "Degraded");
+        assert_eq!(json["recovery_count"], 2);
+
+        let op = serde_json::to_value(AgentHealthDetail::Operational).unwrap();
+        assert_eq!(op, serde_json::json!({"type": "Operational"}));
+
+        let dead =
+            serde_json::to_value(AgentHealthDetail::Dead { recoverable: false }).unwrap();
+        assert_eq!(
+            dead,
+            serde_json::json!({"type": "Dead", "recoverable": false})
+        );
+    }
+
+    #[test]
+    fn formation_info_serialization_carries_new_momentum_fields() {
+        // Locks the wire contract so a rename or reorder breaks the
+        // test, not the frontend.
+        let info = FormationInfo {
+            id: "id-1".into(),
+            name: "Monitor".into(),
+            intent: "Reconnoiter".into(),
+            status: "active".into(),
+            member_count: 2,
+            operational_count: 2,
+            members: vec!["slack".into(), "github".into()],
+            momentum_tier: "Warming".into(),
+            momentum_label: "WARM".into(),
+            momentum_consecutive_successes: 5,
+            momentum_interference_count: 0,
+            momentum_successes_to_next_tier: Some(3),
+            capabilities: vec!["read env".into(), "chain".into()],
+            guard_status: "OK".into(),
+            rally_tokens: 3,
+            rally_max: 3,
+        };
+        let json = serde_json::to_value(&info).unwrap();
+        // Every field the frontend consumes must be present.
+        for key in [
+            "id",
+            "name",
+            "intent",
+            "status",
+            "member_count",
+            "operational_count",
+            "members",
+            "momentum_tier",
+            "momentum_label",
+            "momentum_consecutive_successes",
+            "momentum_interference_count",
+            "momentum_successes_to_next_tier",
+            "capabilities",
+            "guard_status",
+            "rally_tokens",
+            "rally_max",
+        ] {
+            assert!(
+                json.get(key).is_some(),
+                "FormationInfo should serialize `{key}`"
+            );
+        }
+        assert_eq!(json["momentum_consecutive_successes"], 5);
+        assert_eq!(json["momentum_successes_to_next_tier"], 3);
+    }
+
+    #[test]
+    fn formation_info_successes_to_next_tier_null_at_fever() {
+        // At Fever, `momentum_successes_to_next_tier` is `None`; serde
+        // serializes to JSON `null`. The frontend interprets this as
+        // "no further tier to promote to" and hides the progress bar.
+        let info = FormationInfo {
+            id: "id-2".into(),
+            name: "Surge".into(),
+            intent: "Surge".into(),
+            status: "active".into(),
+            member_count: 3,
+            operational_count: 3,
+            members: vec![],
+            momentum_tier: "Fever".into(),
+            momentum_label: "FEVER".into(),
+            momentum_consecutive_successes: 42,
+            momentum_interference_count: 0,
+            momentum_successes_to_next_tier: None,
+            capabilities: vec![],
+            guard_status: "OK".into(),
+            rally_tokens: 3,
+            rally_max: 3,
+        };
+        let json = serde_json::to_value(&info).unwrap();
+        assert!(json["momentum_successes_to_next_tier"].is_null());
+    }
 }

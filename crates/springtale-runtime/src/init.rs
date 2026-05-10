@@ -44,7 +44,23 @@ pub async fn init(
         .map_err(|e| OperationError::Init(format!("WASM engine creation failed: {e}")))?,
     );
 
-    let registry = init_registry(&store, &config.connector_configs, &wasm_engine).await?;
+    // Shared per-tier `InstancePre` cache (§16). Every WASM connector's
+    // module is pre-instantiated against all four tiers here so momentum
+    // transitions are hash-lookup + `InstancePre::instantiate` with no
+    // Linker rebuild. Also lives in `RuntimeState` so the forthcoming
+    // `CapabilityBridge` can route tier transitions to specific hosts.
+    let wasm_tier_cache = Arc::new(
+        springtale_connector::wasm::WasmTierCache::new(wasm_engine.clone())
+            .map_err(|e| OperationError::Init(format!("WASM tier cache init failed: {e}")))?,
+    );
+
+    let registry = init_registry(
+        &store,
+        &config.connector_configs,
+        &wasm_engine,
+        &wasm_tier_cache,
+    )
+    .await?;
     let ai_adapter_arc = init_adapter(config)?;
     let sentinel = init_sentinel(config, &store);
 
@@ -63,11 +79,68 @@ pub async fn init(
         tracing::info!("WASM epoch ticker started (1s interval)");
     }
 
+    // Cooperation deposit sweeper — per COOPERATION.md §20.3: every 5s
+    // delete `coop_deposits` rows whose `expires_at` is past. Without
+    // this, abandoned environment-mediated handoffs accumulate
+    // indefinitely because exactly-once collection removes claimed
+    // rows but never expired ones.
+    {
+        let store_sweeper = store.clone();
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
+            loop {
+                interval.tick().await;
+                match store_sweeper.coop_sweep_expired().await {
+                    Ok(n) if n > 0 => {
+                        tracing::debug!(swept = n, "cooperation deposit sweeper");
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(error = %e, "deposit sweep failed");
+                    }
+                }
+            }
+        });
+        tracing::info!("cooperation deposit sweeper started (5s interval)");
+    }
+
+    // Gossip substrate (§8). Selected by `CooperationConfig::cross_process`:
+    // single-process deployments get `InMemoryGossipStore` (DashMap);
+    // cross-process deployments spawn `ChitchatGossipStore` over UDP.
+    let gossip_store: Arc<dyn springtale_cooperation::awareness::GossipStore> =
+        init_gossip_store(&config.cooperation).await?;
+
+    // SWIM liveness (§8.3). Only spawned when `cross_process = true` —
+    // single-process deployments have no peer processes to probe. The
+    // node also drives peer-scoped gossip sweeping: when SWIM declares
+    // a peer dead, `MemberDown` fires and `GossipStore::remove_by_peer`
+    // drops every entry the peer published, so `snapshots()` no longer
+    // surfaces stale data. The identifier the sweep uses is the peer's
+    // SocketAddr string — the same id chitchat stamps onto incoming
+    // entries via `GossipEntry::with_peer_id`.
+    let swim_node =
+        init_swim_node(&config.cooperation, gossip_store.clone()).await?;
+
     // Canvas/A2UI
     let canvas = Arc::new(tokio::sync::RwLock::new(
         springtale_core::canvas::CanvasState::default(),
     ));
     let (canvas_tx, _) = tokio::sync::broadcast::channel(64);
+    // Phase H2 — cooperation events bus. Capacity 512 covers ~30s of
+    // headroom at 4 formations × 30Hz × ~5 events/tick. Lagged readers
+    // drop silently per the events_stream.rs precedent.
+    let (cooperation_tx, _) = tokio::sync::broadcast::channel(512);
+
+    // Capability bridge (Phase 17) — binds the registry to a per-invocation
+    // tier dispatch path. See `crate::cooperation::capability_bridge`.
+    let capability_bridge = crate::cooperation::CapabilityBridge::new(registry.clone());
+
+    // Role registry (Phase 21) — starts with built-in General/Information/
+    // Support. Community roles are folded in by `register_manifest_roles`
+    // during connector install, and by the same helper applied to any
+    // manifests that were loaded from the store in `init_registry`.
+    let role_registry = Arc::new(springtale_cooperation::role::RoleRegistry::with_builtins());
+    register_persisted_manifest_roles(&store, &role_registry).await;
 
     Ok(RuntimeState {
         store,
@@ -76,11 +149,190 @@ pub async fn init(
         ai_adapter: Arc::new(arc_swap::ArcSwap::from(Arc::new(ai_adapter_arc))),
         sentinel,
         wasm_engine,
+        wasm_tier_cache,
+        capability_bridge,
+        role_registry,
         canvas,
         canvas_tx,
+        cooperation_tx,
         formation_cmd_tx,
         live_formations,
+        gossip_store,
+        swim_node,
     })
+}
+
+/// Walk all connector manifests already in the store and fold their
+/// `roles` declarations into the shared `RoleRegistry`. Called once at
+/// init. Future connector installs register directly via
+/// `operations::connectors::install` (Phase 21 wiring).
+async fn register_persisted_manifest_roles(
+    store: &Arc<dyn springtale_store::StorageBackend>,
+    role_registry: &Arc<springtale_cooperation::role::RoleRegistry>,
+) {
+    let Ok(rows) = store.list_connectors().await else {
+        return;
+    };
+    for row in rows {
+        let Ok(manifest) =
+            serde_json::from_str::<springtale_connector::ConnectorManifest>(&row.manifest_json)
+        else {
+            tracing::warn!(
+                connector = %row.name,
+                "manifest JSON invalid — skipping role registration"
+            );
+            continue;
+        };
+        crate::cooperation::register_manifest_roles(role_registry, &manifest);
+    }
+}
+
+/// Construct the SWIM liveness node when cross-process mode is on.
+///
+/// Also wires an event bridge from the node's broadcast channel into
+/// the shared gossip store: `MemberDown` → `GossipStore::remove`. That
+/// way awareness snapshots (`GossipStore::snapshots`) stop surfacing
+/// stale entries for peers the SWIM protocol has given up on.
+async fn init_swim_node(
+    cfg: &crate::config::CooperationConfig,
+    gossip_store: Arc<dyn springtale_cooperation::awareness::GossipStore>,
+) -> Result<
+    Option<Arc<springtale_cooperation::awareness::SwimNode>>,
+    OperationError,
+> {
+    use std::num::NonZeroU32;
+    use springtale_cooperation::awareness::{SwimNode, SwimNodeConfig};
+
+    if !cfg.cross_process {
+        return Ok(None);
+    }
+
+    let listen: std::net::SocketAddr = cfg
+        .swim_listen_addr
+        .as_deref()
+        .unwrap_or("127.0.0.1:0")
+        .parse()
+        .map_err(|e| OperationError::Init(format!("invalid swim_listen_addr: {e}")))?;
+
+    let seeds: Vec<std::net::SocketAddr> = cfg
+        .swim_seeds
+        .iter()
+        .map(|s| {
+            s.parse().map_err(|e| {
+                OperationError::Init(format!("invalid swim seed {s}: {e}"))
+            })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let swim_cfg = SwimNodeConfig {
+        listen,
+        seeds,
+        cluster_size: NonZeroU32::new(10).unwrap_or(NonZeroU32::MIN),
+    };
+    let node = SwimNode::spawn(swim_cfg)
+        .await
+        .map_err(|e| OperationError::Init(format!("swim spawn: {e}")))?;
+    tracing::info!(
+        addr = %node.local_addr(),
+        seeds = cfg.swim_seeds.len(),
+        "SWIM liveness node started"
+    );
+
+    // Spawn a dual-purpose consumer: (a) audit-log every SwimEvent so
+    // peer liveness transitions are observable, and (b) on MemberDown
+    // sweep the shared gossip store of any peer-owned snapshots so
+    // awareness reads stop seeing defunct peers. This is the live
+    // consumer that gives the SWIM node a real job beyond logs.
+    //
+    // Sweep strategy: entries received from remote peers carry
+    // `GossipEntry::peer_id = Some(peer.to_string())` (stamped by the
+    // chitchat adapter when decoding). `GossipStore::remove_by_peer`
+    // filters on that field, so a peer going down cleanly drops every
+    // entry the peer owned. Locally-published entries have
+    // `peer_id = None` and are never swept by this path.
+    {
+        use springtale_cooperation::awareness::{SwimEvent, SwimSelfState};
+        let mut rx = node.subscribe();
+        let sweep_gossip = gossip_store.clone();
+        tokio::spawn(async move {
+            loop {
+                match rx.recv().await {
+                    Ok(SwimEvent::MemberUp(peer)) => {
+                        tracing::info!(peer = %peer, "SWIM: peer up");
+                    }
+                    Ok(SwimEvent::MemberDown(peer)) => {
+                        let peer_id = peer.to_string();
+                        let removed = sweep_gossip.remove_by_peer(&peer_id).await;
+                        tracing::warn!(
+                            peer = %peer,
+                            gossip_entries_swept = removed,
+                            "SWIM: peer down"
+                        );
+                    }
+                    Ok(SwimEvent::MemberRejoined(peer)) => {
+                        tracing::info!(peer = %peer, "SWIM: peer rejoined");
+                    }
+                    Ok(SwimEvent::SelfState(SwimSelfState::Defunct)) => {
+                        tracing::error!("SWIM: self declared defunct");
+                    }
+                    Ok(SwimEvent::SelfState(state)) => {
+                        tracing::debug!(?state, "SWIM: self state");
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                        tracing::warn!(skipped = n, "SWIM event consumer lagged");
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        });
+    }
+
+    Ok(Some(Arc::new(node)))
+}
+
+/// Construct the gossip substrate based on cooperation config.
+async fn init_gossip_store(
+    cfg: &crate::config::CooperationConfig,
+) -> Result<
+    Arc<dyn springtale_cooperation::awareness::GossipStore>,
+    OperationError,
+> {
+    use springtale_cooperation::awareness::{
+        ChitchatGossipConfig, ChitchatGossipStore, InMemoryGossipStore,
+    };
+
+    if !cfg.cross_process {
+        tracing::info!("gossip: in-memory (single-process)");
+        return Ok(Arc::new(InMemoryGossipStore::new()));
+    }
+
+    let listen_str = cfg.chitchat_listen_addr.as_deref().ok_or_else(|| {
+        OperationError::Init(
+            "cooperation.cross_process = true requires chitchat_listen_addr".into(),
+        )
+    })?;
+    let listen: std::net::SocketAddr = listen_str
+        .parse()
+        .map_err(|e| OperationError::Init(format!("invalid chitchat_listen_addr: {e}")))?;
+
+    let chitchat_cfg = ChitchatGossipConfig {
+        node_id: format!("springtale-{}", uuid::Uuid::new_v4()),
+        listen_addr: listen,
+        public_addr: listen,
+        seeds: cfg.chitchat_seeds.clone(),
+        cluster_id: cfg.cluster_id.clone(),
+        gossip_interval: std::time::Duration::from_secs(1),
+    };
+    tracing::info!(
+        addr = %listen,
+        seeds = cfg.chitchat_seeds.len(),
+        cluster = %cfg.cluster_id,
+        "gossip: chitchat (cross-process)"
+    );
+    let store = ChitchatGossipStore::spawn(chitchat_cfg)
+        .await
+        .map_err(|e| OperationError::Init(format!("chitchat spawn: {e}")))?;
+    Ok(Arc::new(store))
 }
 
 /// Initialize the store backend.
@@ -140,6 +392,7 @@ async fn init_registry(
     _store: &Arc<dyn springtale_store::StorageBackend>,
     connector_configs: &std::collections::HashMap<String, serde_json::Value>,
     shared_wasm_engine: &Arc<springtale_connector::wasm::WasmEngine>,
+    shared_wasm_tier_cache: &Arc<springtale_connector::wasm::WasmTierCache>,
 ) -> Result<Arc<RwLock<ConnectorRegistry>>, OperationError> {
     use springtale_connector::factory::FactoryEntry;
 
@@ -314,6 +567,7 @@ async fn init_registry(
                     &bin.wasm_bytes,
                     manifest,
                     SandboxLimits::default(),
+                    shared_wasm_tier_cache.clone(),
                 ) {
                     Ok(name) => {
                         tracing::info!(connector = %name, "loaded WASM connector from store");

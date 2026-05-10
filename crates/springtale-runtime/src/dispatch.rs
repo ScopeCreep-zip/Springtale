@@ -11,40 +11,68 @@
 
 use std::sync::Arc;
 
-use springtale_connector::registry::store::ConnectorRegistry;
+use springtale_connector::tier::WasmTier;
 use springtale_core::rule::action::Action;
 use springtale_sentinel::Sentinel;
-use tokio::sync::RwLock;
+
+use crate::cooperation::CapabilityBridge;
 
 /// Maximum size for WriteFile action content (10 MiB).
 const MAX_WRITE_FILE_BYTES: usize = 10 * 1024 * 1024;
 
 /// Dispatch a single action with sentinel behavioral monitoring.
 ///
+/// Non-formation entry point — uses the bridge's default capability
+/// checker tier (Warming). Daemon queue + bot rule-trigger paths flow
+/// through here. Formation-tick dispatch should call
+/// [`dispatch_action_with_tier`] with the formation's active
+/// `MomentumTier` mapped through `momentum_to_wasm_tier` so WASM
+/// connectors land on the correct per-tier `InstancePre`.
+///
 /// Sentinel evaluates every action before execution (rate limiter,
 /// circuit breaker, dead-man switch, destructive action gate).
 /// Boxed future for recursion support in Chain actions.
+///
+/// The `bridge` argument is the single shared `CapabilityBridge` held
+/// on `RuntimeState` — routing through it guarantees every RunConnector
+/// invocation carries the caller's momentum tier when provided.
 pub fn dispatch_action<'a>(
     action: &'a Action,
-    registry: &'a Arc<RwLock<ConnectorRegistry>>,
+    bridge: &'a CapabilityBridge,
     sentinel: &'a Arc<Sentinel>,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>> {
-    dispatch_with_depth(action, registry, sentinel, 0)
+    dispatch_with_depth(action, bridge, sentinel, None, 0)
+}
+
+/// Tier-scoped variant. `tier` is applied via `CapabilityBridge::execute`
+/// so WASM connectors select the matching InstancePre for the calling
+/// formation's momentum (§16). Native connectors ignore the tier (their
+/// capability check is tier-agnostic) but still flow through the same
+/// path so behavior stays uniform across execution models.
+pub fn dispatch_action_with_tier<'a>(
+    action: &'a Action,
+    bridge: &'a CapabilityBridge,
+    sentinel: &'a Arc<Sentinel>,
+    tier: WasmTier,
+) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>> {
+    dispatch_with_depth(action, bridge, sentinel, Some(tier), 0)
 }
 
 fn dispatch_with_depth<'a>(
     action: &'a Action,
-    registry: &'a Arc<RwLock<ConnectorRegistry>>,
+    bridge: &'a CapabilityBridge,
     sentinel: &'a Arc<Sentinel>,
+    tier: Option<WasmTier>,
     depth: u32,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<String, String>> + Send + 'a>> {
-    Box::pin(dispatch_inner(action, registry, sentinel, depth))
+    Box::pin(dispatch_inner(action, bridge, sentinel, tier, depth))
 }
 
 async fn dispatch_inner(
     action: &Action,
-    registry: &Arc<RwLock<ConnectorRegistry>>,
+    bridge: &CapabilityBridge,
     sentinel: &Arc<Sentinel>,
+    tier: Option<WasmTier>,
     depth: u32,
 ) -> Result<String, String> {
     // Sentinel evaluation — before every action (ARCHITECTURE.md §6.10)
@@ -79,14 +107,18 @@ async fn dispatch_inner(
         } => {
             let input = serde_json::Value::Object(params.clone());
 
-            // Get Arc'd host + cloned capability checker under lock, then drop
-            // lock before the actual network call.
-            let (host, checker) = {
-                let reg = registry.read().await;
-                reg.get_for_execute(connector).map_err(|e| e.to_string())?
-            };
-
-            match host.execute_checked(action_name, input, &checker).await {
+            // Route through the caller-supplied `CapabilityBridge` —
+            // the shared instance stored on `RuntimeState` so every
+            // connector invocation goes through a single dispatch
+            // point. When `tier` is None we default to Warming (the
+            // permissive default for non-formation callers) to preserve
+            // pre-Phase-17 behavior for the daemon queue and chat-
+            // command rule triggers.
+            let effective_tier = tier.unwrap_or(WasmTier::Warming);
+            let outcome = bridge
+                .execute(connector, action_name, input, effective_tier)
+                .await;
+            match outcome {
                 Ok(result) => {
                     tracing::info!(
                         connector = %connector,
@@ -170,7 +202,7 @@ async fn dispatch_inner(
 
             let mut results = Vec::new();
             for (i, step) in steps.iter().enumerate() {
-                match dispatch_with_depth(step, registry, sentinel, new_depth).await {
+                match dispatch_with_depth(step, bridge, sentinel, tier, new_depth).await {
                     Ok(msg) => results.push(msg),
                     Err(e) => {
                         tracing::warn!(step = i, error = %e, "chain step failed");

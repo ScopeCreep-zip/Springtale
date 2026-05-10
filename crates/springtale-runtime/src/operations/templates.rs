@@ -264,6 +264,340 @@ update_mode = "polling"
 # model = "claude-sonnet-4-6"
 "#;
 
+// ── Templates added to satisfy COOPERATION_IMPLEMENTATION_PLAN.md §8 ──────
+// Minimum 10 starter templates (§16.9). Plan §8 table names the full set;
+// the constants below implement the remaining entries.
+
+const BLANK_BOT_TOML: &str = r#"# Springtale — Blank Bot Starter.
+# Empty skeleton for experts. Add connectors, rules, and vault entries by hand.
+
+[store]
+path = "springtale.db"
+
+[crypto]
+vault_path = "vault.bin"
+
+[api]
+bind = "127.0.0.1:8080"
+"#;
+
+const CLI_RUNNER_TOML: &str = r#"# Springtale — CLI Task Runner Starter.
+# Headless CLI that spawns a formation for a one-shot task.
+# See COOPERATION_IMPLEMENTATION_PLAN.md §7.1 for the full design.
+
+[store]
+path = "springtale.db"
+
+[crypto]
+vault_path = "vault.bin"
+
+[api]
+bind = "127.0.0.1:8080"
+"#;
+
+const CLI_RUNNER_RULE: &str = r#"# Rule: kick off a task when /run is fired via `springtale send`.
+[rule]
+name = "cli-run-task"
+
+[trigger]
+type = "Cron"
+# Once per minute — the real trigger is `springtale send` / `springtale run`.
+expression = "0 * * * * *"
+
+[[actions]]
+type = "SendMessage"
+text = "Formation is idle. Run `springtale send <text>` to drive a task."
+"#;
+
+const LLM_SWARM_TOML: &str = r#"# Springtale — LLM Swarm Starter.
+# Three cooperating agents on a single prompt (researcher, writer, critic).
+# Full cooperation module exercised. See plan §7.2.
+# Store the AI provider key in the vault:
+#   springtale vault set openai.api_key
+#   (or anthropic.api_key / configure ollama base_url)
+
+[store]
+path = "springtale.db"
+
+[crypto]
+vault_path = "vault.bin"
+
+[api]
+bind = "127.0.0.1:8080"
+
+# Pick ONE AI provider section:
+
+# [ollama]
+# base_url = "http://localhost:11434"
+# model = "llama3.2"
+
+# [openai]
+# base_url = "https://api.openai.com"
+# api_key = "YOUR_OPENAI_KEY"
+# model = "gpt-4o"
+
+# [anthropic]
+# api_key = "YOUR_ANTHROPIC_KEY"
+# model = "claude-sonnet-4-6"
+"#;
+
+const DISCORD_BOT_TOML: &str = r#"# Springtale — Discord Bot Starter.
+# Store the bot token in the vault rather than pasting it inline:
+#   springtale vault set discord.bot_token
+
+[store]
+path = "springtale.db"
+
+[crypto]
+vault_path = "vault.bin"
+
+[api]
+bind = "127.0.0.1:8080"
+
+[discord]
+bot_token = "YOUR_DISCORD_BOT_TOKEN"
+"#;
+
+const DISCORD_WELCOME_RULE: &str = r#"# Rule: greet new members on !start.
+[rule]
+name = "discord-welcome"
+
+[trigger]
+type = "ConnectorEvent"
+connector = "connector-discord"
+event = "command_received"
+
+[trigger.conditions]
+field_equals = { field = "command", value = "!start" }
+
+[[actions]]
+type = "RunConnector"
+connector = "connector-discord"
+action = "send_message"
+
+[actions.params]
+channel_id = "${trigger.channel_id}"
+content = "Welcome to the Discord bot. Type !help for available commands."
+"#;
+
+const MATRIX_BOT_TOML: &str = r#"# Springtale — Matrix Bot Starter.
+# Matrix/Element chatbot. Matrix connector is planned; the template is
+# ready so the moment `connector-matrix` ships this starter just works.
+# Store the Matrix token in the vault:
+#   springtale vault set matrix.access_token
+
+[store]
+path = "springtale.db"
+
+[crypto]
+vault_path = "vault.bin"
+
+[api]
+bind = "127.0.0.1:8080"
+
+[matrix]
+homeserver = "https://matrix.org"
+user_id = "@YOUR_BOT:matrix.org"
+access_token = "YOUR_MATRIX_ACCESS_TOKEN"
+"#;
+
+const WEBHOOK_RECEIVER_TOML: &str = r#"# Springtale — Webhook Receiver Starter.
+# Turn any inbound HTTP webhook into a cooperation formation that
+# fans out to one or more actions. No chat connector required.
+
+[store]
+path = "springtale.db"
+
+[crypto]
+vault_path = "vault.bin"
+
+[api]
+bind = "127.0.0.1:8080"
+"#;
+
+const WEBHOOK_RECEIVER_RULE: &str = r#"# Rule: any inbound POST on /webhook/custom-event → SendMessage + log.
+[rule]
+name = "webhook-fanout"
+
+[trigger]
+type = "Webhook"
+path = "custom-event"
+
+[[actions]]
+type = "SendMessage"
+text = "Webhook received: ${trigger.body}"
+
+[[actions]]
+type = "Notify"
+title = "webhook-receiver"
+body  = "payload received — check logs"
+"#;
+
+const FILE_WATCHER_TOML: &str = r#"# Springtale — File Watcher Starter.
+# Filesystem event → cooperation formation. Set the watched path via
+#   springtale config set filesystem.watch_path /absolute/path
+# and the notification scheme via the rule below.
+
+[store]
+path = "springtale.db"
+
+[crypto]
+vault_path = "vault.bin"
+
+[api]
+bind = "127.0.0.1:8080"
+"#;
+
+const FILE_WATCHER_RULE: &str = r#"# Rule: any filesystem change → Notify.
+[rule]
+name = "file-watcher-alert"
+
+[trigger]
+type = "FilesystemEvent"
+path = "${config.filesystem.watch_path}"
+
+[[actions]]
+type = "Notify"
+title = "file changed"
+body  = "${trigger.path} (${trigger.kind})"
+"#;
+
+const RESEARCH_ASSISTANT_TOML: &str = r#"# Springtale — Research Assistant Starter.
+# Multi-source research LLM swarm with cited output. Spawns a formation of
+# three agents (collect → synthesize → cite) on each user query.
+
+[store]
+path = "springtale.db"
+
+[crypto]
+vault_path = "vault.bin"
+
+[api]
+bind = "127.0.0.1:8080"
+
+[telegram]
+bot_token = "YOUR_TELEGRAM_BOT_TOKEN"
+update_mode = "polling"
+
+# Pick ONE provider:
+
+# [ollama]
+# base_url = "http://localhost:11434"
+# model = "llama3.2"
+
+# [openai]
+# base_url = "https://api.openai.com"
+# api_key = "YOUR_OPENAI_KEY"
+# model = "gpt-4o"
+"#;
+
+const CODE_REVIEW_SWARM_TOML: &str = r#"# Springtale — Code Review Swarm Starter.
+# Git-diff → 3-agent review (readability, correctness, security). Runs on
+# GitHub pull-request webhook. Store tokens in vault:
+#   springtale vault set github.token
+#   springtale vault set github.webhook_secret
+
+[store]
+path = "springtale.db"
+
+[crypto]
+vault_path = "vault.bin"
+
+[api]
+bind = "127.0.0.1:8080"
+
+[github]
+token = "YOUR_GITHUB_PAT"
+webhook_secret = "YOUR_WEBHOOK_SECRET"
+
+# Pick ONE provider:
+
+# [ollama]
+# base_url = "http://localhost:11434"
+# model = "llama3.2"
+
+# [anthropic]
+# api_key = "YOUR_ANTHROPIC_KEY"
+# model = "claude-sonnet-4-6"
+"#;
+
+const CODE_REVIEW_RULE: &str = r#"# Rule: pull_request opened → post review comment (stub).
+[rule]
+name = "code-review-pr"
+
+[trigger]
+type = "ConnectorEvent"
+connector = "connector-github"
+event = "pull_request"
+
+[trigger.conditions]
+field_equals = { field = "action", value = "opened" }
+
+[[actions]]
+type = "RunConnector"
+connector = "connector-github"
+action = "create_review_comment"
+
+[actions.params]
+repo = "${trigger.repository.full_name}"
+pr_number = "${trigger.pull_request.number}"
+body = "Automated review in progress — see formation logs."
+"#;
+
+const MEETING_SUMMARIZER_TOML: &str = r#"# Springtale — Meeting Summarizer Starter.
+# Audio / transcript → structured summary via an LLM swarm of three roles
+# (transcript_cleaner, key_point_extractor, summary_writer). The bot runs
+# locally by default; no audio ever leaves the device.
+#
+# Store any provider credentials in the vault:
+#   springtale vault set openai.api_key     # optional
+#   springtale vault set anthropic.api_key  # optional
+
+[store]
+path = "springtale.db"
+
+[crypto]
+vault_path = "vault.bin"
+
+[api]
+bind = "127.0.0.1:8080"
+
+# Watch a transcripts directory — drop a .txt / .vtt / .srt and a formation
+# is spawned per file. The three roles coordinate via the cooperation
+# module: role-scoped capabilities, shared cadence, handoff between stages.
+[[filesystem.watch]]
+path = "./transcripts"
+events = ["create", "modify"]
+
+# Pick ONE LLM provider (or none — NoopAdapter produces a canned summary).
+
+# [ollama]
+# base_url = "http://localhost:11434"
+# model = "llama3.2"
+
+# [openai]
+# api_key = "YOUR_OPENAI_KEY"
+# model = "gpt-4o-mini"
+
+# [anthropic]
+# api_key = "YOUR_ANTHROPIC_KEY"
+# model = "claude-sonnet-4-6"
+"#;
+
+const MEETING_SUMMARIZER_RULE: &str = r#"# Rule: new transcript file → spawn a meeting-summarizer formation.
+[rule]
+name = "meeting-summarizer"
+
+[trigger]
+type = "FileWatch"
+path = "./transcripts"
+event = "create"
+
+[[actions]]
+type = "AiComplete"
+prompt = "Summarize the meeting transcript at ${trigger.path}. Output sections: attendees, decisions, action items, open questions."
+"#;
+
 static TEMPLATES: &[Template] = &[
     Template {
         name: "telegram-bot",
@@ -315,6 +649,122 @@ static TEMPLATES: &[Template] = &[
             contents: LLM_ASSISTANT_TOML,
         }],
     },
+    Template {
+        name: "blank-bot",
+        description: "Empty skeleton for experts — no connectors, no rules",
+        files: &[TemplateFile {
+            relative_path: "springtale.toml",
+            contents: BLANK_BOT_TOML,
+        }],
+    },
+    Template {
+        name: "cli-runner",
+        description: "Headless CLI task runner — spawns a formation per task (plan §7.1)",
+        files: &[
+            TemplateFile {
+                relative_path: "springtale.toml",
+                contents: CLI_RUNNER_TOML,
+            },
+            TemplateFile {
+                relative_path: "rules/idle-heartbeat.toml",
+                contents: CLI_RUNNER_RULE,
+            },
+        ],
+    },
+    Template {
+        name: "llm-swarm",
+        description: "3-agent LLM swarm (researcher/writer/critic) on a single prompt (plan §7.2)",
+        files: &[TemplateFile {
+            relative_path: "springtale.toml",
+            contents: LLM_SWARM_TOML,
+        }],
+    },
+    Template {
+        name: "discord-bot",
+        description: "Discord bot with a !start welcome rule",
+        files: &[
+            TemplateFile {
+                relative_path: "springtale.toml",
+                contents: DISCORD_BOT_TOML,
+            },
+            TemplateFile {
+                relative_path: "rules/welcome.toml",
+                contents: DISCORD_WELCOME_RULE,
+            },
+        ],
+    },
+    Template {
+        name: "matrix-bot",
+        description: "Matrix/Element chatbot skeleton — ready for connector-matrix",
+        files: &[TemplateFile {
+            relative_path: "springtale.toml",
+            contents: MATRIX_BOT_TOML,
+        }],
+    },
+    Template {
+        name: "webhook-receiver",
+        description: "HTTP webhook → cooperation formation fan-out",
+        files: &[
+            TemplateFile {
+                relative_path: "springtale.toml",
+                contents: WEBHOOK_RECEIVER_TOML,
+            },
+            TemplateFile {
+                relative_path: "rules/webhook-fanout.toml",
+                contents: WEBHOOK_RECEIVER_RULE,
+            },
+        ],
+    },
+    Template {
+        name: "file-watcher",
+        description: "Filesystem event → cooperation formation",
+        files: &[
+            TemplateFile {
+                relative_path: "springtale.toml",
+                contents: FILE_WATCHER_TOML,
+            },
+            TemplateFile {
+                relative_path: "rules/file-changed-alert.toml",
+                contents: FILE_WATCHER_RULE,
+            },
+        ],
+    },
+    Template {
+        name: "research-assistant",
+        description: "Multi-source research LLM swarm with cited output",
+        files: &[TemplateFile {
+            relative_path: "springtale.toml",
+            contents: RESEARCH_ASSISTANT_TOML,
+        }],
+    },
+    Template {
+        name: "code-review-swarm",
+        description: "Git diff → 3-agent code review (readability / correctness / security)",
+        files: &[
+            TemplateFile {
+                relative_path: "springtale.toml",
+                contents: CODE_REVIEW_SWARM_TOML,
+            },
+            TemplateFile {
+                relative_path: "rules/pr-opened.toml",
+                contents: CODE_REVIEW_RULE,
+            },
+        ],
+    },
+    Template {
+        name: "meeting-summarizer",
+        description: "Audio/transcript → structured summary LLM swarm",
+        files: &[
+            TemplateFile {
+                relative_path: "springtale.toml",
+                contents: MEETING_SUMMARIZER_TOML,
+            },
+            TemplateFile {
+                relative_path: "rules/new-transcript.toml",
+                contents: MEETING_SUMMARIZER_RULE,
+            },
+        ],
+    },
 ];
 
 #[cfg(test)]
@@ -325,10 +775,39 @@ mod tests {
     #[test]
     fn list_contains_every_known_template() {
         let names: Vec<_> = list().iter().map(|t| t.name).collect();
-        assert!(names.contains(&"telegram-bot"));
-        assert!(names.contains(&"github-monitor"));
-        assert!(names.contains(&"cron-runner"));
-        assert!(names.contains(&"llm-assistant"));
+        for expected in [
+            // Existing templates
+            "telegram-bot",
+            "github-monitor",
+            "cron-runner",
+            "llm-assistant",
+            // Added for plan §8 coverage (≥10 starters)
+            "blank-bot",
+            "cli-runner",
+            "llm-swarm",
+            "discord-bot",
+            "matrix-bot",
+            "webhook-receiver",
+            "file-watcher",
+            "research-assistant",
+            "code-review-swarm",
+            "meeting-summarizer",
+        ] {
+            assert!(
+                names.contains(&expected),
+                "template list missing `{expected}`"
+            );
+        }
+    }
+
+    #[test]
+    fn template_count_meets_plan_minimum() {
+        // Plan §16.9 requires ≥10 starter templates.
+        assert!(
+            list().len() >= 10,
+            "expected ≥10 templates per plan §16.9, got {}",
+            list().len()
+        );
     }
 
     #[test]

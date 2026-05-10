@@ -32,6 +32,7 @@ extern crate connector_telegram;
 
 pub mod client_config;
 pub mod config;
+pub mod cooperation;
 pub mod dispatch;
 pub mod error;
 pub mod init;
@@ -40,6 +41,7 @@ pub mod state;
 
 pub use client_config::{ClientConfig, ClientConfigError};
 pub use config::{RuntimeConfig, StoreConfig};
+pub use cooperation::{momentum_to_wasm_tier, BridgeError, CapabilityBridge};
 pub use error::OperationError;
 pub use init::init;
 pub use state::{LiveFormationReader, RuntimeState};

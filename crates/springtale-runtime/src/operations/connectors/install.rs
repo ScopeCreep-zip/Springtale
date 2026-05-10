@@ -38,6 +38,11 @@ pub async fn install_connector(
 
     state.store.register_connector(&row).await?;
 
+    // Fold any community roles this manifest declares into the shared
+    // `RoleRegistry` so formation reload can reconstruct members that
+    // reference them (§14.4 / Phase 21).
+    crate::cooperation::register_manifest_roles(&state.role_registry, &manifest);
+
     let name = manifest.name;
     tracing::info!(connector = %name, "connector manifest registered");
     Ok(name)
@@ -72,6 +77,7 @@ pub async fn install_wasm_connector(
         .map_err(|e| OperationError::Validation(format!("WASM hash verification failed: {e}")))?;
 
     // Install in registry using the shared WASM engine (same epoch ticker)
+    // and the shared per-tier `InstancePre` cache (§16).
     let registered_name = {
         let mut registry = state.registry.write().await;
         registry
@@ -80,9 +86,15 @@ pub async fn install_wasm_connector(
                 &wasm_bytes,
                 manifest.clone(),
                 springtale_connector::wasm::SandboxLimits::default(),
+                state.wasm_tier_cache.clone(),
             )
             .map_err(|e| OperationError::Connector(format!("WASM install failed: {e}")))?
     };
+
+    // Fold any community roles declared in the manifest into the shared
+    // registry (Phase 21). For WASM connectors this is the main path —
+    // the role definitions live in the manifest, not in Rust code.
+    crate::cooperation::register_manifest_roles(&state.role_registry, &manifest);
 
     // Persist to store for restart survival
     let manifest_json = serde_json::to_string(&manifest)

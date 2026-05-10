@@ -25,49 +25,16 @@
 use std::collections::BTreeMap;
 
 use serde::Serialize;
+// F-conn-1: PlatformForm + FormField now live in `springtale-connector` so
+// each connector crate self-registers its onboarding form via
+// `ConnectorFactory::onboarding_form()`. The runtime collects them via
+// `inventory::iter::<FactoryEntry>` instead of a hardcoded table.
+pub use springtale_connector::{FormField, PlatformForm};
+use springtale_connector::FactoryEntry;
 use springtale_store::StorageBackend;
 
 use super::config::set_config;
 use crate::error::OperationError;
-
-/// A single field the user must fill in for a platform.
-#[derive(Debug, Clone, Serialize)]
-pub struct FormField {
-    /// Stable machine key used as the JSON property name.
-    pub name: &'static str,
-    /// Human label shown by the frontend.
-    pub label: &'static str,
-    /// Short hint/help text.
-    pub description: &'static str,
-    /// Frontend should mask input (password prompt, hidden field).
-    pub secret: bool,
-    /// Optional default value the user can accept without typing.
-    pub default: Option<&'static str>,
-    pub required: bool,
-    /// Regex pattern the answer must match (OWASP ASVS §5.1.4).
-    /// None = no format restriction beyond non-empty.
-    pub validation: Option<&'static str>,
-}
-
-/// One platform the onboarding wizard knows how to set up.
-#[derive(Debug, Clone, Serialize)]
-pub struct PlatformForm {
-    /// Stable ID used in `apply_platform` calls.
-    pub id: &'static str,
-    /// Internal config key (also the connector's `config_key`).
-    pub config_key: &'static str,
-    /// Human-readable label.
-    pub label: &'static str,
-    pub description: &'static str,
-    pub setup_help: &'static str,
-    pub fields: &'static [FormField],
-}
-
-impl PlatformForm {
-    pub fn field(&self, name: &str) -> Option<&'static FormField> {
-        self.fields.iter().find(|f| f.name == name)
-    }
-}
 
 /// Summary of a successful `apply_platform` call.
 #[derive(Debug, Clone, Serialize)]
@@ -78,13 +45,25 @@ pub struct ApplyReport {
 }
 
 /// List every platform the wizard knows how to configure.
-pub fn list_platforms() -> &'static [PlatformForm] {
-    PLATFORMS
+///
+/// Iterates compile-time-registered connector factories
+/// (`inventory::iter::<FactoryEntry>`) and collects every
+/// `Some(onboarding_form)`. Adding a new platform connector requires zero
+/// edits here — the connector's own `onboarding_form()` impl gets picked
+/// up automatically.
+pub fn list_platforms() -> Vec<&'static PlatformForm> {
+    inventory::iter::<FactoryEntry>
+        .into_iter()
+        .filter_map(|e| e.factory.onboarding_form())
+        .collect()
 }
 
-/// Look up one platform form by its ID.
+/// Look up one platform form by its ID. Iterates the same inventory as
+/// `list_platforms` so frontends and the apply path stay in sync.
 pub fn get_platform(id: &str) -> Option<&'static PlatformForm> {
-    PLATFORMS.iter().find(|p| p.id == id)
+    inventory::iter::<FactoryEntry>
+        .into_iter()
+        .find_map(|e| e.factory.onboarding_form().filter(|f| f.id == id))
 }
 
 /// Persist a completed wizard answer set as a connector config.
@@ -179,122 +158,11 @@ pub async fn apply_platform(
     })
 }
 
-// ---------- Static platform table ----------
-//
-// Each platform's `config_key` must match the connector factory's
-// `config_key()` — this is what drives `init_registry()` in init.rs to
-// actually load the connector at daemon boot.
-
-static PLATFORMS: &[PlatformForm] = &[
-    PlatformForm {
-        id: "telegram",
-        config_key: "telegram",
-        label: "Telegram",
-        description: "Connect a Telegram bot via polling",
-        setup_help: "Create a bot with @BotFather in Telegram. Copy the HTTP API token it returns.",
-        fields: &[
-            FormField {
-                name: "bot_token",
-                label: "Bot token",
-                description: "Telegram Bot API token from @BotFather",
-                secret: true,
-                default: None,
-                required: true,
-                validation: Some(r"^\d+:[A-Za-z0-9_-]+$"),
-            },
-            FormField {
-                name: "update_mode",
-                label: "Update mode",
-                description: "polling (no public URL needed) or webhook",
-                secret: false,
-                default: Some("polling"),
-                required: false,
-                validation: Some(r"^(polling|webhook)$"),
-            },
-        ],
-    },
-    PlatformForm {
-        id: "discord",
-        config_key: "discord",
-        label: "Discord",
-        description: "Connect a Discord bot",
-        setup_help: "Create an application at discord.com/developers, then copy the Bot token and Application ID.",
-        fields: &[
-            FormField {
-                name: "bot_token",
-                label: "Bot token",
-                description: "Discord bot token",
-                secret: true,
-                default: None,
-                required: true,
-                validation: None,
-            },
-            FormField {
-                name: "application_id",
-                label: "Application ID",
-                description: "Discord application (client) ID",
-                secret: false,
-                default: None,
-                required: true,
-                validation: Some(r"^\d{17,20}$"),
-            },
-        ],
-    },
-    PlatformForm {
-        id: "slack",
-        config_key: "slack",
-        label: "Slack",
-        description: "Connect a Slack app (Socket Mode)",
-        setup_help: "Create an app at api.slack.com/apps, enable Socket Mode, generate a Bot token (xoxb-) and App token (xapp-).",
-        fields: &[
-            FormField {
-                name: "bot_token",
-                label: "Bot token",
-                description: "xoxb-... bot user OAuth token",
-                secret: true,
-                default: None,
-                required: true,
-                validation: Some(r"^xoxb-"),
-            },
-            FormField {
-                name: "app_token",
-                label: "App token",
-                description: "xapp-... app-level token with connections:write",
-                secret: true,
-                default: None,
-                required: true,
-                validation: Some(r"^xapp-"),
-            },
-        ],
-    },
-    PlatformForm {
-        id: "signal",
-        config_key: "signal",
-        label: "Signal",
-        description: "Connect via a signal-cli daemon",
-        setup_help: "Install signal-cli and run it in daemon mode. See https://github.com/AsamK/signal-cli.",
-        fields: &[
-            FormField {
-                name: "daemon_url",
-                label: "Daemon URL",
-                description: "Address where signal-cli is listening",
-                secret: false,
-                default: Some("http://localhost:8080"),
-                required: true,
-                validation: Some(r"^https?://"),
-            },
-            FormField {
-                name: "account_id",
-                label: "Account ID",
-                description: "Phone number / account identifier registered with signal-cli",
-                secret: false,
-                default: Some("default"),
-                required: true,
-                validation: None,
-            },
-        ],
-    },
-];
+// Platform forms are collected from `inventory::iter::<FactoryEntry>` —
+// each connector self-registers its onboarding form via
+// `ConnectorFactory::onboarding_form()`. The previous static `PLATFORMS`
+// table was deleted for F-conn-1 universality (zero hardcoded names
+// outside connector crates per plan §F-conn-1).
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
@@ -355,7 +223,7 @@ mod tests {
 
     #[test]
     fn every_platform_has_at_least_one_required_field() {
-        for platform in PLATFORMS {
+        for platform in list_platforms() {
             assert!(
                 platform.fields.iter().any(|f| f.required),
                 "platform {} has no required fields",

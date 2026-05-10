@@ -10,10 +10,11 @@ use arc_swap::ArcSwap;
 use tokio::sync::{RwLock, broadcast, mpsc};
 
 use springtale_connector::registry::store::ConnectorRegistry;
-use springtale_connector::wasm::WasmEngine;
+use springtale_connector::wasm::{WasmEngine, WasmTierCache};
 use springtale_core::canvas::{CanvasState, CanvasUpdate};
 use springtale_core::rule::engine::RuleEngine;
 
+use crate::cooperation::CapabilityBridge;
 use crate::operations::formations::FormationMemberDetail;
 
 /// Live formation reader — provides enriched per-member data from the
@@ -59,14 +60,63 @@ pub struct RuntimeState {
     /// Shared WASM engine for community connectors.
     /// Epoch ticker calls `increment_epoch()` on this for wall-clock timeouts.
     pub wasm_engine: Arc<WasmEngine>,
+    /// Process-wide per-tier `InstancePre` cache (§16). Every WASM
+    /// connector registers its module against this cache on install;
+    /// tier transitions are then a cheap `InstancePre::instantiate`.
+    /// Wired to formation momentum via `CapabilityBridge` (Phase 17).
+    pub wasm_tier_cache: Arc<WasmTierCache>,
+    /// Bridge from formation `MomentumTier` to connector-layer
+    /// `WasmTier` + capability-checker-scoped dispatch. Event-loop code
+    /// in the bot runtime routes connector calls through this so every
+    /// invocation is tagged with the caller's formation tier (§16).
+    pub capability_bridge: CapabilityBridge,
+    /// Process-wide role registry (§14.4). Pre-populated with
+    /// General/Information/Support; connectors register their custom
+    /// roles here at install time so formation reload (Phase 3) can
+    /// reconstruct members by role name.
+    pub role_registry: Arc<springtale_cooperation::role::RoleRegistry>,
     /// Canvas/A2UI state.
     pub canvas: Arc<RwLock<CanvasState>>,
     /// Broadcast channel for canvas updates.
     pub canvas_tx: broadcast::Sender<CanvasUpdate>,
+    /// Broadcast channel for cooperation events (Phase H1/H2). Each
+    /// internal-state cooperation change (intervention fired, sacrifice
+    /// yielded, vote opened, role transformed, member marked down,
+    /// supervisor escalation, pacing phase change, cascade hit, recovery
+    /// action, surface deposit, interference event, CFP round, replan
+    /// outcome, commit phase) emits a `CooperationEventEnvelope` here.
+    /// Subscribers: SSE handler at `/cooperation/events` (web) and Tauri
+    /// `subscribe_cooperation` IPC channel (desktop). Mirror of
+    /// `canvas_tx` pattern. Capacity 512 — covers ~30s headroom at 4
+    /// formations × 30Hz cadence.
+    pub cooperation_tx: broadcast::Sender<springtale_cooperation::CooperationEventEnvelope>,
     /// Formation command sender — runtime operations deploy/dissolve/pause
     /// formations by sending commands to the bot event loop.
     pub formation_cmd_tx: mpsc::Sender<springtale_cooperation::command::FormationCommand>,
     /// Live formation reader — provides enriched per-member data from the
     /// bot event loop. `None` when running as desktop (connects via HTTP).
     pub live_formations: Option<Arc<dyn LiveFormationReader>>,
+    /// Shared gossip substrate for cross-formation awareness (§8).
+    /// Single-process deployments run an `InMemoryGossipStore`
+    /// (`DashMap`); setting `CooperationConfig::cross_process = true`
+    /// swaps in `ChitchatGossipStore` at init time.
+    pub gossip_store: Arc<dyn springtale_cooperation::awareness::GossipStore>,
+    /// SWIM liveness node (§8.3). `None` for single-process deployments
+    /// (no peer processes to probe); `Some(node)` when
+    /// `CooperationConfig::cross_process = true` — the node probes peer
+    /// processes and emits `SwimEvent`s that awareness consumers
+    /// subscribe to.
+    pub swim_node: Option<Arc<springtale_cooperation::awareness::SwimNode>>,
+}
+
+impl RuntimeState {
+    /// Diagnostic: the SWIM node's local bind address when cross-process
+    /// mode is active. Returns `None` for single-process deployments
+    /// (which never spawn a SWIM node). Exposed so observability /
+    /// health-probe surfaces can surface liveness membership info —
+    /// also keeps the `swim_node` field honestly read, not just held
+    /// to prevent Drop.
+    pub fn swim_local_addr(&self) -> Option<std::net::SocketAddr> {
+        self.swim_node.as_ref().map(|n| n.local_addr())
+    }
 }

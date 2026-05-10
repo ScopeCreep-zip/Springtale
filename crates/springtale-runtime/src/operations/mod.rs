@@ -7,6 +7,7 @@
 
 pub mod agent;
 pub mod canvas;
+pub mod commands;
 pub mod config;
 pub mod connectors;
 pub mod cross_channel;

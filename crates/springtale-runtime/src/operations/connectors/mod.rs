@@ -68,6 +68,11 @@ pub async fn disable_connector(state: &RuntimeState, name: &str) -> Result<(), O
 /// Cleans up all persistent state and marks the connector as removed
 /// so it doesn't auto-reload on restart (even if it doesn't require config).
 pub async fn remove_connector(state: &RuntimeState, name: &str) -> Result<(), OperationError> {
+    // Drop any community roles this connector contributed (§14.4 / Phase
+    // 21) before removing the manifest — once the manifest is gone we
+    // can't look up the role names.
+    deregister_manifest_roles_for(state, name).await;
+
     // Remove from in-memory registry
     {
         let mut registry = state.registry.write().await;
@@ -84,6 +89,26 @@ pub async fn remove_connector(state: &RuntimeState, name: &str) -> Result<(), Op
     let removed_key = format!("connector-removed:{name}");
     let _ = state.store.set_config(&removed_key, "true").await;
     Ok(())
+}
+
+/// Look up the connector manifest by name and unregister any community
+/// roles it contributed. Silently no-ops if the manifest isn't found or
+/// isn't parseable — removal should still proceed if the DB row is
+/// corrupt. Uses `list_connectors` because the store trait currently
+/// exposes no `get_connector`; the list is small (one row per installed
+/// connector) so the linear scan is fine.
+async fn deregister_manifest_roles_for(state: &RuntimeState, name: &str) {
+    let Ok(rows) = state.store.list_connectors().await else {
+        return;
+    };
+    let Some(row) = rows.into_iter().find(|r| r.name == name) else {
+        return;
+    };
+    if let Ok(manifest) = serde_json::from_str::<springtale_connector::ConnectorManifest>(
+        &row.manifest_json,
+    ) {
+        crate::cooperation::unregister_manifest_roles(&state.role_registry, &manifest);
+    }
 }
 
 /// Remove a connector and all rules that depend on it.
@@ -116,6 +141,9 @@ pub async fn remove_connector_cascade(
             deleted_ids.push(rule_id.0.to_string());
         }
     }
+
+    // Drop community roles before the manifest is removed.
+    deregister_manifest_roles_for(state, name).await;
 
     // Remove connector from registry
     {

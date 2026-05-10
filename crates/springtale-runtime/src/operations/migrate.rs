@@ -191,6 +191,7 @@ pub fn parse_openclaw_skill(skill_md: &str) -> Result<MigratedSkill, OperationEr
         triggers: vec![], // Skills don't declare triggers
         actions: vec![],  // Actions must be implemented by the user
         data_disclosure: vec![],
+        roles: vec![],
         wasm_hash: None,
         signature: None,
     };

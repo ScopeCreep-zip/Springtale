@@ -268,7 +268,7 @@ pub async fn list_agent_states(state: &RuntimeState) -> Result<Vec<AgentState>, 
                             "Suspect" => 0.5,
                             _ => 0.0,
                         },
-                        health_state: detail.health.to_lowercase(),
+                        health_state: detail.health.ui_state().to_owned(),
                     },
                 );
             }

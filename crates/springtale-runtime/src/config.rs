@@ -38,6 +38,54 @@ pub struct RuntimeConfig {
     /// desktop extracts from UI config).
     #[serde(default)]
     pub connector_configs: HashMap<String, serde_json::Value>,
+
+    /// Cooperation-layer runtime config — how formations gossip across
+    /// processes (spec §8). Default is single-process with an in-memory
+    /// gossip store. Enabling `cross_process` spawns a chitchat node
+    /// that joins `chitchat_seeds`.
+    #[serde(default)]
+    pub cooperation: CooperationConfig,
+}
+
+/// Cooperation-layer runtime configuration.
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct CooperationConfig {
+    /// Gossip substrate selection. `false` (default) uses the
+    /// in-process `InMemoryGossipStore` (`DashMap`, zero network). `true`
+    /// spawns a `ChitchatGossipStore` over UDP loopback so multiple
+    /// springtaled processes on the same machine share one gossip view.
+    #[serde(default)]
+    pub cross_process: bool,
+
+    /// Local `host:port` the chitchat node binds + advertises. Ignored
+    /// when `cross_process = false`.
+    #[serde(default)]
+    pub chitchat_listen_addr: Option<String>,
+
+    /// Chitchat seed nodes (`host:port`) this process should try to
+    /// reach at startup. Ignored when `cross_process = false`.
+    #[serde(default)]
+    pub chitchat_seeds: Vec<String>,
+
+    /// Chitchat cluster identifier. Two nodes with different cluster
+    /// ids won't peer with each other. Ignored when `cross_process = false`.
+    #[serde(default = "default_cluster_id")]
+    pub cluster_id: String,
+
+    /// Local `host:port` the SWIM liveness node binds. Ignored when
+    /// `cross_process = false`. If unset, picks an ephemeral port on
+    /// loopback (127.0.0.1:0).
+    #[serde(default)]
+    pub swim_listen_addr: Option<String>,
+
+    /// SWIM seed nodes (`host:port`). The local SWIM node announces to
+    /// each seed at startup. Ignored when `cross_process = false`.
+    #[serde(default)]
+    pub swim_seeds: Vec<String>,
+}
+
+fn default_cluster_id() -> String {
+    "springtale".to_owned()
 }
 
 // Default derived — all fields have sensible defaults
