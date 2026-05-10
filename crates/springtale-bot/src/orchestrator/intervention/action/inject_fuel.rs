@@ -32,7 +32,7 @@ mod tests {
             fuel_budget: springtale_cooperation::FuelAmount(fuel),
             ..Default::default()
         };
-        Formation::new(
+        Formation::new_disconnected(
             vec![FormationMember::new(AgentId::new(), vec!["github".into()])],
             IntentPattern::Execute { plan_id: None },
             constraints,

@@ -28,7 +28,7 @@ fn make_formation() -> Formation {
         fuel_budget: springtale_cooperation::FuelAmount(10_000),
         ..Default::default()
     };
-    Formation::new(
+    Formation::new_disconnected(
         members,
         IntentPattern::Execute { plan_id: None },
         constraints,
@@ -46,6 +46,7 @@ async fn rally_exhausted_plus_cbba_stalled_forces_dissolve() {
         incapacitated_agents: 0,
         operational_count: 2,
         cold_duration_ticks: 50,
+        escalation_reason: None,
     };
 
     let intervention = evaluator

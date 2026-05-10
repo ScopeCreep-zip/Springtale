@@ -24,7 +24,7 @@ mod tests {
     use springtale_cooperation::cadence::AgentId;
 
     fn formation() -> Formation {
-        Formation::new(
+        Formation::new_disconnected(
             vec![FormationMember::new(AgentId::new(), vec!["github".into()])],
             IntentPattern::Execute { plan_id: None },
             FormationConstraints::default(),

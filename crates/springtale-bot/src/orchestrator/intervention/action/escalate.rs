@@ -1,13 +1,17 @@
 use crate::cooperation::formation::Formation;
+use springtale_cooperation::cadence::ActionSummary;
 
 use super::super::types::InterventionError;
 
 /// Apply an `EscalateToUser`. Logs a high-severity event; the UI layer
 /// surfaces the summary through existing diagnostic channels.
-pub fn apply(formation: &Formation, summary: String) -> Result<(), InterventionError> {
+pub fn apply(
+    formation: &Formation,
+    summary: ActionSummary,
+) -> Result<(), InterventionError> {
     tracing::error!(
         formation_id = %formation.id.0,
-        %summary,
+        summary = %summary,
         "intervention: escalate to user"
     );
     Ok(())
@@ -23,7 +27,7 @@ mod tests {
     use springtale_cooperation::cadence::AgentId;
 
     fn formation() -> Formation {
-        Formation::new(
+        Formation::new_disconnected(
             vec![FormationMember::new(AgentId::new(), vec!["github".into()])],
             IntentPattern::Execute { plan_id: None },
             FormationConstraints::default(),

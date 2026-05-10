@@ -231,7 +231,7 @@ mod tests {
     use crate::cooperation::formation::FormationMember;
 
     fn test_formation() -> Formation {
-        Formation::new(
+        Formation::new_disconnected(
             vec![
                 FormationMember::new(AgentId::new(), vec!["connector-github".into()]),
                 FormationMember::new(AgentId::new(), vec!["connector-telegram".into()]),

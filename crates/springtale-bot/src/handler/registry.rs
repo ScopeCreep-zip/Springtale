@@ -5,6 +5,7 @@ use async_trait::async_trait;
 use tokio::sync::RwLock;
 
 use springtale_connector::registry::store::ConnectorRegistry;
+use springtale_connector::tier::WasmTier;
 use springtale_core::rule::engine::RuleEngine;
 use springtale_store::StorageBackend;
 
@@ -17,6 +18,22 @@ pub struct HandlerContext {
     pub store: Arc<dyn StorageBackend>,
     pub registry: Arc<RwLock<ConnectorRegistry>>,
     pub engine: Arc<RwLock<RuleEngine>>,
+    /// Shared capability bridge — the single dispatch point for
+    /// connector invocations from chat/command handlers (§16 /
+    /// Phase 17). Routing through the bridge guarantees sentinel
+    /// evaluation runs before every network call.
+    pub capability_bridge: springtale_runtime::CapabilityBridge,
+    /// Sentinel monitor — passed alongside the bridge so handlers that
+    /// need to call `dispatch_action` directly (rather than via the
+    /// bridge's bare `execute`) can uphold §6.10's "every action is
+    /// sentinel-gated" guarantee.
+    pub sentinel: Arc<springtale_sentinel::Sentinel>,
+    /// Momentum tier for this invocation (§16). `None` for non-formation
+    /// dispatch (chat commands, direct API); handlers default to the
+    /// permissive `CapabilityChecker::new()` tier (Warming). Formation-
+    /// scoped dispatch via `runtime::event_loop` sets it to the calling
+    /// formation's `MomentumTier` mapped through `momentum_to_wasm_tier`.
+    pub formation_tier: Option<WasmTier>,
 }
 
 /// Result returned by a handler.

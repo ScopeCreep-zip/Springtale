@@ -213,6 +213,13 @@ pub(super) async fn handle_incoming_message(
                     store: bot.store.clone(),
                     registry: bot.registry.clone(),
                     engine: bot.engine.clone(),
+                    capability_bridge: bot.capability_bridge.clone(),
+                    sentinel: bot.sentinel.clone(),
+                    // Chat-command path is not formation-scoped; connector
+                    // capability gating uses the permissive default tier.
+                    // Formation-scoped tick dispatch sets this to the
+                    // caller's mapped `MomentumTier` before invoking.
+                    formation_tier: None,
                 };
 
                 match handler.handle(&args, &ctx).await {
@@ -351,14 +358,23 @@ async fn ai_fallback(
     // existing capability sandbox. `tool_runner::run_with_tools` does
     // the full loop: complete → execute tools → feed results → repeat
     // until the model stops asking for tools or the iteration cap hits.
-    match crate::tool_runner::run_with_tools(
-        bot.ai_adapter.as_ref(),
-        &bot.registry,
-        messages,
+    // Chat-fallback path is not bound to any formation momentum, so
+    // tool dispatch uses the registry's default checker tier (Warming).
+    // Formation-scoped tool invocation from the tick processor will pass
+    // `Some(momentum_to_wasm_tier(tier))`.
+    let tool_deps = crate::tool_runner::ToolRunnerDeps {
+        adapter: bot.ai_adapter.as_ref(),
+        registry: &bot.registry,
+        bridge: &bot.capability_bridge,
+        sentinel: &bot.sentinel,
+    };
+    let tool_call = crate::tool_runner::ToolRunnerCall {
         options,
-        &bot.config.tool_policy,
-    )
-    .await
+        policy: &bot.config.tool_policy,
+        // Chat-fallback path is not formation-scoped.
+        formation_tier: None,
+    };
+    match crate::tool_runner::run_with_tools(tool_deps, messages, tool_call).await
     {
         Ok(response) if !response.content.is_empty() => Some(response.content),
         Ok(_) => {

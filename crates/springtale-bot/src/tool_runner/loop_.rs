@@ -8,6 +8,8 @@ use springtale_ai::{
     AiAdapter, AiError, AiOptions, AiRequest, AiResponse, ChatMessage, ToolCall, ToolPolicy,
 };
 use springtale_connector::registry::store::ConnectorRegistry;
+use springtale_connector::tier::WasmTier;
+use springtale_runtime::CapabilityBridge;
 use tokio::sync::RwLock;
 
 use super::builder::{collect_tools, split_tool_name};
@@ -32,22 +34,54 @@ pub enum ToolRunnerError {
 /// Returns the final `AiResponse` from the model. Tool-call turns are
 /// invisible to the caller — they only see the final text. The
 /// `messages` argument is consumed: it's appended-to during the loop.
+///
+/// `formation_tier` scopes connector dispatch through the capability
+/// checker (§16): `None` = permissive default (non-formation caller
+/// — CLI, chat command); `Some(tier)` = bind every tool call to that
+/// formation's momentum tier. The AI tool-use path only fires when a
+/// formation is at Fever (`MomentumState::can_ai_orchestrate`), so this
+/// is normally `Some(WasmTier::Fever)` in practice.
+/// Bundled dependencies for the tool-use loop. Grouping the four
+/// subsystems the runner touches (AI adapter, connector registry for
+/// tool discovery, capability bridge for dispatch, sentinel for §6.10
+/// gating) keeps `run_with_tools` at a signature the Rust project's
+/// style actually accepts, and makes the daemon wiring one
+/// `ToolRunnerDeps` clone instead of four coordinated parameters.
+pub struct ToolRunnerDeps<'a> {
+    pub adapter: &'a dyn AiAdapter,
+    pub registry: &'a Arc<RwLock<ConnectorRegistry>>,
+    pub bridge: &'a CapabilityBridge,
+    pub sentinel: &'a Arc<springtale_sentinel::Sentinel>,
+}
+
+/// Per-invocation parameters — the AI request knobs plus the optional
+/// formation tier binding. Kept separate from `ToolRunnerDeps` because
+/// these change per call while the deps are stable for the lifetime of
+/// the bot.
+pub struct ToolRunnerCall<'a> {
+    pub options: AiOptions,
+    pub policy: &'a ToolPolicy,
+    pub formation_tier: Option<WasmTier>,
+}
+
 pub async fn run_with_tools(
-    adapter: &dyn AiAdapter,
-    registry: &Arc<RwLock<ConnectorRegistry>>,
+    deps: ToolRunnerDeps<'_>,
     mut messages: Vec<ChatMessage>,
-    options: AiOptions,
-    policy: &ToolPolicy,
+    call: ToolRunnerCall<'_>,
 ) -> Result<AiResponse, ToolRunnerError> {
-    let tools = collect_tools(registry, policy).await;
-    let max_iterations = policy.effective_max_iterations();
+    // Tool list is still discovered via the registry (we need the
+    // declared actions); execution goes through `dispatch_action*` so
+    // sentinel evaluation (§6.10) runs before every network call.
+    let tools = collect_tools(deps.registry, call.policy).await;
+    let max_iterations = call.policy.effective_max_iterations();
 
     for iteration in 0..max_iterations {
         let request = AiRequest::Chat {
             messages: messages.clone(),
         };
-        let response = adapter
-            .complete_with_tools(request, options.clone(), &tools)
+        let response = deps
+            .adapter
+            .complete_with_tools(request, call.options.clone(), &tools)
             .await?;
 
         if response.tool_calls.is_empty() {
@@ -71,9 +105,15 @@ pub async fn run_with_tools(
         });
 
         // Execute each call and push a `tool` result message.
-        for call in &response.tool_calls {
-            let result = execute_tool_call(registry, call).await;
-            messages.push(result_message(call, result));
+        for tool_call in &response.tool_calls {
+            let result = execute_tool_call(
+                deps.bridge,
+                deps.sentinel,
+                tool_call,
+                call.formation_tier,
+            )
+            .await;
+            messages.push(result_message(tool_call, result));
         }
     }
 
@@ -87,8 +127,10 @@ struct ExecutedResult {
 }
 
 async fn execute_tool_call(
-    registry: &Arc<RwLock<ConnectorRegistry>>,
+    bridge: &CapabilityBridge,
+    sentinel: &Arc<springtale_sentinel::Sentinel>,
     call: &ToolCall,
+    formation_tier: Option<WasmTier>,
 ) -> ExecutedResult {
     let Some((connector, action)) = split_tool_name(&call.name) else {
         return ExecutedResult {
@@ -97,13 +139,37 @@ async fn execute_tool_call(
         };
     };
 
-    let reg = registry.read().await;
-    match reg.execute(connector, action, call.arguments.clone()).await {
-        Ok(result) => {
-            let payload = json!({
-                "message": result.message,
-                "output": result.output,
-            });
+    // Build a RunConnector action and dispatch through
+    // `dispatch_action[_with_tier]` so sentinel evaluation runs before
+    // the network call (§6.10 / Phase 17 / H1 fix).
+    let params = match &call.arguments {
+        serde_json::Value::Object(m) => m.clone(),
+        _ => {
+            let mut m = serde_json::Map::new();
+            m.insert("arguments".into(), call.arguments.clone());
+            m
+        }
+    };
+    let action = springtale_core::rule::action::Action::RunConnector {
+        connector: connector.to_owned(),
+        action: action.to_owned(),
+        params,
+    };
+    let outcome = match formation_tier {
+        Some(tier) => {
+            springtale_runtime::dispatch::dispatch_action_with_tier(
+                &action, bridge, sentinel, tier,
+            )
+            .await
+        }
+        None => {
+            springtale_runtime::dispatch::dispatch_action(&action, bridge, sentinel).await
+        }
+    };
+
+    match outcome {
+        Ok(msg) => {
+            let payload = json!({ "message": msg });
             let mut body = payload.to_string();
             if body.len() > MAX_TOOL_OUTPUT_BYTES {
                 body.truncate(MAX_TOOL_OUTPUT_BYTES);
@@ -111,7 +177,7 @@ async fn execute_tool_call(
             }
             ExecutedResult {
                 body,
-                is_error: !result.success,
+                is_error: false,
             }
         }
         Err(e) => ExecutedResult {

@@ -1,13 +1,17 @@
 use crate::cooperation::cadence::IntentPattern;
 use crate::cooperation::formation::Formation;
+use springtale_cooperation::cadence::DissolveReason;
 
 use super::super::types::InterventionError;
 
 /// Apply a `ForcedDissolve`. Rewrites intent to `Dissolve` so the runtime
 /// lifecycle layer removes the formation on its next sweep and every watcher
 /// observes the shutdown reason.
-pub fn apply(formation: &mut Formation, reason: String) -> Result<(), InterventionError> {
-    let logged_reason = reason.clone();
+pub fn apply(
+    formation: &mut Formation,
+    reason: DissolveReason,
+) -> Result<(), InterventionError> {
+    let logged_reason = reason.0.clone();
     formation.intent = IntentPattern::Dissolve { reason };
     formation.broadcast_context();
     tracing::warn!(
@@ -27,7 +31,7 @@ mod tests {
     use springtale_cooperation::cadence::AgentId;
 
     fn formation() -> Formation {
-        Formation::new(
+        Formation::new_disconnected(
             vec![FormationMember::new(AgentId::new(), vec!["github".into()])],
             IntentPattern::Execute { plan_id: None },
             FormationConstraints::default(),
@@ -37,10 +41,10 @@ mod tests {
     #[test]
     fn sets_dissolve_intent_with_reason() {
         let mut f = formation();
-        apply(&mut f, "cascade".to_owned()).unwrap();
+        apply(&mut f, "cascade".into()).unwrap();
         let IntentPattern::Dissolve { reason } = &f.intent else {
             panic!("expected Dissolve");
         };
-        assert_eq!(reason, "cascade");
+        assert_eq!(reason.as_ref(), "cascade");
     }
 }

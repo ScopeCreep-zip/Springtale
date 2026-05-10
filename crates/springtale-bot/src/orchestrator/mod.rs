@@ -12,7 +12,6 @@ pub mod subagent;
 
 // Orchestration boundary (§3)
 pub mod composer;
-pub mod constraints;
 pub mod intent;
 pub mod intervention;
 pub mod orchestrate;

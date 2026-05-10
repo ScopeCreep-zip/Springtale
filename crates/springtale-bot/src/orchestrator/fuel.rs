@@ -6,6 +6,7 @@ use super::error::OrchestratorError;
 ///
 /// Uses compare-and-swap (CAS) for safe concurrent consumption.
 /// NOT fetch_sub — that wraps on underflow (u64::MAX).
+#[derive(Debug)]
 pub struct FuelBudget {
     remaining: AtomicU64,
     initial: u64,

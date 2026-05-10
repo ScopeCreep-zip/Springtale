@@ -11,6 +11,8 @@ pub use springtale_cooperation::*;
 // Formation stays here — it's the composition layer binding cooperation
 // primitives to orchestrator infrastructure (AiAdapter, Blackboard, Fuel).
 pub mod blackboard;
+pub mod blackboard_router;
 pub mod formation;
 pub mod lifecycle;
+pub mod member_runner;
 pub mod task_dispatch;

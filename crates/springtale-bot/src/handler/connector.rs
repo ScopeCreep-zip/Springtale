@@ -27,33 +27,52 @@ impl ConnectorHandler {
 impl Handler for ConnectorHandler {
     async fn handle(&self, args: &str, ctx: &HandlerContext) -> Result<HandlerResult, BotError> {
         // Build input JSON from args. Simple key-value: pass args as "query" or "input".
-        let input = if args.is_empty() {
-            serde_json::json!({})
+        let params = if args.is_empty() {
+            serde_json::Map::new()
         } else {
-            serde_json::json!({ "query": args, "input": args })
+            let mut m = serde_json::Map::new();
+            m.insert("query".into(), serde_json::Value::String(args.into()));
+            m.insert("input".into(), serde_json::Value::String(args.into()));
+            m
         };
 
-        let registry = ctx.registry.read().await;
-        let result = registry
-            .execute(&self.connector_name, &self.action_name, input)
-            .await?;
+        // Route every chat-command-driven connector call through
+        // `dispatch_action*` — same path the rule-trigger, daemon-queue,
+        // and formation-tick paths use. That guarantees
+        // `sentinel.evaluate` runs before every network call
+        // (SECURITY.md §6.10) and, when a formation tier is bound on
+        // the context, the tier flows through the bridge to select the
+        // right per-tier WASM `InstancePre`.
+        let action = springtale_core::rule::action::Action::RunConnector {
+            connector: self.connector_name.clone(),
+            action: self.action_name.clone(),
+            params,
+        };
+        let dispatch_outcome = match ctx.formation_tier {
+            Some(tier) => {
+                springtale_runtime::dispatch::dispatch_action_with_tier(
+                    &action,
+                    &ctx.capability_bridge,
+                    &ctx.sentinel,
+                    tier,
+                )
+                .await
+            }
+            None => {
+                springtale_runtime::dispatch::dispatch_action(
+                    &action,
+                    &ctx.capability_bridge,
+                    &ctx.sentinel,
+                )
+                .await
+            }
+        };
 
-        if result.success {
-            let output_str = if result.output.is_string() {
-                result.output.as_str().unwrap_or(&result.message).to_owned()
-            } else if result.output.is_null() {
-                result.message
-            } else {
-                serde_json::to_string_pretty(&result.output)
-                    .unwrap_or_else(|_| result.message.clone())
-            };
-            Ok(HandlerResult {
-                response: output_str,
-            })
-        } else {
-            Ok(HandlerResult {
-                response: format!("Action failed: {}", result.message),
-            })
+        match dispatch_outcome {
+            Ok(msg) => Ok(HandlerResult { response: msg }),
+            Err(e) => Ok(HandlerResult {
+                response: format!("Action failed: {e}"),
+            }),
         }
     }
 

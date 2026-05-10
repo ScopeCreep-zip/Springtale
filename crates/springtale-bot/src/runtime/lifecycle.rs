@@ -102,6 +102,46 @@ pub struct Bot {
     pub(crate) cadence_reports_rx: tokio::sync::mpsc::Receiver<TickReport>,
     /// Receiver for formation commands from runtime operations.
     pub(crate) formation_cmd_rx: mpsc::Receiver<FormationCommand>,
+    /// Gossip substrate shared across every formation this bot spawns
+    /// (per spec §8). Single-process deployments inject
+    /// `InMemoryGossipStore`; cross-process deployments inject
+    /// `ChitchatGossipStore`. Defaults to the in-memory variant if the
+    /// builder doesn't override.
+    pub(crate) gossip_store: Arc<dyn springtale_cooperation::awareness::GossipStore>,
+    /// Shared cooperation role registry (§14.4 / Phase 21). Built-ins
+    /// plus any community roles contributed by installed connectors.
+    /// Role transformations in the tick loop look up the target role
+    /// by name here so community roles declared in connector manifests
+    /// can actually materialize on agents.
+    pub(crate) role_registry: Arc<springtale_cooperation::role::RoleRegistry>,
+    /// Shared capability bridge (§16 / Phase 17). The single dispatch
+    /// point for every connector invocation this bot triggers. Holds a
+    /// reference to the process-wide registry and bakes in the tier
+    /// scoping that `dispatch_action_with_tier` uses.
+    pub(crate) capability_bridge: springtale_runtime::CapabilityBridge,
+    /// L6 commander-override evaluator (`COOPERATION.md §3.4`). Pure rule
+    /// table — runs every tick over `InterventionSignals` and decides
+    /// whether to fire `ChangeIntent / InjectFuel / ForcedDissolve /
+    /// EscalateToUser`. The dispatch path lives in
+    /// `tick_steps/check_interventions.rs`.
+    pub(crate) intervention_evaluator:
+        crate::orchestrator::intervention::evaluator::RuleBasedEvaluator,
+    /// L6 commander-override executor — applies whichever variant the
+    /// evaluator returned to the formation.
+    pub(crate) intervention_action:
+        crate::orchestrator::intervention::action::DefaultInterventionAction,
+    /// F4: shared `runtime.canvas_tx` broadcast — `tick_steps/emit_canvas_update.rs`
+    /// publishes per-tick formation summaries here. `None` in tests / headless
+    /// builds; production wires it from `RuntimeState::canvas_tx`.
+    pub(crate) canvas_tx:
+        Option<tokio::sync::broadcast::Sender<springtale_core::canvas::CanvasUpdate>>,
+    /// Phase H2: shared `runtime.cooperation_tx` broadcast — every internal-
+    /// state cooperation event publishes a `CooperationEventEnvelope` here.
+    /// `None` in tests / headless builds; production wires it from
+    /// `RuntimeState::cooperation_tx`.
+    pub(crate) cooperation_tx: Option<
+        tokio::sync::broadcast::Sender<springtale_cooperation::CooperationEventEnvelope>,
+    >,
 }
 
 impl Bot {
@@ -127,6 +167,30 @@ pub struct BotBuilder {
     /// `Arc<RwLock<Vec<Formation>>>` that the built `Bot` will use. This
     /// is how the daemon wires `BotFormationReader` to read live data.
     formations_handle: Option<Arc<RwLock<Vec<Formation>>>>,
+    /// Injected gossip substrate (defaults to `InMemoryGossipStore`).
+    gossip_store: Option<Arc<dyn springtale_cooperation::awareness::GossipStore>>,
+    /// Injected role registry — REQUIRED. Callers must pass the
+    /// process-wide `RuntimeState::role_registry` so there is exactly
+    /// one registry holding built-ins plus community roles declared in
+    /// connector manifests (§14.4 / Phase 21). Silently making up a
+    /// fresh registry would let community roles registered in
+    /// `RuntimeState` be invisible to the bot's tick loop.
+    role_registry: Option<Arc<springtale_cooperation::role::RoleRegistry>>,
+    /// Injected capability bridge — REQUIRED. Callers must pass the
+    /// process-wide `RuntimeState::capability_bridge`. Silently
+    /// constructing a fresh bridge from `registry` creates a second
+    /// dispatch object; audit rules call out that as a fallback
+    /// duplication even though both wrap the same `Arc`. Enforce one
+    /// shared instance.
+    capability_bridge: Option<springtale_runtime::CapabilityBridge>,
+    /// F4: optional canvas broadcast sender. The daemon plumbs in
+    /// `RuntimeState::canvas_tx`; tests + headless leave None.
+    canvas_tx: Option<tokio::sync::broadcast::Sender<springtale_core::canvas::CanvasUpdate>>,
+    /// Phase H2: optional cooperation events broadcast sender. The daemon
+    /// plumbs in `RuntimeState::cooperation_tx`; tests + headless leave None.
+    cooperation_tx: Option<
+        tokio::sync::broadcast::Sender<springtale_cooperation::CooperationEventEnvelope>,
+    >,
 }
 
 impl BotBuilder {
@@ -143,7 +207,68 @@ impl BotBuilder {
             response_tx: None,
             formation_cmd_rx: None,
             formations_handle: None,
+            gossip_store: None,
+            role_registry: None,
+            capability_bridge: None,
+            canvas_tx: None,
+            cooperation_tx: None,
         }
+    }
+
+    /// F4: inject the runtime's canvas broadcast sender so the bot tick
+    /// loop's `emit_canvas_update` step publishes live formation state.
+    pub fn canvas_tx(
+        mut self,
+        tx: tokio::sync::broadcast::Sender<springtale_core::canvas::CanvasUpdate>,
+    ) -> Self {
+        self.canvas_tx = Some(tx);
+        self
+    }
+
+    /// Phase H2: inject the runtime's cooperation events broadcast sender so
+    /// every internal-state cooperation event reaches subscribers via the
+    /// SSE endpoint `/cooperation/events` (web) and the Tauri
+    /// `subscribe_cooperation` IPC channel (desktop).
+    pub fn cooperation_tx(
+        mut self,
+        tx: tokio::sync::broadcast::Sender<springtale_cooperation::CooperationEventEnvelope>,
+    ) -> Self {
+        self.cooperation_tx = Some(tx);
+        self
+    }
+
+    /// Inject a gossip substrate. Defaults to a fresh `InMemoryGossipStore`
+    /// if not set — the daemon (runtime::init) injects a process-shared
+    /// `ChitchatGossipStore` for cross-process federations.
+    pub fn gossip_store(
+        mut self,
+        store: Arc<dyn springtale_cooperation::awareness::GossipStore>,
+    ) -> Self {
+        self.gossip_store = Some(store);
+        self
+    }
+
+    /// Inject the shared role registry. The daemon should pass
+    /// `RuntimeState.role_registry` so community roles contributed by
+    /// connector manifests are reachable from the tick loop's role
+    /// transformation path.
+    pub fn role_registry(
+        mut self,
+        registry: Arc<springtale_cooperation::role::RoleRegistry>,
+    ) -> Self {
+        self.role_registry = Some(registry);
+        self
+    }
+
+    /// Inject the shared capability bridge. The daemon should pass
+    /// `RuntimeState.capability_bridge` so every connector invocation
+    /// across this bot flows through the same dispatch point.
+    pub fn capability_bridge(
+        mut self,
+        bridge: springtale_runtime::CapabilityBridge,
+    ) -> Self {
+        self.capability_bridge = Some(bridge);
+        self
     }
 
     /// Create and return a shared formations handle.
@@ -325,6 +450,32 @@ impl BotBuilder {
             .formations_handle
             .unwrap_or_else(|| Arc::new(RwLock::new(Vec::new())));
 
+        // Gossip substrate: default to in-memory if the builder didn't
+        // inject one. Single-process deployments never need more than
+        // this; cross-process deployments inject a chitchat-backed store.
+        let gossip_store: Arc<dyn springtale_cooperation::awareness::GossipStore> = self
+            .gossip_store
+            .unwrap_or_else(|| {
+                Arc::new(
+                    springtale_cooperation::awareness::InMemoryGossipStore::new(),
+                )
+            });
+
+        // Role registry and capability bridge are required — the daemon
+        // injects the shared instance from `RuntimeState` so there is
+        // exactly one of each per process. Tests must construct their
+        // own and pass them explicitly; there's no fallback path.
+        let role_registry = self.role_registry.ok_or_else(|| {
+            BotError::NotInitialized(
+                "role_registry required (pass RuntimeState::role_registry)".into(),
+            )
+        })?;
+        let capability_bridge = self.capability_bridge.ok_or_else(|| {
+            BotError::NotInitialized(
+                "capability_bridge required (pass RuntimeState::capability_bridge)".into(),
+            )
+        })?;
+
         Ok(Bot {
             router,
             handlers,
@@ -345,6 +496,19 @@ impl BotBuilder {
             cadence_rx,
             cadence_reports_rx,
             formation_cmd_rx,
+            gossip_store,
+            role_registry,
+            capability_bridge,
+            // L6 evaluator + executor are stateless rule tables / dispatcher
+            // structs; both `Default::default()` is safe and matches the
+            // rule thresholds in
+            // `crates/springtale-bot/src/orchestrator/intervention/evaluator/thresholds.rs`.
+            intervention_evaluator:
+                crate::orchestrator::intervention::evaluator::RuleBasedEvaluator::default(),
+            intervention_action:
+                crate::orchestrator::intervention::action::DefaultInterventionAction,
+            canvas_tx: self.canvas_tx,
+            cooperation_tx: self.cooperation_tx,
         })
     }
 }

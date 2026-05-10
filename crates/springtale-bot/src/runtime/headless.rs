@@ -58,6 +58,16 @@ impl HeadlessBot {
             store.clone(),
         ));
 
+        // Role registry + capability bridge are required injections on
+        // the Bot builder (no fallbacks). In headless tests we spin up
+        // a private instance of each — production daemon shares the
+        // `RuntimeState` copies.
+        let role_registry = std::sync::Arc::new(
+            springtale_cooperation::role::RoleRegistry::with_builtins(),
+        );
+        let capability_bridge =
+            springtale_runtime::CapabilityBridge::new(registry.clone());
+
         let bot = BotBuilder::new()
             .store(store.clone())
             .registry(registry)
@@ -68,6 +78,8 @@ impl HeadlessBot {
             .rule_rx(rule_rx)
             .response_tx(response_tx)
             .formation_cmd_rx(formation_cmd_rx)
+            .role_registry(role_registry)
+            .capability_bridge(capability_bridge)
             .build()
             .await?;
 

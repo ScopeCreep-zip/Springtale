@@ -33,4 +33,4 @@ pub mod builder;
 pub mod loop_;
 
 pub use builder::{TOOL_NAME_SEPARATOR, collect_tools, split_tool_name};
-pub use loop_::{ToolRunnerError, run_with_tools};
+pub use loop_::{run_with_tools, ToolRunnerCall, ToolRunnerDeps, ToolRunnerError};

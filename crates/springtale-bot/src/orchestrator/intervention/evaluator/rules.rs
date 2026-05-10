@@ -33,18 +33,31 @@ impl InterventionEvaluator for RuleBasedEvaluator {
     fn evaluate(&self, signals: &InterventionSignals) -> Option<Intervention> {
         let t = &self.thresholds;
 
+        // B1 audit-fix: supervisor-flagged escalation routes to L6
+        // immediately so it's not silently dropped (was the bug — B10
+        // sets `formation.escalation_pending`; B1 used to clear it
+        // without forwarding). Highest priority: when supervision asks
+        // for escalation, that is the user-visible event regardless of
+        // the other signals.
+        if let Some(reason) = signals.escalation_reason.as_ref() {
+            return Some(Intervention::EscalateToUser {
+                summary: format!("supervisor escalation: {reason}").into(),
+            });
+        }
+
         if t.is_terminal_incapacitation(signals.incapacitated_agents, signals.operational_count) {
             return Some(Intervention::ForcedDissolve {
                 reason: format!(
                     "{} of {} members incapacitated",
                     signals.incapacitated_agents, signals.operational_count
-                ),
+                )
+                .into(),
             });
         }
 
         if signals.cbba_stalled && signals.rally_tokens <= t.rally_dissolve_floor {
             return Some(Intervention::ForcedDissolve {
-                reason: "CBBA stalled with rally tokens exhausted".to_owned(),
+                reason: "CBBA stalled with rally tokens exhausted".into(),
             });
         }
 
@@ -52,7 +65,7 @@ impl InterventionEvaluator for RuleBasedEvaluator {
             && signals.rally_tokens <= t.rally_dissolve_floor
         {
             return Some(Intervention::ForcedDissolve {
-                reason: "cascade persists past rally budget".to_owned(),
+                reason: "cascade persists past rally budget".into(),
             });
         }
 
@@ -61,13 +74,14 @@ impl InterventionEvaluator for RuleBasedEvaluator {
                 summary: format!(
                     "formation stuck in Cold for {} ticks",
                     signals.cold_duration_ticks
-                ),
+                )
+                .into(),
             });
         }
 
         if signals.cascade_hits >= t.cascade_stabilize {
             return Some(Intervention::ChangeIntent(IntentPattern::Stabilize {
-                reason: "cascade detected — falling back to Stabilize intent".to_owned(),
+                reason: "cascade detected — falling back to Stabilize intent".into(),
             }));
         }
 
@@ -140,5 +154,25 @@ mod tests {
             ..Default::default()
         };
         assert!(evaluator().evaluate(&s).is_none());
+    }
+
+    /// B1 audit-fix regression test: supervisor-flagged escalation
+    /// must route to `EscalateToUser` even when other signals are
+    /// healthy. This was the silent-drop bug.
+    #[test]
+    fn supervisor_escalation_routes_to_user() {
+        let s = InterventionSignals {
+            escalation_reason: Some("supervisor budget exhausted".to_owned()),
+            operational_count: 4,
+            rally_tokens: 3,
+            ..Default::default()
+        };
+        let out = evaluator().evaluate(&s).unwrap();
+        match out {
+            Intervention::EscalateToUser { summary } => {
+                assert!(format!("{summary:?}").contains("supervisor budget exhausted"));
+            }
+            other => panic!("expected EscalateToUser, got {other:?}"),
+        }
     }
 }
