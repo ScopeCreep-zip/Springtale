@@ -36,7 +36,7 @@ impl Default for FormationContext {
     fn default() -> Self {
         Self {
             intent: IntentPattern::Stabilize {
-                reason: "assembling".to_owned(),
+                reason: "assembling".into(),
             },
             momentum_tier: MomentumTier::Cold,
             constraints: FormationConstraints::default(),

@@ -8,7 +8,7 @@ pub mod learning;
 pub mod store;
 pub mod types;
 
-pub use store::{SqliteStore, Store, StoreError};
+pub use store::{BackendStore, Store, StoreError};
 pub use types::{
     Convention, CooperationPattern, DomainEntry, SharedMentalModel, VocabularyEntry,
 };

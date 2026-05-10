@@ -3,8 +3,11 @@
 //! Per COOPERATION.pdf §20: "Work products must pass between agents.
 //! The handoff point is where most cooperative failures occur."
 
+pub mod deposit;
+pub mod flex_chain;
 pub mod transfer;
 mod types;
 
-pub use transfer::{dispatch_handoff, HandoffResult};
+pub use flex_chain::FlexibleChainPool;
+pub use transfer::{dispatch_handoff, dispatch_handoff_durable, HandoffResult};
 pub use types::{HandoffPayload, HandoffType};

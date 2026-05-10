@@ -40,6 +40,16 @@ pub enum CooperationError {
     Handoff(#[from] HandoffError),
     #[error(transparent)]
     Pacing(#[from] PacingError),
+    #[error(transparent)]
+    Store(#[from] springtale_store::StoreError),
+    #[error("gossip: {0}")]
+    Gossip(String),
+    #[error("liveness: {0}")]
+    Liveness(String),
+    #[error("capability bridge: {0}")]
+    Bridge(String),
+    #[error("role: {0}")]
+    Role(String),
     #[error("internal invariant violated: {0}")]
     Invariant(String),
 }

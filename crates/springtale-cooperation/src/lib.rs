@@ -4,7 +4,6 @@
 pub mod action;
 pub mod action_state;
 pub mod agent;
-pub mod agent_loop;
 pub mod attention;
 pub mod authority;
 pub mod awareness;
@@ -18,6 +17,7 @@ pub mod consensus;
 pub mod contract_net;
 pub mod dissemination;
 pub mod error;
+pub mod events;
 pub mod handoff;
 pub mod interference;
 pub mod layer;
@@ -43,10 +43,17 @@ pub mod utility;
 pub use action::{SubTask, SubTaskResult};
 pub use attention::AttentionEconomy;
 pub use awareness::{LocalAwareness, NeighborSnapshot};
-pub use cadence::{ActionDescriptor, AgentId, CadenceBus, IntentPattern, Tick, TickReport};
+pub use cadence::{
+    ActionDescriptor, ActionSummary, AgentId, CadenceBus, DissolveReason, IntentPattern,
+    PlanId, StabilizeReason, TaskDescriptor, Tick, TickReport,
+};
 pub use error::{
     AwarenessError, CadenceError, CommitError, ConsensusError, CooperationError, FormationError,
     HandoffError, InterferenceError, MomentumError, PacingError, RallyError, RecoveryError,
+};
+pub use events::{
+    CooperationEvent, CooperationEventEnvelope, InterferenceKind, InterventionKind,
+    ReplanOutcomeSummary, VoteOutcome,
 };
 pub use momentum::{MomentumState, MomentumTier};
 pub use context::FormationContext;

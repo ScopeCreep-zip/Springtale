@@ -3,18 +3,31 @@
 //!
 //! Per COOPERATION.md §20 handoff patterns map onto Phase K layers:
 //! - `Direct`               → L3 direct inbox (`routing::direct::DirectInbox`)
-//! - `EnvironmentMediated`  → L0/shared workspace (`state::Workspace`)
-//! - `FlexibleChain`        → L1 capability-indexed queue (`routing::index::CapabilityIndex`)
+//! - `EnvironmentMediated`  → durable [`deposit`](super::deposit) via store
+//!   (backed by `coop_deposits` per spec §20.3). The legacy in-memory
+//!   `Workspace::write` path remains available for callers that don't
+//!   need durability across process restarts.
+//! - `FlexibleChain`        → work-stealing [`FlexibleChainPool`](super::FlexibleChainPool)
+//!   via crossbeam-deque (per spec §20.4). The `CapabilityIndex` path
+//!   stays available for the pull-scheduler view.
 //! - `SequentialDependency` → logical obligation (no substrate; tracked by caller)
 //! - `InformationTransfer`  → L2 state broadcast (callers attach a `StateMessage`)
 
+use std::sync::Arc;
+use std::time::Duration;
+
+use springtale_store::StorageBackend;
+
 use crate::action::SubTask;
 use crate::cadence::AgentId;
+use crate::error::CooperationError;
 use crate::routing::direct::DirectInbox;
 use crate::routing::index::CapabilityIndex;
 use crate::routing::types::{PriorityTask, TaskId};
 use crate::state::Workspace;
 
+use super::deposit;
+use super::flex_chain::FlexibleChainPool;
 use super::HandoffType;
 
 #[derive(Debug)]
@@ -64,7 +77,7 @@ pub fn dispatch_handoff(
             };
             let task = subtask_from_payload(*sender, *receiver, &payload.schema, &payload.data);
             let task_id = task.id;
-            inbox.push(*receiver, task_id);
+            inbox.push(*receiver, task);
             HandoffResult::Delivered {
                 from: *sender,
                 to: *receiver,
@@ -146,6 +159,133 @@ pub fn dispatch_handoff(
             HandoffResult::Informed {
                 recipients: recipients.clone(),
             }
+        }
+    }
+}
+
+/// Production dispatch path — same semantics as [`dispatch_handoff`] but
+/// routes EnvironmentMediated through the durable store-backed
+/// [`deposit`](super::deposit) module (per spec §20.3) and FlexibleChain
+/// through the work-stealing [`FlexibleChainPool`] (per §20.4).
+///
+/// Callers pass the formation-level `Arc<dyn StorageBackend>` (for
+/// deposits with TTL) and the formation's `FlexibleChainPool` (for
+/// capability-scoped work stealing). A `DirectInbox` is also accepted
+/// for direct handoffs; sequential / information variants need no
+/// substrate and route identically to the sync path.
+///
+/// `env_ttl` controls the TTL of EnvironmentMediated deposits — `None`
+/// means the deposit persists until collected or swept manually.
+pub async fn dispatch_handoff_durable(
+    handoff: &HandoffType,
+    store: &Arc<dyn StorageBackend>,
+    pool: &FlexibleChainPool,
+    inbox: Option<&DirectInbox>,
+    env_ttl: Option<Duration>,
+) -> Result<HandoffResult, CooperationError> {
+    match handoff {
+        HandoffType::Direct {
+            sender,
+            receiver,
+            payload,
+        } => {
+            let Some(inbox) = inbox else {
+                return Ok(HandoffResult::Failed(
+                    "direct handoff needs DirectInbox substrate".into(),
+                ));
+            };
+            let task = subtask_from_payload(*sender, *receiver, &payload.schema, &payload.data);
+            let task_id = task.id;
+            inbox.push(*receiver, task);
+            Ok(HandoffResult::Delivered {
+                from: *sender,
+                to: *receiver,
+                task_id,
+            })
+        }
+
+        HandoffType::EnvironmentMediated {
+            depositor,
+            deposit_location,
+            payload,
+            ..
+        } => {
+            deposit::deposit(
+                store,
+                deposit_location.as_ref(),
+                &payload.data,
+                *depositor,
+                env_ttl,
+            )
+            .await?;
+            Ok(HandoffResult::Deposited {
+                location: deposit_location.to_string(),
+            })
+        }
+
+        HandoffType::FlexibleChain {
+            originator,
+            current_step,
+            total_steps,
+            payload,
+            next_capability_required,
+        } => {
+            // Clone the payload into the work-stealing pool so any agent
+            // holding `next_capability_required` can claim the next step.
+            let chain_payload = super::HandoffPayload {
+                data: payload.data.clone(),
+                schema: payload.schema.clone(),
+                produced_by: payload.produced_by.clone(),
+                consumable_by: payload.consumable_by.clone(),
+                expires: payload.expires,
+            };
+            pool.post(next_capability_required, chain_payload);
+
+            // Also materialize a SubTask id for observability — the pool
+            // carries the full payload; the returned TaskId lets callers
+            // trace the chain step through logs.
+            let task = subtask_for_chain(
+                *originator,
+                next_capability_required.clone(),
+                &payload.data,
+                *current_step + 1,
+            );
+            Ok(HandoffResult::Queued {
+                capability: task.target_connector.name.clone(),
+                step: *current_step + 1,
+                total_steps: *total_steps,
+                task_id: task.id,
+            })
+        }
+
+        HandoffType::SequentialDependency {
+            enabler,
+            enabled,
+            return_obligation,
+        } => Ok(HandoffResult::ObligationRegistered {
+            enabler: *enabler,
+            enabled: *enabled,
+            obligation: return_obligation.clone(),
+        }),
+
+        HandoffType::InformationTransfer {
+            recipients,
+            intelligence,
+            ..
+        } => {
+            if recipients.is_empty() {
+                return Ok(HandoffResult::Failed(
+                    "information transfer needs at least one recipient".into(),
+                ));
+            }
+            tracing::debug!(
+                intel_len = intelligence.len(),
+                recipients = recipients.len(),
+                "information handoff (durable path)"
+            );
+            Ok(HandoffResult::Informed {
+                recipients: recipients.clone(),
+            })
         }
     }
 }

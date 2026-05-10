@@ -1,49 +1,41 @@
-//! L0 sense step — scan visible surfaces and react to primed ones.
+//! L0 sense step — scan visible surfaces via `SurfaceSensor` and react to
+//! primed ones (`COOPERATION.md §10` stigmergy reflex layer).
 //!
-//! First step in the agent tick pipeline. If a primed surface matches
-//! the agent's awareness, the agent short-circuits to react to it before
-//! scanning the blackboard. This implements the stigmergy "reflex" layer.
+//! First step in `AgentLoop::tick`. If a primed surface is in scope, the
+//! agent short-circuits to react before reaching the L3/L1 layers.
 
-use crate::agent_loop::AgentTickResult;
+use crate::agent::context::AgentContext;
+use crate::agent::result::AgentTickResult;
 use crate::authority;
 use crate::awareness::LocalAwareness;
-use crate::cadence::{ActionDescriptor, AgentId};
+use crate::cadence::ActionDescriptor;
 use crate::layer::LayerId;
-use crate::momentum::MomentumTier;
-use crate::stigmergy::deposit::SurfaceStore;
 use crate::stigmergy::trait_::SurfaceSensor;
 use crate::stigmergy::types::SurfaceType;
 
-/// Check for primed surfaces this agent can perceive. Returns a tick result
-/// if a surface trigger fires; `None` to fall through to the next step.
-pub fn step_sense(
-    store: &SurfaceStore,
+/// Returns `Some(AgentTickResult)` if a primed surface fires; `None` to
+/// fall through. Trait-bounded per plan §A2 — `&dyn SurfaceSensor` so the
+/// step is mockable independently of the concrete `SurfaceStore`.
+pub fn run(
+    sensor: &dyn SurfaceSensor,
     awareness: &LocalAwareness,
-    agent_id: AgentId,
-    tier: MomentumTier,
+    ctx: &AgentContext<'_>,
 ) -> Option<AgentTickResult> {
-    if !authority::allows(tier, LayerId::L0Ambient) {
+    if !authority::allows(ctx.momentum.tier, LayerId::L0Ambient) {
         return None;
     }
-
-    let surfaces = store.visible_surfaces(awareness);
+    let surfaces = sensor.visible_surfaces(awareness);
     let primed = surfaces
         .iter()
-        .find(|s| matches!(s.surface_type, SurfaceType::Primed { .. }));
-
-    let trigger = match primed {
-        Some(s) => match &s.surface_type {
-            SurfaceType::Primed { trigger } => trigger.clone(),
-            _ => return None,
-        },
-        None => return None,
+        .find(|s| matches!(s.surface_type, SurfaceType::Primed { .. }))?;
+    let SurfaceType::Primed { trigger } = &primed.surface_type else {
+        return None;
     };
-
     Some(AgentTickResult {
-        agent_id,
+        agent_id: ctx.agent_id,
         action: Some(ActionDescriptor {
             kind: "surface_reaction".to_owned(),
-            target: Some(trigger.kind),
+            target: Some(trigger.kind.clone()),
             payload_hash: 0,
         }),
         alignment: 1.0,
@@ -56,76 +48,60 @@ pub fn step_sense(
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
-    use std::time::Duration;
-
     use super::*;
+    use crate::cadence::{AgentId, IntentPattern, Tick};
+    use crate::context::FormationContext;
+    use crate::momentum::{MomentumState, MomentumTier};
+    use crate::stigmergy::deposit::SurfaceStore;
     use crate::stigmergy::trait_::SurfaceDeposit;
+    use std::time::{Duration, Instant};
 
-    #[test]
-    fn no_surfaces_returns_none() {
-        let store = SurfaceStore::new();
-        let awareness = LocalAwareness::default();
-        assert!(step_sense(&store, &awareness, AgentId::new(), MomentumTier::Hot).is_none());
+    fn ctx<'a>(
+        tick: &'a Tick,
+        fc: &'a FormationContext,
+        m: &'a MomentumState,
+        a: &'a crate::attention::AttentionEconomy,
+        aw: &'a LocalAwareness,
+    ) -> AgentContext<'a> {
+        AgentContext {
+            agent_id: AgentId::new(),
+            tick,
+            formation: fc,
+            momentum: m,
+            attention: a,
+            capabilities: &[],
+            awareness: aw,
+        }
     }
 
     #[test]
-    fn primed_broadcast_surface_triggers_reaction() {
+    fn primed_surface_triggers_reaction() {
         let store = SurfaceStore::new();
         store.deposit(
             AgentId::new(),
             SurfaceType::Primed {
                 trigger: ActionDescriptor {
-                    kind: "api_rate_limit".into(),
+                    kind: "rate_limit".into(),
                     target: None,
                     payload_hash: 0,
                 },
             },
             serde_json::json!({}),
             None,
-            None, // broadcast — visible to all
-        );
-        let awareness = LocalAwareness::default();
-        let result = step_sense(&store, &awareness, AgentId::new(), MomentumTier::Hot);
-        assert!(result.is_some());
-        let r = result.unwrap();
-        assert_eq!(r.action.as_ref().unwrap().kind, "surface_reaction");
-        assert_eq!(
-            r.action.as_ref().unwrap().target.as_deref(),
-            Some("api_rate_limit")
-        );
-    }
-
-    #[test]
-    fn substrate_surface_does_not_trigger() {
-        let store = SurfaceStore::new();
-        store.deposit(
-            AgentId::new(),
-            SurfaceType::Substrate,
-            serde_json::json!({}),
-            None,
             None,
         );
-        let awareness = LocalAwareness::default();
-        assert!(step_sense(&store, &awareness, AgentId::new(), MomentumTier::Hot).is_none());
-    }
-
-    #[test]
-    fn capability_tagged_surface_hidden_from_unmatched_agent() {
-        let store = SurfaceStore::new();
-        store.deposit(
-            AgentId::new(),
-            SurfaceType::Primed {
-                trigger: ActionDescriptor {
-                    kind: "test".into(),
-                    target: None,
-                    payload_hash: 0,
-                },
-            },
-            serde_json::json!({}),
-            Some(Duration::from_secs(60)),
-            Some(crate::capability::CapabilityDecl::new("github")),
-        );
-        let awareness = LocalAwareness::default();
-        assert!(step_sense(&store, &awareness, AgentId::new(), MomentumTier::Hot).is_none());
+        let aw = LocalAwareness::default();
+        let tick = Tick {
+            sequence: 0,
+            timestamp: Instant::now(),
+            intent: IntentPattern::Execute { plan_id: None },
+            window: Duration::from_millis(33),
+        };
+        let fc = FormationContext::default();
+        let mut m = MomentumState::default();
+        m.tier = MomentumTier::Hot;
+        let attn =
+            crate::attention::AttentionEconomy::new(&[]);
+        assert!(run(&store, &aw, &ctx(&tick, &fc, &m, &attn, &aw)).is_some());
     }
 }

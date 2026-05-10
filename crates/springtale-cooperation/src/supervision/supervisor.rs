@@ -9,7 +9,7 @@
 //! supervisor pure and testable without needing a Formation reference.
 
 use crate::cadence::AgentId;
-use crate::rally::RallyState;
+use crate::rally::RallyTokens;
 
 use super::failure::{self, FailureCategory};
 use super::liveness::Liveness;
@@ -61,7 +61,7 @@ impl FormationSupervisor {
         liveness: Liveness,
         consecutive_failures: usize,
         cascade_signals: u32,
-        rally: &RallyState,
+        rally: &RallyTokens,
     ) -> Option<SupervisionAction> {
         let category = failure::classify(liveness, consecutive_failures, cascade_signals)?;
 
@@ -128,7 +128,7 @@ mod tests {
     #[test]
     fn healthy_member_no_action() {
         let sup = FormationSupervisor::default();
-        let rally = RallyState::default();
+        let rally = RallyTokens::new(3);
         let action = sup.check_member(
             AgentId::new(),
             Liveness::Alive,
@@ -142,7 +142,7 @@ mod tests {
     #[test]
     fn down_member_gets_mark_down() {
         let sup = FormationSupervisor::default();
-        let rally = RallyState::default();
+        let rally = RallyTokens::new(3);
         let action = sup.check_member(
             AgentId::new(),
             Liveness::Down { since_tick: 80 },
@@ -156,7 +156,7 @@ mod tests {
     #[test]
     fn cascade_triggers_replan() {
         let sup = FormationSupervisor::default();
-        let rally = RallyState::default();
+        let rally = RallyTokens::new(3);
         let action = sup.check_member(
             AgentId::new(),
             Liveness::Suspect { missed_ticks: 8 },
@@ -170,7 +170,7 @@ mod tests {
     #[test]
     fn five_failures_transforms_role() {
         let sup = FormationSupervisor::default();
-        let rally = RallyState::default();
+        let rally = RallyTokens::new(3);
         let action = sup.check_member(
             AgentId::new(),
             Liveness::Alive,
@@ -184,7 +184,7 @@ mod tests {
     #[test]
     fn partial_failure_with_rally_retries() {
         let sup = FormationSupervisor::default();
-        let rally = RallyState::default();
+        let rally = RallyTokens::new(3);
         let action = sup.check_member(
             AgentId::new(),
             Liveness::Alive,
@@ -198,10 +198,10 @@ mod tests {
     #[test]
     fn partial_failure_no_rally_escalates() {
         let sup = FormationSupervisor::default();
-        let mut rally = RallyState::default();
-        rally.consume_token();
-        rally.consume_token();
-        rally.consume_token(); // exhausted
+        let rally = RallyTokens::new(3);
+        rally.consume().unwrap();
+        rally.consume().unwrap();
+        rally.consume().unwrap(); // exhausted
 
         let action = sup.check_member(
             AgentId::new(),

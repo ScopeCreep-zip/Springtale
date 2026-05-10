@@ -11,9 +11,11 @@
 //! - `rate_limiter.rs` — governor GCRA wrapper + per-phase quota table
 
 pub mod manager;
+pub mod quotas;
 pub mod rate_limiter;
 pub mod types;
 
 pub use manager::PacingManager;
+pub use quotas::{actions_per_minute, quota_for_phase};
 pub use rate_limiter::GovernorRateLimiter;
 pub use types::{PacingPhase, PacingTransition};

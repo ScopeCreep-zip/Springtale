@@ -19,6 +19,24 @@ use serde::{Deserialize, Serialize};
 use tokio::sync::{RwLock, broadcast};
 
 /// Unique identifier for an agent in a formation.
+///
+/// Implementation: `uuid::Uuid` (v4 random). 128 bits, collision-resistant
+/// across processes, no allocator coordination required.
+///
+/// Design lineage (E11 audit-fix): the cooperation spec references the
+/// Bitsquid handle pattern — a 30-bit handle (22-bit slot index + 8-bit
+/// generation counter) packed into u64 with 34 bits reserved for engine
+/// extensions. That pattern is the right answer for a single-process
+/// engine where slot reuse is the dominant operation: you lock a slot
+/// table, hand out a 30-bit handle, and every dereference checks the
+/// generation counter to detect use-after-free. Springtale's transport
+/// is cross-process (and Phase 3 cross-machine via Veilid), so the
+/// engine boundary that makes Bitsquid handles cheap doesn't exist here
+/// — uuid v4 gives us global uniqueness without coordination, and the
+/// extra bits cost ~16B per agent which is negligible at RTS scale
+/// (10K agents = 160 KB of identifier overhead). If a future profile
+/// shows AgentId allocation as hot we can swap to a packed handle, but
+/// that's a transport-layer optimization not a cooperation-layer one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct AgentId(pub uuid::Uuid);
 
@@ -40,6 +58,84 @@ impl std::fmt::Display for AgentId {
     }
 }
 
+/// Macro to define a newtype wrapping `String` with `From<String>`,
+/// `From<&str>`, `Display`, and `AsRef<str>` so call sites can pass
+/// string literals and `&String` with a simple `.into()`.
+macro_rules! string_newtype {
+    ($(#[$meta:meta])* $name:ident) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+        pub struct $name(pub String);
+
+        impl From<String> for $name {
+            fn from(s: String) -> Self { Self(s) }
+        }
+
+        impl From<&str> for $name {
+            fn from(s: &str) -> Self { Self(s.to_owned()) }
+        }
+
+        impl From<&String> for $name {
+            fn from(s: &String) -> Self { Self(s.clone()) }
+        }
+
+        impl std::fmt::Display for $name {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                std::fmt::Display::fmt(&self.0, f)
+            }
+        }
+
+        impl AsRef<str> for $name {
+            fn as_ref(&self) -> &str { &self.0 }
+        }
+
+        impl std::ops::Deref for $name {
+            type Target = str;
+            fn deref(&self) -> &str { &self.0 }
+        }
+
+        impl PartialEq<str> for $name {
+            fn eq(&self, other: &str) -> bool { self.0 == other }
+        }
+
+        impl PartialEq<&str> for $name {
+            fn eq(&self, other: &&str) -> bool { self.0 == *other }
+        }
+
+        impl PartialEq<String> for $name {
+            fn eq(&self, other: &String) -> bool { self.0 == *other }
+        }
+    };
+}
+
+string_newtype!(
+    /// What the formation is trying to observe or act on.
+    /// Per COOPERATION.md §3.2 — typed wrapper so call sites can't
+    /// accidentally swap a target with a reason.
+    TaskDescriptor
+);
+
+string_newtype!(
+    /// Reason a formation entered `Stabilize` intent (defensive hold).
+    StabilizeReason
+);
+
+string_newtype!(
+    /// Reason a formation is dissolving.
+    DissolveReason
+);
+
+string_newtype!(
+    /// Human-readable summary of an escalated action.
+    ActionSummary
+);
+
+string_newtype!(
+    /// Identifier for a stored execution plan (opaque string — callers
+    /// may use a UUID, a semantic name, or any other stable identifier).
+    PlanId
+);
+
 /// What the formation should accomplish (not how).
 ///
 /// Per COOPERATION.pdf §3.2: "Intent describes WHAT, never HOW.
@@ -50,22 +146,22 @@ impl std::fmt::Display for AgentId {
 pub enum IntentPattern {
     /// Gather information. Sensor agents activate.
     /// Patapon: PATA PATA PATA PON. Siege: Drone phase.
-    Reconnoiter { target: String },
+    Reconnoiter { target: TaskDescriptor },
 
     /// Execute against a known target.
     /// Patapon: PON PON PATA PON. Total War: Charge.
-    Execute { plan_id: Option<String> },
+    Execute { plan_id: Option<PlanId> },
 
     /// Hold current state. Defensive agents activate.
     /// Patapon: CHAKA CHAKA PATA PON. Total War: Guard mode.
-    Stabilize { reason: String },
+    Stabilize { reason: StabilizeReason },
 
     /// Maximum commitment to singular objective.
     /// Patapon: DON DON CHAKA CHAKA. Army of Two: Overkill.
-    Surge { objective: String },
+    Surge { objective: TaskDescriptor },
 
     /// Graceful wind-down.
-    Dissolve { reason: String },
+    Dissolve { reason: DissolveReason },
 }
 
 /// A single tick of the cadence bus.
@@ -87,7 +183,7 @@ pub struct Tick {
 /// and target for meaningful interference detection. Two agents both
 /// doing "write" to different targets isn't a conflict; two agents
 /// writing the SAME target is.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ActionDescriptor {
     /// Action kind (e.g., "send_message", "write_file", "read_issues").
     pub kind: String,
@@ -142,7 +238,7 @@ impl CadenceBus {
         let bus = Self {
             tick_interval,
             current_intent: Arc::new(RwLock::new(IntentPattern::Stabilize {
-                reason: "formation assembling".to_owned(),
+                reason: "formation assembling".into(),
             })),
             tick_counter: AtomicU64::new(0),
             tx,

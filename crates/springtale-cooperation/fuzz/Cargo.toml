@@ -1,0 +1,29 @@
+[package]
+name = "springtale-cooperation-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2024"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+serde_json = "1"
+springtale-cooperation = { path = ".." }
+
+[[bin]]
+name = "fuzz_consensus_vote"
+path = "fuzz_targets/fuzz_consensus_vote.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "fuzz_handoff_payload"
+path = "fuzz_targets/fuzz_handoff_payload.rs"
+test = false
+doc = false
+bench = false
+
+[workspace]

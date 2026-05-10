@@ -212,8 +212,10 @@ impl PacingManager {
         self.set_phase(PacingPhase::Disruption { event });
     }
 
-    /// Set a new phase and rebuild the rate limiter with the corresponding
-    /// GCRA quota. All phase transitions go through here.
+    /// Set a new phase and atomically swap the rate-limiter quota via
+    /// `ArcSwap`. All phase transitions go through here. Concurrent
+    /// readers (per-member runner tasks) see the new quota on their next
+    /// `allow_action()` call without locking — the swap is lock-free.
     fn set_phase(&mut self, phase: PacingPhase) {
         self.rate_limiter.rebuild(&phase);
         self.current_phase = phase;

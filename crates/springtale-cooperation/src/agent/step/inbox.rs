@@ -1,75 +1,66 @@
-//! L3 direct-handoff step — poll the agent's DirectInbox for tasks assigned
-//! specifically to them. Takes priority over the general scan (L1).
+//! L3 direct-handoff step (`COOPERATION.md §20.1` + §20.4) — pulls work
+//! from the agent's per-substrate inbox sources via `TaskRouter`. Direct
+//! assignments preempt the routine scan.
+//!
+//! Three sources, in priority order:
+//! 1. **Direct inbox** (`§20.1`) — `TaskRouter::poll_assigned` reads the
+//!    per-agent FIFO populated by `HandoffType::Direct` dispatches, then
+//!    falls back to blackboard tasks tagged `assigned_to == agent` from
+//!    the CBBA replan path.
+//! 2. **FlexibleChain steal** (`§20.4`) — `TaskRouter::try_steal_chain`
+//!    consults the per-capability work-stealing pool for chain steps any
+//!    capable agent can pick up. The default trait impl returns `None`
+//!    so test mocks don't need to wire a flex-chain substrate.
+//!
+//! EnvironmentMediated handoff (`§20.3`) is consumed by L0 sense via the
+//! stigmergy surface store, not here.
+//!
+//! Trait-bounded per plan §A2 — `&dyn TaskRouter` so the step is mockable
+//! independently of the concrete `BlackboardRouter`.
 
-use crate::agent_loop::AgentTickResult;
+use crate::agent::context::AgentContext;
+use crate::agent::result::AgentTickResult;
 use crate::authority;
-use crate::cadence::{ActionDescriptor, AgentId};
+use crate::cadence::ActionDescriptor;
 use crate::layer::LayerId;
-use crate::momentum::MomentumTier;
-use crate::routing::direct::DirectInbox;
-use crate::routing::types::TaskId;
+use crate::routing::trait_::TaskRouter;
 
-/// Check if a task has been directly assigned to this agent.
-///
-/// Returns `Some(AgentTickResult)` with the task id if one is waiting;
-/// `None` to fall through to the L1 scan. The caller (event loop) resolves
-/// the task id back to a SubTask via the CapabilityIndex or blackboard.
-pub fn step_check_inbox(
-    inbox: &DirectInbox,
-    agent_id: AgentId,
-    tier: MomentumTier,
-) -> Option<(AgentTickResult, TaskId)> {
-    if !authority::allows(tier, LayerId::L3Direct) {
+pub async fn run(
+    router: &dyn TaskRouter,
+    ctx: &AgentContext<'_>,
+) -> Option<AgentTickResult> {
+    if !authority::allows(ctx.momentum.tier, LayerId::L3Direct) {
         return None;
     }
-
-    let task_id = inbox.poll(agent_id)?;
-
-    Some((
-        AgentTickResult {
-            agent_id,
+    if let Some(assigned) = router.poll_assigned(ctx.agent_id).await {
+        let target = assigned.task.target_connector.name.clone();
+        return Some(AgentTickResult {
+            agent_id: ctx.agent_id,
             action: Some(ActionDescriptor {
                 kind: "direct_handoff".to_owned(),
-                target: Some(task_id.to_string()),
+                target: Some(target),
                 payload_hash: 0,
             }),
             alignment: 1.0,
             interference_with: vec![],
-            task_claimed: None,
+            task_claimed: Some(assigned.task),
             task_completed: false,
-        },
-        task_id,
-    ))
-}
-
-#[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn empty_inbox_returns_none() {
-        let inbox = DirectInbox::new();
-        assert!(step_check_inbox(&inbox, AgentId::new(), MomentumTier::Hot).is_none());
+        });
     }
-
-    #[test]
-    fn assigned_task_returned() {
-        let inbox = DirectInbox::new();
-        let agent = AgentId::new();
-        let tid = uuid::Uuid::new_v4();
-        inbox.push(agent, tid);
-        let (result, returned_id) =
-            step_check_inbox(&inbox, agent, MomentumTier::Hot).unwrap();
-        assert_eq!(returned_id, tid);
-        assert_eq!(result.agent_id, agent);
-    }
-
-    #[test]
-    fn cold_tier_blocks_direct_handoff() {
-        let inbox = DirectInbox::new();
-        let agent = AgentId::new();
-        inbox.push(agent, uuid::Uuid::new_v4());
-        assert!(step_check_inbox(&inbox, agent, MomentumTier::Cold).is_none());
-    }
+    let stolen = router
+        .try_steal_chain(ctx.capabilities, ctx.agent_id)
+        .await?;
+    let target = stolen.task.target_connector.name.clone();
+    Some(AgentTickResult {
+        agent_id: ctx.agent_id,
+        action: Some(ActionDescriptor {
+            kind: "flex_chain_steal".to_owned(),
+            target: Some(target),
+            payload_hash: 0,
+        }),
+        alignment: 1.0,
+        interference_with: vec![],
+        task_claimed: Some(stolen.task),
+        task_completed: false,
+    })
 }

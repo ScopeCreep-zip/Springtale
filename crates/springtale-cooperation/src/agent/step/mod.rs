@@ -8,5 +8,6 @@
 pub mod inbox;
 pub mod react;
 pub mod respond_cfp;
+pub mod sacrifice;
 pub mod scan;
 pub mod sense;

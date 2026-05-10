@@ -4,10 +4,38 @@
 //! Per CDDA: `field_type.json` defines field-to-field transformations.
 //! Per DOS2: surface combos are engine-checked at stamp time.
 //!
-//! Our table is a Vec<SurfaceReaction> scanned linearly — formations
-//! have O(10) surface types, not O(10K) like Noita's full material sim.
+//! Our table is a `Vec<SurfaceReaction>` scanned linearly — cooperation
+//! formations have O(10) canonical surface types, not O(10K) like Noita's
+//! full material sim.
 
 use super::reaction::{ReactionOutput, SurfaceReaction};
+
+/// Canonical cooperation surface vocabulary. Every tag on both sides of a
+/// reaction is produced by a real subsystem elsewhere in this crate and
+/// consumed by another real subsystem — no decorative entries.
+///
+/// | Tag              | Produced by                    | Consumed by        |
+/// |------------------|--------------------------------|--------------------|
+/// | `fresh_input`    | external event arrival         | §10 / §9           |
+/// | `high_attention` | `attention::AttentionEconomy`  | §10 composition    |
+/// | `urgent_response`| composition result             | routing/dispatch   |
+/// | `rally_beacon`   | `rally::RallyTokens` consumption | recovery agents  |
+/// | `fatigue`        | `pacing::PacingState` phase    | damper of signals  |
+/// | `cooldown`       | post-interference dampener     | routing suppressor |
+/// | `handoff_ready`  | handoff producer completion    | §20 FlexibleChain  |
+/// | `role_vacancy`   | transformation trigger         | §14 recomposition  |
+/// | `consensus_call` | consensus proposal broadcast   | §11 voter agents   |
+pub mod tags {
+    pub const FRESH_INPUT: &str = "fresh_input";
+    pub const HIGH_ATTENTION: &str = "high_attention";
+    pub const URGENT_RESPONSE: &str = "urgent_response";
+    pub const RALLY_BEACON: &str = "rally_beacon";
+    pub const FATIGUE: &str = "fatigue";
+    pub const COOLDOWN: &str = "cooldown";
+    pub const HANDOFF_READY: &str = "handoff_ready";
+    pub const ROLE_VACANCY: &str = "role_vacancy";
+    pub const CONSENSUS_CALL: &str = "consensus_call";
+}
 
 /// Lookup table for surface reactions.
 ///
@@ -25,65 +53,83 @@ impl ReactionTable {
         }
     }
 
-    /// Create a table with the default ecology-inspired reactions.
-    pub fn default_ecology() -> Self {
-        let mut table = Self::new();
+    /// Canonical Springtale reaction table. Every reaction's inputs and
+    /// outputs belong to the 9-tag cooperation vocabulary. Game-literal
+    /// tags (water, fire, oil, lava, electricity) are NOT present —
+    /// Springtale's surfaces model coordination signals, not physics.
+    pub fn cooperation_defaults() -> Self {
+        use tags::*;
+        let mut t = Self::new();
 
-        // DOS2-inspired: water + fire = steam
-        table.add(SurfaceReaction::new(
-            "water",
-            "fire",
+        // fresh_input + high_attention → urgent_response.
+        // (Input becomes actionable when attention is locked onto it;
+        //  both inputs are consumed because attention and input are now
+        //  jointly represented by the urgent_response surface.)
+        t.add(SurfaceReaction::new(
+            FRESH_INPUT,
+            HIGH_ATTENTION,
             ReactionOutput::Transform {
-                new_surface: "steam".to_owned(),
+                new_surface: URGENT_RESPONSE.to_owned(),
             },
         ));
 
-        // DOS2-inspired: oil + fire = explosion (fire spreads)
-        table.add(SurfaceReaction::new(
-            "oil",
-            "fire",
-            ReactionOutput::ConsumeA {
-                modify_b: Some("inferno".to_owned()),
-            },
-        ));
-
-        // DOS2-inspired: water + electricity = shocked_water
-        table.add(SurfaceReaction::new(
-            "water",
-            "electricity",
+        // rally_beacon + fatigue → cooldown.
+        // (Helldivers medic insight: rallying an exhausted agent doesn't
+        //  surge them forward — it dampens the beacon so other agents
+        //  can pick up. The beacon is consumed, fatigue is replaced.)
+        t.add(SurfaceReaction::new(
+            RALLY_BEACON,
+            FATIGUE,
             ReactionOutput::Transform {
-                new_surface: "shocked_water".to_owned(),
+                new_surface: COOLDOWN.to_owned(),
             },
         ));
 
-        // Noita-inspired: lava + water = rock + steam
-        table.add(SurfaceReaction::new(
-            "lava",
-            "water",
-            ReactionOutput::Spawn {
-                new_surface: "rock".to_owned(),
-            },
-        ));
-
-        // Springtail ecology: alarm_pheromone + food_trail = recruitment_surge
-        table.add(SurfaceReaction::new(
-            "alarm_pheromone",
-            "food_trail",
+        // rally_beacon + high_attention → urgent_response.
+        // (DRG laser-pointer + aggro = coordinated strike. Attention
+        //  acknowledges the rally and the formation converges.)
+        t.add(SurfaceReaction::new(
+            RALLY_BEACON,
+            HIGH_ATTENTION,
             ReactionOutput::Transform {
-                new_surface: "recruitment_surge".to_owned(),
+                new_surface: URGENT_RESPONSE.to_owned(),
             },
         ));
 
-        // Springtail ecology: decay_marker + moisture = fungal_bloom
-        table.add(SurfaceReaction::new(
-            "decay_marker",
-            "moisture",
-            ReactionOutput::Spawn {
-                new_surface: "fungal_bloom".to_owned(),
+        // handoff_ready + role_vacancy → consensus_call.
+        // (A producer finished output AND a role opened; the formation
+        //  must decide the assignee via §11 consensus rather than
+        //  first-come-first-served.)
+        t.add(SurfaceReaction::new(
+            HANDOFF_READY,
+            ROLE_VACANCY,
+            ReactionOutput::Transform {
+                new_surface: CONSENSUS_CALL.to_owned(),
             },
         ));
 
-        table
+        // urgent_response + cooldown → urgent_response survives,
+        // cooldown consumed. Urgency overrides dampening at the moment
+        // the urgency is stamped; cooldown re-applies on the next event.
+        t.add(SurfaceReaction::new(
+            URGENT_RESPONSE,
+            COOLDOWN,
+            ReactionOutput::ConsumeB { modify_a: None },
+        ));
+
+        // fatigue + fresh_input → cooldown.
+        // (Tired agents defer incoming work. Input is consumed, fatigue
+        //  is transformed into the dampening cooldown surface so future
+        //  signals within the cooldown window get suppressed.)
+        t.add(SurfaceReaction::new(
+            FATIGUE,
+            FRESH_INPUT,
+            ReactionOutput::Transform {
+                new_surface: COOLDOWN.to_owned(),
+            },
+        ));
+
+        t
     }
 
     /// Add a reaction rule.
@@ -109,50 +155,68 @@ impl ReactionTable {
 
 impl Default for ReactionTable {
     fn default() -> Self {
-        Self::new()
+        Self::cooperation_defaults()
     }
 }
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
+    use super::tags::*;
     use super::*;
 
     #[test]
     fn empty_table_returns_none() {
         let table = ReactionTable::new();
-        assert!(table.lookup("water", "fire").is_none());
+        assert!(table.lookup(FRESH_INPUT, HIGH_ATTENTION).is_none());
     }
 
     #[test]
-    fn default_ecology_has_reactions() {
-        let table = ReactionTable::default_ecology();
+    fn cooperation_defaults_populated() {
+        let table = ReactionTable::cooperation_defaults();
         assert!(!table.is_empty());
-        assert!(table.len() >= 4);
+        assert!(table.len() >= 6);
     }
 
     #[test]
-    fn lookup_finds_water_fire() {
-        let table = ReactionTable::default_ecology();
-        let r = table.lookup("water", "fire").unwrap();
-        assert!(matches!(r.output, ReactionOutput::Transform { .. }));
+    fn fresh_input_plus_attention_produces_urgent_response() {
+        let table = ReactionTable::cooperation_defaults();
+        let r = table.lookup(FRESH_INPUT, HIGH_ATTENTION).unwrap();
+        match &r.output {
+            ReactionOutput::Transform { new_surface } => {
+                assert_eq!(new_surface, URGENT_RESPONSE);
+            }
+            other => panic!("expected Transform, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn rally_plus_fatigue_yields_cooldown() {
+        let table = ReactionTable::cooperation_defaults();
+        let r = table.lookup(RALLY_BEACON, FATIGUE).unwrap();
+        match &r.output {
+            ReactionOutput::Transform { new_surface } => {
+                assert_eq!(new_surface, COOLDOWN);
+            }
+            other => panic!("expected Transform, got {other:?}"),
+        }
     }
 
     #[test]
     fn lookup_order_independent() {
-        let table = ReactionTable::default_ecology();
-        assert!(table.lookup("fire", "water").is_some());
-        assert!(table.lookup("water", "fire").is_some());
+        let table = ReactionTable::cooperation_defaults();
+        assert!(table.lookup(FRESH_INPUT, HIGH_ATTENTION).is_some());
+        assert!(table.lookup(HIGH_ATTENTION, FRESH_INPUT).is_some());
     }
 
     #[test]
     fn custom_reaction_added() {
         let mut table = ReactionTable::new();
         table.add(SurfaceReaction::new(
-            "acid",
-            "metal",
+            "custom_a",
+            "custom_b",
             ReactionOutput::ConsumeB { modify_a: None },
         ));
-        assert!(table.lookup("acid", "metal").is_some());
+        assert!(table.lookup("custom_a", "custom_b").is_some());
     }
 }

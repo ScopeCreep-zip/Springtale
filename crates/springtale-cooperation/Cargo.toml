@@ -7,23 +7,63 @@ repository.workspace = true
 description = "Game-informed cooperative multi-agent coordination primitives."
 
 [dependencies]
-springtale-core = { workspace = true }
-async-trait     = { workspace = true }
-serde           = { workspace = true }
-serde_json      = { workspace = true }
-thiserror       = { workspace = true }
-tracing         = { workspace = true }
-chrono          = { workspace = true }
-uuid            = { workspace = true }
-tokio           = { workspace = true }
-arc-swap        = { workspace = true }
-dashmap         = { workspace = true }
-petgraph        = { workspace = true }
-governor        = { workspace = true }
-rusqlite        = { workspace = true }
-dyn-clone       = { workspace = true }
-chitchat        = { workspace = true }
-foca            = { workspace = true }
+springtale-core  = { workspace = true }
+springtale-store = { workspace = true }
+async-trait      = { workspace = true }
+serde            = { workspace = true }
+serde_json       = { workspace = true }
+thiserror        = { workspace = true }
+tracing          = { workspace = true }
+chrono           = { workspace = true }
+uuid             = { workspace = true }
+tokio            = { workspace = true }
+tokio-stream     = { workspace = true }
+arc-swap         = { workspace = true }
+dashmap          = { workspace = true }
+petgraph         = { workspace = true }
+governor         = { workspace = true }
+rusqlite         = { workspace = true }
+dyn-clone        = { workspace = true }
+chitchat         = { workspace = true }
+foca             = { workspace = true }
+crossbeam-deque  = { workspace = true }
+bytes            = { workspace = true }
+bincode          = { workspace = true }
+# Local rand 0.9 pin — foca 1.0 internally requires rand 0.9 (its
+# `Rng` trait moved to `rand::rng::Rng` in that release). The workspace
+# still ships rand 0.8 for the rest of the tree; cargo resolves the two
+# side-by-side. Once every crate migrates we can delete this override.
+rand             = { version = "0.9", default-features = false, features = ["std", "std_rng", "os_rng"] }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
+criterion = { workspace = true }
+proptest = { workspace = true }
+
+# Criterion benches per COOPERATION_IMPLEMENTATION_PLAN.md §10.6 + §16.8:
+# four benches at formation sizes 10 / 100 / 1000:
+#   - formation_scaling:  tick processor (interference detector)
+#   - cadence_throughput: broadcast fan-out under N subscribers
+#   - consensus_latency:  ConsensusVote::resolve tally cost
+#   - environment_rcu:    concurrent writes through SharedEnvironment
+#   - rally_cascade:      cascade detection over awareness + reports
+# Run with `cargo bench -p springtale-cooperation`.
+[[bench]]
+name = "formation_scaling"
+harness = false
+
+[[bench]]
+name = "cadence_throughput"
+harness = false
+
+[[bench]]
+name = "consensus_latency"
+harness = false
+
+[[bench]]
+name = "environment_rcu"
+harness = false
+
+[[bench]]
+name = "rally_cascade"
+harness = false

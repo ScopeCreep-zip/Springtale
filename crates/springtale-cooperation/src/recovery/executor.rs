@@ -15,7 +15,7 @@ use crate::awareness::LocalAwareness;
 use crate::cadence::AgentId;
 use crate::capability::CapabilityDecl;
 use crate::recovery::{DistressSignal, RecoveryAction};
-use crate::sacrifice::evaluator::FormationSnapshot;
+use crate::sacrifice::scorer::FormationSnapshot;
 use crate::utility::evaluator::{Linear, ResponseCurve, Sigmoid};
 use crate::utility::picker::{Highest, Picker};
 

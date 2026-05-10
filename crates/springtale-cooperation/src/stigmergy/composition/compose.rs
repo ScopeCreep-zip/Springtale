@@ -172,55 +172,54 @@ mod tests {
 
     #[test]
     fn transform_consumes_both_spawns_new() {
-        let table = ReactionTable::default_ecology();
+        use crate::stigmergy::composition::table::tags::*;
+        let table = ReactionTable::cooperation_defaults();
         let agent = AgentId::new();
-        let existing = vec![make_surface("water", agent)];
-        let incoming = make_surface("fire", agent);
+        let existing = vec![make_surface(FRESH_INPUT, agent)];
+        let incoming = make_surface(HIGH_ATTENTION, agent);
 
         let result = compose_surfaces(&existing, &incoming, &table, agent);
         assert_eq!(result.consumed.len(), 1);
         assert_eq!(result.spawned.len(), 1);
         let spawned_data = &result.spawned[0].data;
-        assert_eq!(spawned_data["origin"], "steam");
+        assert_eq!(spawned_data["origin"], URGENT_RESPONSE);
     }
 
     #[test]
-    fn consume_a_removes_existing() {
-        let table = ReactionTable::default_ecology();
+    fn consume_b_retains_existing() {
+        use crate::stigmergy::composition::table::tags::*;
+        let table = ReactionTable::cooperation_defaults();
         let agent = AgentId::new();
-        let existing = vec![make_surface("oil", agent)];
-        let incoming = make_surface("fire", agent);
+        // urgent_response + cooldown → urgent_response survives (ConsumeB).
+        let existing = vec![make_surface(URGENT_RESPONSE, agent)];
+        let incoming = make_surface(COOLDOWN, agent);
 
         let result = compose_surfaces(&existing, &incoming, &table, agent);
-        assert_eq!(result.consumed.len(), 1);
-    }
-
-    #[test]
-    fn spawn_keeps_both_adds_new() {
-        let table = ReactionTable::default_ecology();
-        let agent = AgentId::new();
-        let existing = vec![make_surface("lava", agent)];
-        let incoming = make_surface("water", agent);
-
-        let result = compose_surfaces(&existing, &incoming, &table, agent);
-        assert!(!result.spawned.is_empty());
-        assert!(result.surviving.iter().any(|s| surface_tag(&s.surface_type) == "lava"));
+        assert!(result
+            .surviving
+            .iter()
+            .any(|s| surface_tag(&s.surface_type) == URGENT_RESPONSE));
+        assert!(result.consumed.is_empty()); // existing survives under ConsumeB
     }
 
     #[test]
     fn multiple_existing_surfaces_checked_pairwise() {
-        let table = ReactionTable::default_ecology();
+        use crate::stigmergy::composition::table::tags::*;
+        let table = ReactionTable::cooperation_defaults();
         let agent = AgentId::new();
         let existing = vec![
-            make_surface("rock", agent),
-            make_surface("water", agent),
+            make_surface("other_signal", agent),
+            make_surface(FRESH_INPUT, agent),
         ];
-        let incoming = make_surface("fire", agent);
+        let incoming = make_surface(HIGH_ATTENTION, agent);
 
         let result = compose_surfaces(&existing, &incoming, &table, agent);
-        // rock has no reaction with fire → survives
-        // water + fire → steam (transform)
-        assert!(result.surviving.iter().any(|s| surface_tag(&s.surface_type) == "rock"));
-        assert_eq!(result.consumed.len(), 1); // water consumed
+        // other_signal has no reaction with high_attention → survives
+        // fresh_input + high_attention → urgent_response (transform, both consumed)
+        assert!(result
+            .surviving
+            .iter()
+            .any(|s| surface_tag(&s.surface_type) == "other_signal"));
+        assert_eq!(result.consumed.len(), 1); // fresh_input consumed
     }
 }

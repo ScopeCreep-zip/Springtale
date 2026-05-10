@@ -15,10 +15,70 @@
 use std::collections::HashMap;
 use std::time::Instant;
 
+use serde::{Deserialize, Serialize};
+
 use crate::cadence::{AgentId, TickReport};
 use crate::supervision::Liveness;
 use crate::types::AgentHealth;
 use crate::momentum::MomentumTier;
+
+/// Role identity as surfaced across gossip and the canvas UI.
+///
+/// Per COOPERATION.md §14 we deliberately keep `Box<dyn DynamicRoleTrait>`
+/// local (no typetag serde — community roles ship as WASM and can't be
+/// registered into the host's `inventory` crate). The serializable
+/// `RoleSignature` is what crosses gossip and persistence boundaries —
+/// a value-type enum that names the role by kind.
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+pub enum RoleSignature {
+    General,
+    Information,
+    Support,
+    /// Community WASM-delivered role name. First-party roles never use
+    /// this variant — they use their named variant above.
+    Custom(String),
+}
+
+impl RoleSignature {
+    /// Parse a role name string into a RoleSignature. Unknown names
+    /// become `Custom(name)` — this is how community/WASM roles enter
+    /// the type system without needing host-side registration.
+    pub fn parse(name: &str) -> Self {
+        match name {
+            "General" => Self::General,
+            "Information" => Self::Information,
+            "Support" => Self::Support,
+            other => Self::Custom(other.to_owned()),
+        }
+    }
+
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::General => "General",
+            Self::Information => "Information",
+            Self::Support => "Support",
+            Self::Custom(s) => s.as_str(),
+        }
+    }
+}
+
+impl std::fmt::Display for RoleSignature {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
+
+impl From<String> for RoleSignature {
+    fn from(s: String) -> Self {
+        Self::parse(&s)
+    }
+}
+
+impl From<&str> for RoleSignature {
+    fn from(s: &str) -> Self {
+        Self::parse(s)
+    }
+}
 
 /// Snapshot of a neighboring agent's observable state.
 ///
@@ -30,7 +90,10 @@ use crate::momentum::MomentumTier;
 pub struct NeighborSnapshot {
     pub agent_id: AgentId,
     pub health: AgentHealth,
-    pub role_name: String,
+    /// Canonical role identity. Serializable (unlike
+    /// `Box<dyn DynamicRoleTrait>`), so it crosses gossip/persistence
+    /// boundaries cleanly. See [`RoleSignature`].
+    pub role: RoleSignature,
     pub fuel_remaining_pct: f32,
     pub last_action_success: bool,
     pub attention_load: f32,
@@ -156,7 +219,7 @@ mod tests {
         NeighborSnapshot {
             agent_id: id,
             health,
-            role_name: "General".to_owned(),
+            role: RoleSignature::General,
             fuel_remaining_pct: 1.0,
             last_action_success: true,
             attention_load: 0.5,

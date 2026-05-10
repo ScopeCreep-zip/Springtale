@@ -11,7 +11,8 @@
 //! - Sequential dependency (Splinter Cell boost: A enables B, B must enable A)
 //! - Information transfer (Siege callouts: no physical payload, just knowledge)
 
-use std::time::Instant;
+use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 
 use crate::cadence::AgentId;
 use crate::capability::CapabilityDecl;
@@ -68,13 +69,18 @@ pub enum HandoffType {
 
 /// The data being transferred in a handoff.
 ///
-/// From COOPERATION.pdf §20.2:
+/// From COOPERATION.pdf §20.2. `Serialize + Deserialize` per plan §10.5 —
+/// this is the wire contract when payloads cross a `FlexibleChainPool`
+/// stealer, an environment-mediated deposit, or (eventually) a Veilid
+/// edge. Expiry uses `DateTime<Utc>` rather than `Instant` so the
+/// deadline survives serialization.
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HandoffPayload {
     pub data: serde_json::Value,
     pub schema: String,
     pub produced_by: crate::cadence::ActionDescriptor,
     pub consumable_by: Vec<CapabilityDecl>,
-    pub expires: Option<Instant>,
+    pub expires: Option<DateTime<Utc>>,
 }
 
 #[cfg(test)]

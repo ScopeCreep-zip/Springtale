@@ -1,12 +1,67 @@
-//! Momentum system — coherence accumulator inspired by Patapon's Fever.
+//! Momentum system — coherence accumulator inspired by Patapon's Fever (§7).
 //!
-//! Per COOPERATION.pdf §7: "Patapon Fever doesn't make units '10% stronger' —
-//! it unlocks attack patterns that don't exist outside Fever. Momentum
-//! determines what agents CAN do."
+//! > "Patapon Fever doesn't make units '10% stronger' — it unlocks
+//! > attack patterns that don't exist outside Fever. Momentum determines
+//! > what agents CAN do." — COOPERATION.md §7
 //!
 //! Momentum tiers gate cooperation capabilities. Agents must build
 //! coherence (consecutive successful ticks with low interference)
-//! before accessing advanced cooperative features.
+//! before accessing advanced cooperative features. This is the opposite
+//! of an HP bar — momentum is a permission system, not a damage sink.
+//!
+//! ## Capability table (§7)
+//!
+//! | Tier    | Read env | Read neighbors | Chain | Write env | Commit | Consensus | AI | Recruit |
+//! |---------|:--------:|:--------------:|:-----:|:---------:|:------:|:---------:|:--:|:-------:|
+//! | Cold    | ✓        | —              | —     | —         | —      | —         | —  | —       |
+//! | Warming | ✓        | ✓              | ✓     | —         | —      | —         | —  | —       |
+//! | Hot     | ✓        | ✓              | ✓     | ✓         | ✓      | —         | —  | —       |
+//! | Fever   | ✓        | ✓              | ✓     | ✓         | ✓      | ✓         | ✓  | ✓       |
+//!
+//! ## Promotion thresholds
+//!
+//! Promotion requires a minimum run of consecutive successes AND zero
+//! interference in the current run:
+//!
+//! - `Cold → Warming`: 3 consecutive successes
+//! - `Warming → Hot`: 8 consecutive successes, 0 interference
+//! - `Hot → Fever`: 15 consecutive successes, 0 interference
+//!
+//! ## Demotion rules
+//!
+//! - `Fever → Hot`: any interference
+//! - `Hot → Warming`: consecutive successes drop below 5
+//! - `Warming → Cold`: consecutive successes reach 0
+//!
+//! Interference resets `interference_count` on demotion so the formation
+//! is measured on its *post-demotion* behavior, not the incident that
+//! dropped it.
+//!
+//! ## Trust decay
+//!
+//! Per Microsoft Agent Governance Toolkit research: trust must decay
+//! without positive signals. `check_decay` enforces two rules:
+//!
+//! 1. **Success-counter decay** — one success decayed per `decay_interval`
+//!    of inactivity. This alone isn't enough, because a tier whose
+//!    success count is already at 0 can idle forever.
+//! 2. **Forced demotion** — after `3 × decay_interval` of inactivity,
+//!    force-demote one tier regardless of counter. Catches the "Hot with
+//!    0 successes, idle forever" case.
+//!
+//! `last_activity` is refreshed only by `record_activity` (real work
+//! happened) — NOT by `record_success` (tick alignment without work).
+//! This is important: a formation whose members all report "aligned but
+//! nothing to do" should still decay.
+//!
+//! ## Why an FSM, not a score
+//!
+//! An earlier draft was a single `coherence: f32` with threshold
+//! functions. Two problems: (a) cliff effects at threshold boundaries
+//! caused the UI to flicker, and (b) there was no natural place to hang
+//! capability gates. The discrete-tier FSM gives stable UI, clear audit
+//! logs ("formation X promoted Warming→Hot"), and a single place — the
+//! `can_*` methods — to check whether a given capability is available.
 
 pub mod authority_impl;
 
@@ -79,6 +134,12 @@ pub struct MomentumState {
     pub decay_interval: std::time::Duration,
     /// Last known intent — tracked for IntentChanged events.
     pub last_intent: Option<crate::cadence::IntentPattern>,
+    /// Number of ticks the formation has spent stuck in Cold tier without
+    /// promoting. Drives the `cold_duration_ticks` signal that the L6
+    /// intervention layer (`orchestrator/intervention/`) reads to decide
+    /// when to `EscalateToUser` (default threshold 700 ticks). Incremented
+    /// every tick while in Cold; reset on every promotion out of Cold.
+    pub cold_ticks: u32,
 }
 
 impl Default for MomentumState {
@@ -91,6 +152,7 @@ impl Default for MomentumState {
             last_activity: Instant::now(),
             decay_interval: std::time::Duration::from_secs(60),
             last_intent: None,
+            cold_ticks: 0,
         }
     }
 }
@@ -141,7 +203,10 @@ impl MomentumState {
     ///    force demotion regardless of success count (handles the
     ///    "Hot with 0 successes but idle" case)
     pub fn check_decay(&mut self) {
+        // L6 intervention signal — count ticks stuck in Cold so the
+        // intervention evaluator can decide when to escalate to user.
         if self.tier == MomentumTier::Cold {
+            self.cold_ticks = self.cold_ticks.saturating_add(1);
             return; // nothing to decay
         }
 
@@ -204,6 +269,10 @@ impl MomentumState {
         };
         self.tier = new_tier;
         self.last_transition = Some(Instant::now());
+        // Promotion out of Cold resets the L6 intervention counter — the
+        // formation has shown signs of life so the "stuck in Cold" alarm
+        // restarts.
+        self.cold_ticks = 0;
         tracing::info!(
             from = ?old_tier,
             to = ?new_tier,

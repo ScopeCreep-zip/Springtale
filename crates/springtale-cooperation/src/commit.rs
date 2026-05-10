@@ -1,14 +1,64 @@
-//! Synchronized commit — coordinated execution barriers.
+//! Synchronized commit — coordinated execution barriers (§12).
 //!
-//! Per COOPERATION.pdf §12:
-//! Game sources: Splinter Cell dual breach, Army of Two co-op snipe.
+//! Game sources (COOPERATION.md §12): Splinter Cell Conviction dual breach,
+//! Army of Two co-op snipe. "Both players stack on opposite sides of a
+//! door. One initiates a countdown. Both must execute simultaneously.
+//! Failure of either after commit exposes both."
 //!
-//! "Both players stack on opposite sides of a door. One initiates a
-//! countdown. Both must execute simultaneously. Failure of either
-//! after commit exposes both."
+//! ## When it's available
 //!
-//! Available at Hot+ tier (§7 capability table).
-//! Uses oneshot channels per spec (avoids Barrier cancel-safety issues).
+//! Synchronized commit is a `Hot+` capability (§7 capability table).
+//! Formations below Hot can't use it — the primitive is gated because
+//! the all-or-nothing execution only pays off when coherence is high
+//! enough that `Prepare → Ready` transitions reliably succeed. Cold or
+//! Warming formations fall back to sequential or best-effort execution.
+//!
+//! ## Lifecycle
+//!
+//! ```text
+//!   Prepare ── all agents signal_ready ──▶ Ready
+//!      │  (deadline elapses → abort)         │
+//!      ▼                                     │ execute()
+//!    Failed                                  ▼
+//!                                         Execute
+//!                                            │ collect_result / record_failure
+//!                                            ▼
+//!                                         Collect
+//! ```
+//!
+//! `Countdown` is modeled as a phase-with-duration in the `CommitPhase`
+//! enum but is not currently driven by a timer in this module — the
+//! caller provides the pacing (the tick processor / scheduled commit
+//! driver owns the clock). The intent is future parity with Splinter
+//! Cell's audible breach countdown UI.
+//!
+//! ## Why oneshot channels, not `tokio::sync::Barrier`
+//!
+//! An earlier draft used `Barrier` because "N parties meet" maps
+//! naturally. Two problems killed it:
+//!
+//! 1. **Cancel safety.** `Barrier::wait` is not cancel-safe — a dropped
+//!    future inside a `tokio::select!` arm leaves the barrier in a
+//!    poisoned state that other callers then hang on forever.
+//! 2. **Opaque state.** `Barrier` exposes neither per-participant state
+//!    nor a deadline hook, so the formation couldn't tell *which* agent
+//!    was late — only that the whole barrier failed.
+//!
+//! Oneshot channels sidestep both issues: each participant owns one
+//! `oneshot::Sender<Ready>` and the coordinator holds the receivers;
+//! dropping a future just closes the channel and the coordinator sees
+//! a specific `Closed` error it can attribute.
+//!
+//! ## Failure semantics
+//!
+//! - If any single participant fails during `Execute`, the whole
+//!   barrier transitions to `Collect` with mixed results — the caller
+//!   decides whether partial success counts (spec §12 leaves this
+//!   policy to the formation's intent).
+//! - If the deadline elapses during `Prepare`, the barrier fails as a
+//!   unit; no agent advances to `Execute`.
+//! - A `signal_ready` after `Prepare` returns an error rather than
+//!   silently dropping — late signals indicate a bug upstream.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};

@@ -74,12 +74,15 @@ async fn run_bidder(
     let formation = make_formation();
     let momentum = make_momentum();
     let bidder = UtilityBidder::new(&capabilities);
+    let aw = springtale_cooperation::awareness::LocalAwareness::default();
     let ctx = AgentContext {
         agent_id: agent,
         tick: &tick,
         formation: &formation,
         momentum: &momentum,
         attention: &attention,
+        capabilities: &capabilities,
+        awareness: &aw,
     };
     if let Some(bid) = bidder.evaluate(&cfp, &ctx).await {
         let _ = bid_tx.send(bid);

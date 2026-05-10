@@ -4,6 +4,10 @@
 //! Game sources: Total War general rally, routing cascade, Monster Hunter carts.
 
 pub mod cascade;
+pub mod supervise;
 mod types;
 
-pub use types::{RallyEvent, RallyResult, RallyState};
+pub use types::{
+    AgentOutcome, FailureReason, FormationRally, RallyEvent, RallyFailure, RallyResult,
+    RallyTokens,
+};

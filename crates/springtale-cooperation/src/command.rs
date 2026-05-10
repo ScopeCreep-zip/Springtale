@@ -47,19 +47,19 @@ pub fn parse_intent(intent_str: &str) -> IntentPattern {
     match intent_str {
         "Reconnoiter" => {
             tracing::debug!("parse_intent: Reconnoiter without target metadata");
-            IntentPattern::Reconnoiter { target: "unspecified".to_owned() }
+            IntentPattern::Reconnoiter { target: "unspecified".into() }
         },
         "Execute" => IntentPattern::Execute { plan_id: None },
         "Stabilize" => {
             tracing::debug!("parse_intent: Stabilize without reason metadata");
-            IntentPattern::Stabilize { reason: "unspecified".to_owned() }
+            IntentPattern::Stabilize { reason: "unspecified".into() }
         },
         "Surge" => {
             tracing::debug!("parse_intent: Surge without objective metadata");
-            IntentPattern::Surge { objective: "unspecified".to_owned() }
+            IntentPattern::Surge { objective: "unspecified".into() }
         },
         _ => IntentPattern::Stabilize {
-            reason: format!("unknown intent: {intent_str}"),
+            reason: format!("unknown intent: {intent_str}").into(),
         },
     }
 }

@@ -7,17 +7,23 @@
 //!
 //! In single-process mode: all members share the same Rust process, so
 //! gossip is an in-memory KV store keyed by AgentId. No network needed.
-//! Cross-process gossip (Phase 3/Veilid) swaps the transport under the
-//! same trait.
+//! Cross-process gossip uses `ChitchatGossipStore` — activated via
+//! `CooperationConfig::cross_process` in the runtime config. The Veilid
+//! DHT transport (the only remaining Phase 3 deferral) will swap under
+//! the same trait when it lands.
 
 use std::collections::HashMap;
 use std::time::Instant;
+
+use async_trait::async_trait;
+use dashmap::DashMap;
 
 use crate::cadence::AgentId;
 use crate::supervision::Liveness;
 use crate::types::AgentHealth;
 
-use super::types::NeighborSnapshot;
+use super::store::GossipStore;
+use super::types::{NeighborSnapshot, RoleSignature};
 
 /// Keys used in the gossip KV store. Per chitchat: each node publishes
 /// its own state under string keys, peers read all keys.
@@ -28,14 +34,26 @@ const KEY_LAST_SUCCESS: &str = "last_success";
 const KEY_ATTENTION: &str = "attention_load";
 
 /// A gossip entry published by one agent.
+///
+/// `peer_id` identifies the process that originated this entry:
+/// - `None` for locally-published entries (same process as the reader).
+/// - `Some(addr)` for entries learned from a remote peer via chitchat /
+///   cross-process gossip. The string is the peer's stable identifier
+///   (usually a SocketAddr). SWIM's `MemberDown` event carries the same
+///   identifier, so `GossipStore::remove_by_peer` can sweep every entry
+///   the dead peer published without needing a separate peer→agent map.
 #[derive(Debug, Clone)]
 pub struct GossipEntry {
     pub agent_id: AgentId,
     pub kv: HashMap<String, String>,
+    pub peer_id: Option<String>,
     pub updated_at: Instant,
 }
 
 impl GossipEntry {
+    /// Local-publish constructor. Leaves `peer_id = None` because the
+    /// entry is owned by this process. Remote entries arrive via
+    /// `ChitchatGossipStore` which stamps `peer_id` with the sender.
     pub fn from_state(
         agent_id: AgentId,
         health: &AgentHealth,
@@ -45,7 +63,12 @@ impl GossipEntry {
         attention_load: f32,
     ) -> Self {
         let mut kv = HashMap::new();
-        kv.insert(KEY_HEALTH.to_owned(), format!("{health:?}"));
+        // Health serializes as JSON so `Degraded{recovery_count:2}` and
+        // `Dead{recoverable:true}` round-trip without data loss — the
+        // old Debug-string format collapsed both to their variant name
+        // and the parser had to guess the fields.
+        let health_json = serde_json::to_string(health).unwrap_or_else(|_| "\"Operational\"".to_owned());
+        kv.insert(KEY_HEALTH.to_owned(), health_json);
         kv.insert(KEY_ROLE.to_owned(), role_name.to_owned());
         kv.insert(KEY_FUEL_PCT.to_owned(), format!("{fuel_pct:.2}"));
         kv.insert(KEY_LAST_SUCCESS.to_owned(), last_success.to_string());
@@ -53,16 +76,31 @@ impl GossipEntry {
         Self {
             agent_id,
             kv,
+            peer_id: None,
             updated_at: Instant::now(),
         }
     }
 
+    /// Stamp a peer identifier onto this entry — called by cross-process
+    /// gossip adapters when decoding an entry received from a remote peer.
+    pub fn with_peer_id(mut self, peer_id: impl Into<String>) -> Self {
+        self.peer_id = Some(peer_id.into());
+        self
+    }
+
     /// Convert gossip entry back to a NeighborSnapshot.
     pub fn to_snapshot(&self) -> NeighborSnapshot {
-        let role_name = self.kv.get(KEY_ROLE).cloned().unwrap_or_else(|| {
-            tracing::warn!(agent = %self.agent_id, "gossip: missing role key, defaulting to empty");
-            String::new()
-        });
+        let role = self
+            .kv
+            .get(KEY_ROLE)
+            .map(|s| RoleSignature::parse(s))
+            .unwrap_or_else(|| {
+                tracing::warn!(
+                    agent = %self.agent_id,
+                    "gossip: missing role key, defaulting to Custom(empty)"
+                );
+                RoleSignature::Custom(String::new())
+            });
         let fuel_remaining_pct = self
             .kv
             .get(KEY_FUEL_PCT)
@@ -90,7 +128,7 @@ impl GossipEntry {
         NeighborSnapshot {
             agent_id: self.agent_id,
             health: self.parse_health(),
-            role_name,
+            role,
             fuel_remaining_pct,
             last_action_success,
             attention_load,
@@ -99,61 +137,103 @@ impl GossipEntry {
         }
     }
 
+    /// Parse the serialized health field. JSON first (the current
+    /// format), then fall back to the legacy Debug-string format for
+    /// entries that were published before the serialization change.
     fn parse_health(&self) -> AgentHealth {
-        match self.kv.get(KEY_HEALTH).map(|s| s.as_str()) {
-            Some("Operational") => AgentHealth::Operational,
-            Some("Incapacitated") => AgentHealth::Incapacitated,
-            Some(s) if s.starts_with("Degraded") => AgentHealth::Degraded { recovery_count: 1 },
-            Some(s) if s.starts_with("Dead") => AgentHealth::Dead { recoverable: false },
+        let Some(raw) = self.kv.get(KEY_HEALTH) else {
+            return AgentHealth::Operational;
+        };
+        if let Ok(h) = serde_json::from_str::<AgentHealth>(raw) {
+            return h;
+        }
+        // Legacy Debug-format fallback. Still better than returning a
+        // default when downstream consumers care about the variant; the
+        // inner fields are genuinely lost in that format so we leave
+        // them at conservative defaults and log once.
+        tracing::warn!(
+            agent = %self.agent_id,
+            raw = %raw,
+            "gossip: health field in legacy Debug format; upgrading to JSON on next publish"
+        );
+        match raw.as_str() {
+            "Operational" => AgentHealth::Operational,
+            "Incapacitated" => AgentHealth::Incapacitated,
+            s if s.starts_with("Degraded") => AgentHealth::Degraded { recovery_count: 1 },
+            s if s.starts_with("Dead") => AgentHealth::Dead { recoverable: false },
             _ => AgentHealth::Operational,
         }
     }
 }
 
-/// In-memory gossip store — single-process implementation.
+/// In-memory gossip store — single-process implementation of [`GossipStore`].
 ///
 /// Per chitchat: each node publishes KV pairs, peers read all keys.
-/// This in-memory version stores all entries in a HashMap.
-/// Cross-process (Phase 3) will swap to chitchat's network transport.
+/// This in-memory version stores all entries in a `DashMap` for lock-free
+/// reads and interior-mutable writes (so the trait methods can stay
+/// `&self`, which is what `Arc<dyn GossipStore>` callers need).
+///
+/// Cross-process deployments swap to
+/// [`ChitchatGossipStore`](super::store::ChitchatGossipStore) under the
+/// same trait.
 #[derive(Debug, Default)]
 pub struct InMemoryGossipStore {
-    entries: HashMap<AgentId, GossipEntry>,
+    entries: DashMap<AgentId, GossipEntry>,
 }
 
 impl InMemoryGossipStore {
     pub fn new() -> Self {
-        Self {
-            entries: HashMap::new(),
-        }
+        Self::default()
     }
 
-    /// Publish this agent's state (chitchat: set_kv).
-    pub fn publish(&mut self, entry: GossipEntry) {
+    /// Whether the store has any entries. Exposed for tests and
+    /// observability (the trait keeps the API surface focused).
+    pub fn is_empty(&self) -> bool {
+        self.entries.is_empty()
+    }
+}
+
+#[async_trait]
+impl GossipStore for InMemoryGossipStore {
+    async fn publish(&self, entry: GossipEntry) {
         self.entries.insert(entry.agent_id, entry);
     }
 
-    /// Read all published snapshots (chitchat: iterate_kv_pairs).
-    pub fn snapshots(&self) -> Vec<NeighborSnapshot> {
-        self.entries.values().map(|e| e.to_snapshot()).collect()
+    async fn snapshots(&self) -> Vec<NeighborSnapshot> {
+        self.entries
+            .iter()
+            .map(|r| r.value().to_snapshot())
+            .collect()
     }
 
-    /// Get a specific agent's snapshot.
-    pub fn get(&self, agent_id: &AgentId) -> Option<NeighborSnapshot> {
-        self.entries.get(agent_id).map(|e| e.to_snapshot())
+    async fn remove_by_peer(&self, peer_id: &str) -> usize {
+        // Collect matching ids first (DashMap rejects concurrent remove
+        // inside iter); then do the removals.
+        let to_remove: Vec<AgentId> = self
+            .entries
+            .iter()
+            .filter(|e| e.value().peer_id.as_deref() == Some(peer_id))
+            .map(|e| *e.key())
+            .collect();
+        let count = to_remove.len();
+        for id in to_remove {
+            self.entries.remove(&id);
+        }
+        count
     }
 
-    /// Remove an agent (foca: member left/down).
-    pub fn remove(&mut self, agent_id: &AgentId) {
+    async fn get(&self, agent_id: &AgentId) -> Option<NeighborSnapshot> {
+        self.entries
+            .get(agent_id)
+            .map(|r| r.value().to_snapshot())
+    }
+
+    async fn remove(&self, agent_id: &AgentId) {
         self.entries.remove(agent_id);
     }
 
-    /// Number of known agents.
-    pub fn len(&self) -> usize {
+    async fn len(&self) -> usize {
         self.entries.len()
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.entries.is_empty()
     }
 }
 
@@ -176,55 +256,63 @@ pub fn foca_state_to_liveness(alive: bool, suspect: bool) -> Liveness {
 mod tests {
     use super::*;
 
-    #[test]
-    fn publish_and_read_snapshot() {
-        let mut store = InMemoryGossipStore::new();
+    #[tokio::test]
+    async fn publish_and_read_snapshot() {
+        let store = InMemoryGossipStore::new();
         let agent = AgentId::new();
 
-        store.publish(GossipEntry::from_state(
-            agent,
-            &AgentHealth::Operational,
-            "General",
-            0.85,
-            true,
-            0.3,
-        ));
+        store
+            .publish(GossipEntry::from_state(
+                agent,
+                &AgentHealth::Operational,
+                "General",
+                0.85,
+                true,
+                0.3,
+            ))
+            .await;
 
-        let snap = store.get(&agent).unwrap();
+        let snap = store.get(&agent).await.unwrap();
         assert_eq!(snap.agent_id, agent);
-        assert_eq!(snap.role_name, "General");
+        assert_eq!(snap.role, RoleSignature::General);
         assert!((snap.fuel_remaining_pct - 0.85).abs() < 0.01);
         assert!(snap.last_action_success);
         assert!((snap.attention_load - 0.3).abs() < 0.01);
     }
 
-    #[test]
-    fn multiple_agents_snapshots() {
-        let mut store = InMemoryGossipStore::new();
+    #[tokio::test]
+    async fn multiple_agents_snapshots() {
+        let store = InMemoryGossipStore::new();
         let a = AgentId::new();
         let b = AgentId::new();
 
-        store.publish(GossipEntry::from_state(
-            a, &AgentHealth::Operational, "General", 1.0, true, 0.5,
-        ));
-        store.publish(GossipEntry::from_state(
-            b, &AgentHealth::Degraded { recovery_count: 1 }, "Support", 0.3, false, 0.1,
-        ));
+        store
+            .publish(GossipEntry::from_state(
+                a, &AgentHealth::Operational, "General", 1.0, true, 0.5,
+            ))
+            .await;
+        store
+            .publish(GossipEntry::from_state(
+                b, &AgentHealth::Degraded { recovery_count: 1 }, "Support", 0.3, false, 0.1,
+            ))
+            .await;
 
-        assert_eq!(store.len(), 2);
-        let snaps = store.snapshots();
+        assert_eq!(store.len().await, 2);
+        let snaps = store.snapshots().await;
         assert_eq!(snaps.len(), 2);
     }
 
-    #[test]
-    fn remove_agent() {
-        let mut store = InMemoryGossipStore::new();
+    #[tokio::test]
+    async fn remove_agent() {
+        let store = InMemoryGossipStore::new();
         let agent = AgentId::new();
-        store.publish(GossipEntry::from_state(
-            agent, &AgentHealth::Operational, "General", 1.0, true, 0.0,
-        ));
-        assert_eq!(store.len(), 1);
-        store.remove(&agent);
+        store
+            .publish(GossipEntry::from_state(
+                agent, &AgentHealth::Operational, "General", 1.0, true, 0.0,
+            ))
+            .await;
+        assert_eq!(store.len().await, 1);
+        store.remove(&agent).await;
         assert!(store.is_empty());
     }
 
@@ -243,6 +331,6 @@ mod tests {
         );
         let snap = entry.to_snapshot();
         assert!(matches!(snap.health, AgentHealth::Incapacitated));
-        assert_eq!(snap.role_name, "Information");
+        assert_eq!(snap.role, RoleSignature::Information);
     }
 }

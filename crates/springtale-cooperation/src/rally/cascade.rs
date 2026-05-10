@@ -17,7 +17,7 @@ use crate::cadence::AgentId;
 use crate::momentum::MomentumState;
 use crate::tick_processor::FormationTickResult;
 
-use super::{RallyResult, RallyState};
+use super::{FormationRally, RallyEvent, RallyFailure, RallyResult};
 
 /// How severe the cascade risk is.
 #[derive(Debug, Clone, PartialEq)]
@@ -82,30 +82,57 @@ pub fn detect_cascade(
 /// 2. Reduce momentum to match reduced coherence
 /// 3. Consume a rally token
 /// 4. If no tokens left → escalate
+///
+/// Takes `&FormationRally` (not `&mut`): the token pool is backed by
+/// `Arc<Semaphore>` (interior-mutable), the event channel is a
+/// broadcast sender. No `&mut` contention on the event-loop hot path.
 pub fn attempt_self_rally(
-    rally: &mut RallyState,
+    rally: &FormationRally,
     attention: &AttentionBroker,
     momentum: &mut MomentumState,
     failing_agent: AgentId,
 ) -> RallyResult {
-    if !rally.can_rally() {
-        return RallyResult::EscalateToOrchestrator {
-            reason: "rally tokens exhausted".to_owned(),
-        };
+    if !rally.tokens.can_rally() {
+        let reason = "rally tokens exhausted".to_owned();
+        let _ = rally
+            .events
+            .send(RallyEvent::Escalated { reason: reason.clone() });
+        return RallyResult::EscalateToOrchestrator { reason };
     }
 
     // 1. Redistribute attention away from failing agent
     //    Other agents absorb the load (Army of Two aggro shift)
     attention.release(failing_agent, 0.2);
+    let _ = rally
+        .events
+        .send(RallyEvent::AttentionRedistributed { from: failing_agent });
 
     // 2. Reduce momentum — the formation lost coherence
     momentum.record_failure();
 
-    // 3. Consume rally token
-    rally.consume_token();
-
-    RallyResult::StabilizedWithCost {
-        tokens_remaining: rally.tokens_remaining,
+    // 3. Consume rally token. `consume()` fails only if something closed
+    //    the semaphore between the `can_rally` check and here; treat as
+    //    escalation.
+    match rally.tokens.consume() {
+        Ok(()) => {
+            let remaining = rally.tokens.remaining() as u32;
+            let _ = rally.events.send(RallyEvent::TokenConsumed { remaining });
+            // Last cart: arm the escalation latch so the next failure
+            // short-circuits to orchestrator intervention.
+            if remaining == 0 {
+                rally.tokens.close();
+            }
+            RallyResult::StabilizedWithCost {
+                tokens_remaining: remaining,
+            }
+        }
+        Err(RallyFailure::NoTokensLeft | RallyFailure::Closed) => {
+            let reason = "rally tokens exhausted".to_owned();
+            let _ = rally
+                .events
+                .send(RallyEvent::Escalated { reason: reason.clone() });
+            RallyResult::EscalateToOrchestrator { reason }
+        }
     }
 }
 
@@ -138,7 +165,7 @@ mod tests {
         aw.update_neighbor(crate::awareness::NeighborSnapshot {
             agent_id: neighbor,
             health: crate::types::AgentHealth::Incapacitated,
-            role_name: "General".to_owned(),
+            role: crate::awareness::RoleSignature::General,
             fuel_remaining_pct: 0.0,
             last_action_success: false,
             attention_load: 0.0,
@@ -216,7 +243,7 @@ mod tests {
     fn test_self_rally_consumes_token() {
         let a = AgentId::new();
         let b = AgentId::new();
-        let mut rally = RallyState::default();
+        let rally = FormationRally::new(3, 8);
         let attention = AttentionBroker::for_agents(&[a, b]);
         let mut momentum = MomentumState::default();
 
@@ -224,22 +251,26 @@ mod tests {
             momentum.record_success();
         }
 
-        let result = attempt_self_rally(&mut rally, &attention, &mut momentum, a);
-        assert!(matches!(result, RallyResult::StabilizedWithCost { tokens_remaining: 2 }));
-        assert_eq!(rally.tokens_remaining, 2);
+        let result = attempt_self_rally(&rally, &attention, &mut momentum, a);
+        assert!(matches!(
+            result,
+            RallyResult::StabilizedWithCost { tokens_remaining: 2 }
+        ));
+        assert_eq!(rally.tokens.remaining(), 2);
     }
 
     #[test]
     fn test_self_rally_exhausted_escalates() {
         let a = AgentId::new();
-        let mut rally = RallyState {
-            tokens_remaining: 0,
-            max_tokens: 3,
-        };
+        let rally = FormationRally::new(3, 8);
+        // Consume all tokens up front to simulate exhausted state.
+        rally.tokens.consume().unwrap();
+        rally.tokens.consume().unwrap();
+        rally.tokens.consume().unwrap();
         let attention = AttentionBroker::for_agents(&[a]);
         let mut momentum = MomentumState::default();
 
-        let result = attempt_self_rally(&mut rally, &attention, &mut momentum, a);
+        let result = attempt_self_rally(&rally, &attention, &mut momentum, a);
         assert!(matches!(result, RallyResult::EscalateToOrchestrator { .. }));
     }
 }

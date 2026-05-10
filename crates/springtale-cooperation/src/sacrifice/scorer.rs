@@ -17,6 +17,7 @@ use crate::awareness::LocalAwareness;
 use crate::cadence::AgentId;
 use crate::capability::CapabilityDecl;
 use crate::momentum::MomentumTier;
+use crate::sacrifice::action::SacrificeAction;
 use crate::utility::evaluator::{Linear, Power, ResponseCurve, Sigmoid};
 use crate::utility::scorer::ProductOfScorers;
 
@@ -137,6 +138,60 @@ pub fn evaluate_sacrifice(
         capability_score,
         momentum_score,
     }
+}
+
+/// Per-agent sacrifice consideration — pick the most-loaded peer as
+/// beneficiary, evaluate, and return a `SacrificeAction` if the utility
+/// clears the recommendation threshold.
+///
+/// Plan §B9: "agent/step/scan_and_claim.rs final consideration:
+/// `sacrifice::scorer::evaluate_action(member, formation_snapshot, awareness)`
+/// per `COOPERATION.md §24`. Voluntary, big-brain utility AI. Returns
+/// `Option<SacrificeAction>` consumed by the same step."
+///
+/// Returns `None` when:
+/// - the formation has fewer than 2 operational members (no peer to help)
+/// - no peer has higher attention load than the sacrificer (no net gain)
+/// - the utility evaluator does not recommend the sacrifice
+pub fn evaluate_action(
+    sacrificer: AgentId,
+    formation: &FormationSnapshot,
+    awareness: &LocalAwareness,
+    attention: &AttentionEconomy,
+) -> Option<SacrificeAction> {
+    if formation.operational_count < 2 {
+        return None;
+    }
+    let beneficiary = pick_beneficiary(sacrificer, awareness, attention)?;
+    let eval = evaluate_sacrifice(sacrificer, beneficiary, formation, awareness, attention);
+    if !eval.recommended {
+        return None;
+    }
+    Some(SacrificeAction::Yield {
+        sacrificer,
+        beneficiary,
+        utility: eval.utility_score,
+    })
+}
+
+/// Pick the peer with the highest attention load as the sacrifice
+/// beneficiary. Skips the sacrificer itself and any neighbor whose load
+/// is not strictly higher (no net benefit to yield to a less-loaded peer).
+fn pick_beneficiary(
+    sacrificer: AgentId,
+    awareness: &LocalAwareness,
+    attention: &AttentionEconomy,
+) -> Option<AgentId> {
+    let my_load = attention.load(&sacrificer);
+    awareness
+        .neighbor_states
+        .keys()
+        .copied()
+        .filter(|peer| *peer != sacrificer)
+        .map(|peer| (peer, attention.load(&peer)))
+        .filter(|(_, load)| *load > my_load)
+        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(peer, _)| peer)
 }
 
 #[cfg(test)]

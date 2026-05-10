@@ -4,10 +4,13 @@
 //! communication layers, not a single channel.
 
 pub mod bus;
-pub mod channel;
+pub mod dispatcher;
 mod types;
 
-pub use bus::FormationBus;
+pub use bus::{
+    AckDispatch, ChannelSendError, CohesionSignalMsg, DirectionalSignalMsg, FormationBus,
+    FormationBusSubscription, IntentAckMsg, ProtocolDispatch, ProtocolMsg, StateBroadcastMsg,
+};
 pub use types::{
     BroadcastTrigger, CommChannel, MessageTarget, ProtocolPayload, StateMessage,
 };

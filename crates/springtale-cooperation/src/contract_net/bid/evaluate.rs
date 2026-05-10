@@ -47,6 +47,36 @@ impl Bidder for UtilityBidder<'_> {
     }
 }
 
+/// Owned-capabilities variant — same scoring, suitable for runner tasks
+/// that need an `Arc<dyn Bidder>` outliving any single tick borrow. The
+/// borrowed `UtilityBidder<'_>` stays for short-lived callers (per-tick
+/// inline scoring); `OwnedUtilityBidder` is what `member_runner.rs`
+/// stores in `AgentLoop`.
+pub struct OwnedUtilityBidder {
+    pub capabilities: Vec<CapabilityDecl>,
+}
+
+impl OwnedUtilityBidder {
+    pub fn new(capabilities: Vec<CapabilityDecl>) -> Self {
+        Self { capabilities }
+    }
+}
+
+#[async_trait]
+impl Bidder for OwnedUtilityBidder {
+    async fn evaluate(&self, cfp: &CallForProposals, ctx: &AgentContext<'_>) -> Option<Bid> {
+        score(cfp, ctx, &self.capabilities).map(|utility| Bid {
+            cfp_id: cfp.id,
+            bidder: ctx.agent_id,
+            utility,
+            estimated_completion: cfp.deadline / 2,
+            rationale: format!(
+                "owned capability_fit + free_capacity + momentum_readiness = {utility:.3}"
+            ),
+        })
+    }
+}
+
 /// Pure scoring function — no I/O, no channels. Easy to unit-test.
 ///
 /// Returns `None` when the agent lacks the required capability (hard gate).

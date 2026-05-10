@@ -7,6 +7,7 @@
 //! same-key different-value = conflict.
 
 use crate::cadence::TickReport;
+use crate::state::EnvironmentWrite;
 
 use super::{ActionRecord, InterferenceEvent, InterferenceType};
 
@@ -61,6 +62,76 @@ pub fn detect_from_records(tick: u64, records: &[ActionRecord]) -> Vec<Interfere
                         severity: se.magnitude,
                     });
                 }
+            }
+        }
+    }
+
+    events
+}
+
+/// Detect interference including cross-tick ActionNegation.
+///
+/// Per COOPERATION.md §13.1/§13.4: a current-tick write that undoes a
+/// prior-tick write by a different agent is `ActionNegation`. This cannot
+/// be detected from the current tick's records alone — it requires the
+/// ordered write-log history (the same `write_log` carried in
+/// [`WorkspaceSnapshot`]).
+///
+/// Rules: for each current-tick write `(A, K, V)`:
+/// 1. Find the most recent prior write `(B, K, V_b)` in `history` where
+///    `B != A`. If none, skip — no one to negate.
+/// 2. If `V` is `Null` and `V_b` is not `Null`, this is a clear-negation.
+/// 3. Otherwise, if `V` equals any value for `K` recorded before
+///    `B`'s write (i.e. a pre-B historical value), this is a
+///    revert-negation.
+/// 4. In either case, emit `InterferenceType::ActionNegation`.
+///
+/// Returns all events detected by [`detect_from_records`] plus any
+/// ActionNegation events from the history pass. Duplicates are possible
+/// when the same pair also appears in a same-tick ResourceConflict; the
+/// caller deduplicates if needed.
+///
+/// [`WorkspaceSnapshot`]: crate::state::WorkspaceSnapshot
+pub fn detect_from_records_with_history(
+    tick: u64,
+    records: &[ActionRecord],
+    history: &[EnvironmentWrite],
+) -> Vec<InterferenceEvent> {
+    let mut events = detect_from_records(tick, records);
+
+    for rec in records {
+        for (key, new_val) in &rec.write_set {
+            // Find most recent prior writer of this key who is NOT rec.agent.
+            let prior_b = history
+                .iter()
+                .rev()
+                .filter(|w| w.key == *key)
+                .find(|w| w.writer != rec.agent);
+            let Some(b_write) = prior_b else {
+                continue;
+            };
+
+            // Pre-B historical values for this key: every write to K with
+            // timestamp strictly earlier than B's write.
+            let pre_b_values: Vec<&serde_json::Value> = history
+                .iter()
+                .take_while(|w| w.timestamp < b_write.timestamp)
+                .filter(|w| w.key == *key)
+                .map(|w| &w.value)
+                .collect();
+
+            let is_null_clear = new_val.is_null() && !b_write.value.is_null();
+            let reverts_pre_b = pre_b_values.contains(&new_val);
+            let distinct_from_b = new_val != &b_write.value;
+
+            if (is_null_clear || reverts_pre_b) && distinct_from_b {
+                events.push(InterferenceEvent {
+                    tick_sequence: tick,
+                    agent_a: rec.agent,
+                    agent_b: b_write.writer,
+                    interference_type: InterferenceType::ActionNegation,
+                    severity: 0.7,
+                });
             }
         }
     }
@@ -212,6 +283,86 @@ mod tests {
             .with_write("shared:key", serde_json::json!(3));
         let events = detect_from_records(1, &[a, b, c]);
         assert_eq!(events.len(), 3); // a-b, a-c, b-c
+    }
+
+    fn hist_write(
+        key: &str,
+        writer: AgentId,
+        value: serde_json::Value,
+        millis_ago: u64,
+    ) -> EnvironmentWrite {
+        use std::time::{Duration, Instant};
+        EnvironmentWrite {
+            key: crate::types::WorkspaceKey::from(key),
+            writer,
+            value,
+            timestamp: Instant::now() - Duration::from_millis(millis_ago),
+        }
+    }
+
+    #[test]
+    fn negation_null_clear_detected() {
+        let a = AgentId::new();
+        let b = AgentId::new();
+        // History: b wrote K=1 200ms ago, then b wrote K=2 100ms ago.
+        let history = vec![
+            hist_write("k", b, serde_json::json!(1), 300),
+            hist_write("k", b, serde_json::json!(2), 200),
+        ];
+        // Current tick: a clears k to null.
+        let rec = ActionRecord::new(a).with_write("k", serde_json::json!(null));
+        let events = detect_from_records_with_history(5, &[rec], &history);
+        assert!(events
+            .iter()
+            .any(|e| matches!(e.interference_type, InterferenceType::ActionNegation)
+                && e.agent_a == a
+                && e.agent_b == b));
+    }
+
+    #[test]
+    fn negation_revert_to_prior_value_detected() {
+        let a = AgentId::new();
+        let b = AgentId::new();
+        // History: a wrote K=1 earliest, then b wrote K=2 later.
+        let history = vec![
+            hist_write("k", a, serde_json::json!(1), 400),
+            hist_write("k", b, serde_json::json!(2), 200),
+        ];
+        // Current tick: a reverts K back to 1 — this negates b's K=2.
+        let rec = ActionRecord::new(a).with_write("k", serde_json::json!(1));
+        let events = detect_from_records_with_history(5, &[rec], &history);
+        assert!(events
+            .iter()
+            .any(|e| matches!(e.interference_type, InterferenceType::ActionNegation)
+                && e.agent_a == a
+                && e.agent_b == b));
+    }
+
+    #[test]
+    fn same_value_as_b_is_not_negation() {
+        let a = AgentId::new();
+        let b = AgentId::new();
+        // History: b wrote K=2.
+        let history = vec![hist_write("k", b, serde_json::json!(2), 200)];
+        // Current tick: a writes K=2 — same as b, redundant but not negation.
+        let rec = ActionRecord::new(a).with_write("k", serde_json::json!(2));
+        let events = detect_from_records_with_history(5, &[rec], &history);
+        assert!(!events
+            .iter()
+            .any(|e| matches!(e.interference_type, InterferenceType::ActionNegation)));
+    }
+
+    #[test]
+    fn no_prior_writer_no_negation() {
+        let a = AgentId::new();
+        // History: a wrote K=1 earlier (same agent, doesn't count).
+        let history = vec![hist_write("k", a, serde_json::json!(1), 200)];
+        // Current tick: a writes K=null — no other writer to negate.
+        let rec = ActionRecord::new(a).with_write("k", serde_json::json!(null));
+        let events = detect_from_records_with_history(5, &[rec], &history);
+        assert!(!events
+            .iter()
+            .any(|e| matches!(e.interference_type, InterferenceType::ActionNegation)));
     }
 
     #[test]

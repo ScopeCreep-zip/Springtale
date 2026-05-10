@@ -5,8 +5,8 @@ use thiserror::Error;
 /// persistence failures without pulling in the whole cooperation surface.
 #[derive(Debug, Error)]
 pub enum StoreError {
-    #[error("COOP-D001: sqlite error: {0}")]
-    Sqlite(#[from] rusqlite::Error),
+    #[error("COOP-D001: backend error: {0}")]
+    Backend(#[from] springtale_store::StoreError),
     #[error("COOP-D002: serialization error: {0}")]
     Serialization(String),
     #[error("COOP-D003: invalid row data: {0}")]

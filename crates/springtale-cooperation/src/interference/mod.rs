@@ -4,7 +4,9 @@
 //! Game sources: Helldivers 2 friendly fire, Divinity combos hitting
 //! allies, Total War archers hitting own infantry.
 
+pub mod atomic_cas;
 pub mod detector;
 mod types;
 
+pub use atomic_cas::cas_apply;
 pub use types::{ActionRecord, InterferenceEvent, InterferenceType, SideEffect};

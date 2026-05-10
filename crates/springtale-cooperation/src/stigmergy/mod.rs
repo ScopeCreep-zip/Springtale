@@ -14,5 +14,5 @@ pub mod types;
 
 pub use composition::{compose_surfaces, CompositionResult, ReactionOutput, ReactionTable, SurfaceReaction};
 pub use deposit::SurfaceStore;
-pub use trait_::{SurfaceDeposit, SurfaceSensor};
+pub use trait_::{SurfaceDeposit, SurfaceSensor, SurfaceSubstrate};
 pub use types::{Surface, SurfaceId, SurfaceType};

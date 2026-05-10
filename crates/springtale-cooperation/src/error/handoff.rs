@@ -10,4 +10,8 @@ pub enum HandoffError {
     PayloadExpired,
     #[error("COOP-A003: return obligation unmet")]
     UnmetObligation,
+    #[error("COOP-A004: serialize deposit payload: {0}")]
+    SerializeDeposit(String),
+    #[error("COOP-A005: deserialize deposit payload: {0}")]
+    DeserializeDeposit(String),
 }
