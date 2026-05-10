@@ -14,7 +14,12 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Command::Init => {
+        Command::Init { template } => {
+            if let Some(tpl) = template.as_deref() {
+                // Plan §16.4: `springtale init cli-runner && springtale run`.
+                // Scaffold first, then run the vault/DB wizard.
+                commands::new::run(tpl)?;
+            }
             commands::init::run().await?;
         }
         Command::New { template } => {
@@ -34,6 +39,12 @@ async fn main() -> Result<()> {
                 commands::server::run().await?;
             }
         },
+        Command::Run => {
+            // Plan §16.4: `springtale init cli-runner && springtale run`.
+            // `run` is the plain-English name for the daemon entry point
+            // so the plan's success-criterion prompt works literally.
+            commands::server::run().await?;
+        }
         Command::Panic => {
             let store = open_store()?;
             commands::panic::run(&store).await?;

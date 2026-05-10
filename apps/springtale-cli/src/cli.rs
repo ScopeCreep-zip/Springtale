@@ -38,12 +38,27 @@ pub enum Command {
         #[command(subcommand)]
         action: ServerAction,
     },
+    /// Run Springtale — alias for `server start`, matches plan §16.4
+    /// (`springtale init cli-runner && springtale run` in ≤60s).
+    Run,
     /// Initialize Springtale (create data directory, vault, config).
     /// After setup, optionally links a chat platform and starts the daemon.
-    Init,
+    ///
+    /// With a `<template>` argument, scaffolds that starter first then
+    /// runs the vault/DB setup — matches plan §16.4's success-criterion
+    /// command line: `springtale init cli-runner && springtale run`.
+    Init {
+        /// Optional template name — if given, equivalent to running
+        /// `springtale new <template>` then the interactive init.
+        template: Option<String>,
+    },
     /// Create a new project from a starter template.
     New {
-        /// Template name: telegram-bot, github-monitor, cron-runner, llm-assistant
+        /// Template name. Run `springtale new --help` for the full list, or see
+        /// `docs/guide/templates.md`. 14 starters ship: telegram-bot,
+        /// github-monitor, cron-runner, llm-assistant, blank-bot, cli-runner,
+        /// llm-swarm, discord-bot, matrix-bot, webhook-receiver, file-watcher,
+        /// research-assistant, code-review-swarm, meeting-summarizer.
         template: String,
     },
     /// Diagnose configuration and connectivity issues.
@@ -220,6 +235,12 @@ pub enum DataAction {
         /// Encrypt the export file.
         #[arg(long)]
         encrypt: bool,
+    },
+    /// Import a previously exported JSON snapshot into this store.
+    Import {
+        /// Path to the JSON export file produced by `springtale data export`.
+        #[arg(long)]
+        input: std::path::PathBuf,
     },
     /// Delete all user data (rules, events, sessions, memory) without destroying the vault.
     Purge,

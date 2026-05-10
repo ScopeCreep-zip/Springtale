@@ -31,6 +31,20 @@ pub async fn run(action: DataAction, store: &SqliteBackend) -> Result<()> {
                 println!("{json}");
             }
         }
+        DataAction::Import { input } => {
+            let json = std::fs::read_to_string(&input)
+                .map_err(|e| anyhow::anyhow!("failed to read {}: {e}", input.display()))?;
+            let export: springtale_runtime::operations::data::DataExport =
+                serde_json::from_str(&json)
+                    .map_err(|e| anyhow::anyhow!("invalid export file: {e}"))?;
+            let stats = springtale_runtime::operations::data::import_data(store, export)
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            eprintln!(
+                "Imported: {} rules, {} connectors, {} events",
+                stats.rules_inserted, stats.connectors_inserted, stats.events_inserted
+            );
+        }
         DataAction::Purge => {
             springtale_runtime::operations::data::purge_data(store)
                 .await

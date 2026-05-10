@@ -29,3 +29,12 @@ springtale-crypto = { workspace = true }
 springtale-connector = { workspace = true }
 springtale-store = { workspace = true }
 springtale-runtime = { workspace = true }
+
+# Required so `apps/springtale-cli/examples/task-runner.rs` (plan §7.1),
+# `llm-swarm.rs` (§7.2), and `telegram-bot.rs` (§7.3) can import Formation,
+# CadenceBus, and related cooperation primitives directly.
+springtale-cooperation = { workspace = true }
+springtale-bot = { workspace = true }
+springtale-ai = { workspace = true }
+springtale-sentinel = { workspace = true }
+connector-telegram = { workspace = true }
