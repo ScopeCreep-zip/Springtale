@@ -19,7 +19,7 @@ use super::state::AppState;
 
 /// GET /onboarding/platforms — list every platform form the wizard knows.
 pub async fn list() -> Json<Vec<&'static PlatformForm>> {
-    Json(onboarding::list_platforms().iter().collect())
+    Json(onboarding::list_platforms())
 }
 
 /// Request body for POST /onboarding/{platform}.

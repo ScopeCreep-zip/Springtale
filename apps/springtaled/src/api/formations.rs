@@ -33,6 +33,32 @@ pub async fn get(
     }
 }
 
+/// GET /formations/{id}/commands — backend-supplied 3×3 command grid with
+/// status-aware enable/disable. Frontend renders the list; no eligibility
+/// logic on the JS side.
+pub async fn commands(
+    State(state): State<AppState>,
+    ValidatedPath(id): ValidatedPath,
+) -> Result<impl IntoResponse, StatusCode> {
+    match operations::commands::formation_available_commands(&state.runtime, &id).await {
+        Ok(cmds) => Ok((StatusCode::OK, Json(serde_json::json!({ "commands": cmds })))),
+        Err(_) => Err(StatusCode::NOT_FOUND),
+    }
+}
+
+/// GET /formations/{id}/members/eligible — eligible-removal list for the
+/// RM MBR overlay. Backend decides which members are removable; frontend
+/// renders the list.
+pub async fn eligible_members(
+    State(state): State<AppState>,
+    ValidatedPath(id): ValidatedPath,
+) -> Result<impl IntoResponse, StatusCode> {
+    match operations::commands::formation_eligible_members(&state.runtime, &id).await {
+        Ok(members) => Ok((StatusCode::OK, Json(serde_json::json!({ "members": members })))),
+        Err(_) => Err(StatusCode::NOT_FOUND),
+    }
+}
+
 /// POST /formations — create a new formation.
 pub async fn create(
     State(state): State<AppState>,

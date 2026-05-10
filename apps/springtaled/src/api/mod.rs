@@ -6,6 +6,7 @@ pub mod canvas;
 pub mod canvas_stream;
 pub mod config_api;
 pub mod connectors;
+pub mod cooperation_stream;
 pub mod dashboard;
 pub mod data;
 pub mod diagnostics;
@@ -111,6 +112,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/canvas/connections", get(canvas::get_connections))
         .route("/canvas/update", post(canvas::update_canvas))
         .route("/canvas/stream", get(canvas_stream::stream))
+        .route("/cooperation/events", get(cooperation_stream::stream))
         .route("/webhook/{connector}/{trigger}", post(webhooks::receive))
         .route("/send", post(send::send))
         .route("/diagnostics", get(diagnostics::list))
@@ -126,6 +128,11 @@ pub fn build_router(state: AppState) -> Router {
             get(formations::list).post(formations::create),
         )
         .route("/formations/{id}", get(formations::get))
+        .route("/formations/{id}/commands", get(formations::commands))
+        .route(
+            "/formations/{id}/members/eligible",
+            get(formations::eligible_members),
+        )
         .route("/formations/{id}/deploy", post(formations::deploy))
         .route("/formations/{id}/pause", post(formations::pause))
         .route("/formations/{id}/resume", post(formations::resume))

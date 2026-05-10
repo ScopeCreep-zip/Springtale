@@ -125,6 +125,7 @@ fn test_manifest() -> ConnectorManifest {
         triggers: vec![],
         actions: vec![],
         data_disclosure: vec![],
+        roles: vec![],
         wasm_hash: None,
         signature: None,
     }

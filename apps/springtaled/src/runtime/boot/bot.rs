@@ -4,7 +4,7 @@ use anyhow::{Context, Result};
 use tokio::sync::{RwLock, mpsc};
 
 use springtale_bot::cooperation::formation::Formation;
-use springtale_runtime::operations::formations::FormationMemberDetail;
+use springtale_runtime::operations::formations::{AgentHealthDetail, FormationMemberDetail};
 
 /// Live formation reader backed by the bot's in-memory formation list.
 ///
@@ -40,8 +40,12 @@ impl springtale_runtime::LiveFormationReader for BotFormationReader {
                     .map(|c| c.to_string())
                     .unwrap_or_default();
 
+                let agent_id = m.agent_id.0.to_string();
                 let role = m.role.name().to_owned();
-                let health = format!("{:?}", m.health);
+                // Structured health — `From<&AgentHealth>` is in the
+                // runtime crate so the serialized shape stays stable
+                // even if the cooperation enum gains variants.
+                let health = AgentHealthDetail::from(&m.health);
                 let fuel_remaining = m.fuel_remaining.remaining();
                 let liveness = format!("{:?}", m.liveness);
                 let attention_load = attention.load(&m.agent_id);
@@ -51,6 +55,7 @@ impl springtale_runtime::LiveFormationReader for BotFormationReader {
                 let consecutive_failures = m.consecutive_failures;
 
                 FormationMemberDetail {
+                    agent_id,
                     connector_name,
                     role,
                     health,
@@ -111,6 +116,10 @@ pub(super) async fn init_bot(
         .response_tx(bot_response_tx)
         .formation_cmd_rx(formation_cmd_rx)
         .formations_handle(formations_handle)
+        .role_registry(runtime.role_registry.clone())
+        .capability_bridge(runtime.capability_bridge.clone())
+        .canvas_tx(runtime.canvas_tx.clone())
+        .cooperation_tx(runtime.cooperation_tx.clone())
         .build()
         .await
         .context("failed to initialize bot runtime")?;

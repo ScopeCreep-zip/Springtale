@@ -78,10 +78,24 @@ fn build_test_app(ready: bool) -> (Router, String) {
         )
         .expect("WASM engine creation"),
     );
+    let wasm_tier_cache = std::sync::Arc::new(
+        springtale_connector::wasm::WasmTierCache::new(wasm_engine.clone())
+            .expect("WASM tier cache init"),
+    );
 
     let (formation_cmd_tx, _formation_cmd_rx) =
         mpsc::channel::<springtale_cooperation::command::FormationCommand>(32);
 
+    let gossip_store: std::sync::Arc<
+        dyn springtale_cooperation::awareness::GossipStore,
+    > = std::sync::Arc::new(
+        springtale_cooperation::awareness::InMemoryGossipStore::new(),
+    );
+    let capability_bridge =
+        springtale_runtime::CapabilityBridge::new(registry.clone());
+    let role_registry = std::sync::Arc::new(
+        springtale_cooperation::role::RoleRegistry::with_builtins(),
+    );
     let runtime = springtale_runtime::RuntimeState {
         store,
         registry,
@@ -89,10 +103,16 @@ fn build_test_app(ready: bool) -> (Router, String) {
         ai_adapter,
         sentinel,
         wasm_engine,
+        wasm_tier_cache,
+        capability_bridge,
+        role_registry,
         canvas,
         canvas_tx,
         formation_cmd_tx,
         live_formations: None,
+        gossip_store,
+        // Single-process test fixture — no SWIM node.
+        swim_node: None,
     };
 
     let state = AppState {

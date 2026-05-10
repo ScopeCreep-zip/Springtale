@@ -17,18 +17,20 @@ pub(super) async fn init_job_queue(
     let producer = Arc::new(JobProducer::new(job_tx));
     let mut consumer = JobConsumer::new(job_rx, 4);
 
-    // Install action dispatcher as the job handler.
-    let dispatch_registry = runtime.registry.clone();
+    // Install action dispatcher as the job handler. Routes through the
+    // shared `CapabilityBridge` on `RuntimeState` so queued jobs and
+    // tick-driven dispatches share one enforcement point (§16 / §6.10).
+    let dispatch_bridge = runtime.capability_bridge.clone();
     let dispatch_sentinel = runtime.sentinel.clone();
     consumer.set_handler(std::sync::Arc::new(move |job| {
-        let reg = dispatch_registry.clone();
+        let bridge = dispatch_bridge.clone();
         let sent = dispatch_sentinel.clone();
         Box::pin(async move {
             let action: springtale_core::rule::action::Action = serde_json::from_value(job.payload)
                 .map_err(|e| format!("failed to deserialize action: {e}"))?;
 
             // Sentinel evaluation + action dispatch in shared layer
-            crate::dispatch::dispatch_action(&action, &reg, &sent)
+            crate::dispatch::dispatch_action(&action, &bridge, &sent)
                 .await
                 .map(|_| ())
         })

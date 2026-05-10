@@ -72,6 +72,13 @@ pub async fn boot(
         ai_anthropic,
         sentinel,
         connector_configs,
+        // Default cooperation config is single-process in-memory gossip.
+        // Cross-process (chitchat) is opt-in via springtaled.toml:
+        //     [cooperation]
+        //     cross_process = true
+        //     chitchat_listen_addr = "127.0.0.1:18000"
+        //     chitchat_seeds = ["127.0.0.1:18001"]
+        cooperation: springtale_runtime::config::CooperationConfig::default(),
     };
     // Formation command channel: sender goes to runtime (operations send commands),
     // receiver goes to bot (event loop materializes/removes formations).
