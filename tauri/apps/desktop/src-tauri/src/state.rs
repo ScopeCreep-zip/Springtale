@@ -66,11 +66,11 @@ pub async fn init_runtime(
                 .map(|key| key.as_str().replace("__", ".").into()),
         );
 
-    let connector_keys = [
-        "telegram", "nostr", "irc", "discord", "slack", "signal", "github", "kick",
-        "presearch", "bluesky", "http", "filesystem", "shell", "browser",
-    ];
-    for key in connector_keys {
+    // F-conn-1 universal-modular-connectors: enumerate connector config
+    // keys from the compile-time `inventory::iter::<FactoryEntry>` instead
+    // of hardcoding a list. New connectors plug in without editing state.rs.
+    for entry in inventory::iter::<springtale_connector::factory::FactoryEntry> {
+        let key = entry.factory.config_key();
         if let Ok(val) = figment.extract_inner::<serde_json::Value>(key) {
             config.connector_configs.insert(key.to_string(), val);
         }

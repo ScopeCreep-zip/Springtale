@@ -146,17 +146,13 @@ export const COMMANDS: Record<string, (ColonyCommand | null)[]> = {
     cmd("^", "OUTPUTS", "O", "connector", "connector:outputs"),
     null, null,
   ],
-  formation: [
-    cmd(">", "INTENT", "I", "formation", "formation:intent"),
-    cmd("+", "ADD", "A", "formation", "formation:add"),
-    cmd("~", "FUEL", "F", "formation", "formation:fuel"),
-    cmd("#", "GUARD", "G", "formation", "formation:guard"),
-    cmd("x", "DISSOLVE", "D", "formation", "formation:dissolve"),
-    cmd("!", "RALLY", "R", "formation", "formation:rally"),
-    cmd("@", "AI", "Q", "formation", "formation:ai_config"),
-    cmd("^", "AUTONOMY", "U", "formation", "formation:autonomy"),
-    cmd("-", "REMOVE", "X", "formation", "formation:remove_member"),
-  ],
+  // F1: formation context is backend-supplied via
+  // `provider.formationAvailableCommands(id)` (B11). The status-aware
+  // enable/disable + canonical hotkeys live entirely in Rust
+  // (`crates/springtale-runtime/src/operations/commands.rs`); no
+  // hardcoded fallback here. App.tsx uses the resource directly when
+  // dispatching formation hotkeys; if the resource hasn't resolved yet
+  // it short-circuits without firing.
 };
 
 export const NODE_TYPES = ["conifer", "deciduous", "shrub"] as const;

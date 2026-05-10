@@ -75,6 +75,8 @@ pub fn run() {
             commands::canvas::get_connections,
             commands::canvas::get_canvas_state,
             commands::canvas::update_canvas,
+            commands::canvas::subscribe_canvas,
+            commands::cooperation::subscribe_cooperation,
             commands::safety::reset_auto_lock,
             commands::formations::create_formation,
             commands::formations::deploy_formation,
@@ -91,6 +93,8 @@ pub fn run() {
             commands::formations::deploy_team,
             commands::formations::cycle_formation_intent,
             commands::formations::cycle_formation_autonomy,
+            commands::formations::formation_commands,
+            commands::formations::formation_eligible_members,
             // Config
             commands::config::get_config,
             commands::config::set_config,

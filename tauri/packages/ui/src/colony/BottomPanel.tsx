@@ -3,6 +3,7 @@ import type { Component } from "solid-js";
 import type {
   ColonyNode, ColonyAgent, ColonyConnection, ColonyFormation, ColonySelection, ColonyCommand, DetailView,
 } from "./types";
+import type { CommandDecl } from "../dashboard/types";
 import type { EventItem } from "../dashboard/model";
 import { getAgentPosition, getFormationBounds, type ConnectorPositions } from "./geometry";
 import {
@@ -28,6 +29,13 @@ export interface BottomPanelProps {
   onCreateBot?: () => void;
   onAddToFormation?: (formationId: string, connectorName: string) => Promise<void>;
   connectorPositions: ConnectorPositions;
+  /**
+   * F1 + B11: backend-supplied formation command list — when present,
+   * `CommandGrid` renders this instead of the static `COMMANDS.formation`
+   * table. Each entry includes status-aware enabled/disabled state +
+   * canonical hotkey decided server-side.
+   */
+  formationCommands?: CommandDecl[];
 }
 
 /**
@@ -118,6 +126,7 @@ export const BottomPanel: Component<BottomPanelProps> = (props) => {
         <CommandGrid
           selection={props.selection}
           onCommand={props.onCommand}
+          formationCommands={props.formationCommands}
         />
       </div>
     </>
@@ -545,27 +554,58 @@ const DetailPanel: Component<{
 const CommandGrid: Component<{
   selection: ColonySelection;
   onCommand: (label: string) => void;
+  formationCommands?: CommandDecl[];
 }> = (props) => {
-  const commands = () => COMMANDS[props.selection.type ?? "none"];
-
+  // F1: formation context renders ONLY backend-supplied commands (B11);
+  // there is no static fallback. Other selection contexts use the
+  // hardcoded `COMMANDS` table for now (those grids are still
+  // frontend-owned per colony-canvas.md §3 — only formation commands
+  // need backend status-awareness).
   return (
-    <div class="grid h-[calc(100%-16px)] grid-cols-3 gap-0.5">
-      <For each={commands()}>
-        {(cmd) => {
-          if (!cmd) return <div class="colony-command-btn is-empty" />;
-          return (
-            <button
-              class="colony-command-btn"
-              onClick={() => props.onCommand(cmd.action)}
-            >
-              <span class="colony-text-icon">{cmd.icon}</span>
-              {cmd.label}
-              <span class="colony-text-3xs bg-soil-deep px-0.5 text-text-dim">{cmd.key}</span>
-            </button>
-          );
-        }}
-      </For>
-    </div>
+    <Show
+      when={props.selection.type !== "formation"}
+      fallback={
+        <div class="grid h-[calc(100%-16px)] grid-cols-3 gap-0.5">
+          <For each={props.formationCommands ?? []}>
+            {(cmd) => (
+              <button
+                class="colony-command-btn"
+                classList={{ "is-disabled": !cmd.enabled }}
+                disabled={!cmd.enabled}
+                title={cmd.disabled_reason ?? cmd.label}
+                onClick={() => props.onCommand(cmd.id)}
+              >
+                <span class="colony-text-icon">{cmd.icon}</span>
+                {cmd.label}
+                <span class="colony-text-3xs bg-soil-deep px-0.5 text-text-dim">
+                  {cmd.hotkey}
+                </span>
+              </button>
+            )}
+          </For>
+        </div>
+      }
+    >
+      <div class="grid h-[calc(100%-16px)] grid-cols-3 gap-0.5">
+        <For each={COMMANDS[props.selection.type ?? "none"]}>
+          {(cmd) => {
+            if (!cmd) return <div class="colony-command-btn is-empty" />;
+            return (
+              <button
+                class="colony-command-btn"
+                onClick={() => props.onCommand(cmd.action)}
+              >
+                <span class="colony-text-icon">{cmd.icon}</span>
+                {cmd.label}
+                <span class="colony-text-3xs bg-soil-deep px-0.5 text-text-dim">
+                  {cmd.key}
+                </span>
+              </button>
+            );
+          }}
+        </For>
+      </div>
+    </Show>
   );
 };
 

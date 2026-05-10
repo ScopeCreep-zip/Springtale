@@ -9,7 +9,7 @@ use springtale_runtime::operations::onboarding::{self, ApplyReport, PlatformForm
 /// List all onboarding platform forms (wizard step definitions).
 #[tauri::command]
 pub async fn list_onboarding_platforms() -> Result<Vec<&'static PlatformForm>, String> {
-    Ok(onboarding::list_platforms().iter().collect())
+    Ok(onboarding::list_platforms())
 }
 
 /// Apply an onboarding wizard answer set — persist connector config.

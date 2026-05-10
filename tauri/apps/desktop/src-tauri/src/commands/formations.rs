@@ -119,6 +119,34 @@ pub async fn list_intents() -> Vec<springtale_runtime::operations::formations::I
     springtale_runtime::operations::formations::list_intents()
 }
 
+/// Backend-supplied formation 3×3 command grid with status-aware enable/disable.
+/// Frontend renders the list as-is and dispatches by `id`.
+#[tauri::command]
+pub async fn formation_commands(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<springtale_runtime::operations::commands::CommandDecl>, String> {
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::commands::formation_available_commands(rt, &id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+/// Backend-supplied eligible-removal list for the RM MBR overlay. Backend
+/// decides which members are removable; frontend just renders.
+#[tauri::command]
+pub async fn formation_eligible_members(
+    state: State<'_, AppState>,
+    id: String,
+) -> Result<Vec<springtale_runtime::operations::commands::MemberRef>, String> {
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::commands::formation_eligible_members(rt, &id)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 /// Deploy a complete team — creates rules + formation atomically.
 #[tauri::command]
 pub async fn deploy_team(

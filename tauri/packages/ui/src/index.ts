@@ -13,6 +13,8 @@ export type { Locale, RawDictionary } from "./i18n/types";
 
 // Colony layout components
 export { ColonyShell } from "./colony/ColonyShell";
+export { MemberPickerOverlay } from "./colony/MemberPickerOverlay";
+export type { MemberPickerOverlayProps } from "./colony/MemberPickerOverlay";
 export { TopBar } from "./colony/TopBar";
 export { Viewport } from "./colony/Viewport";
 export { ColonyCanvas } from "./colony/ColonyCanvas";
@@ -41,7 +43,7 @@ export type { TeamConfig } from "./colony/TeamBuilder";
 
 // Dashboard state (data layer — platform-agnostic)
 export { createDashboardState, DashboardProvider, useDashboard } from "./dashboard/context";
-export type { DataProvider, DashboardState, FormationInfo, FormationMemberDetail, FormationDetail, RuleSummary, ConfigSchema, ConfigSchemaProperty, AvailableConnector } from "./dashboard/types";
+export type { DataProvider, DashboardState, FormationInfo, FormationMemberDetail, FormationDetail, RuleSummary, ConfigSchema, ConfigSchemaProperty, AvailableConnector, CommandDecl, MemberRef } from "./dashboard/types";
 export { createProviderQuery, createProviderMutation } from "./dashboard/query";
 export type { MutationResult } from "./dashboard/query";
 

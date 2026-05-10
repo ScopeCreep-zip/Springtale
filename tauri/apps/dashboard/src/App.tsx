@@ -8,6 +8,7 @@ import {
   AiConfigPanel,
   AppSettingsPanel,
   ConnectorConfigPanel,
+  MemberPickerOverlay,
   useDashboard,
   useI18n,
   mapNodes,
@@ -40,6 +41,8 @@ export const App = () => {
   const [selection, setSelection] = createSignal<ColonySelection>({ id: null, type: null });
   const [connectorPositions, setConnectorPositions] = createSignal<Record<string, { x: number; y: number }>>({});
   const [showSettings, setShowSettings] = createSignal(false);
+  // F5 — member-picker overlay state.
+  const [memberPickerFor, setMemberPickerFor] = createSignal<string | null>(null);
   const [showSessions, setShowSessions] = createSignal(false);
   const [showTeamBuilder, setShowTeamBuilder] = createSignal(false);
   const [connected, setConnected] = createSignal(false);
@@ -150,8 +153,24 @@ export const App = () => {
       // Skip command shortcuts when any modal is open
       if (showSettings() || showSessions() || showTeamBuilder() || confirmAction() || aiConfigAgent() || connectorConfigData()) return;
 
-      // Command grid shortcuts: match key to current selection context
+      // Command grid shortcuts: match key to current selection context.
+      // F1: formation hotkeys come exclusively from the backend
+      // (`provider.formationAvailableCommands(id)`); there is no
+      // hardcoded fallback. If the resource hasn't resolved yet, short-
+      // circuit so global hotkeys don't fire while a formation is
+      // selected (a stray "R" press shouldn't trigger REFRESH when the
+      // user expected RALLY).
       const context = selection().type ?? "none";
+      if (context === "formation") {
+        const fmCmds = db.formationCommands();
+        if (!fmCmds) return;
+        const fc = fmCmds.find((c) => c.enabled && c.hotkey.toLowerCase() === key);
+        if (fc) {
+          e.preventDefault();
+          handleCommand(fc.id);
+        }
+        return;
+      }
       const commandList = COMMANDS[context] ?? COMMANDS.none;
       const cmd = commandList.find((c) => c?.key.toLowerCase() === key);
       if (cmd) {
@@ -276,6 +295,15 @@ export const App = () => {
           break;
 
         // ── Formation ──
+        case "formation:deploy":
+          if (sel.id) { await db.handleDeployFormation(sel.id); await db.refresh(); }
+          break;
+        case "formation:pause":
+          if (sel.id) { await db.handlePauseFormation(sel.id); await db.refresh(); }
+          break;
+        case "formation:resume":
+          if (sel.id) { await db.handleResumeFormation(sel.id); await db.refresh(); }
+          break;
         case "formation:dissolve":
           if (sel.id) {
             setConfirmAction({
@@ -286,7 +314,11 @@ export const App = () => {
             });
           }
           break;
-        case "formation:rally": if (sel.id) { await db.handleResumeFormation(sel.id); await db.refresh(); } break;
+        case "formation:remove_member":
+          // F5 — open the member-picker overlay scoped to this formation.
+          if (sel.id) { setMemberPickerFor(sel.id); }
+          break;
+        case "formation:rally": if (sel.id) { await db.handleRallyFormation(sel.id); await db.refresh(); } break;
         case "formation:ai_config":
           if (sel.id) {
             const fmAi = db.swarms().find((s) => s.id === sel.id);
@@ -319,6 +351,17 @@ export const App = () => {
 
   // ── Unified overlay — settings → confirm → hatch → sessions ──
   const shellOverlay = () => {
+    // F5 — member picker takes precedence so destructive flow gets focus.
+    const pickerFor = memberPickerFor();
+    if (pickerFor) {
+      return (
+        <MemberPickerOverlay
+          formationId={pickerFor}
+          onRemoved={async () => { await db.refresh(); }}
+          onCancel={() => setMemberPickerFor(null)}
+        />
+      );
+    }
     if (showSettings()) {
       return (
         <div class="colony-modal mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6">
@@ -529,6 +572,7 @@ export const App = () => {
           availableConnectors={availableConnectors()}
           selection={selection()}
           detailView={detailView()}
+          formationCommands={db.formationCommands()}
           onCommand={handleCommand}
           onSelectAgent={(id) => { setSelection({ id, type: "agent" }); setDetailView({ mode: "entity" }); }}
           onSelectConnector={async (id) => {

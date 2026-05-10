@@ -6,6 +6,7 @@
  */
 import type { DataProvider } from "@springtale/ui";
 import { listen } from "@tauri-apps/api/event";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import type { EventEntry, CanvasUpdate } from "@springtale/types";
 
 import { listConnectors, listAvailableConnectors, setupConnector, getConnectorSchemas, enableConnector, disableConnector, removeConnector, removeConnectorCascade, getConnectorConfig, listConnectorOutputs } from "./ipc/connectors";
@@ -27,6 +28,8 @@ import {
   deployTeam,
   cycleFormationIntent,
   cycleFormationAutonomy,
+  formationAvailableCommands,
+  formationEligibleMembers,
 } from "./ipc/formations";
 import { getCanvasState, getConnections } from "./ipc/canvas";
 import {
@@ -96,6 +99,8 @@ export function createDesktopProvider(): DataProvider {
     deployTeam,
     cycleFormationIntent,
     cycleFormationAutonomy,
+    formationAvailableCommands,
+    formationEligibleMembers,
 
     // Config
     getConfig,
@@ -129,11 +134,21 @@ export function createDesktopProvider(): DataProvider {
     getConnections,
     getCanvasState,
     subscribeToCanvasUpdates(callback) {
-      let unlisten: (() => void) | undefined;
-      listen<CanvasUpdate>("canvas-update", (e) => callback(e.payload))
-        .then((u) => { unlisten = u; })
-        .catch(() => {});
-      return () => unlisten?.();
+      // F4 + E10: Tauri 2 `Channel<T>` is the right primitive for streaming
+      // — purpose-built for high-rate events vs broadcast `emit()`. The
+      // backend `subscribe_canvas` command (see
+      // `tauri/apps/desktop/src-tauri/src/commands/canvas.rs`) spawns a
+      // forwarder that reads from `runtime.canvas_tx` and writes to this
+      // channel, mirroring the web dashboard's `/canvas/stream` SSE path.
+      const channel = new Channel<CanvasUpdate>();
+      channel.onmessage = (update) => callback(update);
+      invoke("subscribe_canvas", { channel }).catch((e) => {
+        console.warn("subscribe_canvas failed:", e);
+      });
+      return () => {
+        // The forwarder breaks its loop when send returns Err on channel
+        // drop; nothing else to clean up frontend-side.
+      };
     },
 
     // Diagnostics

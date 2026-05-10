@@ -8,6 +8,7 @@ import {
   AiConfigPanel,
   AppSettingsPanel,
   ConnectorConfigPanel,
+  MemberPickerOverlay,
   useDashboard,
   useI18n,
   mapNodes,
@@ -38,6 +39,10 @@ export const App = () => {
   const [showVault, setShowVault] = createSignal(false);
   const [showDesktopSettings, setShowDesktopSettings] = createSignal(false);
   const [showTeamBuilder, setShowTeamBuilder] = createSignal(false);
+  // F5 — member-picker overlay state. When set to a formation id, the
+  // ColonyShell overlay slot renders MemberPickerOverlay for that
+  // formation. Cleared on remove or cancel.
+  const [memberPickerFor, setMemberPickerFor] = createSignal<string | null>(null);
   const [passphrase, setPassphrase] = createSignal("");
   const [vaultError, setVaultError] = createSignal("");
 
@@ -174,10 +179,26 @@ export const App = () => {
       }
 
       // Skip command shortcuts when any modal is open
-      if (showVault() || showDesktopSettings() || showTeamBuilder() || confirmAction() || aiConfigAgent() || connectorConfigData()) return;
+      if (showVault() || showDesktopSettings() || showTeamBuilder() || confirmAction() || aiConfigAgent() || connectorConfigData() || memberPickerFor()) return;
 
-      // Command grid shortcuts: match key to current selection context
+      // Command grid shortcuts: match key to current selection context.
+      // F1: formation hotkeys come exclusively from the backend
+      // (`provider.formationAvailableCommands(id)`); there is no
+      // hardcoded fallback. If the resource hasn't resolved yet, short-
+      // circuit so global hotkeys don't fire while a formation is
+      // selected (a stray "R" press shouldn't trigger REFRESH when the
+      // user expected RALLY).
       const context = selection().type ?? "none";
+      if (context === "formation") {
+        const fmCmds = db.formationCommands();
+        if (!fmCmds) return;
+        const fc = fmCmds.find((c) => c.enabled && c.hotkey.toLowerCase() === key);
+        if (fc) {
+          e.preventDefault();
+          handleCommand(fc.id);
+        }
+        return;
+      }
       const commandList = COMMANDS[context] ?? COMMANDS.none;
       const cmd = commandList.find((c) => c?.key.toLowerCase() === key);
       if (cmd) {
@@ -391,6 +412,15 @@ export const App = () => {
           break;
 
         // ── Formation (swarm selected) ──
+        case "formation:deploy":
+          if (sel.id) { await db.handleDeployFormation(sel.id); await db.refresh(); }
+          break;
+        case "formation:pause":
+          if (sel.id) { await db.handlePauseFormation(sel.id); await db.refresh(); }
+          break;
+        case "formation:resume":
+          if (sel.id) { await db.handleResumeFormation(sel.id); await db.refresh(); }
+          break;
         case "formation:dissolve":
           if (sel.id) {
             setConfirmAction({
@@ -400,6 +430,12 @@ export const App = () => {
               action: async () => { await db.handleDissolveFormation(sel.id!); setSelection({ id: null, type: null }); await db.refresh(); },
             });
           }
+          break;
+        case "formation:remove_member":
+          // F5 — open the member-picker overlay scoped to this formation.
+          // The overlay fetches the eligible-removal list (B11
+          // `formation_eligible_members`) and renders one button per member.
+          if (sel.id) { setMemberPickerFor(sel.id); }
           break;
         case "formation:rally":
           if (sel.id) { await db.handleRallyFormation(sel.id); }
@@ -437,6 +473,18 @@ export const App = () => {
 
   // ── Unified overlay — priority order ────────────────────
   const shellOverlay = () => {
+    // F5 — member-picker for RM MBR. Renders before settings/AI panels
+    // so a destructive action gets focus once requested.
+    const pickerFor = memberPickerFor();
+    if (pickerFor) {
+      return (
+        <MemberPickerOverlay
+          formationId={pickerFor}
+          onRemoved={async () => { await db.refresh(); }}
+          onCancel={() => setMemberPickerFor(null)}
+        />
+      );
+    }
     // 1. Vault (security — blocks everything else)
     if (showVault()) {
       return (
@@ -654,6 +702,7 @@ export const App = () => {
           events={db.events()}
           selection={selection()}
           detailView={detailView()}
+          formationCommands={db.formationCommands()}
           onCommand={handleCommand}
           onSelectAgent={(id) => { setSelection({ id, type: "agent" }); setDetailView({ mode: "entity" }); }}
           onSelectConnector={async (id) => {

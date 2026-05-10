@@ -8,11 +8,11 @@
  * their platform-specific DataProvider. The returned DashboardState
  * drives the RTS layout (ResourceBar + Roster + Canvas + CommandPanel).
  */
-import { createContext, useContext, createSignal, onCleanup } from "solid-js";
+import { createContext, useContext, createSignal, createResource, onCleanup } from "solid-js";
 import type { ConnectorSchema, CanvasState, CanvasUpdate, EventEntry, AgentState } from "@springtale/types";
 import type { ConnectorStatus, RuleItem, RuleDetail, EventItem, SwarmInfo } from "../dashboard/model";
 import type { ConditionDef } from "../ConditionEditor";
-import type { DataProvider, DashboardState, FormationInfo } from "./types";
+import type { DataProvider, DashboardState, FormationInfo, CommandDecl } from "./types";
 
 // ── Canvas update reducer ────────────────────────────────
 // Extracted from apps/dashboard/src/pages/Canvas.tsx
@@ -308,9 +308,26 @@ export function createDashboardState(provider: DataProvider): DashboardState {
     };
   };
 
+  // F1 + B11: backend-supplied formation command list. Resource re-fetches
+  // when the selected swarm changes; status-aware enable/disable + canonical
+  // hotkey live in Rust per the thin-frontend rule.
+  const [formationCommandsResource] = createResource(
+    () => selectedSwarmId(),
+    async (id) => {
+      if (!id) return undefined;
+      try {
+        return await provider.formationAvailableCommands(id);
+      } catch (e) {
+        setError(String(e));
+        return undefined;
+      }
+    },
+  );
+
   return {
     // Core data
     connectors, schemas, rules, events, swarms, agentStates, canvasState, error, loading,
+    formationCommands: () => formationCommandsResource(),
     // Selection
     selectedRuleId, setSelectedRuleId, selectedSwarmId, setSelectedSwarmId,
     // UI panels

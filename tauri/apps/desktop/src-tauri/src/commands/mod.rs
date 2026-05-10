@@ -11,6 +11,7 @@ pub mod bot;
 pub mod canvas;
 pub mod config;
 pub mod connectors;
+pub mod cooperation;
 pub mod data;
 pub mod diagnostics;
 pub mod events;

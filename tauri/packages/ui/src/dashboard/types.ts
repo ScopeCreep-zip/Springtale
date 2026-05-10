@@ -28,11 +28,20 @@ export interface RuleSummary {
   connector_name: string | null;
 }
 
+/** Structured agent health — tagged union matching backend
+ *  `AgentHealthDetail`. Replaces the old stringified Debug output. */
+export type AgentHealthDetail =
+  | { type: "Operational" }
+  | { type: "Degraded"; recovery_count: number }
+  | { type: "Incapacitated" }
+  | { type: "Dead"; recoverable: boolean };
+
 /** Enriched per-member detail from live formation data. */
 export interface FormationMemberDetail {
+  agent_id: string;
   connector_name: string;
   role: string;
-  health: string;
+  health: AgentHealthDetail;
   fuel_remaining: number;
   liveness: string;
   attention_load: number;
@@ -52,16 +61,55 @@ export interface FormationInfo {
   intent: string;
   status: string;
   member_count: number;
+  /** Members whose health is Operational or Degraded (able to carry work). */
+  operational_count: number;
   /** Connector names of formation members. */
   members: string[];
   /** Real momentum tier from backend: "Cold", "Warming", "Hot", "Fever". */
   momentum_tier: string;
   momentum_label?: string;
+  /** Consecutive successful ticks in the current run. */
+  momentum_consecutive_successes?: number;
+  /** Interference count in the current tier. */
+  momentum_interference_count?: number;
+  /** Successes remaining to promote; null at Fever (top tier). */
+  momentum_successes_to_next_tier?: number | null;
   capabilities?: string[];
   guard_status?: string;
   /** Rally tokens remaining (Monster Hunter carts, §15). */
   rally_tokens?: number;
   rally_max?: number;
+}
+
+/**
+ * Backend-supplied formation command descriptor (B11). The frontend
+ * renders the list as-is; eligibility / hotkeys / labels are decided
+ * server-side per the thin-frontend rule.
+ */
+export interface CommandDecl {
+  /** Stable command id, e.g. `"formation:deploy"`. Frontend dispatches by this. */
+  id: string;
+  /** Human label shown on the button, e.g. `"DEPLOY"`. */
+  label: string;
+  /** Pixel icon character. */
+  icon: string;
+  /** Canonical hotkey decided server-side so it's the same on every surface. */
+  hotkey: string;
+  /** Whether the command is currently usable. */
+  enabled: boolean;
+  /** Reason shown when `enabled = false` (tooltip / aria-label). */
+  disabled_reason: string | null;
+}
+
+/**
+ * Backend-supplied eligible-removal target for the RM MBR overlay (F5).
+ */
+export interface MemberRef {
+  agent_id: string;
+  connector_name: string;
+  role: string;
+  can_remove: boolean;
+  block_reason: string | null;
 }
 
 /**
@@ -117,6 +165,16 @@ export interface DataProvider {
   deployTeam(team: { name: string; intent: string; agents: Array<{ connector_name: string; trigger_name: string; action_connector: string; action_name: string }>; guard_mode: boolean }): Promise<{ formation_id: string; rule_ids: string[] }>;
   cycleFormationIntent(id: string): Promise<string>;
   cycleFormationAutonomy(id: string): Promise<string>;
+  /**
+   * Backend-supplied 3×3 formation command grid (B11). Renders as-is per
+   * thin-frontend rule — enable/disable + hotkey decided server-side
+   * from formation status (`formation_available_commands` op).
+   */
+  formationAvailableCommands(id: string): Promise<CommandDecl[]>;
+  /**
+   * Backend-supplied eligible-removal list for the RM MBR overlay (F5).
+   */
+  formationEligibleMembers(id: string): Promise<MemberRef[]>;
 
   // Rules (extended)
   updateRule(id: string, rule: Record<string, unknown>): Promise<void>;
@@ -199,6 +257,12 @@ export interface DashboardState {
   canvasState: () => CanvasState | null;
   error: () => string;
   loading: () => boolean;
+  /**
+   * F1 + B11: backend-supplied formation command grid for the current
+   * `selectedSwarmId`. Resource that re-fetches when selection changes.
+   * Returns `undefined` when no formation is selected.
+   */
+  formationCommands: () => CommandDecl[] | undefined;
 
   // Selection state
   selectedRuleId: () => string | null;

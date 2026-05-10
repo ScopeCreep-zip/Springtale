@@ -124,6 +124,13 @@ export function createWebProvider(): DataProvider {
     async deployTeam(team) { return post("/formations/deploy-team", team); },
     async cycleFormationIntent(id) { return (await post<{ intent: string }>(`/formations/${id}/cycle-intent`)).intent; },
     async cycleFormationAutonomy(id) { return (await post<{ level: string }>(`/formations/${id}/cycle-autonomy`)).level; },
+    // B11 thin-frontend APIs.
+    async formationAvailableCommands(id) {
+      return (await get<{ commands: Array<import("@springtale/ui").CommandDecl> }>(`/formations/${id}/commands`)).commands;
+    },
+    async formationEligibleMembers(id) {
+      return (await get<{ members: Array<import("@springtale/ui").MemberRef> }>(`/formations/${id}/members/eligible`)).members;
+    },
 
     // Config
     async getConfig(key) { return get(`/config/${key}`); },
