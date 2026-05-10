@@ -617,3 +617,120 @@ async fn test_audit_export_time_range() {
         .unwrap();
     assert_eq!(entries.len(), 1);
 }
+
+// ── Cooperation: CAS + deposits + mental model ──────────────────────
+
+#[tokio::test]
+async fn coop_cas_write_first_applies() {
+    use crate::schema::cooperation::CoopCasOutcome;
+    let store = SqliteBackend::open_in_memory().unwrap();
+    let outcome = store
+        .coop_cas_write(1, "writer-a", "k", None, b"v1")
+        .await
+        .unwrap();
+    assert!(matches!(outcome, CoopCasOutcome::Applied));
+}
+
+#[tokio::test]
+async fn coop_cas_write_mismatch_surfaces_current() {
+    use crate::schema::cooperation::CoopCasOutcome;
+    let store = SqliteBackend::open_in_memory().unwrap();
+    store
+        .coop_cas_write(1, "writer-a", "k", None, b"v1")
+        .await
+        .unwrap();
+    let outcome = store
+        .coop_cas_write(2, "writer-b", "k", None, b"v2")
+        .await
+        .unwrap();
+    match outcome {
+        CoopCasOutcome::Mismatch {
+            current_value,
+            current_writer,
+            ..
+        } => {
+            assert_eq!(current_value, b"v1");
+            assert_eq!(current_writer, "writer-a");
+        }
+        _ => panic!("expected Mismatch"),
+    }
+}
+
+#[tokio::test]
+async fn coop_deposit_collect_roundtrip() {
+    let store = SqliteBackend::open_in_memory().unwrap();
+    store
+        .coop_deposit("loc", b"payload", "dep-1", None)
+        .await
+        .unwrap();
+    let got = store.coop_collect("loc", "col-1").await.unwrap();
+    assert_eq!(got.as_deref(), Some(b"payload".as_slice()));
+    // Second collect on the same location must fail — exactly-once.
+    let second = store.coop_collect("loc", "col-2").await.unwrap();
+    assert!(second.is_none());
+}
+
+#[tokio::test]
+async fn coop_list_deposits_returns_all() {
+    let store = SqliteBackend::open_in_memory().unwrap();
+    store.coop_deposit("a", b"1", "dep", None).await.unwrap();
+    store.coop_deposit("b", b"2", "dep", None).await.unwrap();
+    let rows = store.coop_list_deposits().await.unwrap();
+    assert_eq!(rows.len(), 2);
+    assert!(rows.iter().any(|r| r.location == "a"));
+    assert!(rows.iter().any(|r| r.location == "b"));
+}
+
+#[tokio::test]
+async fn coop_sweep_removes_expired() {
+    let store = SqliteBackend::open_in_memory().unwrap();
+    // TTL of 0 seconds → expires_at == now, immediately stale.
+    store
+        .coop_deposit("stale", b"x", "dep", Some(0))
+        .await
+        .unwrap();
+    // Let the wall clock advance past the deposit's expires_at.
+    tokio::time::sleep(std::time::Duration::from_millis(1100)).await;
+    let swept = store.coop_sweep_expired().await.unwrap();
+    assert_eq!(swept, 1);
+    let rows = store.coop_list_deposits().await.unwrap();
+    assert!(rows.is_empty());
+}
+
+#[tokio::test]
+async fn mental_model_save_load_roundtrip() {
+    use crate::schema::mental_model::{MentalModelBundle, MentalModelDomainRow};
+    let store = SqliteBackend::open_in_memory().unwrap();
+    let bundle = MentalModelBundle {
+        domain: vec![MentalModelDomainRow {
+            key: "topple_window".to_owned(),
+            description: "3 hits to head".to_owned(),
+            learned_at_unix: 1_000_000,
+            confidence: 0.8,
+        }],
+        ..Default::default()
+    };
+    store.mental_model_save("f1", &bundle).await.unwrap();
+    let loaded = store.mental_model_load("f1").await.unwrap();
+    assert_eq!(loaded.domain.len(), 1);
+    assert_eq!(loaded.domain[0].key, "topple_window");
+}
+
+#[tokio::test]
+async fn mental_model_clear_removes_rows() {
+    use crate::schema::mental_model::{MentalModelBundle, MentalModelDomainRow};
+    let store = SqliteBackend::open_in_memory().unwrap();
+    let bundle = MentalModelBundle {
+        domain: vec![MentalModelDomainRow {
+            key: "k".to_owned(),
+            description: "d".to_owned(),
+            learned_at_unix: 0,
+            confidence: 0.5,
+        }],
+        ..Default::default()
+    };
+    store.mental_model_save("f1", &bundle).await.unwrap();
+    store.mental_model_clear("f1").await.unwrap();
+    let loaded = store.mental_model_load("f1").await.unwrap();
+    assert!(loaded.domain.is_empty());
+}

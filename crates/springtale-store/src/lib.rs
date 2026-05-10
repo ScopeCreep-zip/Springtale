@@ -14,11 +14,16 @@ pub use error::StoreError;
 pub use schema::audit::{AuditEntry, AuditFilter};
 pub use schema::bot::{MemoryRow, SessionRow, UserPrefsRow};
 pub use schema::connectors::ConnectorRow;
+pub use schema::cooperation::{CoopCasOutcome, CoopDepositRow, CoopWriteRow};
 pub use schema::events::{EventEntry, EventFilter};
 pub use schema::execution::ExecutionResultRow;
 pub use schema::formations::{
     FormationMemberRow, FormationMomentumRow, FormationRallyRow, FormationRow,
 };
 pub use schema::jobs::{JobId, JobRow};
+pub use schema::mental_model::{
+    MentalModelBundle, MentalModelCapabilityRow, MentalModelConventionRow,
+    MentalModelDomainRow, MentalModelPatternRow, MentalModelVocabularyRow,
+};
 pub use schema::safety::SafetyConfigRow;
 pub use schema::wasm::WasmBinaryRow;

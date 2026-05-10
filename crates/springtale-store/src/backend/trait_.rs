@@ -5,12 +5,14 @@ use crate::error::StoreError;
 use crate::schema::audit::{AuditEntry, AuditFilter};
 use crate::schema::bot::{MemoryRow, SessionRow, UserPrefsRow};
 use crate::schema::connectors::ConnectorRow;
+use crate::schema::cooperation::{CoopCasOutcome, CoopDepositRow};
 use crate::schema::events::{EventEntry, EventFilter};
 use crate::schema::execution::ExecutionResultRow;
 use crate::schema::formations::{
     FormationMemberRow, FormationMomentumRow, FormationRallyRow, FormationRow,
 };
 use crate::schema::jobs::{JobId, JobRow};
+use crate::schema::mental_model::MentalModelBundle;
 use crate::schema::safety::SafetyConfigRow;
 use springtale_core::rule::types::{Rule, RuleId};
 
@@ -352,6 +354,98 @@ pub trait StorageBackend: Send + Sync + 'static {
         _limit: usize,
     ) -> Result<Vec<ExecutionResultRow>, StoreError> {
         Ok(Vec::new())
+    }
+
+    // ── Cooperation: Atomic CAS (§13) ─────────────────────────
+    //
+    // Backs the interference detector's write-conflict classification.
+    // Mirrors sled::Tree::compare_and_swap semantics via SQLite
+    // BEGIN IMMEDIATE transactions.
+
+    /// Attempt an atomic compare-and-swap write. `expected == None` means
+    /// "key must not exist"; `Some(bytes)` means "current value must match".
+    /// Returns `Applied` on success or `Mismatch` with the conflicting
+    /// writer's current state for interference classification.
+    async fn coop_cas_write(
+        &self,
+        _tick: i64,
+        _writer: &str,
+        _key: &str,
+        _expected: Option<&[u8]>,
+        _proposed: &[u8],
+    ) -> Result<CoopCasOutcome, StoreError> {
+        Ok(CoopCasOutcome::Applied)
+    }
+
+    // ── Cooperation: Environment-Mediated Handoff (§20) ───────
+    //
+    // Backs HandoffType::EnvironmentMediated with durable deposit + TTL
+    // sweep, per Divinity/MH "leave-a-thing-for-your-partner" pattern.
+
+    /// Deposit a payload at a location with optional TTL (seconds).
+    /// Replaces any existing deposit at the same location (last-write-wins).
+    async fn coop_deposit(
+        &self,
+        _location: &str,
+        _payload: &[u8],
+        _depositor: &str,
+        _ttl_secs: Option<i64>,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Atomically claim and remove a deposit. Returns None if the location
+    /// is empty or already claimed. UPDATE ... RETURNING guarantees
+    /// exactly-once collection even under concurrent collectors.
+    async fn coop_collect(
+        &self,
+        _location: &str,
+        _collector: &str,
+    ) -> Result<Option<Vec<u8>>, StoreError> {
+        Ok(None)
+    }
+
+    /// Delete deposits whose `expires_at` is before the current Unix time.
+    /// Returns the number of rows swept. Called on a timer from runtime init.
+    async fn coop_sweep_expired(&self) -> Result<u64, StoreError> {
+        Ok(0)
+    }
+
+    /// List all active deposits (for observability / canvas UI). Surfaces
+    /// depositor + deposited_at so the "handoff_ready" surface can display
+    /// who handed off what and when. Per spec §20.3.
+    async fn coop_list_deposits(&self) -> Result<Vec<CoopDepositRow>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    // ── Cooperation: Shared Mental Model (§21) ────────────────
+    //
+    // Five tables, saved/loaded as one transactional bundle per formation.
+    // Callers are responsible for converting SharedMentalModel ↔ bundle
+    // (conversion lives in the cooperation crate to keep store domain-agnostic).
+
+    /// Save the full mental-model bundle for a formation. Replaces any
+    /// existing rows for this formation (transactional delete + insert).
+    async fn mental_model_save(
+        &self,
+        _formation_id: &str,
+        _bundle: &MentalModelBundle,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Load the full mental-model bundle for a formation. Empty bundle
+    /// if the formation has no stored state yet.
+    async fn mental_model_load(
+        &self,
+        _formation_id: &str,
+    ) -> Result<MentalModelBundle, StoreError> {
+        Ok(MentalModelBundle::default())
+    }
+
+    /// Delete all mental-model rows for a formation.
+    async fn mental_model_clear(&self, _formation_id: &str) -> Result<(), StoreError> {
+        Ok(())
     }
 
     // ── Emergency ─────────────────────────────────────────────

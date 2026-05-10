@@ -2,6 +2,7 @@ mod aliases;
 mod audit;
 mod config;
 mod connectors;
+mod cooperation;
 mod events;
 mod formations;
 mod jobs;
@@ -23,10 +24,12 @@ use crate::migrations;
 use crate::schema::audit::{AuditEntry, AuditFilter};
 use crate::schema::bot::{MemoryRow, SessionRow, UserPrefsRow};
 use crate::schema::connectors::ConnectorRow;
+use crate::schema::cooperation::{CoopCasOutcome, CoopDepositRow};
 use crate::schema::events::{EventEntry, EventFilter};
 use crate::schema::execution::ExecutionResultRow;
 use crate::schema::formations::{FormationMemberRow, FormationRow};
 use crate::schema::jobs::{JobId, JobRow};
+use crate::schema::mental_model::MentalModelBundle;
 use crate::schema::safety::SafetyConfigRow;
 use crate::schema::wasm::WasmBinaryRow;
 use springtale_core::rule::types::{Rule, RuleId};
@@ -470,6 +473,83 @@ impl super::trait_::StorageBackend for SqliteBackend {
     ) -> Result<Vec<ExecutionResultRow>, StoreError> {
         self.list_execution_results_impl(connector_name, limit)
             .await
+    }
+
+    // ── Cooperation: Atomic CAS (§13) ─────────────────────────
+
+    async fn coop_cas_write(
+        &self,
+        tick: i64,
+        writer: &str,
+        key: &str,
+        expected: Option<&[u8]>,
+        proposed: &[u8],
+    ) -> Result<CoopCasOutcome, StoreError> {
+        self.coop_cas_write_impl(
+            tick,
+            writer.to_owned(),
+            key.to_owned(),
+            expected.map(|b| b.to_vec()),
+            proposed.to_vec(),
+        )
+        .await
+    }
+
+    // ── Cooperation: Environment-Mediated Handoff (§20) ───────
+
+    async fn coop_deposit(
+        &self,
+        location: &str,
+        payload: &[u8],
+        depositor: &str,
+        ttl_secs: Option<i64>,
+    ) -> Result<(), StoreError> {
+        self.coop_deposit_impl(
+            location.to_owned(),
+            payload.to_vec(),
+            depositor.to_owned(),
+            ttl_secs,
+        )
+        .await
+    }
+
+    async fn coop_collect(
+        &self,
+        location: &str,
+        collector: &str,
+    ) -> Result<Option<Vec<u8>>, StoreError> {
+        self.coop_collect_impl(location.to_owned(), collector.to_owned())
+            .await
+    }
+
+    async fn coop_sweep_expired(&self) -> Result<u64, StoreError> {
+        self.coop_sweep_expired_impl().await
+    }
+
+    async fn coop_list_deposits(&self) -> Result<Vec<CoopDepositRow>, StoreError> {
+        self.coop_list_deposits_impl().await
+    }
+
+    // ── Cooperation: Shared Mental Model (§21) ────────────────
+
+    async fn mental_model_save(
+        &self,
+        formation_id: &str,
+        bundle: &MentalModelBundle,
+    ) -> Result<(), StoreError> {
+        self.mental_model_save_impl(formation_id.to_owned(), bundle.clone())
+            .await
+    }
+
+    async fn mental_model_load(
+        &self,
+        formation_id: &str,
+    ) -> Result<MentalModelBundle, StoreError> {
+        self.mental_model_load_impl(formation_id.to_owned()).await
+    }
+
+    async fn mental_model_clear(&self, formation_id: &str) -> Result<(), StoreError> {
+        self.mental_model_clear_impl(formation_id.to_owned()).await
     }
 
     // ── Emergency ─────────────────────────────────────────────

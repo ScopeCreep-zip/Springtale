@@ -32,6 +32,9 @@ const MIGRATION_009: &str = include_str!("009_rule_errors.sql");
 /// Embedded SQL for schema version 10.
 const MIGRATION_010: &str = include_str!("010_cooperation.sql");
 
+/// Embedded SQL for schema version 11.
+const MIGRATION_011: &str = include_str!("011_cooperation.sql");
+
 /// All migrations in order.
 const MIGRATIONS: &[(i64, &str)] = &[
     (1, MIGRATION_001),
@@ -44,6 +47,7 @@ const MIGRATIONS: &[(i64, &str)] = &[
     (8, MIGRATION_008),
     (9, MIGRATION_009),
     (10, MIGRATION_010),
+    (11, MIGRATION_011),
 ];
 
 /// Run all pending migrations on the given connection.
@@ -130,7 +134,11 @@ mod tests {
         let version: i64 = conn
             .query_row("SELECT MAX(version) FROM _migrations", [], |row| row.get(0))
             .unwrap();
-        assert_eq!(version, 10);
+        // Migration 011 adds the cooperation tables (coop_writes,
+        // coop_deposits, mental_model_*). Bump the assertion so the
+        // test continues to guard the contract that the latest
+        // migration is recorded.
+        assert_eq!(version, 11);
     }
 
     #[test]

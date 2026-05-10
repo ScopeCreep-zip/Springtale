@@ -21,3 +21,10 @@ pub use formations::{
 };
 pub mod wasm;
 pub use wasm::WasmBinaryRow;
+pub mod cooperation;
+pub use cooperation::{CoopCasOutcome, CoopDepositRow, CoopWriteRow};
+pub mod mental_model;
+pub use mental_model::{
+    MentalModelBundle, MentalModelCapabilityRow, MentalModelConventionRow,
+    MentalModelDomainRow, MentalModelPatternRow, MentalModelVocabularyRow,
+};
