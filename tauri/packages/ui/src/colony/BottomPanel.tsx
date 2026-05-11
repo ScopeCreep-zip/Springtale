@@ -1,10 +1,11 @@
-import { For, Show, Switch, Match } from "solid-js";
+import { For, Show, Switch, Match, createResource } from "solid-js";
 import type { Component } from "solid-js";
 import type {
   ColonyNode, ColonyAgent, ColonyConnection, ColonyFormation, ColonySelection, ColonyCommand, DetailView,
 } from "./types";
-import type { CommandDecl } from "../dashboard/types";
+import type { CommandDecl, CooperationEvent, CooperationEventEnvelope } from "../dashboard/types";
 import type { EventItem } from "../dashboard/model";
+import { useDashboard } from "../dashboard/context";
 import { getAgentPosition, getFormationBounds, type ConnectorPositions } from "./geometry";
 import {
   COMMANDS, ROLE_SPRITES, ROLE_COLORS,
@@ -73,6 +74,7 @@ export const BottomPanel: Component<BottomPanelProps> = (props) => {
               connections={props.connections}
               formations={props.formations}
               selection={props.selection}
+              onCommand={props.onCommand}
             />
           </Match>
           <Match when={props.detailView.mode === "bots"}>
@@ -113,6 +115,7 @@ export const BottomPanel: Component<BottomPanelProps> = (props) => {
               connections={props.connections}
               formations={props.formations}
               selection={props.selection}
+              onCommand={props.onCommand}
             />
           </Match>
         </Switch>
@@ -241,6 +244,10 @@ const DetailPanel: Component<{
   connections: ColonyConnection[];
   formations: ColonyFormation[];
   selection: ColonySelection;
+  /** Command dispatcher — forwarded from BottomPanel so the formation
+   *  detail card can surface clickable rows (e.g. G7 AI override) that
+   *  open modals owned by the App. */
+  onCommand: (action: string) => void;
 }> = (props) => {
   return (
     <Switch fallback={
@@ -541,11 +548,171 @@ const DetailPanel: Component<{
                   )}
                 </For>
               </div>
+
+              {/* G7 — per-formation AI adapter override row */}
+              <FormationAiAdapterRow formationId={f.id} onCommand={props.onCommand} />
+
+              {/* Phase H6 — per-formation cooperation event log */}
+              <FormationEventLog formationId={f.id} />
             </div>
           );
         })()}
       </Match>
     </Switch>
+  );
+};
+
+// ── Formation event log (Phase H6) ───────────────────────
+
+const EVENT_LABELS: Record<CooperationEvent["kind"], string> = {
+  intervention_fired:    "INTERVENTION",
+  pacing_phase_changed:  "PACING",
+  cascade_hit:           "CASCADE",
+  consensus_vote_opened: "VOTE OPEN",
+  consensus_vote_resolved: "VOTE END",
+  commit_phase_changed:  "COMMIT",
+  sacrifice_yield:       "YIELD",
+  role_transformed:      "ROLE",
+  member_marked_down:    "DOWN",
+  supervisor_escalated:  "ESCALATE",
+  recovery_action_taken: "RECOVERY",
+  surface_deposited:     "SURFACE",
+  interference_detected: "INTERFERE",
+  cfp_round_started:     "CFP OPEN",
+  cfp_round_resolved:    "CFP END",
+  cbba_replan_requested: "REPLAN",
+  cbba_replan_resolved:  "REPLAN END",
+};
+
+function severityFor(kind: CooperationEvent["kind"]): "error" | "warn" | "ok" | "idle" {
+  switch (kind) {
+    case "intervention_fired":
+    case "supervisor_escalated":
+    case "cascade_hit":
+    case "interference_detected":
+      return "error";
+    case "member_marked_down":
+    case "pacing_phase_changed":
+    case "consensus_vote_opened":
+    case "cfp_round_started":
+    case "cbba_replan_requested":
+      return "warn";
+    case "sacrifice_yield":
+    case "recovery_action_taken":
+    case "consensus_vote_resolved":
+    case "cfp_round_resolved":
+    case "cbba_replan_resolved":
+    case "commit_phase_changed":
+    case "role_transformed":
+    case "surface_deposited":
+      return "ok";
+    default:
+      return "idle";
+  }
+}
+
+function detailFor(event: CooperationEvent): string {
+  switch (event.kind) {
+    case "intervention_fired":     return event.summary;
+    case "pacing_phase_changed":   return `${event.from} → ${event.to}`;
+    case "cascade_hit":            return `streak ${event.streak} | ${event.members_affected} affected`;
+    case "consensus_vote_opened":  return `${event.vote_id.slice(0, 8)} ${event.deadline_ms}ms`;
+    case "consensus_vote_resolved": return `${event.vote_id.slice(0, 8)} → ${event.outcome}`;
+    case "commit_phase_changed":   return `${event.barrier_id.slice(0, 8)} → ${event.phase}`;
+    case "sacrifice_yield":        return `${event.sacrificer.slice(0, 8)} → ${event.beneficiary.slice(0, 8)} (${event.utility.toFixed(2)})`;
+    case "role_transformed":       return `${event.agent.slice(0, 8)} ${event.from} → ${event.to}`;
+    case "member_marked_down":     return `${event.agent.slice(0, 8)} tick ${event.since_tick}`;
+    case "supervisor_escalated":   return event.reason;
+    case "recovery_action_taken":  return `${event.helper.slice(0, 8)} → ${event.in_distress.slice(0, 8)} (${event.action})`;
+    case "surface_deposited":      return `${event.agent.slice(0, 8)} ${event.surface_kind} ${event.ttl_ms}ms`;
+    case "interference_detected":  return `${event.interference_kind} (${event.agents.length})`;
+    case "cfp_round_started":      return `${event.cfp_id.slice(0, 8)} ${event.capability}`;
+    case "cfp_round_resolved":     return `${event.cfp_id.slice(0, 8)} → ${event.winner?.slice(0, 8) ?? "no winner"}`;
+    case "cbba_replan_requested":  return event.reason;
+    case "cbba_replan_resolved":   return `${event.outcome.status} ${event.outcome.sweeps}s ${event.outcome.assigned}/${event.outcome.assigned + event.outcome.unassigned}`;
+  }
+}
+
+const FormationEventLog: Component<{ formationId: string }> = (props) => {
+  const db = useDashboard();
+  const filtered = (): CooperationEventEnvelope[] =>
+    db.cooperationEvents()
+      .filter((env) => "formation_id" in env.event && env.event.formation_id === props.formationId)
+      .slice(0, 50);
+
+  return (
+    <>
+      <div class="colony-label mt-1.5 mb-0.5">EVENTS ({filtered().length})</div>
+      <Show
+        when={filtered().length > 0}
+        fallback={
+          <p class="colony-text-3xs py-0.5 text-text-dim">No cooperation events yet.</p>
+        }
+      >
+        <div class="colony-event-log">
+          <For each={filtered()}>
+            {(env) => (
+              <div class="colony-event-log-entry" data-severity={severityFor(env.event.kind)}>
+                <span class="colony-event-log-time">
+                  {new Date(env.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                </span>
+                <span class="colony-event-log-kind">{EVENT_LABELS[env.event.kind]}</span>
+                <span class="colony-event-log-detail">{detailFor(env.event)}</span>
+              </div>
+            )}
+          </For>
+        </div>
+      </Show>
+    </>
+  );
+};
+
+// ── Formation AI adapter row (G7) ────────────────────────
+
+/**
+ * Renders the currently-bound AI adapter for this formation (read from
+ * `ai:formation:{id}` config key). Clicking dispatches
+ * `formation:ai_adapter` so the host App can open the shared
+ * `AiConfigPanel` scoped to the formation. Adapter-resolution precedence
+ * (agent → formation → global) lives in `resolve_ai_config` server-side
+ * per the thin-frontend rule.
+ */
+const FormationAiAdapterRow: Component<{
+  formationId: string;
+  onCommand: (action: string) => void;
+}> = (props) => {
+  const db = useDashboard();
+  const [config] = createResource(
+    () => props.formationId,
+    async (id) => {
+      try {
+        return await db.provider.getConfig(`ai:formation:${id}`);
+      } catch {
+        return null;
+      }
+    },
+  );
+
+  const label = () => {
+    const c = config();
+    if (!c || (typeof c === "object" && c !== null && Object.keys(c).length === 0)) {
+      return "inherit";
+    }
+    const t = (c as { type?: string }).type;
+    return t ? t.toUpperCase() : "inherit";
+  };
+
+  return (
+    <>
+      <div class="colony-label mt-1.5 mb-0.5">AI ADAPTER</div>
+      <button
+        class="colony-text-2xs flex w-full items-center justify-between rounded border border-bark bg-soil-deep px-2 py-1 hover:border-bark-light"
+        onClick={() => props.onCommand("formation:ai_adapter")}
+      >
+        <span class="text-text-secondary">{label()}</span>
+        <span class="colony-text-5xs text-text-dim">click to override</span>
+      </button>
+    </>
   );
 };
 

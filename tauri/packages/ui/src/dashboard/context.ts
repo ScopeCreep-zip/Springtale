@@ -12,7 +12,7 @@ import { createContext, useContext, createSignal, createResource, onCleanup } fr
 import type { ConnectorSchema, CanvasState, CanvasUpdate, EventEntry, AgentState } from "@springtale/types";
 import type { ConnectorStatus, RuleItem, RuleDetail, EventItem, SwarmInfo } from "../dashboard/model";
 import type { ConditionDef } from "../ConditionEditor";
-import type { DataProvider, DashboardState, FormationInfo, CommandDecl } from "./types";
+import type { DataProvider, DashboardState, FormationInfo, CommandDecl, CooperationEventEnvelope } from "./types";
 
 // ── Canvas update reducer ────────────────────────────────
 // Extracted from apps/dashboard/src/pages/Canvas.tsx
@@ -54,6 +54,9 @@ export function createDashboardState(provider: DataProvider): DashboardState {
   const [swarms, setSwarms] = createSignal<SwarmInfo[]>([]);
   const [agentStates, setAgentStates] = createSignal<AgentState[]>([]);
   const [canvasState, setCanvasState] = createSignal<CanvasState | null>(null);
+  // Phase H — cooperation events ring (last 200 envelopes). Drives the
+  // EventRibbon toast + BottomPanel formation event log.
+  const [cooperationEvents, setCooperationEvents] = createSignal<CooperationEventEnvelope[]>([]);
   const [error, setError] = createSignal("");
   const [loading, setLoading] = createSignal(true);
 
@@ -80,6 +83,9 @@ export function createDashboardState(provider: DataProvider): DashboardState {
       triggerType: event.trigger_type,
       timestamp: event.timestamp,
       actionTaken: event.action_taken,
+      severity: (event as EventEntry & { severity?: string }).severity === "error"
+        ? ("error" as const)
+        : ("ok" as const),
     }, ...prev].slice(0, 200));
   });
 
@@ -87,9 +93,19 @@ export function createDashboardState(provider: DataProvider): DashboardState {
     setCanvasState((prev: CanvasState | null) => applyCanvasUpdate(prev, update));
   });
 
+  // Phase H — cooperation events SSE / Tauri Channel subscription. Keep
+  // the last 200 envelopes so the EventRibbon + BottomPanel log have
+  // enough history without unbounded growth.
+  let unsubCooperation = provider.subscribeToCooperationEvents(
+    (envelope: CooperationEventEnvelope) => {
+      setCooperationEvents((prev) => [envelope, ...prev].slice(0, 200));
+    },
+  );
+
   const resubscribe = () => {
     unsubEvents();
     unsubCanvas();
+    unsubCooperation();
     unsubEvents = provider.subscribeToEvents((event: EventEntry) => {
       setEvents((prev: EventItem[]) => [{
         id: event.id,
@@ -97,17 +113,25 @@ export function createDashboardState(provider: DataProvider): DashboardState {
         triggerType: event.trigger_type,
         timestamp: event.timestamp,
         actionTaken: event.action_taken,
-        severity: (event as EventEntry & { severity?: string }).severity === "error" ? "error" : "ok",
+        severity: (event as EventEntry & { severity?: string }).severity === "error"
+          ? ("error" as const)
+          : ("ok" as const),
       }, ...prev].slice(0, 200));
     });
     unsubCanvas = provider.subscribeToCanvasUpdates((update: CanvasUpdate) => {
       setCanvasState((prev: CanvasState | null) => applyCanvasUpdate(prev, update));
     });
+    unsubCooperation = provider.subscribeToCooperationEvents(
+      (envelope: CooperationEventEnvelope) => {
+        setCooperationEvents((prev) => [envelope, ...prev].slice(0, 200));
+      },
+    );
   };
 
   onCleanup(() => {
     unsubEvents();
     unsubCanvas();
+    unsubCooperation();
   });
 
   // ── Refresh (bulk data load) ──
@@ -134,26 +158,29 @@ export function createDashboardState(provider: DataProvider): DashboardState {
         connector: x.connector_name ?? x.trigger_type,
       })));
 
-      setEvents(e.map((x: Record<string, unknown>) => ({
-        id: x.id as string,
-        connectorName: x.connector_name as string,
-        triggerType: x.trigger_type as string,
-        timestamp: x.timestamp as string,
-        actionTaken: x.action_taken as string,
-        severity: ((x.severity as string) === "error" ? "error" : "ok") as "ok" | "error",
-      })));
+      setEvents(e.map((x) => {
+        const severity = (x as EventEntry & { severity?: string }).severity;
+        return {
+          id: x.id,
+          connectorName: x.connector_name,
+          triggerType: x.trigger_type,
+          timestamp: x.timestamp,
+          actionTaken: x.action_taken,
+          severity: severity === "error" ? ("error" as const) : ("ok" as const),
+        };
+      }));
 
-      setSwarms(s.map((x: Record<string, unknown>) => ({
-        id: x.id as string,
-        name: x.name as string,
-        intent: x.intent as string,
-        status: x.status as string,
-        member_count: x.member_count as number,
-        members: (x.members as string[]) ?? [],
-        momentum_tier: x.momentum_tier as string | undefined,
-        momentum_label: x.momentum_label as string | undefined,
-        capabilities: x.capabilities as string[] | undefined,
-        guard_status: x.guard_status as string | undefined,
+      setSwarms(s.map((x) => ({
+        id: x.id,
+        name: x.name,
+        intent: x.intent,
+        status: x.status,
+        member_count: x.member_count,
+        members: x.members ?? [],
+        momentum_tier: x.momentum_tier,
+        momentum_label: x.momentum_label,
+        capabilities: x.capabilities,
+        guard_status: x.guard_status,
       })));
 
       setSchemas(cs);
@@ -326,7 +353,7 @@ export function createDashboardState(provider: DataProvider): DashboardState {
 
   return {
     // Core data
-    connectors, schemas, rules, events, swarms, agentStates, canvasState, error, loading,
+    connectors, schemas, rules, events, swarms, agentStates, canvasState, cooperationEvents, error, loading,
     formationCommands: () => formationCommandsResource(),
     // Selection
     selectedRuleId, setSelectedRuleId, selectedSwarmId, setSelectedSwarmId,

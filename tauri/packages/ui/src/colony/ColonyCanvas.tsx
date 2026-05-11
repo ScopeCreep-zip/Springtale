@@ -299,6 +299,7 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
               <svg
                 class="colony-formation"
                 data-status={formation.status}
+                data-pacing={formation.pacingPhase}
                 style={{
                   left: `calc(${bounds().cx}% - ${bounds().rx}% - 8px)`,
                   top: `calc(${bounds().cy}% - ${bounds().ry}% - 8px)`,

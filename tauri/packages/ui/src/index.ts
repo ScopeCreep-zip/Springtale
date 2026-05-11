@@ -15,6 +15,11 @@ export type { Locale, RawDictionary } from "./i18n/types";
 export { ColonyShell } from "./colony/ColonyShell";
 export { MemberPickerOverlay } from "./colony/MemberPickerOverlay";
 export type { MemberPickerOverlayProps } from "./colony/MemberPickerOverlay";
+export { EventRibbon } from "./colony/EventRibbon";
+export { SafetyPanel } from "./colony/SafetyPanel";
+export type { SafetyPanelProps } from "./colony/SafetyPanel";
+export { RuleBuilderOverlay } from "./colony/RuleBuilderOverlay";
+export type { RuleBuilderOverlayProps } from "./colony/RuleBuilderOverlay";
 export { TopBar } from "./colony/TopBar";
 export { Viewport } from "./colony/Viewport";
 export { ColonyCanvas } from "./colony/ColonyCanvas";
@@ -43,7 +48,7 @@ export type { TeamConfig } from "./colony/TeamBuilder";
 
 // Dashboard state (data layer — platform-agnostic)
 export { createDashboardState, DashboardProvider, useDashboard } from "./dashboard/context";
-export type { DataProvider, DashboardState, FormationInfo, FormationMemberDetail, FormationDetail, RuleSummary, ConfigSchema, ConfigSchemaProperty, AvailableConnector, CommandDecl, MemberRef } from "./dashboard/types";
+export type { DataProvider, DashboardState, FormationInfo, FormationMemberDetail, FormationDetail, RuleSummary, ConfigSchema, ConfigSchemaProperty, AvailableConnector, CommandDecl, MemberRef, CooperationEvent, CooperationEventEnvelope, AgentHealthDetail } from "./dashboard/types";
 export { createProviderQuery, createProviderMutation } from "./dashboard/query";
 export type { MutationResult } from "./dashboard/query";
 
@@ -53,6 +58,12 @@ export type { ConditionDef } from "./ConditionEditor";
 export { TriggerPicker } from "./TriggerPicker";
 export { ActionPicker } from "./ActionPicker";
 export { RulePreview } from "./RulePreview";
+
+// A2UI / Canvas block renderer — generic structured-output surface
+// the bot pushes content to. Distinct from `ColonyCanvas` which
+// visualises cooperation infrastructure.
+export { Canvas } from "./Canvas";
+export type { CanvasProps } from "./Canvas";
 
 // Dashboard data model types
 export type { ConnectorStatus, RuleItem, RuleDetail, EventItem, SwarmInfo } from "./dashboard/model";

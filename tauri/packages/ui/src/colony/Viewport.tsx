@@ -4,6 +4,7 @@ import type { ColonyNode, ColonyAgent, ColonyConnection, ColonyFormation, Colony
 import type { EventItem } from "../dashboard/model";
 import type { AvailableConnector, ConnectorSchema } from "@springtale/types";
 import { ColonyCanvas } from "./ColonyCanvas";
+import { EventRibbon } from "./EventRibbon";
 
 export interface ViewportProps {
   nodes: ColonyNode[];
@@ -59,6 +60,9 @@ export const Viewport: Component<ViewportProps> = (props) => {
         onSetupConnector={props.onSetupConnector}
         onParseRule={props.onParseRule}
       />
+
+      {/* Phase H6 — high-severity cooperation event toasts (top center) */}
+      <EventRibbon />
 
       {/* Layer toggle — top left */}
       <div class="absolute left-1.5 top-1.5 z-[15] flex gap-0.5">

@@ -102,6 +102,41 @@ export interface CommandDecl {
 }
 
 /**
+ * Phase H cooperation events — the user-observable side of internal
+ * cooperation state changes (interventions firing, sacrifices yielded,
+ * votes opened, etc.). Mirrors `springtale_cooperation::CooperationEvent`
+ * one-for-one; serde uses `kind` as the discriminator (snake_case).
+ */
+export type CooperationEvent =
+  | { kind: "intervention_fired"; formation_id: string; intervention: { intervention: "change_intent" } | { intervention: "inject_fuel"; amount: number } | { intervention: "forced_dissolve" } | { intervention: "escalate_to_user" }; summary: string }
+  | { kind: "pacing_phase_changed"; formation_id: string; from: string; to: string }
+  | { kind: "cascade_hit"; formation_id: string; streak: number; members_affected: number }
+  | { kind: "consensus_vote_opened"; formation_id: string; vote_id: string; deadline_ms: number }
+  | { kind: "consensus_vote_resolved"; formation_id: string; vote_id: string; outcome: "approved" | "denied" | "timeout" }
+  | { kind: "commit_phase_changed"; formation_id: string; barrier_id: string; phase: string }
+  | { kind: "sacrifice_yield"; formation_id: string; sacrificer: string; beneficiary: string; utility: number }
+  | { kind: "role_transformed"; formation_id: string; agent: string; from: string; to: string }
+  | { kind: "member_marked_down"; formation_id: string; agent: string; since_tick: number }
+  | { kind: "supervisor_escalated"; formation_id: string; reason: string }
+  | { kind: "recovery_action_taken"; formation_id: string; helper: string; in_distress: string; action: string }
+  | { kind: "surface_deposited"; formation_id: string; agent: string; surface_kind: string; ttl_ms: number }
+  | { kind: "interference_detected"; formation_id: string; interference_kind: "resource_conflict" | "action_negation" | "collateral_damage" | "task_already_claimed" | "duplicate_action"; agents: string[] }
+  | { kind: "cfp_round_started"; formation_id: string; cfp_id: string; capability: string }
+  | { kind: "cfp_round_resolved"; formation_id: string; cfp_id: string; winner: string | null }
+  | { kind: "cbba_replan_requested"; formation_id: string; reason: string }
+  | { kind: "cbba_replan_resolved"; formation_id: string; outcome: { status: string; sweeps: number; assigned: number; unassigned: number } };
+
+/**
+ * Wire envelope wrapping every cooperation event — adds monotonic seq +
+ * UTC timestamp. SSE/Channel subscribers see this shape.
+ */
+export interface CooperationEventEnvelope {
+  seq: number;
+  at: string;
+  event: CooperationEvent;
+}
+
+/**
  * Backend-supplied eligible-removal target for the RM MBR overlay (F5).
  */
 export interface MemberRef {
@@ -126,6 +161,12 @@ export interface DataProvider {
   getConnectorSchemas(): Promise<ConnectorSchema[]>;
   enableConnector(name: string): Promise<void>;
   disableConnector(name: string): Promise<void>;
+  /**
+   * G4 — hot-reload a connector. Backend rebuilds the host atomically;
+   * in-flight calls finish on the old instance and subsequent calls
+   * land on the new one. Frontend just dispatches.
+   */
+  reloadConnector(name: string): Promise<void>;
   removeConnector(name: string): Promise<void>;
   removeConnectorCascade(name: string): Promise<string[]>;
   getConnectorConfig(name: string): Promise<unknown>;
@@ -148,6 +189,16 @@ export interface DataProvider {
   // Events
   listEvents(limit?: number): Promise<EventEntry[]>;
   subscribeToEvents(callback: (event: EventEntry) => void): () => void;
+  /**
+   * Phase H cooperation events stream — internal-state lifecycle envelopes
+   * (intervention fired, sacrifice yielded, vote opened, role transformed,
+   * member marked down, supervisor escalation, pacing phase change,
+   * cascade hit, recovery action, surface deposit, interference event,
+   * CFP/replan/commit outcome). Web subscribes via SSE
+   * `/cooperation/events`; desktop subscribes via Tauri
+   * `subscribe_cooperation` Channel<CooperationEventEnvelope>.
+   */
+  subscribeToCooperationEvents(callback: (envelope: CooperationEventEnvelope) => void): () => void;
 
   // Formations (swarms)
   getFormation(id: string): Promise<FormationDetail>;
@@ -219,6 +270,28 @@ export interface DataProvider {
   getCanvasState(): Promise<CanvasState>;
   subscribeToCanvasUpdates(callback: (update: CanvasUpdate) => void): () => void;
 
+  /**
+   * G5d — IPV duress surface: toggle whether the app currently
+   * renders its disguise UI. Persisted server-side; survives
+   * restart. The frontend just dispatches; whether to swap the OS
+   * tray icon / launcher name lives in the platform shell.
+   */
+  setDisguiseActive(active: boolean): Promise<boolean>;
+
+  /**
+   * G5d — atomically update which disguise profile (app name +
+   * icon id) the platform shell should display when
+   * `disguiseActive` is true.
+   */
+  setDisguiseProfile(appName: string, iconId: string): Promise<void>;
+
+  /**
+   * G5d — set the panic-tap threshold. `count = 0` disables the
+   * gesture; values out of `[0, 10]` are rejected server-side
+   * (HTTP 400) to prevent rendering panic-wipe unreachable.
+   */
+  setPanicTapCount(count: number): Promise<number>;
+
   // Diagnostics
   runDiagnostics(): Promise<Report>;
 
@@ -255,6 +328,12 @@ export interface DashboardState {
   swarms: () => SwarmInfo[];
   agentStates: () => AgentState[];
   canvasState: () => CanvasState | null;
+  /**
+   * Phase H — last 200 cooperation event envelopes (most-recent first).
+   * Drives the EventRibbon toast (high-severity filter) and the
+   * BottomPanel formation event log (per-formation filter).
+   */
+  cooperationEvents: () => CooperationEventEnvelope[];
   error: () => string;
   loading: () => boolean;
   /**

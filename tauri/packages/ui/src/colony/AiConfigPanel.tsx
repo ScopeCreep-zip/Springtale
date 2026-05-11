@@ -2,9 +2,13 @@ import { createSignal, Show, For } from "solid-js";
 import type { Component } from "solid-js";
 
 export interface AiConfigPanelProps {
-  agentId: string;
-  agentName: string;
-  onSave: (agentId: string, config: Record<string, unknown>) => Promise<void>;
+  /** Subject id — agent id for per-bot configs, formation id for
+   *  per-formation overrides (G7). Passed back unchanged to `onSave`. */
+  targetId: string;
+  targetName: string;
+  /** Scope label rendered in the panel header. `"agent"` or `"formation"`. */
+  scope?: "agent" | "formation";
+  onSave: (targetId: string, config: Record<string, unknown>) => Promise<void>;
   onClose: () => void;
 }
 
@@ -40,7 +44,7 @@ export const AiConfigPanel: Component<AiConfigPanelProps> = (props) => {
         api_key: apiKey() || undefined,
         model: model() || undefined,
       };
-      await props.onSave(props.agentId, config);
+      await props.onSave(props.targetId, config);
       props.onClose();
     } catch (e) {
       setError(String(e));
@@ -55,15 +59,21 @@ export const AiConfigPanel: Component<AiConfigPanelProps> = (props) => {
     <div class="colony-modal mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6">
       <div class="mb-4 flex items-center justify-between">
         <h2 class="colony-text-md font-bold text-text-primary">
-          AI Adapter — {props.agentName}
+          AI Adapter — {props.targetName}
         </h2>
         <button onClick={props.onClose} class="colony-close-btn">✕</button>
       </div>
 
       <p class="colony-text-3xs mb-4 text-text-dim">
-        Choose an AI adapter for this bot. Default is No AI — the bot works
-        entirely on classical command matching. AI adds freeform conversation
-        and NL→Rule parsing.
+        <Show
+          when={props.scope === "formation"}
+          fallback="Choose an AI adapter for this bot. Default is No AI — the bot works entirely on classical command matching. AI adds freeform conversation and NL→Rule parsing."
+        >
+          Per-formation AI override (G7). Members of this formation will
+          use this adapter at Fever-tier orchestration instead of the
+          global / per-bot defaults. Resolution order: agent → formation
+          → global.
+        </Show>
       </p>
 
       {error() && (

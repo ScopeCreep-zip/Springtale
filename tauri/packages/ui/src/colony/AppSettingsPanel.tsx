@@ -7,6 +7,12 @@ export interface AppSettingsPanelProps {
   onVault: () => void;
   /** Trigger panic wipe (with confirmation) */
   onPanicWipe: () => void;
+  /**
+   * G5d — open the SafetyPanel overlay (app disguise, auto-lock,
+   * content protection, panic-tap threshold). Optional so older
+   * embeddings keep working; when omitted the SAFETY button hides.
+   */
+  onOpenSafety?: () => void;
   /** Export all data */
   onExportData: () => Promise<void>;
   /** Compact bot memory */
@@ -60,6 +66,12 @@ export const AppSettingsPanel: Component<AppSettingsPanelProps> = (props) => {
                 class="colony-text-2xs w-full border-2 border-status-error bg-soil-light px-3 py-1.5 text-status-error hover:bg-soil-deep">
                 Emergency Wipe
               </button>
+              <Show when={props.onOpenSafety}>
+                <button onClick={props.onOpenSafety}
+                  class="colony-text-2xs w-full border-2 border-bark bg-soil-light px-3 py-1.5 text-text-primary hover:bg-soil-deep">
+                  Safety &amp; Disguise…
+                </button>
+              </Show>
             </div>
             <div class="mt-2 rounded border border-bark-light bg-soil-deep p-2">
               <p class="colony-text-3xs text-text-dim">

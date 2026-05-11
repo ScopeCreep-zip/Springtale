@@ -7,10 +7,28 @@
  */
 import type { ConnectorSchema, AgentState } from "@springtale/types";
 import type { ConnectorStatus, RuleItem, SwarmInfo } from "../dashboard/model";
+import type { CooperationEventEnvelope } from "../dashboard/types";
 import type {
   ColonyNode, ColonyAgent, ColonyConnection, ColonyFormation, ColonyPipe,
 } from "./types";
 import { seeded, MOMENTUM_COLORS } from "./types";
+
+/**
+ * Phase H6 — map the backend `PacingPhase` enum (snake_case-serialized
+ * via serde) into the slugged CSS-attribute value the colony stylesheet
+ * keys on. Returning `undefined` lets the absence of pacing-phase data
+ * fall back to the default sprite appearance.
+ */
+function slugPacingPhase(raw: string): ColonyFormation["pacingPhase"] | undefined {
+  switch (raw) {
+    case "preparation": return "prep";
+    case "active":      return "active";
+    case "peak":        return "peak";
+    case "recovery":    return "recovery";
+    case "disruption":  return "disrupted";
+    default:            return undefined;
+  }
+}
 
 const NODE_TYPES = ["conifer", "deciduous", "shrub"] as const;
 const MOMENTUM_LABELS = ["COLD", "WARM", "HOT", "FEVER"];
@@ -62,10 +80,24 @@ const TIER_TO_INDEX: Record<string, number> = {
   Cold: 0, Warming: 1, Hot: 2, Fever: 3,
 };
 
-/** Map swarms to formations. Momentum tier + label come from backend. */
-export function mapFormations(swarms: SwarmInfo[]): ColonyFormation[] {
+/** Map swarms to formations. Momentum tier + label come from backend.
+ *  Optionally folds the cooperation events stream so each formation's
+ *  `pacingPhase` reflects the most-recent `pacing_phase_changed` event. */
+export function mapFormations(
+  swarms: SwarmInfo[],
+  cooperationEvents: CooperationEventEnvelope[] = [],
+): ColonyFormation[] {
+  // Most-recent-first; first `pacing_phase_changed` per formation wins.
+  const latestPacing = new Map<string, string>();
+  for (const env of cooperationEvents) {
+    if (env.event.kind === "pacing_phase_changed" && !latestPacing.has(env.event.formation_id)) {
+      latestPacing.set(env.event.formation_id, env.event.to);
+    }
+  }
+
   return swarms.map((s) => {
     const momentum = TIER_TO_INDEX[s.momentum_tier ?? "Cold"] ?? 0;
+    const rawPhase = latestPacing.get(s.id);
 
     return {
       id: s.id,
@@ -81,6 +113,7 @@ export function mapFormations(swarms: SwarmInfo[]): ColonyFormation[] {
       rallyTokens: s.rally_tokens ?? 3,
       rallyMax: s.rally_max ?? 3,
       guardStatus: s.guard_status ?? "--",
+      pacingPhase: rawPhase ? slugPacingPhase(rawPhase) : undefined,
     };
   });
 }

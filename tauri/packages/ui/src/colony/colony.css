@@ -267,6 +267,116 @@
     overflow: hidden;
   }
 
+  /* Phase H — cooperation event toast ribbon */
+  .colony-event-toast {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 8px;
+    font-size: 9px;
+    background: color-mix(in srgb, var(--color-soil-deep) 88%, transparent);
+    border: 2px solid var(--color-bark);
+    border-left-width: 4px;
+    animation: colony-event-toast-in 0.18s ease-out;
+  }
+  .colony-event-toast[data-severity="error"] {
+    border-left-color: var(--color-status-error);
+  }
+  .colony-event-toast[data-severity="warn"] {
+    border-left-color: var(--color-status-warn);
+  }
+  .colony-event-toast[data-severity="ok"] {
+    border-left-color: var(--color-status-ok);
+  }
+  .colony-event-toast-title {
+    font-weight: 700;
+    letter-spacing: 0.5px;
+  }
+  .colony-event-toast[data-severity="error"] .colony-event-toast-title {
+    color: var(--color-status-error);
+  }
+  .colony-event-toast[data-severity="warn"] .colony-event-toast-title {
+    color: var(--color-status-warn);
+  }
+  .colony-event-toast[data-severity="ok"] .colony-event-toast-title {
+    color: var(--color-status-ok);
+  }
+  .colony-event-toast-detail {
+    color: var(--color-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .colony-event-toast-dismiss {
+    background: transparent;
+    border: 1px solid var(--color-bark);
+    color: var(--color-text-dim);
+    padding: 0 4px;
+    font-size: 8px;
+    cursor: pointer;
+    line-height: 1.1;
+  }
+  .colony-event-toast-dismiss:hover {
+    color: var(--color-text-primary);
+    border-color: var(--color-bark-light);
+  }
+  @keyframes colony-event-toast-in {
+    from { opacity: 0; transform: translateY(-4px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Phase H — formation event log entries inside BottomPanel */
+  .colony-event-log {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    max-height: 96px;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-bark) transparent;
+  }
+  .colony-event-log-entry {
+    display: grid;
+    grid-template-columns: 38px 70px 1fr;
+    gap: 4px;
+    padding: 1px 4px;
+    font-size: 8px;
+    background: color-mix(in srgb, var(--color-soil-deep) 70%, transparent);
+    border-left: 2px solid var(--color-status-idle);
+  }
+  .colony-event-log-entry[data-severity="error"] {
+    border-left-color: var(--color-status-error);
+  }
+  .colony-event-log-entry[data-severity="warn"] {
+    border-left-color: var(--color-status-warn);
+  }
+  .colony-event-log-entry[data-severity="ok"] {
+    border-left-color: var(--color-status-ok);
+  }
+  .colony-event-log-time { color: var(--color-text-dim); }
+  .colony-event-log-kind { color: var(--color-text-primary); font-weight: 700; }
+  .colony-event-log-detail {
+    color: var(--color-text-secondary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Phase H — pacing-phase state on the formation node sprite */
+  .colony-formation[data-pacing="prep"]      { filter: brightness(0.92) hue-rotate(-8deg); }
+  .colony-formation[data-pacing="active"]    { filter: brightness(1.05); }
+  .colony-formation[data-pacing="peak"]      { filter: brightness(1.18) drop-shadow(0 0 4px var(--color-status-warn)); }
+  .colony-formation[data-pacing="recovery"]  { filter: brightness(0.85) saturate(0.7); }
+  .colony-formation[data-pacing="disrupted"] {
+    filter: brightness(1.1) drop-shadow(0 0 4px var(--color-status-error));
+    animation: colony-formation-disrupted 0.9s ease infinite;
+  }
+  @keyframes colony-formation-disrupted {
+    0%, 100% { opacity: 1; }
+    50%      { opacity: 0.72; }
+  }
+
   /* Minimap */
   .colony-minimap {
     background: var(--color-soil-deepest);

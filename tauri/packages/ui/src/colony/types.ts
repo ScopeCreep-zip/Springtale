@@ -65,6 +65,15 @@ export interface ColonyFormation {
   rallyTokens: number;
   rallyMax: number;
   guardStatus: string;
+  /**
+   * Phase H6 — current pacing phase derived from the most recent
+   * `pacing_phase_changed` cooperation event for this formation. Drives a
+   * single CSS class on the formation sprite (`data-pacing="..."`).
+   * Possible values match the backend `PacingPhase` enum (snake_case
+   * serialized as: "preparation", "active", "peak", "recovery",
+   * "disruption"). Stored slugged for direct CSS-attribute use.
+   */
+  pacingPhase?: "prep" | "active" | "peak" | "recovery" | "disrupted";
 }
 
 export interface ColonySelection {
