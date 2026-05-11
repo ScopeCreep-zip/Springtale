@@ -143,8 +143,9 @@ Each formation accumulates a `SharedMentalModel`: learned domain
 knowledge, successful cooperation patterns, shared vocabulary, project
 conventions. Updated every tick from observed reports and interferences
 (step 13). Persisted across formation dissolves to the `mental_model_*`
-tables (migration `011_cooperation.sql`) so later formations with the
-same id benefit from what prior instances learned.
+tables (`crates/springtale-store/src/schema/sql/cooperation.sql`) so
+later formations with the same id benefit from what prior instances
+learned.
 
 ## 8. Autonomy
 
@@ -289,7 +290,7 @@ The mental model is the formation's long-term memory. Unlike the blackboard (per
 - **Vocabulary** — terms the formation has converged on for shared concepts.
 - **Conventions** — implicit rules learned from observation (e.g. "we don't post during 22:00–06:00 local time").
 
-**Persistence.** On `Dissolve`, the bot crate writes the mental model to the `mental_model_*` family of tables (migration `011_cooperation.sql`) keyed by `formation_id`. The dissolve runs one final tick to ensure the latest accumulated state is captured.
+**Persistence.** On `Dissolve`, the bot crate writes the mental model to the `mental_model_*` family of tables (`crates/springtale-store/src/schema/sql/cooperation.sql`) keyed by `formation_id`. The dissolve runs one final tick to ensure the latest accumulated state is captured.
 
 **Warm start.** When `POST /formations` reuses an existing `formation_id`, the bot loader hydrates the mental model from those tables before the first tick. The formation begins at Cold momentum but with the prior model populated.
 
@@ -300,5 +301,5 @@ The mental model is the formation's long-term memory. Unlike the blackboard (per
 - [1] Full specification: [`docs/intended-arch/COOPERATION.md`](../intended-arch/COOPERATION.md)
 - [2] Wiring into the bot runtime: [architecture.md §6](architecture.md)
 - [3] Colony canvas visual reference: [colony-canvas.md](colony-canvas.md)
-- [4] Mental model schema: `crates/springtale-store/src/migrations/011_cooperation.sql`
+- [4] Mental model schema: `crates/springtale-store/src/schema/sql/cooperation.sql`
 - [5] Cooperation lib re-exports: `crates/springtale-cooperation/src/lib.rs`

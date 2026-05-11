@@ -20,9 +20,9 @@
 **Where:** `crates/springtale-scheduler/src/queue/producer.rs`
 
 **State:** `JobProducer` uses a `tokio::sync::mpsc::Sender<Job>`. The
-`jobs` SQLite table exists (migration `001_init.sql`) and
-`StorageBackend` has the method signatures ready, but the producer is
-not yet wired to durable storage.
+`jobs` SQLite table exists (`crates/springtale-store/src/schema/sql/jobs.sql`)
+and `StorageBackend` has the method signatures ready, but the producer
+is not yet wired to durable storage.
 
 **Impact:** Jobs are lost on daemon restart. Acceptable while rules are
 idempotent and can be re-fired, but will need to land before persistent
@@ -133,7 +133,7 @@ from orchestrator escalation. Both are ergonomic, not behavioural.
 
 ## 4. Formations → rules generation not connected ⚠
 
-**Where:** `crates/springtale-store/src/migrations/005_formations.sql`,
+**Where:** `crates/springtale-store/src/schema/sql/formations.sql`,
 `crates/springtale-runtime/src/operations/formations.rs`
 
 **State:** The `formations` and `formation_members` tables exist.
@@ -167,7 +167,7 @@ belt-and-braces re-check is an intentional spec item.
 
 **Fix path:** Confirm or add a verification call inside
 `registry::loader::load_native()` and its WASM sibling on every load.
-Content-addressing via `wasm_hash` in migration 008 gives us the
+Content-addressing via `wasm_hash` in `schema/sql/wasm.sql` gives us the
 primitive.
 
 ---
@@ -210,7 +210,7 @@ streaming). Dashboard already re-fetches on reconnect.
 
 ## 8. Bot memory uncompressed ⚠
 
-**Where:** `crates/springtale-store/src/migrations/002_bot.sql`
+**Where:** `crates/springtale-store/src/schema/sql/bot.sql`
 
 **State:** `bot_memory.content_encrypted` is a BLOB, AEAD-encrypted with
 a per-row nonce, but not compressed. Long-running conversations with
@@ -225,7 +225,7 @@ a new column for forward compatibility.
 
 ## 9. Audit trail retention is application-layer ⚠
 
-**Where:** `crates/springtale-store/src/migrations/003_sentinel.sql`
+**Where:** `crates/springtale-store/src/schema/sql/audit.sql`
 
 **State:** `audit_trail` is append-only with three indices. No built-in
 retention policy. Growth is unbounded.

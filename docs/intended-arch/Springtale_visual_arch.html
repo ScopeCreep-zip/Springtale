@@ -1169,7 +1169,7 @@
         <div class="crate-file">schema/events.rs <span>— events table, TTL expiry column</span></div>
         <div class="crate-file">schema/rules.rs <span>— rules table types</span></div>
         <div class="crate-file">schema/jobs.rs <span>— scheduler jobs table</span></div>
-        <div class="crate-file">migrations/001_init.sql <span>— embedded via sqlx::migrate!()</span></div>
+        <div class="crate-file">schema/sql/*.sql <span>— declarative DDL, applied via `schema::apply` (PRAGMA user_version)</span></div>
         <div class="crate-file">queries/connectors.rs <span>— compile-time verified CRUD SQL</span></div>
         <div class="crate-file">queries/events.rs <span>— event log queries</span></div>
         <div class="crate-file">queries/rules.rs <span>— rule management queries</span></div>

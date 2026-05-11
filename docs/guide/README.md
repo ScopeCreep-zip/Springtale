@@ -42,3 +42,20 @@ New to Springtale? Read these in order. Each builds on the last.
 | Build a new connector | [contributing/adding-a-connector.md](../contributing/adding-a-connector.md) |
 | Understand why we chose X over Y | [contributing/design-decisions.md](../contributing/design-decisions.md) |
 | See what's shipped vs planned | [ROADMAP.md](../ROADMAP.md) |
+
+## Cooperation deep-dives
+
+Once you've shipped your first bot, these task-oriented guides cover
+how Springtale's RTS-style cooperation primitives actually work in
+practice. Each is opinionated; read them when you hit the symptom,
+not before.
+
+| Topic | Guide |
+|---|---|
+| L6 intervention — when the orchestrator escalates | [intervention.md](intervention.md) |
+| Consensus votes at Fever tier | [consensus.md](consensus.md) |
+| Voluntary task yielding (sacrifice) | [sacrifice.md](sacrifice.md) |
+| What knowledge persists across formations | [mental-model.md](mental-model.md) |
+| Throughput governor (preparation→active→peak→…) | [pacing.md](pacing.md) |
+| Cross-formation gossip + outcome propagation | [cross-formation.md](cross-formation.md) |
+| When something's off — symptoms → fixes | [troubleshooting-cooperation.md](troubleshooting-cooperation.md) |

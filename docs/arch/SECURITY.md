@@ -132,7 +132,7 @@ The database is encrypted with SQLite3MultipleCiphers (sqlite3mc) — the same f
 ### 3.2 Cipher + key
 
 - Cipher: `chacha20` via sqlite3mc.
-- Key: 32 raw bytes, hex-encoded, supplied as `PRAGMA key = "x'{hex}'"` before any migration or WAL setup (`crates/springtale-store/src/backend/sqlite/mod.rs`).
+- Key: 32 raw bytes, hex-encoded, supplied as `PRAGMA key = "x'{hex}'"` before schema apply or WAL setup (`crates/springtale-store/src/backend/sqlite/mod.rs`).
 - Derivation (`apps/springtaled/src/runtime/boot/crypto.rs`):
 
   ```
@@ -457,7 +457,7 @@ No override. If a manifest declares a toxic pair, the install fails.
 
 ### 10.4 Audit trail
 
-Every sentinel verdict is written to the `audit_trail` table (migration 003) with timestamp, connector, action summary, verdict, and reason. Append-only. Retention is governed by `[sentinel] audit_retention_days` (default 90 days) and a background purge task.
+Every sentinel verdict is written to the `audit_trail` table (`schema/sql/audit.sql`) with timestamp, connector, action summary, verdict, and reason. Append-only. Retention is governed by `[sentinel] audit_retention_days` (default 90 days) and a background purge task.
 
 ---
 

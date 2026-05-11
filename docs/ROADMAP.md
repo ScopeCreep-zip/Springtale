@@ -18,7 +18,7 @@ Springtale ships in five phases. Each phase builds on the last — no phase skip
 
 | Phase | Name | Deliverables | State |
 |---|---|---|---|
-| 1a | Framework + Connectors | Daemon, CLI, 12 crates, 7 baseline connectors, SQLite (11 migrations), crypto vault, WASM sandbox, MCP bridge | Present |
+| 1a | Framework + Connectors | Daemon, CLI, 12 crates, 7 baseline connectors, SQLite (declarative schema v1), crypto vault, WASM sandbox, MCP bridge | Present |
 | 1b | Bot Foundations | `springtale-bot`, command router (prefix / pattern / alias), cooperation framework, `connector-telegram`, session memory | Present. Cooperation framework extracted to its own `springtale-cooperation` crate (37 modules) and wired into a 14-step formation tick; see §3.2. |
 | 2a | Chat + AI | Discord, Slack, IRC, Signal, Nostr connectors. Anthropic / Ollama / OpenAI-compat adapters (all three stream). `HttpTransport` (rustls mTLS). `springtale-sentinel`. Tool-calling across all AI adapters. | Present. Matrix is held on upstream `rusqlite` CVE. |
 | 2b | Desktop + Safety | Tauri 2 shell, SolidJS dashboard + colony canvas (RTS formation visualisation), duress vault, panic wipe, travel mode. Visual rule builder, i18n, a11y. | Shell, dashboard, colony canvas (with formation command grid, rally pips, attention bar, liveness/health encoding), duress, panic wipe, travel mode present. Visual rule builder, i18n, a11y not implemented. |
@@ -40,7 +40,7 @@ The foundation. A single-binary daemon, CLI, rule engine, crypto vault, WASM san
 | `springtale-crypto` | library | Ed25519 identity, vault (Argon2id + XChaCha20-Poly1305), manifest signatures |
 | `springtale-transport` | library | Transport trait + Local (Unix socket) implementation |
 | `springtale-connector` | library | Connector trait, WASM sandbox (Wasmtime), manifest verification, capability system, subscription lifecycle |
-| `springtale-store` | library | SQLite backend (SQLite3MultipleCiphers) with WAL mode, 11 migrations, AEAD-encrypted bot memory, cooperation schema |
+| `springtale-store` | library | SQLite backend (SQLite3MultipleCiphers) with WAL mode, declarative schema (`PRAGMA user_version`), AEAD-encrypted bot memory, cooperation schema |
 | `springtale-scheduler` | library | Cron executor, file watcher, job queue, heartbeat monitor, retry with backoff |
 | `springtale-ai` | library | AI adapter trait + NoopAdapter (default). Adapters added in Phase 2a |
 | `springtale-mcp` | library | MCP protocol bridge (`rmcp` 1.x) — any connector becomes an MCP server |

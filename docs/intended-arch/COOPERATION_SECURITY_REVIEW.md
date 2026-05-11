@@ -199,6 +199,40 @@ tick. Mitigation: RCU writes are bounded by channel size; snapshots are
 read-only views, never returning the underlying `Arc` past the requesting
 agent's scope. Recovery: one TTL window.
 
+## `gossip/` (G6 — cross-formation bus)
+
+Threats: byzantine peer formation publishing false `FormationView` to
+steer a sibling's decision (3), information leak via the persisted
+`FormationOutcome` records that subscribers replay (5), resource
+exhaustion by view-spam (4). Detection: subscribers filter by
+`FormationId` excluding their own; the broadcast channel caps at 1024
+deltas and lagged subscribers drop silently rather than blocking
+producers. Mitigation: `FormationView` carries counts, not identities
+or task contents — there is nothing exfiltrable here beyond
+aggregate state. Cross-process gossip rides on the same `chitchat`
+substrate `awareness/` uses (§9 cross-process zone), so the SWIM
+liveness checks gate publishers; an unauthenticated peer cannot
+publish. Recovery: lagged subscribers re-sync from the next tick's
+view + the bus's outcome replay buffer; one tick at 30 Hz.
+
+## `memory/` (G2 — global knowledge store)
+
+Threats: malicious connector influencing a future formation through a
+poisoned `OutcomeNote` (1), information leak via the persistent
+outcome records that survive process restart (5), unbounded growth
+of the outcome corpus as formations dissolve (4). Detection: every
+record carries `formation_id` (UUID) + `at` timestamp + `peak_tier`;
+records older than the configured retention window are pruned by a
+background sweep. Mitigation: the persistent backend stores records
+in the same SQLite `config_store` table the vault layer
+encrypts-at-rest, so disk leak yields ciphertext only. Retrieval is
+relevance-bounded (top-K with K≤5 by default), so a flood of poison
+notes still surfaces ≤5 to any single new formation. The scorer is
+deterministic + side-effect-free — no attacker can amplify their
+note's score by re-publishing. Recovery: `springtale memory wipe`
+removes a single formation's records; full corpus purge is one
+config-store sweep.
+
 ## `replan/`, `supervision/`, `sacrifice/`
 
 Threats: a replan loop used as a DoS (4), supervisor misclassifying an

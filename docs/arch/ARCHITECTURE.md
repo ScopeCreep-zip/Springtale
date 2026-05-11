@@ -38,7 +38,7 @@ Springtale/
 │   ├── springtale-core/           #   rules, pipelines, router, transforms, canvas types
 │   ├── springtale-crypto/         #   vault (KDF, AEAD, duress), signatures
 │   ├── springtale-transport/      #   Transport trait + Local/Http/Veilid impls
-│   ├── springtale-store/          #   SQLite backend + 11 migrations (incl. cooperation)
+│   ├── springtale-store/          #   SQLite backend + declarative schema (`user_version` v1)
 │   ├── springtale-scheduler/      #   cron, fs-watch, job queue, heartbeat, backoff
 │   ├── springtale-connector/      #   native + WASM connector framework, capability checker,
 │   │                              #   subscription lifecycle
@@ -254,7 +254,7 @@ scheduler/src/
 ```
 
 **Job queue is in-memory today.** `JobProducer` is an mpsc sender; the
-schema for SQLite-backed jobs exists in `001_init.sql` but
+schema for SQLite-backed jobs exists in `schema/sql/jobs.sql` but
 `StorageBackend::enqueue_job()` is not yet wired. Producer comments note
 the API is stable and only the backing changes. See AUDIT-NOTES §1.
 
@@ -373,7 +373,7 @@ SDK under `sdk/connector-sdk/` is usable for authors targeting
 
 `registry/store.rs:25-137`. In-memory `HashMap<String, ConnectorEntry>`.
 Persistence lives at the application layer via `springtale-store`
-(`connectors` table, migration 001). `get_for_execute()` (line 96-112)
+(`connectors` table, `schema/sql/connectors.sql`). `get_for_execute()` (line 96-112)
 returns a cloned `Arc<dyn ConnectorHost>` + cloned capability checker so
 network calls don't hold the registry `RwLock`.
 
@@ -578,13 +578,12 @@ internal types.
 
 ### 6.7 Cooperation persistence
 
-Migrations 005, 010, 011 back the cooperation framework:
+Two domain SQL files back the cooperation framework:
 
-- `005_formations.sql` — formations, formation_members,
-  formation_momentum, formation_rally
-- `010_cooperation.sql` — coop_writes, coop_deposits, coop_cas_outcome
-- `011_cooperation.sql` — mental_model_{domains, capabilities, patterns,
-  vocabulary, conventions}
+- `schema/sql/formations.sql` — `formations`, `formation_members`,
+  `formation_momentum`, `formation_rally`
+- `schema/sql/cooperation.sql` — `coop_writes`, `coop_deposits`,
+  `mental_model_{domain, capability, pattern, vocabulary, convention}`
 
 Momentum and rally are persisted every tick. Mental model is persisted
 on formation dissolve so later formations with the same id benefit from
@@ -769,21 +768,30 @@ Command handlers live in `apps/springtale-cli/src/commands/*`.
 
 ## 11. Storage Schema
 
-Eleven migrations under `crates/springtale-store/src/migrations/`:
+The schema is **declarative**, not migration-driven. One canonical
+DDL file per domain lives under
+`crates/springtale-store/src/schema/sql/`, applied as a single
+transaction at backend open. `PRAGMA user_version` fingerprints the
+schema; old dev DBs carrying the pre-launch `_migrations` marker are
+auto-wiped and rebuilt.
 
-| # | File | Tables / purpose |
-|---|---|---|
-| 001 | `001_init.sql` | `_migrations`, `rules`, `connectors`, `events`, `jobs` |
-| 002 | `002_bot.sql` | `bot_sessions`, `user_prefs`, `bot_memory` (encrypted BLOB), `bot_aliases` |
-| 003 | `003_sentinel.sql` | `audit_trail` (append-only, 3 indices) |
-| 004 | `004_safety.sql` | `safety_config` (single row, disguise-first defaults) |
-| 005 | `005_formations.sql` | `formations`, `formation_members`, `formation_momentum`, `formation_rally` |
-| 006 | `006_config.sql` | `config_store` (KV, UI-driven runtime config) |
-| 007 | `007_execution_results.sql` | `execution_results` (capped at 100/connector) |
-| 008 | `008_wasm_binaries.sql` | `wasm_binaries` (content-addressed, SHA-256 + Ed25519 sig) |
-| 009 | `009_rule_errors.sql` | `rule_errors` (per-rule error tracking, feeds /diagnostics) |
-| 010 | `010_cooperation.sql` | `coop_writes`, `coop_deposits`, `coop_cas_outcome` |
-| 011 | `011_cooperation.sql` | `mental_model_domains / _capabilities / _patterns / _vocabulary / _conventions` |
+| Domain file | Tables / purpose |
+|---|---|
+| `connectors.sql` | `connectors` (installed connectors + manifest JSON) |
+| `rules.sql` | `rules` (incl. `activation_error` for /diagnostics) |
+| `events.sql` | `events` (timeline metadata) |
+| `jobs.sql` | `jobs` (queue schema; in-memory mpsc today) |
+| `bot.sql` | `bot_sessions`, `user_prefs`, `bot_memory` (encrypted BLOB), `bot_aliases` |
+| `audit.sql` | `audit_trail` (append-only, 3 indices) |
+| `safety.sql` | `safety_config` (single row, disguise + panic_tap defaults) |
+| `formations.sql` | `formations`, `formation_members`, `formation_momentum`, `formation_rally` |
+| `runtime_config.sql` | `config_store` (KV, UI-driven runtime config, seeded defaults) |
+| `execution.sql` | `execution_results` (capped at 100/connector) |
+| `wasm.sql` | `wasm_binaries` (content-addressed, SHA-256 + Ed25519 sig) |
+| `cooperation.sql` | `coop_writes`, `coop_deposits`, `mental_model_{domain, capability, pattern, vocabulary, convention}` |
+
+Schema-apply ordering and the `SCHEMA_VERSION` constant live in
+`schema/apply.rs`; bump the constant when DDL shape changes.
 
 **Notes**
 

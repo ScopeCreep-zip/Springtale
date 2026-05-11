@@ -96,7 +96,7 @@ Every crate has a single responsibility. Dependencies flow strictly downward —
 | `springtale-crypto` | Ed25519 keypairs, XChaCha20-Poly1305 vault, Argon2id KDF, manifest signatures, mlock |
 | `springtale-transport` | `Transport` trait + Local (Unix socket), HTTP (rustls mTLS), Veilid (stub) impls |
 | `springtale-connector` | `Connector` trait, Wasmtime WASM sandbox, manifest parser, capability system, registry, subscription lifecycle |
-| `springtale-store` | SQLite backend (SQLite3MultipleCiphers) with WAL mode, 11 migrations, AEAD-encrypted bot memory, cooperation + mental model schema |
+| `springtale-store` | SQLite backend (SQLite3MultipleCiphers) with WAL mode, declarative schema (`PRAGMA user_version`), AEAD-encrypted bot memory, cooperation + mental model schema |
 | `springtale-scheduler` | Cron executor, filesystem watcher, job queue, heartbeat monitor, exponential backoff |
 | `springtale-ai` | `AiAdapter` trait + Noop / Ollama / OpenAI-compat / Anthropic adapters + OWASP sanitiser + tool-calling (`ToolCall` / `ToolResult` / `ToolPolicy`) |
 | `springtale-mcp` | MCP protocol bridge (`rmcp` 1.x) — wraps any `Connector` as an MCP server automatically. Handler module split; each handler owns its capability check |
@@ -244,7 +244,7 @@ The headless daemon that runs the show. Boot is a 9-step ordered pipeline split 
          │              derive API token via HMAC-SHA256
          │
   3. Shared runtime ──> springtale_runtime::init()
-         │              • open store + run migrations
+         │              • open store + apply declarative schema
          │              • load RuleEngine from store
          │              • start WASM engine + epoch ticker
          │              • discover connectors via inventory

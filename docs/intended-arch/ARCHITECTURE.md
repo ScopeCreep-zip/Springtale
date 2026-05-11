@@ -473,8 +473,11 @@ springtale/
 │   │       │   ├── events.rs         # events table type
 │   │       │   ├── rules.rs          # rules table type
 │   │       │   └── jobs.rs           # scheduler jobs table type
-│   │       ├── migrations/
-│   │       │   └── 001_init.sql
+│   │       ├── schema/sql/         # Declarative DDL, one file per domain
+│   │       │   ├── connectors.sql
+│   │       │   ├── rules.sql
+│   │       │   ├── events.sql
+│   │       │   └── …               # bot.sql, audit.sql, safety.sql, formations.sql, etc.
 │   │       └── queries/
 │   │           ├── mod.rs
 │   │           ├── connectors.rs     # CRUD for connector registry
@@ -1476,7 +1479,7 @@ pub trait StorageBackend: Send + Sync + 'static {
 | `schema::events` | Row type for `events` table |
 | `schema::rules` | Row type for `rules` table |
 | `schema::jobs` | Row type for `jobs` table (replaces Redis queue) |
-| `migrations/` | Migration runner — SQLite migrations embedded, PostgreSQL via `sqlx migrate` |
+| `schema::apply` | Declarative schema apply — `PRAGMA user_version`–fingerprinted, transactional, one `.sql` file per domain under `schema/sql/` |
 
 **Why SQLite, not PostgreSQL, for Phase 1:**
 The research says "no external queue dependency." Redis and PostgreSQL are external
