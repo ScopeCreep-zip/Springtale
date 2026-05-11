@@ -9,8 +9,11 @@ pub enum StoreError {
     #[error("SQLite error: {0}")]
     Sqlite(#[from] rusqlite::Error),
 
-    #[error("migration failed: {0}")]
-    Migration(String),
+    #[error("schema apply failed: {0}")]
+    Schema(String),
+
+    #[error("schema version mismatch: database is at v{found}, expected v{expected}")]
+    SchemaVersion { found: i32, expected: i32 },
 
     #[error("record not found: {entity} with id {id}")]
     NotFound { entity: String, id: String },

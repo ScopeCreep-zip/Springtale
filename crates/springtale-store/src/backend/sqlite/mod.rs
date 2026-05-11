@@ -20,7 +20,7 @@ use chrono::{DateTime, Utc};
 use rusqlite::Connection;
 
 use crate::error::StoreError;
-use crate::migrations;
+use crate::schema;
 use crate::schema::audit::{AuditEntry, AuditFilter};
 use crate::schema::bot::{MemoryRow, SessionRow, UserPrefsRow};
 use crate::schema::connectors::ConnectorRow;
@@ -67,28 +67,28 @@ impl SqliteBackend {
     fn open_with_key(path: impl AsRef<Path>, hex_key: Option<&str>) -> Result<Self, StoreError> {
         let path = path.as_ref();
 
-        // Ensure parent directory exists
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
 
-        let conn = Connection::open(path)?;
+        let conn = open_and_configure(path, hex_key)?;
 
-        #[cfg(unix)]
-        set_db_permissions(path)?;
+        // Pre-launch policy: legacy migration-runner databases get
+        // wiped and rebuilt from the declarative schema. Old dev DBs
+        // carry a `_migrations` tracking table; that's the marker.
+        let conn = if schema::is_legacy_database(&conn)? {
+            tracing::warn!(
+                path = %path.display(),
+                "legacy migration-runner database detected — wiping and rebuilding from declarative schema",
+            );
+            drop(conn);
+            super::wipe::secure_wipe_sqlite(path)?;
+            open_and_configure(path, hex_key)?
+        } else {
+            conn
+        };
 
-        // Activate encryption before any other operations.
-        // sqlite3mc requires PRAGMA key before WAL mode or migrations.
-        if let Some(key) = hex_key {
-            conn.execute_batch("PRAGMA cipher = 'chacha20';")?;
-            // Use raw key format (x'hex') to avoid passphrase KDF overhead —
-            // we already derive the key via Argon2id in the vault.
-            conn.execute_batch(&format!("PRAGMA key = \"x'{key}'\";"))?;
-            tracing::info!("database encryption active (ChaCha20-Poly1305)");
-        }
-
-        configure_connection(&conn)?;
-        migrations::run_migrations(&conn)?;
+        schema::apply_schema(&conn)?;
 
         tracing::info!(path = %path.display(), "SQLite store opened");
 
@@ -102,7 +102,8 @@ impl SqliteBackend {
     pub fn open_in_memory() -> Result<Self, StoreError> {
         let conn = Connection::open_in_memory()?;
         configure_connection(&conn)?;
-        migrations::run_migrations(&conn)?;
+        // In-memory DBs are always fresh; no legacy check needed.
+        schema::apply_schema(&conn)?;
 
         Ok(Self {
             conn: Arc::new(Mutex::new(conn)),
@@ -114,6 +115,29 @@ impl SqliteBackend {
     pub fn path(&self) -> Option<&Path> {
         self.path.as_deref()
     }
+}
+
+/// Open a SQLite connection and apply per-process configuration:
+/// secure file permissions, optional cipher key, and the standard
+/// pragma set. Used both on first open and on the legacy auto-wipe
+/// rebuild path, so the cipher key and permissions stay consistent.
+fn open_and_configure(path: &Path, hex_key: Option<&str>) -> Result<Connection, StoreError> {
+    let conn = Connection::open(path)?;
+
+    #[cfg(unix)]
+    set_db_permissions(path)?;
+
+    // sqlite3mc requires PRAGMA key before WAL mode or schema apply.
+    // Vault already derives via Argon2id, so we use raw-key format
+    // (x'hex') to skip the cipher's KDF pass.
+    if let Some(key) = hex_key {
+        conn.execute_batch("PRAGMA cipher = 'chacha20';")?;
+        conn.execute_batch(&format!("PRAGMA key = \"x'{key}'\";"))?;
+        tracing::info!("database encryption active (ChaCha20-Poly1305)");
+    }
+
+    configure_connection(&conn)?;
+    Ok(conn)
 }
 
 /// Configure SQLite connection pragmas.
