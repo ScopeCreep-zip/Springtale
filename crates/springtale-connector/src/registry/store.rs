@@ -78,6 +78,38 @@ impl ConnectorRegistry {
             .ok_or_else(|| ConnectorError::NotFound(name.to_owned()))
     }
 
+    /// G4 — hot-reload: atomically swap a connector's host without
+    /// touching the registry's other state. Existing in-flight calls
+    /// that obtained the old host via `get_for_execute()` hold an
+    /// `Arc<dyn ConnectorHost>` clone and continue running on the old
+    /// instance until they finish; subsequent calls land on the new
+    /// host.
+    ///
+    /// Per the plan (`COOPERATION_IMPLEMENTATION_PLAN.md §12.7`), this
+    /// is the safe analog of Bevy 0.14's deprecated dynamic-plugin path —
+    /// safe because Springtale connectors are WASM-sandboxed or fully
+    /// owned native code, and the swap is a pointer write inside the
+    /// existing `RwLock<ConnectorRegistry>` write guard rather than a
+    /// `libloading::dlopen`.
+    ///
+    /// `enabled` flag is preserved across the swap so a hot-reload
+    /// doesn't accidentally re-enable a deliberately-disabled connector.
+    /// Returns the old host so callers can audit the swap (and, if they
+    /// want, drop the Arc explicitly to force-eject lingering in-flight
+    /// references after a grace period).
+    pub fn reload(
+        &mut self,
+        name: &str,
+        new_host: Arc<dyn ConnectorHost>,
+    ) -> Result<Arc<dyn ConnectorHost>, ConnectorError> {
+        let entry = self
+            .connectors
+            .get_mut(name)
+            .ok_or_else(|| ConnectorError::NotFound(name.to_owned()))?;
+        let old = std::mem::replace(&mut entry.host, new_host);
+        Ok(old)
+    }
+
     /// Get a reference to the capability checker.
     pub fn capability_checker(&self) -> &CapabilityChecker {
         &self.capability_checker
