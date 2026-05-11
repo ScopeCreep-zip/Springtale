@@ -245,6 +245,15 @@ pub struct Formation {
     /// §8 gossip substrate. Single-process deployments inject
     /// `InMemoryGossipStore`; cross-process injects `ChitchatGossipStore`.
     pub gossip_store: Arc<dyn GossipStore>,
+    /// G6 — cross-formation gossip bus. Optional so formations created
+    /// outside the bot runtime (CLI dry-runs, tests) don't have to wire
+    /// up the full chitchat substrate. When `Some`, `tick_steps::
+    /// publish_formation_view` broadcasts this formation's running
+    /// state every tick and `lifecycle::dissolve` publishes a terminal
+    /// `FormationOutcome`.
+    pub formation_gossip: Option<
+        Arc<dyn springtale_cooperation::gossip::FormationGossipBus>,
+    >,
     /// §20 FlexibleChain work-stealing pool — per-capability crossbeam
     /// deques. One instance per formation so the capability scope is
     /// bounded and steal-miss iteration stays cheap at RTS scale.
@@ -343,6 +352,12 @@ pub struct FormationDeps {
     pub store: Arc<dyn StorageBackend>,
     pub gossip_store: Arc<dyn GossipStore>,
     pub flex_chain_pool: Arc<FlexibleChainPool>,
+    /// G6 — cross-formation gossip bus. `None` for tests / dry-runs that
+    /// don't need cross-formation visibility; production wires the
+    /// shared `InMemoryFormationGossipBus` (or chitchat-backed) here.
+    pub formation_gossip: Option<
+        Arc<dyn springtale_cooperation::gossip::FormationGossipBus>,
+    >,
 }
 
 impl FormationDeps {
@@ -359,6 +374,7 @@ impl FormationDeps {
             store: Arc::new(springtale_store::backend::InMemoryBackend::new()),
             gossip_store: Arc::new(InMemoryGossipStore::new()),
             flex_chain_pool: Arc::new(FlexibleChainPool::new()),
+            formation_gossip: None,
         }
     }
 }
@@ -463,6 +479,7 @@ impl Formation {
             cadence: deps.cadence,
             store: deps.store,
             gossip_store: deps.gossip_store,
+            formation_gossip: deps.formation_gossip,
             flex_chain_pool: deps.flex_chain_pool,
             direct_inbox,
             member_subs: std::sync::Mutex::new(initial_subs),

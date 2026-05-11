@@ -223,8 +223,11 @@ mod tests {
             springtale_cooperation::attention::AttentionBroker::new(econ),
         );
 
-        let mut ctx = FormationContext::default();
-        ctx.momentum_tier = MomentumTier::Hot; // L4 unlocks at Hot
+        // L4 unlocks at Hot.
+        let ctx = FormationContext {
+            momentum_tier: MomentumTier::Hot,
+            ..Default::default()
+        };
         let (ctx_tx, ctx_rx) = watch::channel(ctx);
 
         let h_a = spawn(agent_a, caps.clone(), channels.participant(), attention.clone(), ctx_rx.clone());

@@ -58,9 +58,10 @@ fn build_status_block(formation: &Formation) -> CanvasBlock {
 fn pick_state(formation: &Formation, incapacitated: usize, operational: usize) -> StatusState {
     if formation.escalation_pending.is_some() {
         StatusState::Error
-    } else if incapacitated > 0 || operational == 0 {
-        StatusState::Warning
-    } else if formation.cascade_hit_streak > 0 {
+    } else if incapacitated > 0
+        || operational == 0
+        || formation.cascade_hit_streak > 0
+    {
         StatusState::Warning
     } else if formation.paused {
         StatusState::Info

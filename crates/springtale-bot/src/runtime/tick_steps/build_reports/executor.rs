@@ -56,6 +56,15 @@ pub struct ExecuteCtx<'a> {
     /// and applies the sacrifice instead — for `Yield`, that means
     /// emitting a "yield" tick descriptor without claiming or dispatching.
     pub sacrifice: Option<SacrificeAction>,
+    /// Phase H5: cooperation events broadcast sender. Optional so headless
+    /// / test paths short-circuit. Used to emit `SacrificeYield`,
+    /// `SurfaceDeposited`, and `ConsensusVoteOpened` envelopes from inside
+    /// the executor where the relevant context lives.
+    pub cooperation_tx: Option<
+        &'a tokio::sync::broadcast::Sender<
+            springtale_cooperation::CooperationEventEnvelope,
+        >,
+    >,
 }
 
 pub struct ExecuteOutcome {
@@ -86,6 +95,15 @@ pub async fn execute(ctx: ExecuteCtx<'_>) -> ExecuteOutcome {
             beneficiary = %beneficiary.0,
             utility,
             "agent voluntarily yielded this tick"
+        );
+        springtale_cooperation::events::emit(
+            ctx.cooperation_tx,
+            springtale_cooperation::events::CooperationEvent::SacrificeYield {
+                formation_id: springtale_cooperation::types::FormationId(ctx.formation_id),
+                sacrificer,
+                beneficiary,
+                utility,
+            },
         );
         return ExecuteOutcome {
             action_descriptor: Some(ActionDescriptor {
@@ -247,12 +265,12 @@ pub async fn execute(ctx: ExecuteCtx<'_>) -> ExecuteOutcome {
     // `detect_from_records_with_history` so ActionNegation has real
     // history. `shared_env.write` (non-CAS) because this is an ordered
     // audit log, not a conflict probe.
-    if success {
-        if let springtale_core::rule::action::Action::RunConnector {
-            connector,
-            action: action_name,
-            ..
-        } = &action
+    if let (true, springtale_core::rule::action::Action::RunConnector {
+        connector,
+        action: action_name,
+        ..
+    }) = (success, &action)
+    {
         {
             let key = format!(
                 "action:{}:{}:{}:{}",
@@ -279,6 +297,17 @@ pub async fn execute(ctx: ExecuteCtx<'_>) -> ExecuteOutcome {
                 }),
                 Some(std::time::Duration::from_secs(60)),
                 Some(springtale_cooperation::capability::CapabilityDecl::new(connector)),
+            );
+            // Phase H5: surface deposit visible to user — drives the
+            // stigmergy-trail UI marker on the colony canvas.
+            springtale_cooperation::events::emit(
+                ctx.cooperation_tx,
+                springtale_cooperation::events::CooperationEvent::SurfaceDeposited {
+                    formation_id: springtale_cooperation::types::FormationId(ctx.formation_id),
+                    agent: ctx.member.agent_id,
+                    surface_kind: format!("substrate:{connector}:{action_name}"),
+                    ttl_ms: 60_000,
+                },
             );
         }
     }

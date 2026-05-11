@@ -55,6 +55,7 @@ pub async fn run(
         deps.sentinel,
         deps.store,
         &reports_sender,
+        deps.cooperation_tx,
     )
     .await;
 

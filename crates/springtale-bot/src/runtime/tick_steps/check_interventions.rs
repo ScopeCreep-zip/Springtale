@@ -51,6 +51,26 @@ pub async fn run(formation: &mut Formation, deps: &TickDeps<'_>) {
             ?intervention,
             "intervention applied"
         );
+        // Phase H5: surface to the cooperation events stream so the
+        // EventRibbon can toast the user (interventions are high-severity).
+        let kind = match &intervention {
+            crate::orchestrator::intervention::types::Intervention::ChangeIntent(_) =>
+                springtale_cooperation::events::InterventionKind::ChangeIntent,
+            crate::orchestrator::intervention::types::Intervention::InjectFuel(b) =>
+                springtale_cooperation::events::InterventionKind::InjectFuel { amount: b.remaining() },
+            crate::orchestrator::intervention::types::Intervention::ForcedDissolve { .. } =>
+                springtale_cooperation::events::InterventionKind::ForcedDissolve,
+            crate::orchestrator::intervention::types::Intervention::EscalateToUser { .. } =>
+                springtale_cooperation::events::InterventionKind::EscalateToUser,
+        };
+        springtale_cooperation::events::emit(
+            deps.cooperation_tx,
+            springtale_cooperation::events::CooperationEvent::InterventionFired {
+                formation_id: formation.id,
+                intervention: kind,
+                summary: format!("{intervention:?}"),
+            },
+        );
     }
 
     // Whatever the executor did, clear the supervisor-flagged escalation

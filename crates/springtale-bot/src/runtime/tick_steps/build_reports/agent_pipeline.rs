@@ -49,6 +49,9 @@ pub async fn run(
     sentinel: &Arc<springtale_sentinel::Sentinel>,
     store: &Arc<dyn springtale_store::StorageBackend>,
     reports_sender: &mpsc::Sender<TickReport>,
+    cooperation_tx: Option<
+        &tokio::sync::broadcast::Sender<springtale_cooperation::CooperationEventEnvelope>,
+    >,
 ) -> Vec<TickReport> {
     let mut reports = Vec::new();
     let formation_momentum = formation.momentum.tier;
@@ -176,6 +179,7 @@ pub async fn run(
             bridge,
             sentinel,
             sacrifice: sacrifice_action,
+            cooperation_tx,
         })
         .await;
 
@@ -229,6 +233,17 @@ pub async fn run(
                 task = %task.id,
                 voters = voter_count,
                 "consensus vote opened for destructive action"
+            );
+            // Phase H5: surface vote-opened so the formation event log
+            // shows pending votes alongside the rest of the cooperation
+            // lifecycle.
+            springtale_cooperation::events::emit(
+                cooperation_tx,
+                springtale_cooperation::events::CooperationEvent::ConsensusVoteOpened {
+                    formation_id: formation.id,
+                    vote_id: id,
+                    deadline_ms: 5_000,
+                },
             );
         }
     }

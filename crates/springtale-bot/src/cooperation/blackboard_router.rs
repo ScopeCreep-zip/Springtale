@@ -399,7 +399,7 @@ mod tests {
         );
 
         let pick = router
-            .try_steal_chain(&[cap.clone()], agent)
+            .try_steal_chain(std::slice::from_ref(&cap), agent)
             .await
             .expect("some");
         assert_eq!(pick.task.target_connector, cap);

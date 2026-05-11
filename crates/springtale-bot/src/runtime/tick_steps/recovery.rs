@@ -12,24 +12,29 @@
 //! out of the way.
 
 use std::time::Duration;
+use tokio::sync::broadcast;
 
 use crate::cooperation::formation::Formation;
 use springtale_cooperation::cadence::AgentId;
 use springtale_cooperation::comms::{
     BroadcastTrigger, StateBroadcastMsg, StateMessage,
 };
+use springtale_cooperation::events::{self, CooperationEvent, CooperationEventEnvelope};
 use springtale_cooperation::recovery::{DistressSignal, RecoveryAction, executor as recovery_exec};
 use springtale_cooperation::sacrifice::scorer::FormationSnapshot;
 use springtale_cooperation::types::AgentHealth;
 
-pub fn run(formation: &mut Formation) {
+pub fn run(
+    formation: &mut Formation,
+    cooperation_tx: Option<&broadcast::Sender<CooperationEventEnvelope>>,
+) {
     let distress_signals = build_distress_signals(formation);
     if distress_signals.is_empty() {
         return;
     }
 
     let snapshot = build_snapshot(formation);
-    let decisions = collect_decisions(formation, &distress_signals, &snapshot);
+    let decisions = collect_decisions(formation, &distress_signals, &snapshot, cooperation_tx);
     apply_recovery_decisions(formation, decisions);
 }
 
@@ -74,6 +79,7 @@ fn collect_decisions(
     formation: &Formation,
     distress_signals: &[DistressSignal],
     snapshot: &FormationSnapshot,
+    cooperation_tx: Option<&broadcast::Sender<CooperationEventEnvelope>>,
 ) -> Vec<(AgentId, RecoveryAction)> {
     let mut decisions = Vec::new();
     for signal in distress_signals {
@@ -106,6 +112,15 @@ fn collect_decisions(
                         help_utility = eval.help_utility,
                         kind = ?recovery_action.kind(),
                         "agent volunteering for recovery"
+                    );
+                    events::emit(
+                        cooperation_tx,
+                        CooperationEvent::RecoveryActionTaken {
+                            formation_id: formation.id,
+                            helper: member.agent_id,
+                            in_distress: target_id,
+                            action: format!("{:?}", recovery_action.kind()),
+                        },
                     );
                     decisions.push((target_id, recovery_action));
                 }

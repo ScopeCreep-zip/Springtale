@@ -13,13 +13,20 @@
 //!   * `TransformRole` → no-op here; `transformation::run` (step 10) owns
 //!     the transformation pipeline and runs every tick anyway.
 
+use tokio::sync::broadcast;
+
 use crate::cooperation::formation::Formation;
 use springtale_cooperation::comms::{BroadcastTrigger, StateBroadcastMsg, StateMessage};
+use springtale_cooperation::events::{self, CooperationEvent, CooperationEventEnvelope};
 use springtale_cooperation::rally::cascade;
 use springtale_cooperation::supervision::{Liveness, SupervisionAction};
 use springtale_cooperation::tick_processor::FormationTickResult;
 
-pub fn run(formation: &mut Formation, result: &FormationTickResult) {
+pub fn run(
+    formation: &mut Formation,
+    result: &FormationTickResult,
+    cooperation_tx: Option<&broadcast::Sender<CooperationEventEnvelope>>,
+) {
     let cascade_count = result.interferences.len() as u32;
 
     // Collect actions first so the supervisor's `&formation.members`
@@ -39,11 +46,16 @@ pub fn run(formation: &mut Formation, result: &FormationTickResult) {
 
     let formation_id = formation.id.0.to_string();
     for action in actions {
-        execute(&formation_id, formation, action);
+        execute(&formation_id, formation, action, cooperation_tx);
     }
 }
 
-fn execute(formation_id: &str, formation: &mut Formation, action: SupervisionAction) {
+fn execute(
+    formation_id: &str,
+    formation: &mut Formation,
+    action: SupervisionAction,
+    cooperation_tx: Option<&broadcast::Sender<CooperationEventEnvelope>>,
+) {
     match action {
         SupervisionAction::TransformRole { agent } => {
             // Owned by `transformation::run` (step 10) which evaluates
@@ -95,6 +107,15 @@ fn execute(formation_id: &str, formation: &mut Formation, action: SupervisionAct
                 since_tick,
                 "supervisor: marked down + AgentDown broadcast"
             );
+            // Phase H5: high-severity event surfaces in the EventRibbon.
+            events::emit(
+                cooperation_tx,
+                CooperationEvent::MemberMarkedDown {
+                    formation_id: formation.id,
+                    agent,
+                    since_tick,
+                },
+            );
         }
         SupervisionAction::Escalate { reason } => {
             // Flag picked up by `check_interventions::run` next tick (B1)
@@ -104,6 +125,15 @@ fn execute(formation_id: &str, formation: &mut Formation, action: SupervisionAct
                 formation = formation_id,
                 reason = %reason,
                 "supervisor: escalation flag set for L6 intervention"
+            );
+            // Phase H5: surface escalation immediately so the user sees
+            // the next-tick L6 intervention coming.
+            events::emit(
+                cooperation_tx,
+                CooperationEvent::SupervisorEscalated {
+                    formation_id: formation.id,
+                    reason: reason.clone(),
+                },
             );
         }
     }

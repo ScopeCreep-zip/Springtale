@@ -108,6 +108,19 @@ pub struct Bot {
     /// `ChitchatGossipStore`. Defaults to the in-memory variant if the
     /// builder doesn't override.
     pub(crate) gossip_store: Arc<dyn springtale_cooperation::awareness::GossipStore>,
+    /// G6 cross-formation gossip bus. Optional — `None` means this bot
+    /// runs without cross-formation visibility (single-formation
+    /// deployments / CLI dry-runs). Daemon production wires the shared
+    /// `InMemoryFormationGossipBus` here.
+    pub(crate) formation_gossip:
+        Option<Arc<dyn springtale_cooperation::gossip::FormationGossipBus>>,
+    /// G2 cross-formation global knowledge store. Outcomes from dissolved
+    /// formations are recorded here; spawning a new formation seeds its
+    /// initial mental model from prior outcomes ranked by intent +
+    /// connector overlap. `None` for tests / CLI runs — the spawn /
+    /// dissolve hooks short-circuit cleanly.
+    pub(crate) knowledge_store:
+        Option<Arc<dyn springtale_cooperation::memory::GlobalKnowledgeStore>>,
     /// Shared cooperation role registry (§14.4 / Phase 21). Built-ins
     /// plus any community roles contributed by installed connectors.
     /// Role transformations in the tick loop look up the target role
@@ -169,6 +182,16 @@ pub struct BotBuilder {
     formations_handle: Option<Arc<RwLock<Vec<Formation>>>>,
     /// Injected gossip substrate (defaults to `InMemoryGossipStore`).
     gossip_store: Option<Arc<dyn springtale_cooperation::awareness::GossipStore>>,
+    /// G6 cross-formation gossip bus — optional, no default. Daemon
+    /// production wires the shared `InMemoryFormationGossipBus`; tests
+    /// and CLI runs leave it unset.
+    formation_gossip:
+        Option<Arc<dyn springtale_cooperation::gossip::FormationGossipBus>>,
+    /// G2 cross-formation global knowledge store — optional, no default.
+    /// Daemon production wires the persistent (SQLite-backed)
+    /// `PersistentKnowledgeStore`; tests and CLI runs leave unset.
+    knowledge_store:
+        Option<Arc<dyn springtale_cooperation::memory::GlobalKnowledgeStore>>,
     /// Injected role registry — REQUIRED. Callers must pass the
     /// process-wide `RuntimeState::role_registry` so there is exactly
     /// one registry holding built-ins plus community roles declared in
@@ -208,6 +231,8 @@ impl BotBuilder {
             formation_cmd_rx: None,
             formations_handle: None,
             gossip_store: None,
+            formation_gossip: None,
+            knowledge_store: None,
             role_registry: None,
             capability_bridge: None,
             canvas_tx: None,
@@ -245,6 +270,28 @@ impl BotBuilder {
         store: Arc<dyn springtale_cooperation::awareness::GossipStore>,
     ) -> Self {
         self.gossip_store = Some(store);
+        self
+    }
+
+    /// G6: inject the cross-formation gossip bus. Optional — bots without
+    /// it just don't broadcast formation views (single-formation
+    /// deployments / CLI dry-runs).
+    pub fn formation_gossip(
+        mut self,
+        bus: Arc<dyn springtale_cooperation::gossip::FormationGossipBus>,
+    ) -> Self {
+        self.formation_gossip = Some(bus);
+        self
+    }
+
+    /// G2: inject the global cross-formation knowledge store. Optional —
+    /// bots without it just skip the spawn-time seed and dissolve-time
+    /// record_outcome path.
+    pub fn knowledge_store(
+        mut self,
+        store: Arc<dyn springtale_cooperation::memory::GlobalKnowledgeStore>,
+    ) -> Self {
+        self.knowledge_store = Some(store);
         self
     }
 
@@ -509,6 +556,8 @@ impl BotBuilder {
                 crate::orchestrator::intervention::action::DefaultInterventionAction,
             canvas_tx: self.canvas_tx,
             cooperation_tx: self.cooperation_tx,
+            formation_gossip: self.formation_gossip,
+            knowledge_store: self.knowledge_store,
         })
     }
 }

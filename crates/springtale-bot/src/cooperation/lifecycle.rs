@@ -35,6 +35,12 @@ pub async fn spawn_formation(
     registry: &Arc<RwLock<ConnectorRegistry>>,
     cadence: &Arc<CadenceBus>,
     gossip_store: &Arc<dyn GossipStore>,
+    formation_gossip: Option<
+        &Arc<dyn springtale_cooperation::gossip::FormationGossipBus>,
+    >,
+    knowledge_store: Option<
+        &Arc<dyn springtale_cooperation::memory::GlobalKnowledgeStore>,
+    >,
 ) -> Result<Formation, BotError> {
     // Read formation from database
     let row = store
@@ -76,6 +82,7 @@ pub async fn spawn_formation(
         store: store.clone(),
         gossip_store: gossip_store.clone(),
         flex_chain_pool: Arc::new(FlexibleChainPool::new()),
+        formation_gossip: formation_gossip.cloned(),
     };
     let (mut formation, proto_dispatch, ack_dispatch) = Formation::new(
         members,
@@ -164,7 +171,68 @@ pub async fn spawn_formation(
         ),
     }
 
+    // G2 — seed cross-formation prior outcomes (§21 / plan §12.6).
+    // Builds a `RetrievalQuery` from the formation's intent + member
+    // connector set, asks the global knowledge store for the top-5
+    // most-relevant prior outcomes, and folds them into the per-formation
+    // mental model's `domain_knowledge` so the orchestrator has context
+    // for "what worked / what didn't" on similar prior runs. Best-effort:
+    // any failure short-circuits without aborting spawn.
+    if let Some(ks) = knowledge_store {
+        seed_mental_model_from_prior_outcomes(&mut formation, ks).await;
+    }
+
     Ok(formation)
+}
+
+/// G2 — fold prior-outcome notes into the new formation's mental model.
+/// Extracts the formation's intent + connector set, ranks prior outcomes,
+/// and writes each as a `DomainEntry` keyed by `prior_outcome::{id}` so
+/// the orchestrator can iterate over them at Fever-tier decomposition.
+async fn seed_mental_model_from_prior_outcomes(
+    formation: &mut crate::cooperation::formation::Formation,
+    knowledge_store: &Arc<dyn springtale_cooperation::memory::GlobalKnowledgeStore>,
+) {
+    let connectors: Vec<String> = formation
+        .members
+        .iter()
+        .flat_map(|m| m.capabilities.iter())
+        .map(|c| c.name.clone())
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter()
+        .collect();
+    let query = springtale_cooperation::memory::RetrievalQuery {
+        intent: formation.intent.clone(),
+        connectors,
+    };
+    let priors = knowledge_store.retrieve_relevant(&query, 5).await;
+    if priors.is_empty() {
+        return;
+    }
+    for prior in &priors {
+        let key = format!("prior_outcome::{}", prior.note.formation_id.0);
+        let description = format!(
+            "prior {:?} on connectors {:?}: {}/{} successes, dissolved with reason \"{}\"",
+            prior.note.intent,
+            prior.note.connectors,
+            prior.note.success_count,
+            prior.note.success_count + prior.note.failure_count,
+            prior.note.dissolve_reason
+        );
+        formation.mental_model.domain_knowledge.insert(
+            key,
+            springtale_cooperation::mental_model::DomainEntry {
+                description,
+                learned_at: std::time::Instant::now(),
+                confidence: prior.score,
+            },
+        );
+    }
+    tracing::info!(
+        formation_id = %formation.id.0,
+        seeded = priors.len(),
+        "seeded mental model with prior outcomes",
+    );
 }
 
 /// Persist a formation's mental-model state before it's dropped. Per

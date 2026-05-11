@@ -19,15 +19,30 @@
 //! up-to-date `needs_replan` signal.
 
 use crate::cooperation::blackboard::trait_::Blackboard;
+use tokio::sync::broadcast;
+
 use crate::cooperation::formation::Formation;
 use springtale_cooperation::cadence::AgentId;
+use springtale_cooperation::events::{
+    self, CooperationEvent, CooperationEventEnvelope, ReplanOutcomeSummary,
+};
 use springtale_cooperation::replan::cbba::{self, AgentSpec, ReplanOutcome};
 use springtale_cooperation::routing::types::TaskId;
 
-pub fn run(formation: &mut Formation) {
+pub fn run(
+    formation: &mut Formation,
+    cooperation_tx: Option<&broadcast::Sender<CooperationEventEnvelope>>,
+) {
     if !formation.needs_replan {
         return;
     }
+    events::emit(
+        cooperation_tx,
+        CooperationEvent::CbbaReplanRequested {
+            formation_id: formation.id,
+            reason: "supervisor flagged needs_replan".into(),
+        },
+    );
 
     let agents: Vec<AgentSpec> = formation
         .members
@@ -67,6 +82,19 @@ pub fn run(formation: &mut Formation) {
                 unassigned = unassigned.len(),
                 "cbba replan converged"
             );
+            let summary = ReplanOutcomeSummary {
+                status: "converged",
+                sweeps,
+                assigned: assignment.len() as u32,
+                unassigned: unassigned.len() as u32,
+            };
+            events::emit(
+                cooperation_tx,
+                CooperationEvent::CbbaReplanResolved {
+                    formation_id: formation.id,
+                    outcome: summary,
+                },
+            );
             formation.needs_replan = false;
         }
         ReplanOutcome::Stalled { assignment, sweeps } => {
@@ -77,6 +105,19 @@ pub fn run(formation: &mut Formation) {
                 partial = assignment.len(),
                 "cbba replan stalled — leaving needs_replan set for L6 escalation"
             );
+            let summary = ReplanOutcomeSummary {
+                status: "stalled",
+                sweeps,
+                assigned: assignment.len() as u32,
+                unassigned: 0,
+            };
+            events::emit(
+                cooperation_tx,
+                CooperationEvent::CbbaReplanResolved {
+                    formation_id: formation.id,
+                    outcome: summary,
+                },
+            );
             // Flag stays set so check_interventions sees `cbba_stalled = true`.
         }
         ReplanOutcome::Unauthorized(reason) => {
@@ -84,6 +125,19 @@ pub fn run(formation: &mut Formation) {
                 formation = %formation_id,
                 ?reason,
                 "cbba replan unauthorized at current tier — clearing flag"
+            );
+            let summary = ReplanOutcomeSummary {
+                status: "unauthorized",
+                sweeps: 0,
+                assigned: 0,
+                unassigned: 0,
+            };
+            events::emit(
+                cooperation_tx,
+                CooperationEvent::CbbaReplanResolved {
+                    formation_id: formation.id,
+                    outcome: summary,
+                },
             );
             formation.needs_replan = false;
         }
@@ -172,7 +226,7 @@ mod tests {
     async fn replan_clears_flag_when_no_tasks() {
         let mut f = formation_with_members(vec!["slack", "github"]);
         f.needs_replan = true;
-        run(&mut f);
+        run(&mut f, None);
         assert!(!f.needs_replan, "no tasks → flag cleared");
     }
 
@@ -182,7 +236,7 @@ mod tests {
         // Make the only member non-operational.
         f.members[0].health = AgentHealth::Dead { recoverable: false };
         f.needs_replan = true;
-        run(&mut f);
+        run(&mut f, None);
         assert!(!f.needs_replan, "no operational members → flag cleared");
     }
 
@@ -213,7 +267,7 @@ mod tests {
             .expect("post task B");
 
         f.needs_replan = true;
-        run(&mut f);
+        run(&mut f, None);
         assert!(!f.needs_replan, "converged → flag cleared");
 
         // After replan both tasks should have an assigned_to set on the
@@ -244,7 +298,7 @@ mod tests {
             )
             .expect("post");
         f.needs_replan = true;
-        run(&mut f);
+        run(&mut f, None);
         assert!(
             !f.needs_replan,
             "unauthorized at non-Fever tier → flag cleared (replan moot)"

@@ -3,20 +3,25 @@ use std::sync::Arc;
 use springtale_store::StorageBackend;
 
 use crate::error::BotError;
+use crate::memory::persistent::{MemoryStore, MemoryWrite};
 use crate::state::session::SessionKey;
 
 /// Sliding window of recent conversation per (user_id, channel_id).
 ///
-/// Messages are encrypted at rest with XChaCha20-Poly1305. Each message
-/// gets its own random 24-byte nonce. The encryption key is derived from
-/// the vault at bot initialization and held in memory while running.
+/// Persistence + encryption live in [`MemoryStore`]; this type owns
+/// the window-size policy, AI-summarization-on-overflow, and the
+/// session-key boundary. Earlier revisions inlined the
+/// encrypt/decrypt calls here; the bug that triggered the rewrite
+/// was that the AI-summary path then forgot to encrypt the summary
+/// row before persisting it, leaking plaintext on disk while the
+/// regular `push` path encrypted correctly. Centralising both
+/// writes through `MemoryStore` eliminates that whole class of
+/// asymmetry: every write goes through one encrypting boundary.
 pub struct ConversationContext {
     max_messages: usize,
     store: Arc<dyn StorageBackend>,
     ai_adapter: Arc<dyn springtale_ai::AiAdapter>,
-    /// XChaCha20-Poly1305 key for message-level encryption.
-    /// Derived from the vault at bot init. 32 bytes.
-    encryption_key: [u8; 32],
+    memory: MemoryStore,
 }
 
 impl ConversationContext {
@@ -26,18 +31,17 @@ impl ConversationContext {
         ai_adapter: Arc<dyn springtale_ai::AiAdapter>,
         encryption_key: [u8; 32],
     ) -> Self {
+        let memory = MemoryStore::new(store.clone(), encryption_key);
         Self {
             max_messages,
             store,
             ai_adapter,
-            encryption_key,
+            memory,
         }
     }
 
-    /// Push a new message into the conversation context.
-    ///
-    /// Content is encrypted with XChaCha20-Poly1305 using a random 24-byte
-    /// nonce. The encryption key was derived from the vault at bot init.
+    /// Push a new message into the conversation context. Plaintext
+    /// is encrypted before persistence by [`MemoryStore::store`].
     pub async fn push(
         &self,
         key: &SessionKey,
@@ -49,76 +53,33 @@ impl ConversationContext {
             "assistant" => "connector_output",
             _ => "connector_output",
         };
-
-        // Random 24-byte nonce — unique per message (XChaCha20 eliminates collision risk)
-        let nonce = {
-            use rand::RngCore;
-            let mut n = [0u8; 24];
-            rand::thread_rng().fill_bytes(&mut n);
-            n
-        };
-
-        // Encrypt content with XChaCha20-Poly1305
-        let ciphertext = springtale_crypto::message::encrypt_message(
-            content.as_bytes(),
-            &nonce,
-            &self.encryption_key,
-        )
-        .map_err(|e| BotError::Memory(format!("encryption failed: {e}")))?;
-
-        let entry = springtale_store::MemoryRow {
-            id: uuid::Uuid::new_v4().to_string(),
-            user_id: key.user_id.clone(),
-            channel_id: key.channel_id.clone(),
-            category: "conversation".into(),
-            schema_version: 1,
-            author: author.into(),
-            source: source.into(),
-            content_encrypted: ciphertext,
-            nonce: nonce.to_vec(),
-            content_hash: None,
-            parent_id: None,
-            trust_score: if author == "user" { 1.0 } else { 0.8 },
-            created_at: chrono::Utc::now(),
-            expires_at: None,
-        };
-        self.store.insert_memory(&entry).await?;
+        self.memory
+            .store(MemoryWrite {
+                user_id: &key.user_id,
+                channel_id: &key.channel_id,
+                category: "conversation",
+                author,
+                source,
+                content,
+                trust_score: if author == "user" { 1.0 } else { 0.8 },
+                parent_id: None,
+                expires_at: None,
+            })
+            .await?;
         Ok(())
     }
 
-    /// Get recent conversation entries, decrypted.
-    ///
-    /// Each entry's `content_encrypted` is decrypted in-place using the
-    /// stored nonce and the context's encryption key.
+    /// Get recent conversation entries, decrypted in place by
+    /// [`MemoryStore::recall`]. `content_encrypted` on each
+    /// returned row carries the decrypted plaintext bytes.
     pub async fn recent(
         &self,
         key: &SessionKey,
         limit: usize,
     ) -> Result<Vec<springtale_store::MemoryRow>, BotError> {
-        let mut entries = self
-            .store
-            .get_memory(&key.user_id, &key.channel_id, limit)
-            .await?;
-
-        // Decrypt each entry's content
-        for entry in &mut entries {
-            let nonce: [u8; 24] = entry
-                .nonce
-                .as_slice()
-                .try_into()
-                .map_err(|_| BotError::Memory("invalid nonce length".into()))?;
-
-            let plaintext = springtale_crypto::message::decrypt_message(
-                &entry.content_encrypted,
-                &nonce,
-                &self.encryption_key,
-            )
-            .map_err(|e| BotError::Memory(format!("decryption failed: {e}")))?;
-
-            entry.content_encrypted = plaintext;
-        }
-
-        Ok(entries)
+        self.memory
+            .recall(&key.user_id, &key.channel_id, limit)
+            .await
     }
 
     /// Compact the conversation context, keeping only the newest entries.
@@ -128,20 +89,22 @@ impl ConversationContext {
     /// before deleting them. Falls back to simple truncation if AI is
     /// unavailable or errors.
     pub async fn compact(&self, key: &SessionKey) -> Result<u64, BotError> {
-        // Get all entries to check count
-        let all_entries = self
-            .store
-            .get_memory(&key.user_id, &key.channel_id, usize::MAX)
+        // Pull *decrypted* entries via the memory store so the
+        // summarization prompt sees plaintext, not ciphertext. Read
+        // every entry — compaction can't decide what to drop without
+        // seeing all of them.
+        let all_plaintext = self
+            .memory
+            .recall(&key.user_id, &key.channel_id, usize::MAX)
             .await?;
 
-        if all_entries.len() <= self.max_messages {
+        if all_plaintext.len() <= self.max_messages {
             return Ok(0);
         }
 
-        // Try AI summarization if available
         if self.ai_adapter.is_available().await {
             match self
-                .ai_summarize(key, &all_entries, self.max_messages)
+                .ai_summarize(key, &all_plaintext, self.max_messages)
                 .await
             {
                 Ok(deleted) => return Ok(deleted),
@@ -159,7 +122,14 @@ impl ConversationContext {
         Ok(deleted)
     }
 
-    /// Summarize oldest entries via AI and replace them with a summary entry.
+    /// Summarize oldest entries via AI and replace them with a
+    /// single summary entry. `all_entries` carries *plaintext* in
+    /// the `content_encrypted` field (per `MemoryStore::recall`);
+    /// the summary is persisted through `MemoryStore::store` so it
+    /// is encrypted on disk like every other entry — earlier the
+    /// summary row leaked plaintext to the database because it was
+    /// inserted directly via `store.insert_memory` without going
+    /// through the encrypt path.
     async fn ai_summarize(
         &self,
         key: &SessionKey,
@@ -167,10 +137,10 @@ impl ConversationContext {
         max_entries: usize,
     ) -> Result<u64, BotError> {
         let to_summarize = all_entries.len() - max_entries;
-        // Oldest entries are at the END (get_memory returns DESC order)
+        // Oldest entries are at the END (recall preserves the
+        // backend's DESC order).
         let oldest = &all_entries[all_entries.len() - to_summarize..];
 
-        // Build summarization prompt
         let mut conversation = String::new();
         for entry in oldest.iter().rev() {
             let content = String::from_utf8_lossy(&entry.content_encrypted);
@@ -195,38 +165,21 @@ impl ConversationContext {
             return Err(BotError::Memory("AI returned empty summary".into()));
         }
 
-        // Insert summary entry with correct provenance per spec §15.5
-        let nonce = {
-            use rand::RngCore;
-            let mut n = vec![0u8; 24];
-            rand::thread_rng().fill_bytes(&mut n);
-            n
-        };
-
         let oldest_id = oldest.last().map(|e| e.id.clone());
-        let oldest_timestamp = oldest
-            .last()
-            .map(|e| e.created_at)
-            .unwrap_or_else(chrono::Utc::now);
 
-        let summary_entry = springtale_store::MemoryRow {
-            id: uuid::Uuid::new_v4().to_string(),
-            user_id: key.user_id.clone(),
-            channel_id: key.channel_id.clone(),
-            category: "conversation".into(),
-            schema_version: 1,
-            author: "agent".into(),     // per spec MemoryAuthor::Agent
-            source: "compacted".into(), // per spec MemorySource::Compacted
-            content_encrypted: response.content.as_bytes().to_vec(),
-            nonce,
-            content_hash: None,
-            parent_id: oldest_id, // compaction chain tracking
-            trust_score: 0.5,     // per spec §15.5: AI-generated = 0.5
-            created_at: oldest_timestamp,
-            expires_at: None,
-        };
-
-        self.store.insert_memory(&summary_entry).await?;
+        self.memory
+            .store(MemoryWrite {
+                user_id: &key.user_id,
+                channel_id: &key.channel_id,
+                category: "conversation",
+                author: "agent",       // per spec MemoryAuthor::Agent
+                source: "compacted",   // per spec MemorySource::Compacted
+                content: &response.content,
+                trust_score: 0.5, // per spec §15.5: AI-generated = 0.5
+                parent_id: oldest_id, // compaction chain tracking
+                expires_at: None,
+            })
+            .await?;
 
         // Delete the original oldest entries
         // Use compact_memory which keeps the newest max_entries

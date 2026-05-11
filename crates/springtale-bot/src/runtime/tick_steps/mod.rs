@@ -36,12 +36,14 @@ pub mod log_interference;
 pub mod orchestrate_fever;
 pub mod persist_momentum;
 pub mod publish_context;
+pub mod publish_formation_view;
 pub mod recovery;
 pub mod replan_cbba;
 pub mod shutdown;
 pub mod state_broadcast;
 pub mod supervision;
 pub mod tail;
+pub mod tick_commits;
 pub mod transformation;
 pub mod update_mental_model;
 pub mod update_momentum;
@@ -63,24 +65,28 @@ pub async fn run_tick(
     formation.momentum.check_decay();
     update_momentum::run(formation, &result);
     liveness::run(formation, tick, &result);
-    supervision::run(formation, &result);
+    supervision::run(formation, &result, deps.cooperation_tx);
     fuel::run(formation);
     implicit_signals::run(formation, &result);
     state_broadcast::run(formation, &result);
     persist_momentum::run(deps.store.as_ref(), formation).await;
     publish_context::run(formation);
     gossip_awareness::run(formation, &result).await;
-    log_interference::run(formation, &result);
-    check_pacing::run(formation, &result, tick.window);
-    check_cascade::run(formation, &result, deps.store.as_ref()).await;
+    log_interference::run(formation, &result, deps.cooperation_tx);
+    check_pacing::run(formation, &result, tick.window, deps.cooperation_tx);
+    check_cascade::run(formation, &result, deps.store.as_ref(), deps.cooperation_tx).await;
     check_interventions::run(formation, deps).await;
-    recovery::run(formation);
-    transformation::run(formation, deps.role_registry.as_ref());
-    replan_cbba::run(formation);
-    consensus_deadlines::run(formation);
-    expire_commits::run(formation);
+    recovery::run(formation, deps.cooperation_tx);
+    transformation::run(formation, deps.role_registry.as_ref(), deps.cooperation_tx);
+    replan_cbba::run(formation, deps.cooperation_tx);
+    consensus_deadlines::run(formation, deps.cooperation_tx);
+    tick_commits::run(formation, deps.cooperation_tx);
+    expire_commits::run(formation, deps.cooperation_tx);
     update_mental_model::run(formation, &result);
     orchestrate_fever::run(formation, deps.registry).await;
+    // G6 — broadcast this formation's view on the cross-formation
+    // gossip bus. No-op when `formation_gossip` is None (CLI / test).
+    publish_formation_view::run(formation);
     // F4 — emit per-tick canvas summary so subscribers (web SSE, desktop
     // Tauri Channel) receive live formation state.
     if let Some(tx) = deps.canvas_tx {

@@ -11,6 +11,7 @@
 
 use std::collections::HashMap;
 use std::time::Duration;
+use tokio::sync::broadcast;
 
 use crate::cooperation::formation::Formation;
 use springtale_cooperation::awareness::LocalAwareness;
@@ -18,6 +19,7 @@ use springtale_cooperation::cadence::AgentId;
 use springtale_cooperation::contract_net::{
     coordinator, types::CallForProposals, RoundOutcome,
 };
+use springtale_cooperation::events::{self, CooperationEvent, CooperationEventEnvelope};
 use springtale_cooperation::rally::{RallyResult, cascade};
 use springtale_cooperation::tick_processor::FormationTickResult;
 use springtale_store::{FormationRallyRow, StorageBackend};
@@ -27,6 +29,7 @@ pub async fn run(
     formation: &mut Formation,
     result: &FormationTickResult,
     store: &dyn StorageBackend,
+    cooperation_tx: Option<&broadcast::Sender<CooperationEventEnvelope>>,
 ) {
     if result.all_succeeded {
         // Successful tick clears the cascade streak so the L6 evaluator
@@ -53,6 +56,19 @@ pub async fn run(
     formation.cascade_hit_streak = formation.cascade_hit_streak.saturating_add(1);
 
     tracing::warn!(formation = %formation.id.0, ?risk, "cascade risk detected");
+    let members_affected = result
+        .reports
+        .iter()
+        .filter(|r| r.intent_alignment <= 0.5)
+        .count() as u32;
+    events::emit(
+        cooperation_tx,
+        CooperationEvent::CascadeHit {
+            formation_id: formation.id,
+            streak: formation.cascade_hit_streak,
+            members_affected,
+        },
+    );
 
     let Some(failing_agent) = result
         .reports
@@ -91,20 +107,25 @@ pub async fn run(
     // over. Only runs on `EscalateToOrchestrator` (rally tokens spent) so
     // CFPs aren't broadcast for transient stumbles.
     if matches!(rally_result, RallyResult::EscalateToOrchestrator { .. }) {
-        run_takeover_cfp(formation, failing_agent).await;
+        run_takeover_cfp(formation, failing_agent, cooperation_tx).await;
     }
 }
 
 /// Build a CFP for the failing agent's active task and run a Contract Net
 /// round. Returns silently on no active task / no bids (logged) — the L6
 /// intervention layer handles persistent escalation separately.
-async fn run_takeover_cfp(formation: &mut Formation, failing_agent: AgentId) {
+async fn run_takeover_cfp(
+    formation: &mut Formation,
+    failing_agent: AgentId,
+    cooperation_tx: Option<&broadcast::Sender<CooperationEventEnvelope>>,
+) {
     // Snapshot what we need without holding any locks across the round.
     let (task, initiator_agent) = {
         let Some(member) = formation.member(&failing_agent) else { return };
         let Some(active) = member.active_task.as_ref() else { return };
         (active.task.clone(), failing_agent)
     };
+    let capability = task.target_connector.name.clone();
     let cfp = CallForProposals {
         id: Uuid::new_v4(),
         initiator: initiator_agent,
@@ -114,12 +135,20 @@ async fn run_takeover_cfp(formation: &mut Formation, failing_agent: AgentId) {
         scoring_hint: Some("rally-exhaustion-takeover".to_owned()),
     };
     let cfp_id = cfp.id;
+    events::emit(
+        cooperation_tx,
+        CooperationEvent::CfpRoundStarted {
+            formation_id: formation.id,
+            cfp_id,
+            capability,
+        },
+    );
     let tier = formation.momentum.tier;
     let initiator = formation.cfp_initiator.clone();
     let mut handle = initiator.lock().await;
     let outcome = coordinator::run_round(&mut handle, cfp, tier).await;
     drop(handle);
-    match outcome {
+    let winner = match &outcome {
         RoundOutcome::Awarded { award, bids_seen } => {
             tracing::info!(
                 formation = %formation.id.0,
@@ -129,9 +158,11 @@ async fn run_takeover_cfp(formation: &mut Formation, failing_agent: AgentId) {
                 bids_seen,
                 "CFP takeover awarded"
             );
+            Some(award.winner)
         }
         RoundOutcome::NoBids => {
             tracing::warn!(formation = %formation.id.0, cfp = %cfp_id, "CFP takeover: no bids");
+            None
         }
         RoundOutcome::Unauthorized(reason) => {
             tracing::debug!(
@@ -140,6 +171,7 @@ async fn run_takeover_cfp(formation: &mut Formation, failing_agent: AgentId) {
                 ?reason,
                 "CFP takeover unauthorized at current tier"
             );
+            None
         }
         RoundOutcome::AnnounceFailed | RoundOutcome::NotifyFailed => {
             tracing::error!(
@@ -148,8 +180,17 @@ async fn run_takeover_cfp(formation: &mut Formation, failing_agent: AgentId) {
                 ?outcome,
                 "CFP takeover transport failure"
             );
+            None
         }
-    }
+    };
+    events::emit(
+        cooperation_tx,
+        CooperationEvent::CfpRoundResolved {
+            formation_id: formation.id,
+            cfp_id,
+            winner,
+        },
+    );
 }
 
 fn log_rally_result(formation_id: &str, result: &RallyResult) {
