@@ -1,6 +1,7 @@
 #![forbid(unsafe_code)]
 #![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+pub mod approval;
 pub mod audit;
 pub mod circuit_breaker;
 pub mod config;
@@ -12,6 +13,10 @@ pub mod sentinel;
 pub mod toxic_pairs;
 pub mod verdict;
 
+pub use approval::{
+    ApprovalGate, ApprovalRequest, AutoAllowApprovalGate, ChannelApprovalGate,
+    DefaultDenyApprovalGate, PendingApproval,
+};
 pub use config::SentinelConfig;
 pub use error::SentinelError;
 pub use sentinel::Sentinel;

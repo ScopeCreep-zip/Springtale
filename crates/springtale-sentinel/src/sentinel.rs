@@ -5,6 +5,7 @@ use springtale_connector::manifest::types::Capability;
 use springtale_core::rule::action::Action;
 use springtale_store::StorageBackend;
 
+use crate::approval::{ApprovalGate, ApprovalRequest, DefaultDenyApprovalGate};
 use crate::audit::AuditTrail;
 use crate::circuit_breaker::CircuitBreaker;
 use crate::config::SentinelConfig;
@@ -25,12 +26,26 @@ pub struct Sentinel {
     circuit_breaker: CircuitBreaker,
     dead_man: DeadManSwitch,
     audit: AuditTrail,
+    approval: Arc<dyn ApprovalGate>,
     _config: SentinelConfig,
 }
 
 impl Sentinel {
-    /// Create a new sentinel with the given configuration and storage backend.
+    /// Create a sentinel with the safe default approval gate
+    /// ([`DefaultDenyApprovalGate`]). Destructive actions are denied
+    /// unless a gate is wired via [`Sentinel::with_approval_gate`].
     pub fn new(config: SentinelConfig, store: Arc<dyn StorageBackend>) -> Self {
+        Self::with_approval_gate(config, store, Arc::new(DefaultDenyApprovalGate))
+    }
+
+    /// Construct with a specific approval gate. Desktop / web wire
+    /// a [`crate::approval::ChannelApprovalGate`] that prompts the
+    /// user; CLI / headless callers can keep the default-deny.
+    pub fn with_approval_gate(
+        config: SentinelConfig,
+        store: Arc<dyn StorageBackend>,
+        approval: Arc<dyn ApprovalGate>,
+    ) -> Self {
         let rate_limiter = RateLimiter::new(config.rate_limit_per_minute);
         let circuit_breaker = CircuitBreaker::new(
             config.circuit_breaker_threshold,
@@ -44,6 +59,7 @@ impl Sentinel {
             circuit_breaker,
             dead_man,
             audit,
+            approval,
             _config: config,
         }
     }
@@ -91,11 +107,32 @@ impl Sentinel {
             return verdict;
         }
 
-        // 4. Destructive action gate
+        // 4. Destructive action gate — route through the configured
+        //    `ApprovalGate`. CLI / headless wire `DefaultDenyApprovalGate`
+        //    so unattended runs never delete data; desktop / web wire
+        //    a `ChannelApprovalGate` that prompts the survivor.
         if impact == ActionImpact::Destructive {
-            tracing::warn!(
+            let request = ApprovalRequest {
+                connector_name: connector_name.to_owned(),
+                action_type: action_type.clone(),
+                rationale: format!(
+                    "{connector_name} is about to run a destructive action ({action_type})"
+                ),
+            };
+            if !self.approval.request_approval(request).await {
+                let verdict = Verdict::Quarantine(format!(
+                    "destructive action denied by approval gate ({action_type})"
+                ));
+                let _ = self
+                    .audit
+                    .log(connector_name, &action_type, "", &verdict, "denied")
+                    .await;
+                return verdict;
+            }
+            tracing::info!(
                 connector = connector_name,
-                "destructive action detected — proceeding (approval gate deferred to Phase 2b UI)"
+                action = %action_type,
+                "destructive action approved"
             );
         }
 
@@ -140,7 +177,7 @@ mod tests {
 
     fn test_sentinel() -> Sentinel {
         let store: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open_in_memory().unwrap());
-        Sentinel::new(
+        Sentinel::with_approval_gate(
             SentinelConfig {
                 rate_limit_per_minute: 5,
                 circuit_breaker_threshold: 2,
@@ -149,6 +186,7 @@ mod tests {
                 audit_retention_days: 90,
             },
             store,
+            Arc::new(crate::approval::AutoAllowApprovalGate),
         )
     }
 
@@ -194,7 +232,7 @@ mod tests {
     #[tokio::test]
     async fn test_evaluate_dead_man() {
         let store: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open_in_memory().unwrap());
-        let sentinel = Sentinel::new(
+        let sentinel = Sentinel::with_approval_gate(
             SentinelConfig {
                 rate_limit_per_minute: 1000,
                 circuit_breaker_threshold: 1000,
@@ -203,6 +241,7 @@ mod tests {
                 audit_retention_days: 90,
             },
             store,
+            Arc::new(crate::approval::AutoAllowApprovalGate),
         );
 
         let action = Action::Delay { seconds: 0 };
@@ -220,7 +259,7 @@ mod tests {
     #[tokio::test]
     async fn test_dead_man_resets_on_interaction() {
         let store: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open_in_memory().unwrap());
-        let sentinel = Sentinel::new(
+        let sentinel = Sentinel::with_approval_gate(
             SentinelConfig {
                 rate_limit_per_minute: 1000,
                 circuit_breaker_threshold: 1000,
@@ -229,6 +268,7 @@ mod tests {
                 audit_retention_days: 90,
             },
             store,
+            Arc::new(crate::approval::AutoAllowApprovalGate),
         );
 
         let action = Action::Delay { seconds: 0 };
