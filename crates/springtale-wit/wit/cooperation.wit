@@ -1,0 +1,119 @@
+// Springtale Cooperation WIT World — G3 / `COOPERATION_IMPLEMENTATION_PLAN.md §15`.
+//
+// Defines the WebAssembly Interface Types surface every WASM Component
+// Model host (Bevy, Unity, wasmCloud, custom) consumes when embedding
+// Springtale's cooperation primitives. Mirrors the curated facade
+// exposed via `springtale-cooperation` to other-language SDKs.
+//
+// Scope: the *primitives* a host needs to model cooperation — formation
+// lifecycle, intent, momentum tier, agent identity. Transport,
+// connector dispatch, and sentinel/Z2-zone access stay native (host has
+// its own actor model + capability layer).
+//
+// References:
+// - `crates/springtale-cooperation/src/types.rs` — FormationId, AgentId,
+//   FormationConstraints
+// - `crates/springtale-cooperation/src/momentum.rs` — MomentumTier
+// - `crates/springtale-cooperation/src/cadence.rs` — IntentPattern
+// - `crates/springtale-cooperation/src/gossip/types.rs` — FormationStatus
+
+package springtale:cooperation@0.1.0;
+
+interface types {
+    // 22-bit Bitsquid index + 8-bit generation, packed into u64.
+    // Springtale reserves 34 high bits for future extensions
+    // (`docs/intended-arch/COOPERATION_IMPLEMENTATION_PLAN.md §11`).
+    type agent-id = u64;
+
+    // 128-bit UUID surfaced as two u64s so the WIT side stays integer-only
+    // (the Component Model has no native UUID; hosts assemble these into
+    // their native UUID representation at the binding layer).
+    record formation-id {
+        hi: u64,
+        lo: u64,
+    }
+
+    // Momentum tiers — capability gates per `COOPERATION.md §7`.
+    variant momentum-tier {
+        cold,
+        warming,
+        hot,
+        fever,
+    }
+
+    // Intent pattern variants. Payloads (plan-id, task descriptor, etc.)
+    // are surfaced as opaque strings so the host doesn't have to model
+    // every Springtale newtype.
+    variant intent-pattern {
+        reconnoiter(string),       // target
+        %execute(option<string>),  // plan_id
+        stabilize(string),         // reason
+        surge(string),             // objective
+        dissolve(string),          // reason
+    }
+
+    // Lifecycle status — mirrors `gossip::FormationStatus` so hosts get
+    // the same vocabulary on the cross-formation stream.
+    variant formation-status {
+        draft,
+        active,
+        paused,
+        dissolved,
+    }
+
+    // Per-formation snapshot. The host receives these via the
+    // `subscribe-formation-views` import; the embedded cooperation
+    // runtime publishes one per tick.
+    record formation-view {
+        formation-id: formation-id,
+        intent: intent-pattern,
+        momentum-tier: momentum-tier,
+        operational-count: u32,
+        member-count: u32,
+        rally-tokens-remaining: u32,
+        status: formation-status,
+        at-iso-8601: string,
+    }
+}
+
+// `cooperation/runtime` is what the *host* imports — the embedded
+// runtime implements these.
+interface runtime {
+    use types.{agent-id, formation-id, formation-view, intent-pattern, momentum-tier};
+
+    // Spawn a new formation in the embedded runtime. The host hands
+    // back a stable id it can pass to subsequent calls.
+    spawn-formation: func(intent: intent-pattern, member-ids: list<agent-id>) -> result<formation-id, string>;
+
+    // Dissolve an active formation. Idempotent — dissolving an unknown
+    // formation returns ok.
+    dissolve-formation: func(id: formation-id, reason: string) -> result<_, string>;
+
+    // Snapshot every currently-active formation. Hosts that want
+    // streaming use `subscribe-formation-views` instead.
+    list-formations: func() -> list<formation-view>;
+
+    // Push a fresh `FormationView` for one formation. The host can
+    // poll this in its own update loop without subscribing to the
+    // full stream.
+    get-formation: func(id: formation-id) -> option<formation-view>;
+}
+
+// `cooperation/host` is what the embedded runtime *imports* — the host
+// implements these to feed events back into the runtime.
+interface host {
+    use types.{formation-view};
+
+    // Push notification: a new `FormationView` arrived from another
+    // process / node in a federated cooperation run. The runtime
+    // consumes these via its own gossip integration.
+    notify-formation-view: func(view: formation-view);
+}
+
+// The default world a WASM host targets when embedding Springtale.
+// Imports the host-side feedback channel; exports the runtime surface.
+world springtale-cooperation {
+    import host;
+    export runtime;
+    export types;
+}

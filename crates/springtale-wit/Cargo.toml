@@ -1,0 +1,20 @@
+[package]
+name = "springtale-wit"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "WIT (WebAssembly Interface Types) world definition for embedding Springtale cooperation primitives in WASM Component Model hosts (Bevy, Unity, wasmCloud, custom)"
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+
+[package.metadata.springtale-wit]
+# The .wit world definition is the package's primary artifact — hosts that
+# embed Springtale via the Component Model consume `wit/cooperation.wit`,
+# not the Rust crate. The Rust crate exists so the WIT file ships in the
+# workspace and gets distributed via crates.io alongside the other
+# springtale-* crates.
+world-path = "wit/cooperation.wit"
