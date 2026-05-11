@@ -38,6 +38,9 @@
     "icon": [
       "icons/icon.png"
     ],
+    "resources": [
+      "icons/disguise/*.png"
+    ],
     "android": {
       "minSdkVersion": 24
     },

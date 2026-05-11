@@ -16,6 +16,13 @@ use tracing_subscriber::EnvFilter;
 /// 2. Tauri IPC bridge (typed commands + events)
 /// 3. Commands layer (validates inputs, delegates to crates)
 /// 4. Core crates (pure Rust, zero Tauri dependency)
+///
+/// `mobile_entry_point` (Tauri 2): on iOS + Android the platform
+/// framework loads us as a library and calls this function directly
+/// — no `main` exists there. On desktop, `main.rs` still calls
+/// `springtale_desktop::run()` so the same entry serves all three
+/// targets. Per `v2.tauri.app/start/project-structure/`.
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Initialize tracing
     tracing_subscriber::fmt()
@@ -37,12 +44,31 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .manage(app_state)
+        .manage(commands::quick_hide::ActiveQuickHide::default())
+        .setup(|app| {
+            // G5f tray-icon disguise: build a single tray handle at
+            // startup so the safety chain can swap its icon + tooltip
+            // at runtime. Failure to build (rare; some Linux WMs) is
+            // logged and the rest of the app continues — graceful
+            // degradation matters in a coercive setting where any
+            // crash is worse than a missing disguise channel.
+            match commands::tray::init(app) {
+                Ok(_handle) => {
+                    tracing::info!("tray icon initialised");
+                }
+                Err(e) => {
+                    tracing::warn!(error = %e, "tray icon init failed; disguise still applies window-title + content protection");
+                }
+            }
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             commands::connectors::list_connectors,
             commands::connectors::list_available_connectors,
             commands::connectors::setup_connector,
             commands::connectors::enable_connector,
             commands::connectors::disable_connector,
+            commands::connectors::reload_connector,
             commands::connectors::get_connector_schemas,
             commands::connectors::remove_connector,
             commands::connectors::remove_connector_cascade,
@@ -68,7 +94,14 @@ pub fn run() {
             commands::vault::get_vault_status,
             commands::safety::get_safety_config,
             commands::safety::save_safety_config,
+            commands::safety::set_disguise_active,
+            commands::safety::set_disguise_profile,
+            commands::safety::set_panic_tap_count,
             commands::safety::set_window_title,
+            commands::safety::apply_disguise_to_shell,
+            commands::safety::apply_content_protection,
+            commands::tray::apply_disguise_to_tray,
+            commands::quick_hide::apply_quick_hide_shortcut,
             commands::panic::panic_wipe,
             commands::travel::travel_prepare,
             commands::travel::travel_restore,

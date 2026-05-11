@@ -27,6 +27,11 @@ export async function disableConnector(name: string): Promise<void> {
   return invoke("disable_connector", { name });
 }
 
+/** G4 — hot-reload a connector. Thin IPC pass-through to the runtime op. */
+export async function reloadConnector(name: string): Promise<void> {
+  return invoke("reload_connector", { name });
+}
+
 import type { AvailableConnector } from "@springtale/types";
 export type { AvailableConnector };
 

@@ -9,6 +9,8 @@ import {
   AppSettingsPanel,
   ConnectorConfigPanel,
   MemberPickerOverlay,
+  RuleBuilderOverlay,
+  SafetyPanel,
   useDashboard,
   useI18n,
   mapNodes,
@@ -23,6 +25,7 @@ import { listen } from "@tauri-apps/api/event";
 import { getVaultStatus, unlockVault, createVault } from "./ipc/vault";
 import { panicWipe } from "./ipc/panic";
 import { resetAutoLock } from "./ipc/autolock";
+import { TravelModePage } from "./pages/TravelMode";
 
 /**
  * Springtale Desktop — colony ecosystem dashboard.
@@ -38,6 +41,9 @@ export const App = () => {
   const [vaultLocked, setVaultLocked] = createSignal(true);
   const [showVault, setShowVault] = createSignal(false);
   const [showDesktopSettings, setShowDesktopSettings] = createSignal(false);
+  const [showSafety, setShowSafety] = createSignal(false);
+  const [showTravelMode, setShowTravelMode] = createSignal(false);
+  const [showRuleBuilder, setShowRuleBuilder] = createSignal(false);
   const [showTeamBuilder, setShowTeamBuilder] = createSignal(false);
   // F5 — member-picker overlay state. When set to a formation id, the
   // ColonyShell overlay slot renders MemberPickerOverlay for that
@@ -58,7 +64,7 @@ export const App = () => {
   const [confirmAction, setConfirmAction] = createSignal<{
     title: string; message: string; label: string; action: () => Promise<void>;
   } | null>(null);
-  const [aiConfigAgent, setAiConfigAgent] = createSignal<{ id: string; name: string } | null>(null);
+  const [aiConfigAgent, setAiConfigAgent] = createSignal<{ id: string; name: string; scope: "agent" | "formation" } | null>(null);
   const [detailView, setDetailView] = createSignal<import("@springtale/ui").DetailView>({ mode: "colony" });
   const [pendingAddToFormation, setPendingAddToFormation] = createSignal<string | null>(null);
   const [pendingReassignAgent, setPendingReassignAgent] = createSignal<string | null>(null);
@@ -144,6 +150,53 @@ export const App = () => {
     document.addEventListener("click", resetTimer);
     resetTimer();
 
+    // G5f — push the persisted disguise state onto the shell on
+    // startup so the visible chrome matches the backend from the
+    // first frame. A survivor relaunching under duress sees their
+    // disguised title immediately, not a brief flash of "Springtale".
+    try {
+      const { applyDisguiseToShell, applyContentProtection, applyDisguiseToTray, getSafetyConfig } = await import("./ipc/safety");
+      await applyDisguiseToShell();
+      // G5f — swap the tray icon + tooltip to the disguise profile
+      // so the survivor's system-tray surface matches the window
+      // chrome. Soft-fails on Linux WMs that don't expose tray.
+      await applyDisguiseToTray();
+      // G5g — apply screen-recording protection so screenshots
+      // taken in a coercive setting return a black frame on
+      // macOS + Windows.
+      await applyContentProtection();
+
+      // G5g — panic-tap gesture detector. Counts rapid clicks on
+      // the topmost row of the window (where the title bar sits);
+      // at `panic_tap_count` clicks within `PANIC_TAP_WINDOW_MS`
+      // the survivor's gesture fires panic-wipe. `panic_tap_count`
+      // = 0 disables (server-bounded so the gesture can't be
+      // disabled by accident on the way through 1–10).
+      const cfg = await getSafetyConfig();
+      if (cfg.panic_tap_count > 0) {
+        const PANIC_TAP_WINDOW_MS = 1500;
+        const TITLE_BAR_HEIGHT_PX = 40; // colony shell's top row
+        let taps: number[] = [];
+        const onTap = (e: MouseEvent) => {
+          if (e.clientY > TITLE_BAR_HEIGHT_PX) return;
+          const now = performance.now();
+          taps = taps.filter((t) => now - t < PANIC_TAP_WINDOW_MS);
+          taps.push(now);
+          if (taps.length >= cfg.panic_tap_count) {
+            taps = [];
+            // Fire-and-forget; the wipe op exits the process on
+            // success, so we don't need to await the result.
+            void panicWipe();
+          }
+        };
+        document.addEventListener("click", onTap, { capture: true });
+        onCleanup(() => document.removeEventListener("click", onTap, { capture: true }));
+      }
+    } catch {
+      // First-run / pre-init — the apply call needs a live runtime.
+      // Re-applied after vault unlock in the auto-lock flow.
+    }
+
     // Keyboard shortcuts
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
@@ -179,7 +232,7 @@ export const App = () => {
       }
 
       // Skip command shortcuts when any modal is open
-      if (showVault() || showDesktopSettings() || showTeamBuilder() || confirmAction() || aiConfigAgent() || connectorConfigData() || memberPickerFor()) return;
+      if (showVault() || showDesktopSettings() || showSafety() || showTravelMode() || showRuleBuilder() || showTeamBuilder() || confirmAction() || aiConfigAgent() || connectorConfigData() || memberPickerFor()) return;
 
       // Command grid shortcuts: match key to current selection context.
       // F1: formation hotkeys come exclusively from the backend
@@ -199,7 +252,7 @@ export const App = () => {
         }
         return;
       }
-      const commandList = COMMANDS[context] ?? COMMANDS.none;
+      const commandList = COMMANDS[context] ?? COMMANDS.none ?? [];
       const cmd = commandList.find((c) => c?.key.toLowerCase() === key);
       if (cmd) {
         e.preventDefault();
@@ -217,6 +270,24 @@ export const App = () => {
       setVaultLocked(false);
       setShowVault(false);
       await loadColonyData();
+      // G5g — once the runtime is live we can register the
+      // persisted global hotkey. Before unlock the in-window
+      // listener below is the only handler; after unlock it
+      // becomes the fallback for when the window is focused.
+      try {
+        const { applyQuickHideShortcut } = await import("./ipc/safety");
+        await applyQuickHideShortcut();
+      } catch (e) {
+        db.setError(`quick-hide hotkey registration: ${String(e)}`);
+      }
+    });
+
+    // G5g — backend fires "quick-hide" when the global hotkey is
+    // pressed from anywhere on the desktop. Mirror the in-window
+    // path: lock the vault (window is already hidden by the Rust
+    // handler so we don't need to hide here).
+    await listen("quick-hide", () => {
+      invoke("lock_vault").catch((e) => db.setError(String(e)));
     });
 
     try {
@@ -236,6 +307,12 @@ export const App = () => {
     // when the "vault-unlocked" event fires (see listener above).
     if (!vaultLocked()) {
       await loadColonyData();
+      try {
+        const { applyQuickHideShortcut } = await import("./ipc/safety");
+        await applyQuickHideShortcut();
+      } catch (e) {
+        db.setError(`quick-hide hotkey registration: ${String(e)}`);
+      }
     }
   });
 
@@ -276,7 +353,7 @@ export const App = () => {
   const nodes = () => mapNodes(db.connectors());
   const agents = () => mapAgents(db.rules(), db.agentStates());
   const [connections, setConnections] = createSignal<import("@springtale/ui").ColonyConnection[]>([]);
-  const formations = () => mapFormations(db.swarms());
+  const formations = () => mapFormations(db.swarms(), db.cooperationEvents());
 
   // ── Command dispatch — context:action pattern ───────────
   // Each command has a unique action ID (e.g. "connector:enable", "agent:pause")
@@ -288,7 +365,11 @@ export const App = () => {
       switch (action) {
         // ── Global ──
         case "global:new_rule":
-          setShowTeamBuilder(true);
+          // G5e — open the visual rule builder. TeamBuilder is the
+          // formation-spawning wizard, available via a different
+          // entry point; this command targets the rule-composition
+          // surface specifically.
+          setShowRuleBuilder(true);
           break;
         case "global:refresh":
           await db.refresh();
@@ -370,7 +451,7 @@ export const App = () => {
         case "agent:ai_config":
           if (sel.id) {
             const agent = agents().find((a) => a.id === sel.id);
-            setAiConfigAgent({ id: sel.id, name: agent?.name ?? sel.id });
+            setAiConfigAgent({ id: sel.id, name: agent?.name ?? sel.id, scope: "agent" });
           }
           break;
         case "agent:pause":
@@ -441,9 +522,14 @@ export const App = () => {
           if (sel.id) { await db.handleRallyFormation(sel.id); }
           break;
         case "formation:ai_config":
+        case "formation:ai_adapter":
+          // G7 — open the per-formation AI override panel. Uses the
+          // shared AiConfigPanel scoped to a formation; on save the
+          // config persists at `ai:formation:{id}` and the next
+          // Fever-tier orchestrate call picks it up via `resolve_ai_config`.
           if (sel.id) {
             const fm = db.swarms().find((s) => s.id === sel.id);
-            setAiConfigAgent({ id: `formation:${sel.id}`, name: fm?.name ?? sel.id });
+            setAiConfigAgent({ id: sel.id, name: fm?.name ?? sel.id, scope: "formation" });
           }
           break;
         case "formation:autonomy":
@@ -539,10 +625,14 @@ export const App = () => {
       const aca = aiConfigAgent()!;
       return (
         <AiConfigPanel
-          agentId={aca.id}
-          agentName={aca.name}
-          onSave={async (agentId, config) => {
-            await db.provider.configureAiAdapter(`ai:${agentId}`, config);
+          targetId={aca.id}
+          targetName={aca.name}
+          scope={aca.scope}
+          onSave={async (targetId, config) => {
+            const key = aca.scope === "formation"
+              ? `ai:formation:${targetId}`
+              : `ai:${targetId}`;
+            await db.provider.configureAiAdapter(key, config);
             await db.refresh();
           }}
           onClose={() => setAiConfigAgent(null)}
@@ -602,11 +692,74 @@ export const App = () => {
               db.setError(String(e));
             }
           }}
+          onOpenSafety={() => { setShowDesktopSettings(false); setShowSafety(true); }}
           onExportData={async () => { await db.provider.exportData(); }}
           onCompactMemory={async () => { await db.provider.compactMemory(1000); }}
           onClose={() => setShowDesktopSettings(false)}
           theme={theme()}
           onThemeChange={(t) => setTheme(t)}
+        />
+      );
+    }
+
+    // 5b. G5d — safety / disguise panel (reached from Settings → Safety & Disguise…)
+    if (showSafety()) {
+      return (
+        <SafetyPanel
+          onClose={() => setShowSafety(false)}
+          onPanicWipe={async () => {
+            try {
+              const { ask } = await import("@tauri-apps/plugin-dialog");
+              const ok = await ask("This will irreversibly wipe all data. Are you sure?", { kind: "warning" });
+              if (ok) await panicWipe();
+            } catch (e) {
+              db.setError(String(e));
+            }
+          }}
+          onDisguiseStateChanged={async () => {
+            // G5f — push the persisted disguise state onto the
+            // desktop shell so the visible chrome matches the
+            // backend immediately. iOS/Android equivalents extend
+            // this when the platform-specific mobile plugins land.
+            // G5g — also re-apply content protection so changes to
+            // content_protected take effect without a restart.
+            try {
+              const { applyDisguiseToShell, applyContentProtection, applyDisguiseToTray, applyQuickHideShortcut } = await import("./ipc/safety");
+              await applyDisguiseToShell();
+              await applyDisguiseToTray();
+              await applyContentProtection();
+              // G5g — user may have changed `quick_hide_shortcut`
+              // in the Safety panel; backend swaps registration
+              // atomically so this is safe to call on every change.
+              await applyQuickHideShortcut();
+            } catch (e) {
+              db.setError(String(e));
+            }
+          }}
+          onOpenTravelMode={() => { setShowSafety(false); setShowTravelMode(true); }}
+        />
+      );
+    }
+
+    // 5c. G5h — travel-mode page (encrypted backup + local wipe; §2.6).
+    if (showTravelMode()) {
+      return (
+        <div class="colony-modal mx-auto max-w-2xl overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6">
+          <div class="mb-4 flex items-center justify-between">
+            <h2 class="colony-text-md font-bold text-text-primary">Travel mode</h2>
+            <button onClick={() => setShowTravelMode(false)} class="colony-close-btn">✕</button>
+          </div>
+          <TravelModePage />
+        </div>
+      );
+    }
+
+    // 5c. G5e — visual rule builder (global:new_rule command).
+    if (showRuleBuilder()) {
+      return (
+        <RuleBuilderOverlay
+          onCancel={() => setShowRuleBuilder(false)}
+          onSaved={async () => { await db.refresh(); }}
         />
       );
     }

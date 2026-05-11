@@ -4,11 +4,31 @@ version = "0.1.0"
 edition = "2024"
 license = "MIT"
 
+# Tauri 2 mobile prep — iOS and Android compile the app as a library
+# loaded by the platform framework, while desktop still has a `main`
+# binary that calls into the library. The library needs three
+# crate-types:
+#   - cdylib    iOS dynamic linking
+#   - staticlib iOS static linking
+#   - rlib      consumed by `src/main.rs` on desktop
+# Source: research from `v2.tauri.app/start/project-structure/` +
+# Tauri community guidance (May 2026). `tauri ios init` /
+# `tauri android init` populate `gen/apple/` and `gen/android/`
+# from this same lib target — those commands need Xcode / Android
+# SDK on the host running them.
+[lib]
+crate-type = ["staticlib", "cdylib", "rlib"]
+
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-tauri = { version = "2", features = [] }
+# `image-png` feature is required for the runtime tray-icon swap path
+# in G5f — `TrayIcon::set_icon` consumes `Image<'_>` constructed via
+# `Image::from_bytes` which needs PNG decode support compiled in.
+# `image-ico` is the Windows-friendly counterpart; we ship both so
+# survivors get tray-icon swap on every desktop platform.
+tauri = { version = "2", features = ["image-png", "image-ico", "tray-icon"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
 serde = { version = "1", features = ["derive"] }

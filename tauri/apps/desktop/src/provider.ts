@@ -4,12 +4,12 @@
  * Thin adapter: no logic, just maps existing ipc/ functions to the
  * platform-agnostic DataProvider that createDashboardState() expects.
  */
-import type { DataProvider } from "@springtale/ui";
+import type { DataProvider, CooperationEventEnvelope } from "@springtale/ui";
 import { listen } from "@tauri-apps/api/event";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { EventEntry, CanvasUpdate } from "@springtale/types";
 
-import { listConnectors, listAvailableConnectors, setupConnector, getConnectorSchemas, enableConnector, disableConnector, removeConnector, removeConnectorCascade, getConnectorConfig, listConnectorOutputs } from "./ipc/connectors";
+import { listConnectors, listAvailableConnectors, setupConnector, getConnectorSchemas, enableConnector, disableConnector, reloadConnector, removeConnector, removeConnectorCascade, getConnectorConfig, listConnectorOutputs } from "./ipc/connectors";
 import { listRules, createRule, toggleRule, deleteRule, updateRule, runRule, parseRuleFromIntent, listRulesForConnector, testConnector, reassignRuleConnector, createConnectorRule, getRuleSchema } from "./ipc/rules";
 import { listEvents } from "./ipc/events";
 import {
@@ -40,6 +40,11 @@ import {
 import { listAgentStates, getAutonomy, setAutonomy, stepAutonomy } from "./ipc/agents";
 import { listAuthors, addAuthor, removeAuthor } from "./ipc/authors";
 import { runDiagnostics } from "./ipc/diagnostics";
+import {
+  setDisguiseActive as ipcSetDisguiseActive,
+  setDisguiseProfile as ipcSetDisguiseProfile,
+  setPanicTapCount as ipcSetPanicTapCount,
+} from "./ipc/safety";
 import { listOnboardingPlatforms, applyOnboarding } from "./ipc/onboarding";
 import { listTemplates, writeTemplate } from "./ipc/templates";
 import { listFixes, getFix, applyFix } from "./ipc/fixes";
@@ -54,6 +59,7 @@ export function createDesktopProvider(): DataProvider {
     getConnectorSchemas,
     enableConnector: (name: string) => enableConnector(name),
     disableConnector: (name: string) => disableConnector(name),
+    reloadConnector: (name: string) => reloadConnector(name),
     removeConnector: (name: string) => removeConnector(name),
     removeConnectorCascade: (name: string) => removeConnectorCascade(name),
     getConnectorConfig: (name: string) => getConnectorConfig(name),
@@ -150,6 +156,27 @@ export function createDesktopProvider(): DataProvider {
         // drop; nothing else to clean up frontend-side.
       };
     },
+
+    subscribeToCooperationEvents(callback) {
+      // Phase H4 — verbatim mirror of subscribeToCanvasUpdates above.
+      // Backend `subscribe_cooperation` command spawns a forwarder from
+      // `runtime.cooperation_tx` into this Channel; mirrors the web
+      // dashboard's `/cooperation/events` SSE endpoint.
+      const channel = new Channel<CooperationEventEnvelope>();
+      channel.onmessage = (envelope) => callback(envelope);
+      invoke("subscribe_cooperation", { channel }).catch((e) => {
+        console.warn("subscribe_cooperation failed:", e);
+      });
+      return () => {
+        // Forwarder loop ends on channel drop.
+      };
+    },
+
+    // G5d — IPV duress surface (desktop).
+    setDisguiseActive: (active: boolean) => ipcSetDisguiseActive(active),
+    setDisguiseProfile: (appName: string, iconId: string) =>
+      ipcSetDisguiseProfile(appName, iconId),
+    setPanicTapCount: (count: number) => ipcSetPanicTapCount(count),
 
     // Diagnostics
     runDiagnostics,

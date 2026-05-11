@@ -52,6 +52,17 @@ pub async fn disable_connector(state: State<'_, AppState>, name: String) -> Resu
         .map_err(|e| e.to_string())
 }
 
+/// G4 — hot-reload a connector mid-mission. Thin IPC pass-through; the
+/// runtime op handles the atomic swap and in-flight call preservation.
+#[tauri::command]
+pub async fn reload_connector(state: State<'_, AppState>, name: String) -> Result<(), String> {
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::connectors::reload_connector(rt, &name)
+        .await
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn remove_connector(state: State<'_, AppState>, name: String) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;

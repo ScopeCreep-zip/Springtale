@@ -9,6 +9,7 @@ import {
   AppSettingsPanel,
   ConnectorConfigPanel,
   MemberPickerOverlay,
+  RuleBuilderOverlay,
   useDashboard,
   useI18n,
   mapNodes,
@@ -45,11 +46,12 @@ export const App = () => {
   const [memberPickerFor, setMemberPickerFor] = createSignal<string | null>(null);
   const [showSessions, setShowSessions] = createSignal(false);
   const [showTeamBuilder, setShowTeamBuilder] = createSignal(false);
+  const [showRuleBuilder, setShowRuleBuilder] = createSignal(false);
   const [connected, setConnected] = createSignal(false);
   const [confirmAction, setConfirmAction] = createSignal<{
     title: string; message: string; label: string; action: () => Promise<void>;
   } | null>(null);
-  const [aiConfigAgent, setAiConfigAgent] = createSignal<{ id: string; name: string } | null>(null);
+  const [aiConfigAgent, setAiConfigAgent] = createSignal<{ id: string; name: string; scope: "agent" | "formation" } | null>(null);
   const [detailView, setDetailView] = createSignal<import("@springtale/ui").DetailView>({ mode: "colony" });
   const [pendingAddToFormation, setPendingAddToFormation] = createSignal<string | null>(null);
   const [pendingReassignAgent, setPendingReassignAgent] = createSignal<string | null>(null);
@@ -151,7 +153,7 @@ export const App = () => {
       }
 
       // Skip command shortcuts when any modal is open
-      if (showSettings() || showSessions() || showTeamBuilder() || confirmAction() || aiConfigAgent() || connectorConfigData()) return;
+      if (showSettings() || showSessions() || showTeamBuilder() || showRuleBuilder() || confirmAction() || aiConfigAgent() || connectorConfigData()) return;
 
       // Command grid shortcuts: match key to current selection context.
       // F1: formation hotkeys come exclusively from the backend
@@ -171,7 +173,7 @@ export const App = () => {
         }
         return;
       }
-      const commandList = COMMANDS[context] ?? COMMANDS.none;
+      const commandList = COMMANDS[context] ?? COMMANDS.none ?? [];
       const cmd = commandList.find((c) => c?.key.toLowerCase() === key);
       if (cmd) {
         e.preventDefault();
@@ -186,7 +188,7 @@ export const App = () => {
   const nodes = () => mapNodes(db.connectors());
   const agents = () => mapAgents(db.rules(), db.agentStates());
   const [connections, setConnections] = createSignal<import("@springtale/ui").ColonyConnection[]>([]);
-  const formations = () => mapFormations(db.swarms());
+  const formations = () => mapFormations(db.swarms(), db.cooperationEvents());
 
   // ── Command dispatch — context:action pattern ───────────
   const handleCommand = async (action: string) => {
@@ -194,7 +196,12 @@ export const App = () => {
     try {
       switch (action) {
         // ── Global ──
-        case "global:new_rule": setShowTeamBuilder(true); break;
+        case "global:new_rule":
+          // G5e — open the visual rule builder. TeamBuilder remains
+          // available via the formation-creation entry; this command
+          // targets the rule-composition surface specifically.
+          setShowRuleBuilder(true);
+          break;
         case "global:refresh": await db.refresh(); break;
         case "global:connectors":
           setSelection({ id: null, type: null });
@@ -260,7 +267,7 @@ export const App = () => {
         case "agent:ai_config":
           if (sel.id) {
             const agentForAi = agents().find((a) => a.id === sel.id);
-            setAiConfigAgent({ id: sel.id, name: agentForAi?.name ?? sel.id });
+            setAiConfigAgent({ id: sel.id, name: agentForAi?.name ?? sel.id, scope: "agent" });
           }
           break;
         case "agent:pause": if (sel.id) { await db.handleToggle(sel.id, true); await db.refresh(); } break;
@@ -320,9 +327,13 @@ export const App = () => {
           break;
         case "formation:rally": if (sel.id) { await db.handleRallyFormation(sel.id); await db.refresh(); } break;
         case "formation:ai_config":
+        case "formation:ai_adapter":
+          // G7 — per-formation AI override panel. Saves config under
+          // `ai:formation:{id}`; the next Fever-tier orchestrate call
+          // resolves it via the agent→formation→global precedence chain.
           if (sel.id) {
             const fmAi = db.swarms().find((s) => s.id === sel.id);
-            setAiConfigAgent({ id: `formation:${sel.id}`, name: fmAi?.name ?? sel.id });
+            setAiConfigAgent({ id: sel.id, name: fmAi?.name ?? sel.id, scope: "formation" });
           }
           break;
         case "formation:autonomy":
@@ -412,15 +423,19 @@ export const App = () => {
       );
     }
 
-    // Per-bot AI config
+    // Per-bot / per-formation AI config (G7)
     if (aiConfigAgent()) {
       const aca = aiConfigAgent()!;
       return (
         <AiConfigPanel
-          agentId={aca.id}
-          agentName={aca.name}
-          onSave={async (agentId, config) => {
-            await db.provider.configureAiAdapter(`ai:${agentId}`, config);
+          targetId={aca.id}
+          targetName={aca.name}
+          scope={aca.scope}
+          onSave={async (targetId, config) => {
+            const key = aca.scope === "formation"
+              ? `ai:formation:${targetId}`
+              : `ai:${targetId}`;
+            await db.provider.configureAiAdapter(key, config);
             await db.refresh();
           }}
           onClose={() => setAiConfigAgent(null)}
@@ -461,6 +476,16 @@ export const App = () => {
             if (!result.matched) throw new Error("Rule did not match");
           }}
           onClose={() => setConnectorConfigData(null)}
+        />
+      );
+    }
+
+    // G5e — visual rule builder (global:new_rule command).
+    if (showRuleBuilder()) {
+      return (
+        <RuleBuilderOverlay
+          onCancel={() => setShowRuleBuilder(false)}
+          onSaved={async () => { await db.refresh(); }}
         />
       );
     }

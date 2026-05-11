@@ -14,6 +14,7 @@ import type { RuleSummary, FormationInfo, FormationDetail } from "@springtale/ui
 import { get, post, put, del, getBaseUrl, getToken } from "./api/client";
 import { subscribeToEvents } from "./api/events";
 import { getCanvasState, subscribeToCanvasUpdates } from "./api/canvas";
+import { subscribeToCooperationEvents } from "./api/cooperation";
 
 export function createWebProvider(): DataProvider {
   return {
@@ -36,6 +37,7 @@ export function createWebProvider(): DataProvider {
     },
     async enableConnector(name) { await post(`/connectors/${name}/enable`); },
     async disableConnector(name) { await post(`/connectors/${name}/disable`); },
+    async reloadConnector(name) { await post(`/connectors/${name}/reload`); },
     async removeConnector(name) { await del(`/connectors/${name}`); },
     async removeConnectorCascade(name) {
       const data = await del<{ removed: string; rules_deleted: string[] }>(`/connectors/${name}/cascade`);
@@ -69,7 +71,7 @@ export function createWebProvider(): DataProvider {
       return (await post<{ id: string }>("/rules/connector", rule)).id;
     },
     async listRulesForConnector(connectorName) {
-      const data = await get<{ rules: import("@springtale/types").RuleSummary[] }>(`/rules/connector/${connectorName}`);
+      const data = await get<{ rules: import("@springtale/ui").RuleSummary[] }>(`/rules/connector/${connectorName}`);
       return data.rules ?? [];
     },
     async testConnector(connectorName) {
@@ -175,6 +177,27 @@ export function createWebProvider(): DataProvider {
       const token = getToken();
       if (!token) return () => {};
       return subscribeToCanvasUpdates(getBaseUrl(), token, callback);
+    },
+
+    subscribeToCooperationEvents(callback) {
+      // Phase H — SSE client for /cooperation/events. Verbatim mirror
+      // of subscribeToCanvasUpdates / subscribeToEvents.
+      const token = getToken();
+      if (!token) return () => {};
+      return subscribeToCooperationEvents(getBaseUrl(), token, callback);
+    },
+
+    // G5d — IPV duress surface (web).
+    async setDisguiseActive(active: boolean) {
+      const data = await post<{ disguise_active: boolean }>("/safety/disguise/active", { active });
+      return data.disguise_active;
+    },
+    async setDisguiseProfile(appName: string, iconId: string) {
+      await post("/safety/disguise/profile", { app_name: appName, icon_id: iconId });
+    },
+    async setPanicTapCount(count: number) {
+      const data = await post<{ panic_tap_count: number }>("/safety/panic_tap_count", { count });
+      return data.panic_tap_count;
     },
 
     // Diagnostics
