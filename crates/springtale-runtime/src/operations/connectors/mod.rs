@@ -4,6 +4,7 @@
 //! Store operations take `&dyn StorageBackend` (CLI uses these).
 
 mod install;
+mod reload;
 mod schema;
 mod setup;
 mod store;
@@ -15,6 +16,7 @@ use crate::state::RuntimeState;
 
 // Re-export everything public from submodules
 pub use install::{install_connector, install_wasm_connector};
+pub use reload::reload_connector;
 pub use schema::{
     ActionSchemaInfo, AvailableConnectorInfo, ConnectorSchemaInfo, TriggerSchemaInfo,
     get_connector_schemas, list_available_connectors,

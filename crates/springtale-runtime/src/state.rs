@@ -101,6 +101,20 @@ pub struct RuntimeState {
     /// (`DashMap`); setting `CooperationConfig::cross_process = true`
     /// swaps in `ChitchatGossipStore` at init time.
     pub gossip_store: Arc<dyn springtale_cooperation::awareness::GossipStore>,
+    /// G6 — cross-formation gossip bus (`COOPERATION.md §17.2` /
+    /// `COOPERATION_IMPLEMENTATION_PLAN.md §12.2`). Per-formation
+    /// `FormationView` broadcasts + sticky `FormationOutcome` records.
+    /// Defaults to `InMemoryFormationGossipBus`; cross-process
+    /// deployments can swap in a chitchat-backed implementation.
+    pub formation_gossip: Arc<dyn springtale_cooperation::gossip::FormationGossipBus>,
+    /// G2 — global cross-formation knowledge store (`COOPERATION.md §21` /
+    /// `COOPERATION_IMPLEMENTATION_PLAN.md §12.6`). Outcomes from every
+    /// dissolved formation persist here; new formations seed their
+    /// initial mental model from prior outcomes ranked by intent +
+    /// connector overlap. Defaults to `PersistentKnowledgeStore` (SQLite-
+    /// backed via the `config_store` table); a future Qdrant Edge /
+    /// fastembed-rs backend can land behind the same trait.
+    pub knowledge_store: Arc<dyn springtale_cooperation::memory::GlobalKnowledgeStore>,
     /// SWIM liveness node (§8.3). `None` for single-process deployments
     /// (no peer processes to probe); `Some(node)` when
     /// `CooperationConfig::cross_process = true` — the node probes peer

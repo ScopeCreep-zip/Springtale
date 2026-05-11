@@ -572,6 +572,169 @@ static GUIDES: &[FixGuide] = &[
         ],
         has_auto_fix: false,
     },
+    // ── Handoff (§20) ───────────────────────────────────────────────
+    FixGuide {
+        id: "COOP-A001",
+        title: "Handoff — no capable receiver",
+        causes: &[
+            "Sender selected `HandoffType::Direct` for a capability no operational member holds.",
+            "All members holding the required capability are degraded or dead.",
+        ],
+        suggestions: &[
+            "Add a member whose capability set covers the required action.",
+            "Switch to `HandoffType::Flexible` so any capable member can claim the work.",
+            "Verify the capability name matches the connector's manifest declaration exactly.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-A002",
+        title: "Handoff — payload expired",
+        causes: &[
+            "Direct-inbox queue depth exceeded TTL before the receiver picked it up.",
+            "FlexibleChain pool starved — no one stole the work before expiry.",
+        ],
+        suggestions: &[
+            "Increase the handoff TTL on the originating action.",
+            "Add another member with the same capability so steal attempts have more candidates.",
+            "Check the receiving member's liveness — Suspect/Down members don't drain their inbox.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-A003",
+        title: "Handoff — return obligation unmet",
+        causes: &[
+            "Receiver claimed a `requires_response: true` task and dropped without acking.",
+            "Receiver completed work but the ack message lost to a transient transport failure.",
+        ],
+        suggestions: &[
+            "Inspect the receiver's recent dispatches via `springtale events list --connector <name>`.",
+            "Check the bus dispatcher's log for `ack_dispatcher` warnings around the same tick.",
+            "If recurring, mark the action `requires_response: false` and rely on eventual consistency.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-A004",
+        title: "Handoff — payload serialization failed",
+        causes: &[
+            "A custom action's input contains a Rust type that doesn't implement `Serialize`.",
+            "Payload contains a value (e.g. infinity, NaN) JSON can't represent.",
+        ],
+        suggestions: &[
+            "Restrict action inputs to standard JSON-compatible types (string/number/bool/array/object).",
+            "Add a custom `Serialize` impl that maps the problematic values to a safe representation.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-A005",
+        title: "Handoff — payload deserialization failed",
+        causes: &[
+            "Wire format from sender doesn't match the receiver's expected shape.",
+            "Schema drift — sender uses a newer manifest version than the receiver.",
+        ],
+        suggestions: &[
+            "Reload both connectors via `springtale fix COOP-C003` so they share manifest version.",
+            "If cross-process: check the sender and receiver run the same connector binary version.",
+        ],
+        has_auto_fix: false,
+    },
+    // ── Pacing (§22) ────────────────────────────────────────────────
+    FixGuide {
+        id: "COOP-B001",
+        title: "Pacing — violation",
+        causes: &[
+            "An agent exceeded its per-phase quota (Preparation/Active/Peak/Recovery/Disruption).",
+            "Pacing manager transition didn't propagate to the agent's rate limiter in time.",
+        ],
+        suggestions: &[
+            "Wait one cooperation tick — the agent will pick up the new phase's quota next iteration.",
+            "If persistent, check the formation's momentum tier — pacing quotas are tier-dependent.",
+            "Review the connector's emitted rate; some external APIs need stricter quotas than the default.",
+        ],
+        has_auto_fix: false,
+    },
+    // ── Cross-cutting (aggregate) ───────────────────────────────────
+    FixGuide {
+        id: "COOP-C000",
+        title: "Store — backend error surfaced through cooperation",
+        causes: &[
+            "Underlying SQLite/redb backend returned an error during a cooperation operation.",
+        ],
+        suggestions: &[
+            "Inspect `springtale doctor` for store-level diagnostics.",
+            "Verify the vault is unlocked and the store path is writable.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-C001",
+        title: "Gossip — cross-process state propagation failure",
+        causes: &[
+            "Chitchat node lost connectivity to its seed peers.",
+            "SWIM liveness monitor flagged the peer process as Down.",
+        ],
+        suggestions: &[
+            "Verify the seed list in `~/.springtale/cooperation.toml` includes a reachable peer.",
+            "Single-process deployments don't use gossip — set `cross_process = false` if not federating.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-C002",
+        title: "Liveness — peer-down detected",
+        causes: &[
+            "A federated peer process stopped responding to SWIM ping/ack within the suspect window.",
+        ],
+        suggestions: &[
+            "Check the remote process is still running.",
+            "Inspect firewall / NAT rules — SWIM uses UDP and can be blocked silently.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-C003",
+        title: "Capability bridge — dispatch failure",
+        causes: &[
+            "Connector registry doesn't have the named connector installed.",
+            "Capability check denied the action (manifest's declared capabilities don't include it).",
+            "Connector's wasm sandbox tripped a tier-gated limit.",
+        ],
+        suggestions: &[
+            "Run `springtale connector list` to confirm the connector is installed and enabled.",
+            "Reload the connector with `springtale connector reload <name>` (G4 hot-reload path).",
+            "Check the connector's manifest declares the action's required capability.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-C004",
+        title: "Role — registry lookup failure",
+        causes: &[
+            "A formation tried to transform a member into a role the role registry doesn't know about.",
+            "Community role contributed by a connector manifest, but the connector was uninstalled.",
+        ],
+        suggestions: &[
+            "Reinstall the connector that contributed the role.",
+            "Use a built-in role (General / Information / Support) as a fallback.",
+        ],
+        has_auto_fix: false,
+    },
+    FixGuide {
+        id: "COOP-C005",
+        title: "Invariant — internal consistency violated",
+        causes: &[
+            "A cooperation primitive observed state that shouldn't be reachable through the public API.",
+            "Concurrent modification raced past a guard the type system was supposed to enforce.",
+        ],
+        suggestions: &[
+            "Capture the surrounding tick's events via `springtale trace --tail`.",
+            "File an issue with the trace — this class of error indicates a Springtale bug, not user error.",
+        ],
+        has_auto_fix: false,
+    },
 ];
 
 #[cfg(test)]
@@ -599,7 +762,8 @@ mod tests {
         // Per COOPERATION_IMPLEMENTATION_PLAN.md §16.6 — every
         // `CooperationError` variant must have a `springtale fix <id>`
         // entry. These IDs mirror the `#[error("COOP-NNNN: ...")]`
-        // annotations in `crates/springtale-cooperation/src/error/*.rs`.
+        // annotations in `crates/springtale-cooperation/src/error/*.rs`
+        // and the `code()` accessor each error enum exposes (J1).
         for id in [
             // Cadence
             "COOP-1001", "COOP-1002", "COOP-1003",
@@ -619,11 +783,97 @@ mod tests {
             "COOP-8001", "COOP-8002", "COOP-8003",
             // Recovery
             "COOP-9001", "COOP-9002", "COOP-9003",
+            // Handoff (J1)
+            "COOP-A001", "COOP-A002", "COOP-A003", "COOP-A004", "COOP-A005",
+            // Pacing (J1)
+            "COOP-B001",
+            // Cross-cutting aggregate variants (J1)
+            "COOP-C000", "COOP-C001", "COOP-C002", "COOP-C003", "COOP-C004", "COOP-C005",
         ] {
             assert!(
                 lookup(id).is_some(),
                 "missing springtale-fix guide for cooperation error {id}"
             );
+        }
+    }
+
+    /// J1 — every cooperation error variant's `code()` must round-trip
+    /// through the fix-guide registry. Exercises each `code()`
+    /// implementation against the registry to catch ID drift.
+    #[test]
+    fn error_code_accessor_matches_registry() {
+        use springtale_cooperation::error::{
+            AwarenessError, CadenceError, CommitError, ConsensusError, FormationError,
+            HandoffError, InterferenceError, MomentumError, PacingError, RallyError,
+            RecoveryError,
+        };
+
+        let cadence_codes = [
+            CadenceError::ChannelClosed.code(),
+            CadenceError::SequenceWrap.code(),
+            CadenceError::Lagged { lagged: 0 }.code(),
+        ];
+        for code in cadence_codes {
+            assert!(lookup(code).is_some(), "no guide for cadence {code}");
+        }
+        let formation = [
+            FormationError::Empty.code(),
+            FormationError::NotViable(String::new()).code(),
+            FormationError::ContextUninit.code(),
+        ];
+        for code in formation {
+            assert!(lookup(code).is_some(), "no guide for formation {code}");
+        }
+        let momentum = [MomentumError::CapabilityLocked(
+            springtale_cooperation::momentum::MomentumTier::Cold,
+        )
+        .code()];
+        for code in momentum {
+            assert!(lookup(code).is_some(), "no guide for momentum {code}");
+        }
+        let awareness = [AwarenessError::GossipDisconnected.code()];
+        for code in awareness {
+            assert!(lookup(code).is_some(), "no guide for awareness {code}");
+        }
+        let consensus = [ConsensusError::Timeout.code()];
+        for code in consensus {
+            assert!(lookup(code).is_some(), "no guide for consensus {code}");
+        }
+        let commit = [
+            CommitError::BarrierFailed(String::new()).code(),
+            CommitError::PrepareTimeout { pending: 0 }.code(),
+        ];
+        for code in commit {
+            assert!(lookup(code).is_some(), "no guide for commit {code}");
+        }
+        let interference = [InterferenceError::Detected(String::new()).code()];
+        for code in interference {
+            assert!(lookup(code).is_some(), "no guide for interference {code}");
+        }
+        let rally = [
+            RallyError::Exhausted.code(),
+            RallyError::CascadeEscalating.code(),
+            RallyError::SupervisorPanic.code(),
+        ];
+        for code in rally {
+            assert!(lookup(code).is_some(), "no guide for rally {code}");
+        }
+        let recovery = [RecoveryError::BudgetExceeded.code()];
+        for code in recovery {
+            assert!(lookup(code).is_some(), "no guide for recovery {code}");
+        }
+        let handoff = [
+            HandoffError::PayloadExpired.code(),
+            HandoffError::UnmetObligation.code(),
+            HandoffError::SerializeDeposit(String::new()).code(),
+            HandoffError::DeserializeDeposit(String::new()).code(),
+        ];
+        for code in handoff {
+            assert!(lookup(code).is_some(), "no guide for handoff {code}");
+        }
+        let pacing = [PacingError::Violation(String::new()).code()];
+        for code in pacing {
+            assert!(lookup(code).is_some(), "no guide for pacing {code}");
         }
     }
 }

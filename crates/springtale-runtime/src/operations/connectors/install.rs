@@ -6,8 +6,11 @@ use crate::state::RuntimeState;
 /// Install a connector manifest — validates and registers in the store.
 ///
 /// The manifest is validated for structure (name, version, no wildcard hosts).
-/// If a signature is present, it's logged but verification is deferred to
-/// Phase 2 (requires author public key registry).
+/// If a signature is present, it is verified against the trusted-author
+/// registry via [`verify_manifest_sig_if_present`]; unsigned manifests
+/// proceed (community connectors without a signing identity are still
+/// usable, but [`springtale_sentinel::Sentinel::check_toxic_pairs`]
+/// gates the dangerous capability combinations).
 pub async fn install_connector(
     state: &RuntimeState,
     manifest: springtale_connector::ConnectorManifest,

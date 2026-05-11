@@ -130,6 +130,16 @@ pub async fn init(
     // headroom at 4 formations × 30Hz × ~5 events/tick. Lagged readers
     // drop silently per the events_stream.rs precedent.
     let (cooperation_tx, _) = tokio::sync::broadcast::channel(512);
+    // G6 — cross-formation gossip bus. In-memory default; cross-process
+    // deployments can swap in a chitchat-backed impl in a follow-up.
+    let formation_gossip: Arc<dyn springtale_cooperation::gossip::FormationGossipBus> =
+        springtale_cooperation::gossip::InMemoryFormationGossipBus::new();
+    // G2 — global cross-formation knowledge store. SQLite-backed so
+    // outcomes survive process restart (encrypted-at-rest via the vault
+    // layer that wraps `config_store`). A future Qdrant Edge backend can
+    // land behind the same `GlobalKnowledgeStore` trait.
+    let knowledge_store: Arc<dyn springtale_cooperation::memory::GlobalKnowledgeStore> =
+        springtale_cooperation::memory::PersistentKnowledgeStore::new(store.clone());
 
     // Capability bridge (Phase 17) — binds the registry to a per-invocation
     // tier dispatch path. See `crate::cooperation::capability_bridge`.
@@ -158,6 +168,8 @@ pub async fn init(
         formation_cmd_tx,
         live_formations,
         gossip_store,
+        formation_gossip,
+        knowledge_store,
         swim_node,
     })
 }
