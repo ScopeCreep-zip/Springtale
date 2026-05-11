@@ -87,6 +87,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/connectors/{name}/outputs", get(connectors::list_outputs))
         .route("/connectors/{name}/enable", post(connectors::enable))
         .route("/connectors/{name}/disable", post(connectors::disable))
+        .route("/connectors/{name}/reload", post(connectors::reload))
         .route("/connectors/{name}/test", post(rules::test_connector))
         .route(
             "/connectors/{name}/upsert-config",
@@ -158,6 +159,11 @@ pub fn build_router(state: AppState) -> Router {
             post(config_api::toggle_formation_guard),
         )
         .route("/safety", get(safety::get_config).put(safety::save_config))
+        // G5d — focused endpoints for the IPV duress surface so a
+        // single tab flip doesn't have to round-trip the whole config.
+        .route("/safety/disguise/active", post(safety::set_disguise_active))
+        .route("/safety/disguise/profile", post(safety::set_disguise_profile))
+        .route("/safety/panic_tap_count", post(safety::set_panic_tap_count))
         // Config management
         .route("/config", get(config_api::list_config))
         .route(

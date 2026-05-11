@@ -110,6 +110,25 @@ pub async fn disable(
     ))
 }
 
+/// POST /connectors/{name}/reload — G4 hot-reload a connector without
+/// dropping in-flight calls. The connector's persisted config is
+/// re-applied verbatim; subsequent dispatches land on the new host.
+pub async fn reload(
+    State(state): State<AppState>,
+    ValidatedPath(name): ValidatedPath,
+) -> Result<impl IntoResponse, StatusCode> {
+    operations::connectors::reload_connector(&state.runtime, &name)
+        .await
+        .map_err(|e| {
+            tracing::warn!(connector = %name, error = %e, "reload failed");
+            StatusCode::BAD_REQUEST
+        })?;
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "reloaded": name })),
+    ))
+}
+
 /// GET /connectors/schemas — return all connector manifests with trigger/action schemas.
 pub async fn schemas(State(state): State<AppState>) -> impl IntoResponse {
     let schemas = operations::connectors::get_connector_schemas(&state.runtime).await;

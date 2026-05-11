@@ -71,6 +71,13 @@ fn build_test_app(ready: bool) -> (Router, String) {
         springtale_core::canvas::CanvasState::default(),
     ));
     let (canvas_tx, _rx) = tokio::sync::broadcast::channel(64);
+    let (cooperation_tx, _coop_rx) = tokio::sync::broadcast::channel(512);
+    let formation_gossip: std::sync::Arc<
+        dyn springtale_cooperation::gossip::FormationGossipBus,
+    > = springtale_cooperation::gossip::InMemoryFormationGossipBus::new();
+    let knowledge_store: std::sync::Arc<
+        dyn springtale_cooperation::memory::GlobalKnowledgeStore,
+    > = springtale_cooperation::memory::InMemoryKnowledgeStore::new();
 
     let wasm_engine = std::sync::Arc::new(
         springtale_connector::wasm::WasmEngine::new(
@@ -108,9 +115,12 @@ fn build_test_app(ready: bool) -> (Router, String) {
         role_registry,
         canvas,
         canvas_tx,
+        cooperation_tx,
         formation_cmd_tx,
         live_formations: None,
         gossip_store,
+        formation_gossip,
+        knowledge_store,
         // Single-process test fixture — no SWIM node.
         swim_node: None,
     };

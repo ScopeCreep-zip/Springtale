@@ -120,6 +120,8 @@ pub(super) async fn init_bot(
         .capability_bridge(runtime.capability_bridge.clone())
         .canvas_tx(runtime.canvas_tx.clone())
         .cooperation_tx(runtime.cooperation_tx.clone())
+        .formation_gossip(runtime.formation_gossip.clone())
+        .knowledge_store(runtime.knowledge_store.clone())
         .build()
         .await
         .context("failed to initialize bot runtime")?;
