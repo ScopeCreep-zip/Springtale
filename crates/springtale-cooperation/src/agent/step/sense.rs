@@ -98,8 +98,10 @@ mod tests {
             window: Duration::from_millis(33),
         };
         let fc = FormationContext::default();
-        let mut m = MomentumState::default();
-        m.tier = MomentumTier::Hot;
+        let m = MomentumState {
+            tier: MomentumTier::Hot,
+            ..Default::default()
+        };
         let attn =
             crate::attention::AttentionEconomy::new(&[]);
         assert!(run(&store, &aw, &ctx(&tick, &fc, &m, &attn, &aw)).is_some());

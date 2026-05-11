@@ -11,3 +11,13 @@ pub enum ConsensusError {
     #[error("COOP-5003: vote not found: {0}")]
     VoteNotFound(uuid::Uuid),
 }
+
+impl ConsensusError {
+    pub const fn code(&self) -> &'static str {
+        match self {
+            Self::NoOverrideTokens(_) => "COOP-5001",
+            Self::Timeout => "COOP-5002",
+            Self::VoteNotFound(_) => "COOP-5003",
+        }
+    }
+}

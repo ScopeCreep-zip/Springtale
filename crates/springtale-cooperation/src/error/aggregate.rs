@@ -42,14 +42,46 @@ pub enum CooperationError {
     Pacing(#[from] PacingError),
     #[error(transparent)]
     Store(#[from] springtale_store::StoreError),
-    #[error("gossip: {0}")]
+    #[error("COOP-C001 gossip: {0}")]
     Gossip(String),
-    #[error("liveness: {0}")]
+    #[error("COOP-C002 liveness: {0}")]
     Liveness(String),
-    #[error("capability bridge: {0}")]
+    #[error("COOP-C003 capability bridge: {0}")]
     Bridge(String),
-    #[error("role: {0}")]
+    #[error("COOP-C004 role: {0}")]
     Role(String),
-    #[error("internal invariant violated: {0}")]
+    #[error("COOP-C005 internal invariant violated: {0}")]
     Invariant(String),
+}
+
+impl CooperationError {
+    /// J1 — stable error ID. Each variant returns the same prefix the
+    /// Display impl emits, suitable for `springtale fix <id>` lookup.
+    /// Transparent sub-error variants delegate to the sub-error's
+    /// `code()`; the few free-standing string variants carry their own
+    /// `COOP-C00x` IDs.
+    pub fn code(&self) -> &'static str {
+        match self {
+            Self::Cadence(e) => e.code(),
+            Self::Formation(e) => e.code(),
+            Self::Momentum(e) => e.code(),
+            Self::Awareness(e) => e.code(),
+            Self::Consensus(e) => e.code(),
+            Self::Commit(e) => e.code(),
+            Self::Interference(e) => e.code(),
+            Self::Rally(e) => e.code(),
+            Self::Recovery(e) => e.code(),
+            Self::Handoff(e) => e.code(),
+            Self::Pacing(e) => e.code(),
+            // `springtale_store::StoreError` doesn't expose a stable id —
+            // we surface a single bucket so the fix-registry can still
+            // address it.
+            Self::Store(_) => "COOP-C000",
+            Self::Gossip(_) => "COOP-C001",
+            Self::Liveness(_) => "COOP-C002",
+            Self::Bridge(_) => "COOP-C003",
+            Self::Role(_) => "COOP-C004",
+            Self::Invariant(_) => "COOP-C005",
+        }
+    }
 }

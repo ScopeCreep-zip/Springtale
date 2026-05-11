@@ -16,23 +16,32 @@
 //! ## Lifecycle
 //!
 //! ```text
-//!   Prepare ── all agents signal_ready ──▶ Ready
-//!      │  (deadline elapses → abort)         │
-//!      ▼                                     │ execute()
-//!    Failed                                  ▼
-//!                                         Execute
-//!                                            │ collect_result / record_failure
-//!                                            ▼
-//!                                         Collect
+//!   Prepare ── all signal_ready ──▶ Ready ── tick() ──▶ Execute
+//!      │  prepare deadline expires       │  execute deadline expires
+//!      │  any record_prepare_failure     │  unreported → Failed
+//!      ▼                                 ▼
+//!    Aborted                          Collect
 //! ```
 //!
-//! `Countdown` is modeled as a phase-with-duration in the `CommitPhase`
-//! enum but is not currently driven by a timer in this module — the
-//! caller provides the pacing (the tick processor / scheduled commit
-//! driver owns the clock). The intent is future parity with Splinter
-//! Cell's audible breach countdown UI.
+//! The tick-driver (`Formation::tick_commits` / `tick_steps::tick_commits`)
+//! calls `CommitBarrier::tick(now)` once per cooperation tick. The
+//! barrier transitions phases autonomously based on participant
+//! readiness, per-phase deadlines, and fail-fast policy. Each transition
+//! returns a `CommitTransition` value so the caller can emit a
+//! `CooperationEvent::CommitPhaseChanged` envelope (Phase H5).
 //!
-//! ## Why oneshot channels, not `tokio::sync::Barrier`
+//! ## Fail-fast prepare
+//!
+//! Per Splinter Cell's "if either of you flinches, both of you die"
+//! semantic, a single `record_prepare_failure` during Prepare flips the
+//! entire barrier to `Aborted` immediately — peers don't have to wait
+//! for the deadline. Mid-execute failures are *not* fail-fast: every
+//! participant gets recorded before transitioning to Collect, so the
+//! formation can audit which agent failed (parity with Army of Two's
+//! "down" state — failed players are visible to the team rather than
+//! disappearing).
+//!
+//! ## Why oneshot channels are not used
 //!
 //! An earlier draft used `Barrier` because "N parties meet" maps
 //! naturally. Two problems killed it:
@@ -44,21 +53,8 @@
 //!    nor a deadline hook, so the formation couldn't tell *which* agent
 //!    was late — only that the whole barrier failed.
 //!
-//! Oneshot channels sidestep both issues: each participant owns one
-//! `oneshot::Sender<Ready>` and the coordinator holds the receivers;
-//! dropping a future just closes the channel and the coordinator sees
-//! a specific `Closed` error it can attribute.
-//!
-//! ## Failure semantics
-//!
-//! - If any single participant fails during `Execute`, the whole
-//!   barrier transitions to `Collect` with mixed results — the caller
-//!   decides whether partial success counts (spec §12 leaves this
-//!   policy to the formation's intent).
-//! - If the deadline elapses during `Prepare`, the barrier fails as a
-//!   unit; no agent advances to `Execute`.
-//! - A `signal_ready` after `Prepare` returns an error rather than
-//!   silently dropping — late signals indicate a bug upstream.
+//! Tick-driven explicit state machines sidestep both: each transition is
+//! observable, terminal states are inspectable, and no future is parked.
 
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
@@ -67,6 +63,13 @@ use crate::action::SubTaskResult;
 use crate::cadence::AgentId;
 use crate::error::CommitError;
 
+/// Default deadline budget for the Prepare phase if the caller didn't
+/// override it via `CommitBarrier::with_phase_deadlines`.
+pub const DEFAULT_PREPARE_DEADLINE: Duration = Duration::from_secs(10);
+/// Default deadline budget for the Execute phase. Execute pays an
+/// additional grace window because connectors do real I/O here.
+pub const DEFAULT_EXECUTE_DEADLINE: Duration = Duration::from_secs(30);
+
 /// Phases of a synchronized commit operation.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CommitPhase {
@@ -74,12 +77,39 @@ pub enum CommitPhase {
     Prepare,
     /// All agents have signaled readiness.
     Ready,
-    /// Countdown to synchronized execution.
+    /// Countdown to synchronized execution (currently unused — reserved
+    /// for future Splinter-Cell-style audible breach countdown UI).
     Countdown { remaining: Duration },
     /// Executing simultaneously.
     Execute,
     /// Collecting results from all participants.
     Collect,
+    /// Barrier aborted before commit (prepare deadline missed, or any
+    /// participant called `record_prepare_failure`). Carries the reason
+    /// so observers can surface it in audit logs / UI toasts.
+    Aborted { reason: String },
+}
+
+impl CommitPhase {
+    /// Short identifier suitable for `CooperationEvent::CommitPhaseChanged`
+    /// payloads. Stable strings so the frontend can branch on them.
+    pub fn as_event_str(&self) -> &'static str {
+        match self {
+            CommitPhase::Prepare => "prepare",
+            CommitPhase::Ready => "ready",
+            CommitPhase::Countdown { .. } => "countdown",
+            CommitPhase::Execute => "execute",
+            CommitPhase::Collect => "collect",
+            CommitPhase::Aborted { .. } => "aborted",
+        }
+    }
+
+    /// `true` if the phase is terminal — `Collect` or `Aborted`. Used by
+    /// `expire_commits` to decide whether to drop a barrier from
+    /// `formation.active_commits`.
+    pub fn is_terminal(&self) -> bool {
+        matches!(self, CommitPhase::Collect | CommitPhase::Aborted { .. })
+    }
 }
 
 /// State of a single participant in a commit barrier.
@@ -97,13 +127,22 @@ pub enum ParticipantState {
     Failed(String),
 }
 
+/// One phase change observed during a `tick()` call. The driver emits a
+/// `CooperationEvent::CommitPhaseChanged` envelope per transition.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CommitTransition {
+    pub from: &'static str,
+    pub to: &'static str,
+}
+
 /// A synchronized commit barrier — two-phase commit for formation actions.
 ///
-/// Lifecycle: Prepare → Ready → Execute → Collect
+/// Lifecycle: Prepare → Ready → Execute → Collect (or Aborted).
 ///
 /// Per spec §12: "Cooperation is in planning; execution is deterministic."
 /// All participants must signal ready before anyone executes. If the
-/// deadline expires before all are ready, the barrier fails.
+/// prepare deadline expires before all are ready, the barrier aborts. If
+/// any participant flags a prepare-failure, the barrier aborts immediately.
 pub struct CommitBarrier {
     /// Unique barrier identifier.
     pub id: uuid::Uuid,
@@ -111,17 +150,41 @@ pub struct CommitBarrier {
     pub phase: CommitPhase,
     /// Per-participant state.
     pub participants: HashMap<AgentId, ParticipantState>,
-    /// When this barrier expires if not all ready.
+    /// When the *prepare* phase expires. Once the barrier advances past
+    /// Prepare, this becomes the execute-phase deadline.
     pub deadline: Instant,
+    /// Per-phase deadline budget for execute (set when the barrier
+    /// transitions to Execute via `tick()`). Held separately so the
+    /// prepare timeout is independent of the execute timeout.
+    execute_deadline: Duration,
     /// Who initiated the barrier.
     pub initiated_by: AgentId,
 }
 
 impl CommitBarrier {
-    /// Create a new commit barrier in Prepare phase.
+    /// Create a new commit barrier in Prepare phase with default per-phase
+    /// deadlines. `deadline` becomes the *prepare* deadline; the execute
+    /// phase uses `DEFAULT_EXECUTE_DEADLINE` once advanced.
     pub fn new(
         participants: &[AgentId],
         deadline: Duration,
+        initiated_by: AgentId,
+    ) -> Self {
+        Self::with_phase_deadlines(
+            participants,
+            deadline,
+            DEFAULT_EXECUTE_DEADLINE,
+            initiated_by,
+        )
+    }
+
+    /// Like `new`, but lets callers override the execute deadline budget
+    /// independently of the prepare deadline. Used by high-priority
+    /// barriers that need a tighter execute window after Ready.
+    pub fn with_phase_deadlines(
+        participants: &[AgentId],
+        prepare_deadline: Duration,
+        execute_deadline: Duration,
         initiated_by: AgentId,
     ) -> Self {
         let participant_map = participants
@@ -133,7 +196,8 @@ impl CommitBarrier {
             id: uuid::Uuid::new_v4(),
             phase: CommitPhase::Prepare,
             participants: participant_map,
-            deadline: Instant::now() + deadline,
+            deadline: Instant::now() + prepare_deadline,
+            execute_deadline,
             initiated_by,
         }
     }
@@ -164,6 +228,35 @@ impl CommitBarrier {
         Ok(())
     }
 
+    /// Record that a participant failed to prepare. Fail-fast: this
+    /// transitions the entire barrier to `Aborted` immediately, peers
+    /// don't wait for the deadline.
+    ///
+    /// Returns the transition if the barrier moved into Aborted; `None`
+    /// if the barrier was already past Prepare (late prepare failures
+    /// are treated as execute failures via `record_failure`).
+    pub fn record_prepare_failure(
+        &mut self,
+        agent_id: AgentId,
+        reason: impl Into<String>,
+    ) -> Option<CommitTransition> {
+        if !matches!(self.phase, CommitPhase::Prepare) {
+            return None;
+        }
+        let reason: String = reason.into();
+        if let Some(state) = self.participants.get_mut(&agent_id) {
+            *state = ParticipantState::Failed(reason.clone());
+        }
+        let from = self.phase.as_event_str();
+        self.phase = CommitPhase::Aborted {
+            reason: format!("{agent_id} failed prepare: {reason}"),
+        };
+        Some(CommitTransition {
+            from,
+            to: self.phase.as_event_str(),
+        })
+    }
+
     /// Check if all participants have signaled ready.
     pub fn all_ready(&self) -> bool {
         !self.participants.is_empty()
@@ -175,7 +268,10 @@ impl CommitBarrier {
 
     /// Advance from Ready to Execute phase.
     ///
-    /// All participants are marked as Executing.
+    /// All participants are marked as Executing. Resets the deadline
+    /// counter to the execute-phase budget. Most callers should rely on
+    /// `tick()` to do this automatically; `execute()` is exposed for
+    /// callers that need synchronous control (e.g. tests).
     pub fn execute(&mut self) -> Result<(), CommitError> {
         if self.phase != CommitPhase::Ready {
             return Err(CommitError::BarrierFailed(
@@ -184,6 +280,7 @@ impl CommitBarrier {
         }
 
         self.phase = CommitPhase::Execute;
+        self.deadline = Instant::now() + self.execute_deadline;
         for state in self.participants.values_mut() {
             *state = ParticipantState::Executing;
         }
@@ -221,9 +318,82 @@ impl CommitBarrier {
             );
         }
 
-        // Any failure transitions to Collect
+        // Any failure transitions to Collect once all resolved
         if self.all_resolved() {
             self.phase = CommitPhase::Collect;
+        }
+    }
+
+    /// Drive the barrier forward by one cooperation tick. Returns the
+    /// phase transition (if any) so the caller can emit a
+    /// `CommitPhaseChanged` event. Idempotent within a phase.
+    ///
+    /// Transitions handled:
+    /// - **Prepare → Aborted** when the prepare deadline has elapsed.
+    /// - **Ready → Execute** unconditionally (the auto-advance in
+    ///   `signal_ready` flipped the phase to Ready already; this step
+    ///   starts the execute clock and marks participants Executing).
+    /// - **Execute → Collect** when the execute deadline has elapsed —
+    ///   any participant that hadn't reported is marked `Failed("execute timeout")`.
+    pub fn tick(&mut self, now: Instant) -> Option<CommitTransition> {
+        match self.phase.clone() {
+            CommitPhase::Prepare => {
+                if now >= self.deadline {
+                    let from = self.phase.as_event_str();
+                    self.phase = CommitPhase::Aborted {
+                        reason: "prepare deadline expired".to_owned(),
+                    };
+                    Some(CommitTransition {
+                        from,
+                        to: self.phase.as_event_str(),
+                    })
+                } else {
+                    None
+                }
+            }
+            CommitPhase::Ready => {
+                let from = self.phase.as_event_str();
+                self.phase = CommitPhase::Execute;
+                self.deadline = now + self.execute_deadline;
+                for state in self.participants.values_mut() {
+                    *state = ParticipantState::Executing;
+                }
+                Some(CommitTransition {
+                    from,
+                    to: self.phase.as_event_str(),
+                })
+            }
+            CommitPhase::Execute => {
+                if now >= self.deadline {
+                    let from = self.phase.as_event_str();
+                    let mut timed_out = Vec::new();
+                    for (agent, state) in self.participants.iter_mut() {
+                        if matches!(state, ParticipantState::Executing) {
+                            *state = ParticipantState::Failed(
+                                "execute deadline expired".to_owned(),
+                            );
+                            timed_out.push(*agent);
+                        }
+                    }
+                    if !timed_out.is_empty() {
+                        tracing::warn!(
+                            barrier = %self.id,
+                            timed_out = ?timed_out,
+                            "commit barrier execute timeout — unreported agents marked Failed"
+                        );
+                    }
+                    self.phase = CommitPhase::Collect;
+                    Some(CommitTransition {
+                        from,
+                        to: self.phase.as_event_str(),
+                    })
+                } else {
+                    None
+                }
+            }
+            CommitPhase::Countdown { .. }
+            | CommitPhase::Collect
+            | CommitPhase::Aborted { .. } => None,
         }
     }
 
@@ -246,14 +416,17 @@ impl CommitBarrier {
                 .all(|s| matches!(s, ParticipantState::Completed(_)))
     }
 
-    /// Check if the barrier's deadline has expired.
+    /// Check if the barrier's current-phase deadline has expired. Used
+    /// alongside `tick()` for callers that need to peek without
+    /// transitioning.
     pub fn is_expired(&self) -> bool {
         Instant::now() >= self.deadline
     }
 
-    /// Check if the barrier has completed (all results collected).
+    /// Check if the barrier has reached a terminal phase (Collect or
+    /// Aborted). `expire_commits.rs` uses this to drop finished barriers.
     pub fn is_complete(&self) -> bool {
-        self.phase == CommitPhase::Collect
+        self.phase.is_terminal()
     }
 
     /// Check if any participant failed.
@@ -261,6 +434,12 @@ impl CommitBarrier {
         self.participants
             .values()
             .any(|s| matches!(s, ParticipantState::Failed(_)))
+    }
+
+    /// Check whether the barrier ended in the explicit Aborted phase
+    /// (distinguishable from a Collect with mixed results).
+    pub fn was_aborted(&self) -> bool {
+        matches!(self.phase, CommitPhase::Aborted { .. })
     }
 
     /// Get the count of participants.
@@ -312,6 +491,7 @@ mod tests {
         barrier.collect_result(c, make_result(c));
         assert!(barrier.is_complete());
         assert!(!barrier.has_failures());
+        assert!(!barrier.was_aborted());
     }
 
     #[test]
@@ -346,6 +526,7 @@ mod tests {
 
         assert!(barrier.is_complete());
         assert!(barrier.has_failures());
+        assert!(!barrier.was_aborted());
     }
 
     #[test]
@@ -368,5 +549,85 @@ mod tests {
         // late isn't in the barrier, but even if they were, phase check comes first
         let result = barrier.signal_ready(late);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn tick_aborts_on_prepare_deadline() {
+        let a = AgentId::new();
+        let mut barrier = CommitBarrier::new(&[a], Duration::from_millis(0), a);
+        let t = barrier.tick(Instant::now() + Duration::from_millis(1));
+        assert_eq!(t, Some(CommitTransition { from: "prepare", to: "aborted" }));
+        assert!(barrier.was_aborted());
+        assert!(barrier.is_complete());
+    }
+
+    #[test]
+    fn tick_advances_ready_to_execute() {
+        let a = AgentId::new();
+        let mut barrier = CommitBarrier::new(&[a], Duration::from_secs(30), a);
+        barrier.signal_ready(a).unwrap();
+        assert_eq!(barrier.phase, CommitPhase::Ready);
+        let t = barrier.tick(Instant::now());
+        assert_eq!(t, Some(CommitTransition { from: "ready", to: "execute" }));
+        assert_eq!(barrier.phase, CommitPhase::Execute);
+        // Subsequent tick within execute deadline is a no-op
+        assert!(barrier.tick(Instant::now()).is_none());
+    }
+
+    #[test]
+    fn tick_aborts_unreported_on_execute_deadline() {
+        let a = AgentId::new();
+        let b = AgentId::new();
+        let mut barrier = CommitBarrier::with_phase_deadlines(
+            &[a, b],
+            Duration::from_secs(30),
+            Duration::from_millis(0),
+            a,
+        );
+        barrier.signal_ready(a).unwrap();
+        barrier.signal_ready(b).unwrap();
+        // Ready → Execute, deadline 0ms → next tick expires execute.
+        let t1 = barrier.tick(Instant::now());
+        assert_eq!(t1.map(|x| x.to), Some("execute"));
+        let t2 = barrier.tick(Instant::now() + Duration::from_millis(1));
+        assert_eq!(t2.map(|x| x.to), Some("collect"));
+        assert!(barrier.has_failures());
+        assert!(barrier.is_complete());
+    }
+
+    #[test]
+    fn prepare_failure_aborts_fast() {
+        let a = AgentId::new();
+        let b = AgentId::new();
+        let mut barrier = CommitBarrier::new(&[a, b], Duration::from_secs(30), a);
+        let t = barrier.record_prepare_failure(b, "lost connector");
+        assert!(t.is_some());
+        assert_eq!(t.unwrap().to, "aborted");
+        assert!(barrier.was_aborted());
+        // Late signal_ready calls after abort must error.
+        assert!(barrier.signal_ready(a).is_err());
+    }
+
+    #[test]
+    fn prepare_failure_after_ready_returns_none() {
+        let a = AgentId::new();
+        let mut barrier = CommitBarrier::new(&[a], Duration::from_secs(30), a);
+        barrier.signal_ready(a).unwrap();
+        // Already Ready — record_prepare_failure must not abort.
+        let t = barrier.record_prepare_failure(a, "too late");
+        assert!(t.is_none());
+        assert_eq!(barrier.phase, CommitPhase::Ready);
+    }
+
+    #[test]
+    fn phase_event_strs_are_stable() {
+        assert_eq!(CommitPhase::Prepare.as_event_str(), "prepare");
+        assert_eq!(CommitPhase::Ready.as_event_str(), "ready");
+        assert_eq!(CommitPhase::Execute.as_event_str(), "execute");
+        assert_eq!(CommitPhase::Collect.as_event_str(), "collect");
+        assert_eq!(
+            CommitPhase::Aborted { reason: "x".into() }.as_event_str(),
+            "aborted"
+        );
     }
 }

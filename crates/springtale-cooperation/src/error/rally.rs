@@ -9,3 +9,13 @@ pub enum RallyError {
     #[error("COOP-8003: formation supervisor panicked")]
     SupervisorPanic,
 }
+
+impl RallyError {
+    pub const fn code(&self) -> &'static str {
+        match self {
+            Self::Exhausted => "COOP-8001",
+            Self::CascadeEscalating => "COOP-8002",
+            Self::SupervisorPanic => "COOP-8003",
+        }
+    }
+}

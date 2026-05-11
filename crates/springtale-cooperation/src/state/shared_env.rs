@@ -150,8 +150,8 @@ impl SharedEnvironment {
     /// before overwriting `write_log`, which made each write O(N) in
     /// the log length and produced an O(N²) burst under 1000 writes
     /// (plan §16.8). We now build the new snapshot from the fresh log
-    /// + the prior `surfaces` directly, which saves a full log clone
-    /// per RCU attempt.
+    /// alongside the prior `surfaces` directly, which saves a full log
+    /// clone per RCU attempt.
     fn rebuild_snapshot(&self) {
         let log = self.workspace.write_log();
         self.snapshot.rcu(|prev| {

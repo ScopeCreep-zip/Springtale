@@ -16,3 +16,15 @@ pub enum FormationError {
     #[error("COOP-2005: formation context not initialized")]
     ContextUninit,
 }
+
+impl FormationError {
+    pub const fn code(&self) -> &'static str {
+        match self {
+            Self::AgentNotFound(_) => "COOP-2001",
+            Self::Empty => "COOP-2002",
+            Self::NotViable(_) => "COOP-2003",
+            Self::MissingCapability(_) => "COOP-2004",
+            Self::ContextUninit => "COOP-2005",
+        }
+    }
+}

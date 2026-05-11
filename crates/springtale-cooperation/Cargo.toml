@@ -29,6 +29,9 @@ foca             = { workspace = true }
 crossbeam-deque  = { workspace = true }
 bytes            = { workspace = true }
 bincode          = { workspace = true }
+# G3 — derive TS bindings on cross-boundary types so the frontend type
+# package stays in sync with the Rust source automatically.
+ts-rs            = { workspace = true }
 # Local rand 0.9 pin — foca 1.0 internally requires rand 0.9 (its
 # `Rng` trait moved to `rand::rng::Rng` in that release). The workspace
 # still ships rand 0.8 for the rest of the tree; cargo resolves the two

@@ -45,8 +45,10 @@ mod tests {
             intent: IntentPattern::Execute { plan_id: None },
             window: Duration::from_millis(33),
         };
-        let mut fc = FormationContext::default();
-        fc.momentum_tier = MomentumTier::Hot;
+        let fc = FormationContext {
+            momentum_tier: MomentumTier::Hot,
+            ..Default::default()
+        };
         let momentum = MomentumState {
             tier: MomentumTier::Hot,
             ..Default::default()

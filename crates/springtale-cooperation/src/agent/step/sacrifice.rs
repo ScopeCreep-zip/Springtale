@@ -134,11 +134,15 @@ mod tests {
             intent: IntentPattern::Execute { plan_id: None },
             window: Duration::from_millis(33),
         };
-        let mut fc = FormationContext::default();
-        fc.operational_count = 4;
-        fc.member_count = 4;
-        let mut m = MomentumState::default();
-        m.tier = MomentumTier::Hot;
+        let fc = FormationContext {
+            operational_count: 4,
+            member_count: 4,
+            ..Default::default()
+        };
+        let m = MomentumState {
+            tier: MomentumTier::Hot,
+            ..Default::default()
+        };
         let caps: Vec<CapabilityDecl> = vec![];
         let result = run(
             &ctx_at_tier(&tick, &fc, &m, &attn, &aw, me, &caps),

@@ -18,3 +18,15 @@ pub enum CommitError {
     #[error("COOP-6005: execution phase failed for {0:?}: {1}")]
     ExecutionFailed(AgentId, String),
 }
+
+impl CommitError {
+    pub const fn code(&self) -> &'static str {
+        match self {
+            Self::BarrierFailed(_) => "COOP-6001",
+            Self::PrepareTimeout { .. } => "COOP-6002",
+            Self::ParticipantDropped(_) => "COOP-6003",
+            Self::AgentNotInBarrier(_) => "COOP-6004",
+            Self::ExecutionFailed(_, _) => "COOP-6005",
+        }
+    }
+}
