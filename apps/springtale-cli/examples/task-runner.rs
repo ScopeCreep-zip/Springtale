@@ -74,6 +74,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         store: Arc::new(InMemoryBackend::new()),
         gossip_store: Arc::new(InMemoryGossipStore::new()),
         flex_chain_pool: Arc::new(FlexibleChainPool::new()),
+        formation_gossip: None,
     };
 
     // 3. Build the workers. Each member declares `text.read` +

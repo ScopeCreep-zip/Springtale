@@ -67,6 +67,7 @@ async fn handle_message(msg: SimulatedMessage, cadence: Arc<CadenceBus>) {
         store: Arc::new(InMemoryBackend::new()),
         gossip_store: Arc::new(InMemoryGossipStore::new()),
         flex_chain_pool: Arc::new(FlexibleChainPool::new()),
+        formation_gossip: None,
     };
     let members = vec![
         FormationMember::new(AgentId::new(), vec!["telegram.responder".into()]),

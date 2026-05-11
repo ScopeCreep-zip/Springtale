@@ -128,6 +128,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         store: Arc::new(InMemoryBackend::new()),
         gossip_store: Arc::new(InMemoryGossipStore::new()),
         flex_chain_pool: Arc::new(FlexibleChainPool::new()),
+        formation_gossip: None,
     };
     let members = vec![
         FormationMember::new(AgentId::new(), vec!["research".into()]),

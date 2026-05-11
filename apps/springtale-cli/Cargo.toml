@@ -38,3 +38,6 @@ springtale-bot = { workspace = true }
 springtale-ai = { workspace = true }
 springtale-sentinel = { workspace = true }
 connector-telegram = { workspace = true }
+
+[dev-dependencies]
+tempfile = { workspace = true }

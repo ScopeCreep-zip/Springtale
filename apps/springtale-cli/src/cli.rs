@@ -12,7 +12,7 @@ pub struct Cli {
     pub json: bool,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum Command {
     /// Manage connectors.
     Connector {
@@ -117,7 +117,7 @@ pub enum Command {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum BotAction {
     /// Generate a pairing code for a new user. Display on terminal only — never in chat.
     PairInit,
@@ -126,7 +126,7 @@ pub enum BotAction {
     PanicUnpair,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum TravelAction {
     /// Export encrypted backup and wipe local data.
     Prepare {
@@ -142,13 +142,13 @@ pub enum TravelAction {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum VaultAction {
     /// Configure a duress passphrase (dual-region vault).
     DuressSetup,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum ConnectorAction {
     /// List installed connectors.
     List,
@@ -174,7 +174,7 @@ pub enum ConnectorAction {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum RuleAction {
     /// List all rules.
     List,
@@ -207,13 +207,13 @@ pub enum RuleAction {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum ServerAction {
     /// Start springtaled inline.
     Start,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum MemoryAction {
     /// Inspect bot memory — list sessions and entry counts.
     Audit,
@@ -225,7 +225,7 @@ pub enum MemoryAction {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum DataAction {
     /// Export all user data to a JSON file.
     Export {
@@ -246,7 +246,7 @@ pub enum DataAction {
     Purge,
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum AgentAction {
     /// Set an agent's autonomy level (observe, suggest, act-with-approval, act-autonomously).
     SetAutonomy {
@@ -257,7 +257,7 @@ pub enum AgentAction {
     },
 }
 
-#[derive(Subcommand)]
+#[derive(Subcommand, Debug)]
 pub enum CryptoAction {
     /// Re-encrypt the vault with a new passphrase.
     RotateVaultKey,

@@ -110,7 +110,17 @@ async fn main() -> Result<()> {
                 Command::Agent { action } => {
                     commands::agent::run(action, &store).await?;
                 }
-                _ => unreachable!(),
+                other => {
+                    // Every store-needing variant should have an arm
+                    // above; any miss is a programming error caught at
+                    // the workspace edge instead of panicking on a
+                    // user's machine. The outer match handles the
+                    // non-store variants exhaustively, so reaching
+                    // here means we forgot to dispatch a new variant.
+                    anyhow::bail!(
+                        "internal: command {other:?} reached the store-needing block without a handler"
+                    );
+                }
             }
         }
     }
