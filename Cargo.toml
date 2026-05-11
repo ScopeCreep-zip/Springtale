@@ -11,6 +11,12 @@ members = [
   "crates/springtale-mcp",
   # Cooperation primitives (game-informed multi-agent coordination)
   "crates/springtale-cooperation",
+  # G3 — WIT world definition for embedding Springtale in WASM Component
+  # Model hosts (Bevy, Unity, wasmCloud, custom). Ships the .wit artifact.
+  "crates/springtale-wit",
+  # G3 — pyo3 Python bindings. cdylib + rlib; maturin wraps the cdylib
+  # into a Python wheel for distribution alongside the Rust crates.
+  "crates/springtale-py",
   # Phase 1b
   "crates/springtale-bot",
   # Phase 2a
@@ -141,6 +147,18 @@ notify-debouncer-full = { version = "0.7", features = ["macos_fsevent"] }
 # ── Scheduling ─────────────────────────────────────────────────────────────────
 cron             = "0.13"
 chrono           = { version = "0.4",  features = ["serde"] }
+
+# ── Cross-language bindings (G3 / `COOPERATION_IMPLEMENTATION_PLAN.md §15`) ──
+# `ts-rs` derives `TS` on cross-boundary Rust types and exports them as
+# TypeScript declarations. Used to eliminate hand-maintained TS types
+# in `tauri/packages/types/`. The `chrono-impl` feature maps
+# `DateTime<Utc>` → `string` (ISO-8601) to match the existing TS shape.
+ts-rs            = { version = "11",   features = ["chrono-impl", "uuid-impl", "no-serde-warnings"] }
+# `pyo3` builds the Python C-API extension module for `springtale-py`.
+# `extension-module` lets us link against the host Python without
+# embedding a particular interpreter; `abi3-py39` produces a single .so
+# that works on Python 3.9+.
+pyo3             = { version = "0.24", features = ["extension-module", "abi3-py39", "chrono", "uuid"] }
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
 clap             = { version = "4",    features = ["derive", "env"] }
