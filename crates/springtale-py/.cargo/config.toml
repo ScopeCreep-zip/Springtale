@@ -1,0 +1,14 @@
+# pyo3's `extension-module` feature defers Python C-API symbol resolution
+# to runtime (the host Python provides `_Py_*` symbols when it loads the
+# .so). On macOS the default static linker errors out on unresolved
+# symbols; the `dynamic_lookup` flag tells it to skip the check.
+#
+# This config is scoped to this crate only — workspace-wide builds
+# (`cargo build --workspace`) pick it up via `.cargo/config.toml`
+# inheritance when this crate is compiled, but other crates' linking
+# stays strict.
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "link-arg=-undefined", "-C", "link-arg=dynamic_lookup"]
