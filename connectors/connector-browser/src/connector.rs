@@ -56,7 +56,13 @@ impl BrowserConnector {
             .map(|host| Capability::NetworkOutbound { host: host.clone() })
             .collect();
 
-        let client = ChromeClient::new(config.allowed_domains.clone(), config.message_jitter_secs);
+        let client = ChromeClient::with_options(
+            config.allowed_domains.clone(),
+            config.message_jitter_secs,
+            config.chrome_path.as_ref().map(std::path::PathBuf::from),
+            config.disable_telemetry,
+            config.stealth_profile,
+        );
 
         let manifest = ConnectorManifest {
             name: "connector-browser".to_owned(),
@@ -138,6 +144,19 @@ impl Connector for BrowserConnector {
             "extract_text" => actions::extract_text::execute(&self.client, &input)
                 .await
                 .map_err(ConnectorError::from),
+            // Phase B — page-function primitives.
+            "evaluate" => actions::evaluate::execute(&self.client, &input)
+                .await
+                .map_err(ConnectorError::from),
+            "get_html" => actions::get_html::execute(&self.client, &input)
+                .await
+                .map_err(ConnectorError::from),
+            "query_all" => actions::query_all::execute(&self.client, &input)
+                .await
+                .map_err(ConnectorError::from),
+            "wait_for_selector" => actions::wait_for_selector::execute(&self.client, &input)
+                .await
+                .map_err(ConnectorError::from),
             unknown => Err(ConnectorError::ExecutionFailed(format!(
                 "unknown action: {unknown}"
             ))),
@@ -190,6 +209,7 @@ mod tests {
 
     #[test]
     fn test_action_count() {
-        assert_eq!(actions::action_declarations().len(), 5);
+        // 5 Phase 1a actions + 4 Phase B page-function actions.
+        assert_eq!(actions::action_declarations().len(), 9);
     }
 }

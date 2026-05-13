@@ -8,8 +8,9 @@ pub mod config;
 pub mod connector;
 pub mod error;
 pub mod factory;
+pub mod stealth;
 pub mod triggers;
 
-pub use config::BrowserConfig;
+pub use config::{BrowserConfig, StealthProfile};
 pub use connector::BrowserConnector;
 pub use error::BrowserError;

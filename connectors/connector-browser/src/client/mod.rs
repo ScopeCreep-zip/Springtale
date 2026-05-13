@@ -32,7 +32,21 @@ use std::time::Duration;
 use tokio::sync::{Mutex, OnceCell};
 use tokio::task::JoinHandle;
 
+use crate::config::StealthProfile;
 use crate::error::BrowserError;
+use crate::stealth;
+
+/// One match returned by [`BrowserApi::query_all`]. Carries the
+/// rendered text, full outer HTML, attribute map, and tag name for
+/// each matched element. Recipes use these for CSS-schema extraction
+/// + DOM-pattern inspection from the selector picker.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ElementSnapshot {
+    pub text: String,
+    pub html: String,
+    pub tag_name: String,
+    pub attrs: std::collections::BTreeMap<String, String>,
+}
 
 #[async_trait]
 pub trait BrowserApi: Send + Sync {
@@ -41,6 +55,32 @@ pub trait BrowserApi: Send + Sync {
     async fn click(&self, selector: &str) -> Result<(), BrowserError>;
     async fn screenshot(&self) -> Result<String, BrowserError>;
     async fn extract_text(&self, selector: &str) -> Result<String, BrowserError>;
+
+    /// Run a JS expression in the current page and return the result
+    /// deserialized as JSON. The expression must be a single statement
+    /// that evaluates to a serializable value — wrap multi-statement
+    /// logic in an IIFE: `"(() => { … })()"`.
+    async fn evaluate(&self, js: &str) -> Result<serde_json::Value, BrowserError>;
+
+    /// Return the full rendered HTML of the current page (post-JS
+    /// execution). Used as input to Readability / CSS / diff-hash
+    /// extractors in `springtale-runtime::extraction`.
+    async fn get_html(&self) -> Result<String, BrowserError>;
+
+    /// Query every element matching `selector`. Returns one
+    /// [`ElementSnapshot`] per match with text, outer HTML, tag name,
+    /// and the full attribute map. Empty `Vec` when nothing matches.
+    async fn query_all(&self, selector: &str) -> Result<Vec<ElementSnapshot>, BrowserError>;
+
+    /// Wait for `selector` to appear in the DOM, up to `timeout_ms`.
+    /// Polls every 100ms via `find_elements`. Returns `Ok(true)` when
+    /// at least one match exists, `Ok(false)` when the timeout
+    /// elapses without a match.
+    async fn wait_for_selector(
+        &self,
+        selector: &str,
+        timeout_ms: u32,
+    ) -> Result<bool, BrowserError>;
 }
 
 /// Resources owned by a launched browser. Kept inside `OnceCell` so
@@ -65,27 +105,37 @@ pub struct ChromeClient {
     jitter_secs: u64,
     chrome_executable: Option<PathBuf>,
     disable_telemetry: bool,
+    /// Stealth-patch policy. `Off` is the safe default — Springtale
+    /// doesn't market anti-bot bypass as a feature. When `Minimal`,
+    /// `launch()` adds `--disable-blink-features=AutomationControlled`
+    /// to the Chrome args and `navigate()` injects three JS evasion
+    /// patches via `Page::execute_on_new_document` after each
+    /// `new_page` so they run before any page script.
+    stealth_profile: StealthProfile,
     state: OnceCell<BrowserState>,
 }
 
 impl ChromeClient {
     pub fn new(allowed_domains: Vec<String>, jitter_secs: u64) -> Self {
-        Self::with_options(allowed_domains, jitter_secs, None, true)
+        Self::with_options(allowed_domains, jitter_secs, None, true, StealthProfile::Off)
     }
 
     /// Full-options constructor used by the factory once it reads
-    /// the connector config (`chrome_path`, `disable_telemetry`).
+    /// the connector config (`chrome_path`, `disable_telemetry`,
+    /// `stealth_profile`).
     pub fn with_options(
         allowed_domains: Vec<String>,
         jitter_secs: u64,
         chrome_executable: Option<PathBuf>,
         disable_telemetry: bool,
+        stealth_profile: StealthProfile,
     ) -> Self {
         Self {
             allowed_domains,
             jitter_secs,
             chrome_executable,
             disable_telemetry,
+            stealth_profile,
             state: OnceCell::new(),
         }
     }
@@ -133,6 +183,15 @@ impl ChromeClient {
                 .arg("--disable-features=AutofillServerCommunication,InterestFeedContentSuggestions")
                 .arg("--no-default-browser-check")
                 .arg("--metrics-recording-only=false");
+        }
+        // Stealth: Chromium-side complement to the JS patches.
+        // `--disable-blink-features=AutomationControlled` removes
+        // the Blink-internal flag that some bot detectors check.
+        // JS-side patches are applied per-page in `navigate()`.
+        if self.stealth_profile.is_enabled() {
+            for flag in stealth::MINIMAL_LAUNCH_FLAGS {
+                builder = builder.arg(*flag);
+            }
         }
         let config = builder
             .build()
@@ -182,6 +241,26 @@ impl BrowserApi for ChromeClient {
             .new_page(url)
             .await
             .map_err(|e| BrowserError::NavigationFailed(e.to_string()))?;
+        // Stealth: inject patches BEFORE waiting for navigation so
+        // they run before any page script. `execute_on_new_document`
+        // applies to this page's subsequent navigations too — the
+        // single `new_page(url)` above already triggered the load,
+        // but the patches will be in place for any in-page
+        // navigations and for re-evaluations.
+        if self.stealth_profile.is_enabled() {
+            use chromiumoxide::cdp::browser_protocol::page::AddScriptToEvaluateOnNewDocumentParams;
+            let _ = page
+                .execute(AddScriptToEvaluateOnNewDocumentParams {
+                    source: stealth::minimal_patch_script(),
+                    world_name: None,
+                    include_command_line_api: None,
+                    run_immediately: Some(true),
+                })
+                .await
+                .map_err(|e| {
+                    BrowserError::NavigationFailed(format!("stealth inject: {e}"))
+                })?;
+        }
         page.wait_for_navigation()
             .await
             .map_err(|e| BrowserError::NavigationFailed(e.to_string()))?;
@@ -260,6 +339,106 @@ impl BrowserApi for ChromeClient {
         tracing::info!(selector = %selector, len = text.len(), "browser extract_text");
         Ok(text)
     }
+
+    async fn evaluate(&self, js: &str) -> Result<serde_json::Value, BrowserError> {
+        let page = self.current_page().await?;
+        let result = page
+            .evaluate(js)
+            .await
+            .map_err(|e| BrowserError::NavigationFailed(format!("evaluate failed: {e}")))?;
+        // EvaluationResult::value() returns Option<&Value>. None when
+        // the JS returned `undefined` — we surface that as
+        // `Value::Null` so the dispatcher's chain context handles it
+        // uniformly.
+        Ok(result.value().cloned().unwrap_or(serde_json::Value::Null))
+    }
+
+    async fn get_html(&self) -> Result<String, BrowserError> {
+        let page = self.current_page().await?;
+        let html = page
+            .content()
+            .await
+            .map_err(|e| BrowserError::NavigationFailed(format!("get_html failed: {e}")))?;
+        tracing::info!(bytes = html.len(), "browser get_html");
+        Ok(html)
+    }
+
+    async fn query_all(&self, selector: &str) -> Result<Vec<ElementSnapshot>, BrowserError> {
+        let page = self.current_page().await?;
+        // One round-trip: evaluate a query+map snippet in the page
+        // and return the full snapshot array. Per-element CDP calls
+        // (innerText, attributes, outerHTML each round-tripping) is
+        // O(n) chatty; this evaluation is O(1) regardless of match
+        // count. The result type matches `Vec<ElementSnapshot>`
+        // serde-deserialization so we can pass it straight through.
+        let js = format!(
+            r#"(() => {{
+                const els = document.querySelectorAll({selector_json});
+                return Array.from(els).map(el => ({{
+                    text: (el.innerText || el.textContent || '').trim(),
+                    html: el.outerHTML || '',
+                    tag_name: (el.tagName || '').toLowerCase(),
+                    attrs: Object.fromEntries(
+                        Array.from(el.attributes || []).map(a => [a.name, a.value])
+                    ),
+                }}));
+            }})()"#,
+            selector_json = serde_json::Value::String(selector.to_owned()),
+        );
+        let result = page
+            .evaluate(js.as_str())
+            .await
+            .map_err(|e| {
+                BrowserError::NavigationFailed(format!("query_all evaluate: {e}"))
+            })?;
+        let value = result
+            .value()
+            .cloned()
+            .unwrap_or(serde_json::Value::Array(Vec::new()));
+        let snapshots: Vec<ElementSnapshot> =
+            serde_json::from_value(value).map_err(|e| {
+                BrowserError::NavigationFailed(format!(
+                    "query_all deserialize: {e}"
+                ))
+            })?;
+        tracing::info!(
+            selector = %selector,
+            matches = snapshots.len(),
+            "browser query_all"
+        );
+        Ok(snapshots)
+    }
+
+    async fn wait_for_selector(
+        &self,
+        selector: &str,
+        timeout_ms: u32,
+    ) -> Result<bool, BrowserError> {
+        let page = self.current_page().await?;
+        let deadline = std::time::Instant::now() + Duration::from_millis(timeout_ms as u64);
+        // Poll every 100ms — short enough that the visible delay on
+        // a quick page load is bounded, long enough that CDP round-
+        // trip cost doesn't dominate. Mirrors Puppeteer/Playwright's
+        // default polling cadence.
+        loop {
+            match page.find_elements(selector.to_owned()).await {
+                Ok(elements) if !elements.is_empty() => {
+                    tracing::info!(selector = %selector, "browser wait_for_selector: matched");
+                    return Ok(true);
+                }
+                Ok(_) | Err(_) => {}
+            }
+            if std::time::Instant::now() >= deadline {
+                tracing::info!(
+                    selector = %selector,
+                    timeout_ms = timeout_ms,
+                    "browser wait_for_selector: timed out"
+                );
+                return Ok(false);
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
 }
 
 impl Drop for ChromeClient {
@@ -304,6 +483,34 @@ pub mod test_helpers {
 
         async fn extract_text(&self, _selector: &str) -> Result<String, BrowserError> {
             Ok("extracted text".to_owned())
+        }
+
+        async fn evaluate(&self, _js: &str) -> Result<serde_json::Value, BrowserError> {
+            Ok(serde_json::json!({ "mock": true }))
+        }
+
+        async fn get_html(&self) -> Result<String, BrowserError> {
+            Ok("<html><body>mock</body></html>".to_owned())
+        }
+
+        async fn query_all(
+            &self,
+            _selector: &str,
+        ) -> Result<Vec<ElementSnapshot>, BrowserError> {
+            Ok(vec![ElementSnapshot {
+                text: "mock text".into(),
+                html: "<div>mock</div>".into(),
+                tag_name: "div".into(),
+                attrs: std::collections::BTreeMap::new(),
+            }])
+        }
+
+        async fn wait_for_selector(
+            &self,
+            _selector: &str,
+            _timeout_ms: u32,
+        ) -> Result<bool, BrowserError> {
+            Ok(true)
         }
     }
 }

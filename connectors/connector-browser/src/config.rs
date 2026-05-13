@@ -26,6 +26,51 @@ pub struct BrowserConfig {
     /// Publish-side jitter in seconds (0 = disabled).
     #[serde(default)]
     pub message_jitter_secs: u64,
+
+    /// Stealth-patch policy. Default `Off` — Springtale never markets
+    /// anti-bot bypass as a feature (`feedback_no_ban_risk`).
+    /// `Minimal` applies three high-signal patches at
+    /// `Page::evaluate_on_new_document` time to avoid incidental
+    /// headless-detection on sites with reflexive blocks. See
+    /// `crate::stealth` for the patch set + rationale.
+    #[serde(default)]
+    pub stealth_profile: StealthProfile,
+}
+
+/// Stealth-patch policy for [`BrowserConfig`]. `Off` is the default.
+///
+/// `Minimal` applies three patches per
+/// [DataDome's 2026 detection research][dd] + the
+/// [Playwright stealth retrospective][stealth-2026]:
+///   1. `navigator.webdriver = undefined` (NOT `false` — detectors
+///      test for the patched-value tell).
+///   2. `--disable-blink-features=AutomationControlled` launch flag
+///      + `Network.setUserAgentOverride` to strip `HeadlessChrome`
+///      from the UA string.
+///   3. `window.chrome` completion with `loadTimes()` / `csi()`.
+///
+/// We explicitly skip `iframe.contentWindow` (DataDome detects the
+/// evasion's internal code; also crashes some sites' DOM), bad
+/// `navigator.plugins` faking (fails `instanceof PluginArray`), and
+/// WebGL vendor spoofing (creates a new fingerprint without a
+/// matching OS/hardware story).
+///
+/// [dd]: https://datadome.co/threat-research/how-datadome-detects-puppeteer-extra-stealth/
+/// [stealth-2026]: https://dev.to/vhub_systems_ed5641f65d59/playwright-stealth-mode-in-2026-the-7-patches-that-actually-matter-46bp
+#[derive(Debug, Clone, Copy, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum StealthProfile {
+    /// No patches. Default — Springtale isn't an anti-bot-bypass tool.
+    #[default]
+    Off,
+    /// Three high-signal patches. Opt-in per-connector via config.
+    Minimal,
+}
+
+impl StealthProfile {
+    pub fn is_enabled(self) -> bool {
+        !matches!(self, StealthProfile::Off)
+    }
 }
 
 fn default_true() -> bool {
@@ -39,6 +84,7 @@ impl std::fmt::Debug for BrowserConfig {
             .field("chrome_path", &self.chrome_path)
             .field("disable_telemetry", &self.disable_telemetry)
             .field("message_jitter_secs", &self.message_jitter_secs)
+            .field("stealth_profile", &self.stealth_profile)
             .finish()
     }
 }
@@ -58,5 +104,29 @@ mod tests {
         assert!(config.disable_telemetry);
         assert_eq!(config.message_jitter_secs, 0);
         assert!(config.chrome_path.is_none());
+        // Stealth defaults to Off — Springtale never opts in by default.
+        assert_eq!(config.stealth_profile, StealthProfile::Off);
+        assert!(!config.stealth_profile.is_enabled());
+    }
+
+    #[test]
+    fn test_stealth_minimal_parses() {
+        let config: BrowserConfig = serde_json::from_value(serde_json::json!({
+            "allowed_domains": ["example.com"],
+            "stealth_profile": "minimal",
+        }))
+        .unwrap();
+        assert_eq!(config.stealth_profile, StealthProfile::Minimal);
+        assert!(config.stealth_profile.is_enabled());
+    }
+
+    #[test]
+    fn test_stealth_off_explicit_parses() {
+        let config: BrowserConfig = serde_json::from_value(serde_json::json!({
+            "allowed_domains": ["example.com"],
+            "stealth_profile": "off",
+        }))
+        .unwrap();
+        assert_eq!(config.stealth_profile, StealthProfile::Off);
     }
 }
