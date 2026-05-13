@@ -29,6 +29,7 @@ pub async fn init(
     config: &RuntimeConfig,
     formation_cmd_tx: tokio::sync::mpsc::Sender<springtale_cooperation::command::FormationCommand>,
     live_formations: Option<Arc<dyn crate::state::LiveFormationReader>>,
+    approval_gate: Option<Arc<dyn springtale_sentinel::ApprovalGate>>,
 ) -> Result<RuntimeState, OperationError> {
     let store = init_store(&config.store).await?;
     tracing::info!("store initialized");
@@ -62,7 +63,7 @@ pub async fn init(
     )
     .await?;
     let ai_adapter_arc = init_adapter(config)?;
-    let sentinel = init_sentinel(config, &store);
+    let sentinel = init_sentinel(config, &store, approval_gate);
 
     // Start WASM epoch ticker — increments every 1s so wall-clock
     // timeouts actually fire. Without this, a malicious WASM module
@@ -104,6 +105,32 @@ pub async fn init(
         tracing::info!("cooperation deposit sweeper started (5s interval)");
     }
 
+    // Phase B.4 executions-log vacuum — every hour delete rows
+    // past their `retention_until`. Default retention is 14 days
+    // (see `operations::executions::recorder::DEFAULT_RETENTION_MS`).
+    // Cascades to `execution_steps` via the FK ON DELETE CASCADE.
+    {
+        let store_sweeper = store.clone();
+        tokio::spawn(async move {
+            let mut interval =
+                tokio::time::interval(std::time::Duration::from_secs(3600));
+            loop {
+                interval.tick().await;
+                let now_ms = chrono::Utc::now().timestamp_millis();
+                match store_sweeper.vacuum_executions(now_ms).await {
+                    Ok(n) if n > 0 => {
+                        tracing::debug!(purged = n, "executions vacuum");
+                    }
+                    Ok(_) => {}
+                    Err(e) => {
+                        tracing::warn!(error = %e, "executions vacuum failed");
+                    }
+                }
+            }
+        });
+        tracing::info!("executions vacuum started (1h interval)");
+    }
+
     // Gossip substrate (§8). Selected by `CooperationConfig::cross_process`:
     // single-process deployments get `InMemoryGossipStore` (DashMap);
     // cross-process deployments spawn `ChitchatGossipStore` over UDP.
@@ -126,6 +153,33 @@ pub async fn init(
         springtale_core::canvas::CanvasState::default(),
     ));
     let (canvas_tx, _) = tokio::sync::broadcast::channel(64);
+
+    // W3.B — canvas state syncer. Subscribes to `canvas_tx` and
+    // applies every broadcast update to the in-memory `canvas` state
+    // so callers of `operations::canvas::get_canvas` see the latest
+    // snapshot. Previously this dual-write happened inside the
+    // `update_canvas` IPC command; the tick step at
+    // `bot::runtime::tick_steps::emit_canvas_update` only
+    // broadcasts. Without this task the snapshot diverges from the
+    // broadcast stream after the first tick.
+    {
+        let canvas = canvas.clone();
+        let mut rx = canvas_tx.subscribe();
+        tokio::spawn(async move {
+            loop {
+                match rx.recv().await {
+                    Ok(update) => {
+                        canvas.write().await.apply(&update);
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(n)) => {
+                        tracing::warn!(skipped = n, "canvas syncer lagged");
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        });
+    }
+
     // Phase H2 — cooperation events bus. Capacity 512 covers ~30s of
     // headroom at 4 formations × 30Hz × ~5 events/tick. Lagged readers
     // drop silently per the events_stream.rs precedent.
@@ -143,7 +197,22 @@ pub async fn init(
 
     // Capability bridge (Phase 17) — binds the registry to a per-invocation
     // tier dispatch path. See `crate::cooperation::capability_bridge`.
-    let capability_bridge = crate::cooperation::CapabilityBridge::new(registry.clone());
+    //
+    // Phase 0: share the same `Arc<ArcSwap<...>>` `RuntimeState` holds so
+    // dispatcher AiComplete arms resolve the live adapter through
+    // `bridge.ai_adapter_for(...)`. Wrap once here so both the state field
+    // and the bridge share the inner ArcSwap.
+    let ai_adapter_handle: Arc<arc_swap::ArcSwap<Arc<dyn springtale_ai::AiAdapter>>> =
+        Arc::new(arc_swap::ArcSwap::from(Arc::new(ai_adapter_arc)));
+    let executions_recorder: Arc<
+        dyn crate::operations::executions::ExecutionRecorder,
+    > = Arc::new(crate::operations::executions::StoreRecorder::new(
+        store.clone(),
+    ));
+    let capability_bridge = crate::cooperation::CapabilityBridge::new(registry.clone())
+        .with_ai_adapter(ai_adapter_handle.clone())
+        .with_store(store.clone())
+        .with_recorder(executions_recorder);
 
     // Role registry (Phase 21) — starts with built-in General/Information/
     // Support. Community roles are folded in by `register_manifest_roles`
@@ -156,7 +225,7 @@ pub async fn init(
         store,
         registry,
         engine,
-        ai_adapter: Arc::new(arc_swap::ArcSwap::from(Arc::new(ai_adapter_arc))),
+        ai_adapter: ai_adapter_handle,
         sentinel,
         wasm_engine,
         wasm_tier_cache,
@@ -610,13 +679,24 @@ fn init_adapter(
 }
 
 /// Initialize the sentinel behavioral monitor.
+///
+/// W1.F — the optional `approval_gate` lets the application shell
+/// (desktop / dashboard / future surfaces) supply a UI-backed
+/// `ChannelApprovalGate` so destructive actions prompt the user
+/// instead of silently denying. `None` falls back to the safe
+/// `DefaultDenyApprovalGate` — correct for CLI / headless runs where
+/// no human is on the other end.
 fn init_sentinel(
     config: &RuntimeConfig,
     store: &Arc<dyn springtale_store::StorageBackend>,
+    approval_gate: Option<Arc<dyn springtale_sentinel::ApprovalGate>>,
 ) -> Arc<springtale_sentinel::Sentinel> {
     let sentinel_config = config.sentinel.clone().unwrap_or_default();
-    Arc::new(springtale_sentinel::Sentinel::new(
+    let gate = approval_gate
+        .unwrap_or_else(|| Arc::new(springtale_sentinel::DefaultDenyApprovalGate));
+    Arc::new(springtale_sentinel::Sentinel::with_approval_gate(
         sentinel_config,
         store.clone(),
+        gate,
     ))
 }

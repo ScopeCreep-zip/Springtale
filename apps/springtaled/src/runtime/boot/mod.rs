@@ -1,9 +1,6 @@
 mod bot;
 pub mod connector_events;
 mod crypto;
-mod event_loop;
-mod queue;
-mod schedulers;
 mod transport;
 
 use std::sync::Arc;
@@ -91,19 +88,29 @@ pub async fn boot(
     let live_reader: Option<Arc<dyn springtale_runtime::LiveFormationReader>> =
         Some(Arc::new(bot::BotFormationReader::new(formations_handle.clone())));
 
-    let runtime = springtale_runtime::init(&runtime_config, formation_cmd_tx, live_reader)
+    // springtaled is the headless daemon — no UI gate to prompt the
+    // user, so leave `approval_gate: None`. The sentinel falls back
+    // to `DefaultDenyApprovalGate` per W1.F design. The desktop wraps
+    // springtaled via Tauri and supplies its own `ChannelApprovalGate`.
+    let runtime = springtale_runtime::init(&runtime_config, formation_cmd_tx, live_reader, None)
         .await
         .context("failed to initialize runtime")?;
 
     // ── Step 4: Initialize transport ──
     let _transport = transport::init_transport(&transport_config, &keypair).await?;
 
-    // ── Step 5: Start scheduler (cron + file watcher + heartbeat) ──
-    let (trigger_tx, trigger_rx, cron_executor, fs_watcher, heartbeat_monitor) =
-        schedulers::init_schedulers(&runtime, heartbeat_interval_secs).await?;
-
-    // ── Step 6: Initialize job queue (action execution pipeline) ──
-    let producer = queue::init_job_queue(&runtime).await?;
+    // ── Step 5/6: Start scheduler + job queue + trigger event loop ──
+    // Shared bootstrap with the desktop app (CLAUDE.md: "The desktop
+    // app IS springtaled with a GUI. Same runtime underneath."). Both
+    // surfaces now drive identical cron/fs_watcher/queue/event-loop
+    // wiring from `springtale_runtime::embedded::bootstrap`.
+    let springtale_runtime::EmbeddedBootHandle {
+        scheduler: embedded_scheduler,
+        heartbeat_monitor,
+    } = springtale_runtime::bootstrap_embedded(&runtime, heartbeat_interval_secs)
+        .await
+        .map_err(|e| anyhow::anyhow!("scheduler bootstrap failed: {e}"))?;
+    let trigger_tx = embedded_scheduler.trigger_tx.clone();
 
     // ── Step 7: Initialize bot + connector gateways ──
     let (bot_msg_tx, bot_msg_rx) = mpsc::channel::<springtale_bot::IncomingMessage>(256);
@@ -163,9 +170,6 @@ pub async fn boot(
 
     let ready_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-    let cron_arc = Arc::new(tokio::sync::Mutex::new(cron_executor));
-    let watcher_arc = Arc::new(tokio::sync::Mutex::new(fs_watcher));
-
     // Broadcast channel for SSE event streaming to dashboard
     let (event_tx, _event_rx) = tokio::sync::broadcast::channel(256);
 
@@ -174,13 +178,10 @@ pub async fn boot(
         api_token_hash,
         ready: ready_flag.clone(),
         trigger_tx: trigger_tx.clone(),
-        scheduler: crate::scheduler::AppScheduler {
-            cron: cron_arc,
-            fs_watcher: watcher_arc,
-        },
+        scheduler: embedded_scheduler,
         rate_limit_per_sec: u64::from(api_config.rate_limit_per_sec),
         event_tx,
-        heartbeat_monitor: Arc::new(tokio::sync::Mutex::new(heartbeat_monitor)),
+        heartbeat_monitor,
         trigger_registry,
         bot_msg_tx: api_bot_msg_tx,
     };
@@ -195,8 +196,8 @@ pub async fn boot(
     ready_flag.store(true, std::sync::atomic::Ordering::Release);
     println!("READY");
 
-    // ── Run: API server + trigger event loop ──
-    let engine = runtime.engine.clone();
+    // ── Run: API server (cron + queue + event loop run inside the
+    //         shared `bootstrap_embedded` from springtale-runtime) ──
     let api_handle = tokio::spawn(async move {
         if let Err(e) = axum::serve(listener, router)
             .with_graceful_shutdown(crate::shutdown::shutdown_signal())
@@ -206,14 +207,9 @@ pub async fn boot(
         }
     });
 
-    let event_loop_handle = tokio::spawn(async move {
-        event_loop::event_loop(trigger_rx, engine, producer).await;
-    });
-
     // Wait for shutdown
     tokio::select! {
         _ = api_handle => tracing::info!("API server stopped"),
-        _ = event_loop_handle => tracing::info!("event loop stopped"),
         _ = bot_handle => tracing::info!("bot event loop stopped"),
     }
 
