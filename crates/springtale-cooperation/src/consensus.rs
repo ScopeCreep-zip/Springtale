@@ -25,6 +25,7 @@ use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 use crate::cadence::AgentId;
 
@@ -34,7 +35,7 @@ use crate::cadence::AgentId;
 /// Ordering: `term` ascending, then `committed` (true > false), then
 /// `voter` uuid. A committed ballot at term T strictly dominates any
 /// uncommitted ballot at term T, regardless of voter — override semantics.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct Ballot {
     pub term: u64,
     pub voter: AgentId,
@@ -62,7 +63,7 @@ impl PartialOrd for Ballot {
 /// across formation members. Deadline is `DateTime<Utc>` (wall-clock)
 /// rather than `Instant` (local-monotonic) so the deadline survives
 /// serialization to peers and to the audit log.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct ConsensusVote {
     pub question: DecisionDescriptor,
     /// Monotonic term assigned by the ConsensusEngine at propose() time.
@@ -79,7 +80,7 @@ pub struct ConsensusVote {
 }
 
 /// What's being decided.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct DecisionDescriptor {
     pub description: String,
     pub options: Vec<String>,
@@ -88,7 +89,7 @@ pub struct DecisionDescriptor {
 }
 
 /// An agent's vote.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 pub enum VoteChoice {
     /// Vote for a specific option (by index).
     Option(usize),
@@ -97,7 +98,7 @@ pub enum VoteChoice {
 }
 
 /// How the vote was resolved.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub enum VoteResolution {
     /// Majority of votes selected this choice.
     Majority(VoteChoice),

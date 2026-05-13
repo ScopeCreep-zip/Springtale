@@ -1,5 +1,6 @@
 use serde::Serialize;
 
+use specta::Type;
 use springtale_core::rule::engine::TriggerEvent;
 use springtale_core::rule::types::{Rule, RuleId};
 
@@ -7,7 +8,7 @@ use super::RuntimeState;
 use crate::error::OperationError;
 
 /// Run result from a dry-run rule evaluation.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Type)]
 pub struct RunResult {
     pub matched: bool,
     pub actions_count: usize,
@@ -96,7 +97,7 @@ pub fn build_synthetic_trigger(rule: &Rule) -> TriggerEvent {
 }
 
 /// Test result for a connector.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Type)]
 pub struct ConnectorTestResult {
     pub matched: bool,
     pub rule_name: Option<String>,

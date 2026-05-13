@@ -5,6 +5,7 @@ use crate::state::AppState;
 
 /// Get a config value by key.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_config(
     state: State<'_, AppState>,
     key: String,
@@ -18,6 +19,7 @@ pub async fn get_config(
 
 /// Set a config value (upsert).
 #[tauri::command]
+#[specta::specta]
 pub async fn set_config(
     state: State<'_, AppState>,
     key: String,
@@ -32,6 +34,7 @@ pub async fn set_config(
 
 /// List all config entries.
 #[tauri::command]
+#[specta::specta]
 pub async fn list_config(
     state: State<'_, AppState>,
 ) -> Result<Vec<(String, serde_json::Value)>, String> {
@@ -44,6 +47,7 @@ pub async fn list_config(
 
 /// Set AI adapter config and hot-swap at runtime.
 #[tauri::command]
+#[specta::specta]
 pub async fn set_ai_adapter(
     state: State<'_, AppState>,
     config: serde_json::Value,
@@ -57,6 +61,7 @@ pub async fn set_ai_adapter(
 
 /// Set connector config (persisted for next load).
 #[tauri::command]
+#[specta::specta]
 pub async fn set_connector_config(
     state: State<'_, AppState>,
     name: String,
@@ -71,6 +76,7 @@ pub async fn set_connector_config(
 
 /// Configure AI adapter — persists under target key and hot-swaps.
 #[tauri::command]
+#[specta::specta]
 pub async fn configure_ai_adapter(
     state: State<'_, AppState>,
     target: String,
@@ -85,6 +91,7 @@ pub async fn configure_ai_adapter(
 
 /// Upsert connector config — setup if new, update if exists.
 #[tauri::command]
+#[specta::specta]
 pub async fn upsert_connector_config(
     state: State<'_, AppState>,
     name: String,
@@ -99,6 +106,7 @@ pub async fn upsert_connector_config(
 
 /// Toggle guard mode for a formation.
 #[tauri::command]
+#[specta::specta]
 pub async fn toggle_formation_guard(
     state: State<'_, AppState>,
     formation_id: String,

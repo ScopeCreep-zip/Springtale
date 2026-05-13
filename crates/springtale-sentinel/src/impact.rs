@@ -14,10 +14,21 @@ pub enum ActionImpact {
 /// Classify the impact level of an action.
 pub fn classify_impact(action: &Action) -> ActionImpact {
     match action {
-        // Read-only: no external side effects
-        Action::Transform { .. } | Action::Delay { .. } | Action::AiComplete { .. } => {
-            ActionImpact::ReadOnly
-        }
+        // Read-only: no external side effects.
+        // - Transform: pure data shaping.
+        // - Delay: just sleeps.
+        // - AiComplete: posts a prompt to the configured adapter and
+        //   reads back; for impact-classification purposes treated as
+        //   read-only (the adapter call itself is sandboxed).
+        // - Extract (Phase A): parses bytes from chain state, no I/O.
+        // - Dedupe (Phase A): touches only the local `dedupe_seen`
+        //   table — a privacy-safe blake3 hash + LRU prune. No
+        //   external side effects.
+        Action::Transform { .. }
+        | Action::Delay { .. }
+        | Action::AiComplete { .. }
+        | Action::Extract { .. }
+        | Action::Dedupe { .. } => ActionImpact::ReadOnly,
 
         // Destructive: file writes (especially with delete), shell execution
         Action::WriteFile {

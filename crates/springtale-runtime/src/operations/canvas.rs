@@ -1,7 +1,15 @@
-//! Canvas operations — get and update A2UI state.
+//! Canvas operations — get A2UI state and compute the connection graph.
+//!
+//! Writes happen via the bot tick step (`emit_canvas_update`) which
+//! broadcasts on `canvas_tx`. A syncer task spawned at `init` time
+//! subscribes to that channel and applies updates to `state.canvas`
+//! so `get_canvas` always reflects the latest tick. There is no
+//! external "apply an update" entry point — the bot owns canvas
+//! content end-to-end.
 
 use serde::Serialize;
-use springtale_core::canvas::{CanvasState, CanvasUpdate};
+use specta::Type;
+use springtale_core::canvas::CanvasState;
 
 use crate::error::OperationError;
 use crate::state::RuntimeState;
@@ -11,22 +19,10 @@ pub async fn get_canvas(state: &RuntimeState) -> CanvasState {
     state.canvas.read().await.clone()
 }
 
-/// Apply a canvas update — mutates state and broadcasts to subscribers.
-pub async fn update_canvas(state: &RuntimeState, update: CanvasUpdate) -> CanvasState {
-    let mut canvas = state.canvas.write().await;
-    canvas.apply(&update);
-    let snapshot = canvas.clone();
-
-    // Broadcast to SSE/Tauri event subscribers
-    let _ = state.canvas_tx.send(update);
-
-    snapshot
-}
-
 // ── Connection graph ────────────────────────────────────────────────────────
 
 /// A pipe (data flow) within a connection.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct ConnectionPipe {
     pub id: String,
     pub dir: i8,
@@ -34,7 +30,7 @@ pub struct ConnectionPipe {
 }
 
 /// A connection between two connectors with one or more pipes.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct Connection {
     pub a: String,
     pub b: String,

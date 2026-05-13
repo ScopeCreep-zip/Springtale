@@ -39,14 +39,27 @@ pub async fn execute(
         .and_then(|v| v.as_str())
         .ok_or_else(|| SignalError::InvalidInput("missing 'text'".into()))?;
 
-    // Accept "recipients" array or "chat_id" for single recipient
+    // Accept "recipients" array or "chat_id" for single recipient.
+    // D1: each value may also be a `WorkspaceKey` URI
+    // (`signal://group/{id}` or `signal://user/{phone}`); parse
+    // through the boundary translator which falls back to raw-id
+    // semantics when no `://` is present.
+    let parse_one = |raw: &str| {
+        springtale_connector::workspace_key::extract_id_for_scheme(
+            raw,
+            "connector-signal",
+        )
+        .map(str::to_owned)
+        .map_err(|e| SignalError::InvalidInput(e.to_string()))
+    };
     let recipients: Vec<String> =
         if let Some(arr) = input.get("recipients").and_then(|v| v.as_array()) {
             arr.iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_owned()))
-                .collect()
+                .filter_map(|v| v.as_str())
+                .map(parse_one)
+                .collect::<Result<Vec<_>, _>>()?
         } else if let Some(chat_id) = input.get("chat_id").and_then(|v| v.as_str()) {
-            vec![chat_id.to_owned()]
+            vec![parse_one(chat_id)?]
         } else {
             return Err(SignalError::InvalidInput(
                 "missing 'recipients' or 'chat_id'".into(),

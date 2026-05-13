@@ -1,0 +1,18 @@
+# Funding sources for Springtale. Configure as you go — leave entries
+# commented until the corresponding profile actually exists, otherwise
+# GitHub shows broken Sponsor buttons.
+#
+# Springtale is OSS run on personal time. Funding goes toward:
+# - security audits (paid audits for the crypto, sandbox, and
+#   sentinel paths)
+# - hosting (CI, dependency mirrors, future P2P bootstrap nodes)
+# - paid bug bounties (currently zero — see SECURITY.md)
+#
+# We do NOT accept funding tied to roadmap promises. Donors don't get
+# feature priority. The threat model means we can't owe anyone outcomes.
+
+# github: [radicalkjax]
+# ko_fi: # username
+# liberapay: # username
+# open_collective: # username
+# custom: # ["https://example.com/donate"]

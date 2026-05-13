@@ -16,6 +16,7 @@ use crate::state::AppState;
 /// The travel passphrase crosses IPC once, is passed directly to
 /// the crypto function for KDF, then dropped. Never stored.
 #[tauri::command]
+#[specta::specta]
 pub async fn travel_prepare(
     state: State<'_, AppState>,
     passphrase: String,
@@ -59,6 +60,7 @@ pub async fn travel_prepare(
 /// After restore, the user must unlock the vault normally. The app
 /// should be restarted to re-initialize AppState with restored data.
 #[tauri::command]
+#[specta::specta]
 pub async fn travel_restore(passphrase: String, backup_path: String) -> Result<(), String> {
     tokio::task::spawn_blocking(move || {
         let vault_path = springtale_store::paths::default_vault_path();

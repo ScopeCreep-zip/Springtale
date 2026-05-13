@@ -56,4 +56,15 @@ pub trait ConnectorHost: Send + Sync + 'static {
         headers: &std::collections::HashMap<String, String>,
         body: &[u8],
     ) -> Result<(), ConnectorError>;
+
+    /// Per-connector mention extractor (D1) — exposed through the
+    /// host so the universal harvester can call it without
+    /// downcasting. Native hosts delegate to the inner connector's
+    /// `mention_extractor()`. WASM hosts return `None` (WASM
+    /// connectors run sandboxed and don't expose Rust trait
+    /// objects — they would need a separate WASM-side hook,
+    /// which Phase 2 of the sandbox effort can add).
+    fn mention_extractor(&self) -> Option<&dyn crate::mention::MentionExtractor> {
+        None
+    }
 }

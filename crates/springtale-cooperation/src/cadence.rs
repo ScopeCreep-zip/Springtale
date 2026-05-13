@@ -16,6 +16,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use tokio::sync::{RwLock, broadcast};
 
 /// Unique identifier for an agent in a formation.
@@ -37,7 +38,7 @@ use tokio::sync::{RwLock, broadcast};
 /// (10K agents = 160 KB of identifier overhead). If a future profile
 /// shows AgentId allocation as hot we can swap to a packed handle, but
 /// that's a transport-layer optimization not a cooperation-layer one.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 pub struct AgentId(pub uuid::Uuid);
 
 impl Default for AgentId {
@@ -64,7 +65,7 @@ impl std::fmt::Display for AgentId {
 macro_rules! string_newtype {
     ($(#[$meta:meta])* $name:ident) => {
         $(#[$meta])*
-        #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+        #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
         pub struct $name(pub String);
 
         impl From<String> for $name {
@@ -142,7 +143,7 @@ string_newtype!(
 /// 'Attack' tells the formation to engage. It does not tell individual
 /// agents which target to pick, what timing to use, or what sequence
 /// to follow."
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub enum IntentPattern {
     /// Gather information. Sensor agents activate.
     /// Patapon: PATA PATA PATA PON. Siege: Drone phase.
@@ -183,7 +184,7 @@ pub struct Tick {
 /// and target for meaningful interference detection. Two agents both
 /// doing "write" to different targets isn't a conflict; two agents
 /// writing the SAME target is.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub struct ActionDescriptor {
     /// Action kind (e.g., "send_message", "write_file", "read_issues").
     pub kind: String,

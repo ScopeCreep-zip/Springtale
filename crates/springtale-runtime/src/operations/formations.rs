@@ -5,6 +5,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use specta::Type;
 use springtale_core::rule::{Action, Rule, RuleId, RuleStatus, RuleVersion, Trigger};
 
 use crate::error::OperationError;
@@ -16,7 +17,7 @@ use crate::state::RuntimeState;
 /// frontend/IPC layer (the cooperation type may change its internal
 /// representation freely). Matches the TS `AgentHealth` in
 /// `tauri/packages/types/src/formation.ts`.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 #[serde(tag = "type")]
 pub enum AgentHealthDetail {
     Operational,
@@ -65,7 +66,7 @@ impl AgentHealthDetail {
 
 /// Enriched per-member detail — populated from the bot event loop's
 /// in-memory `Formation` data when available.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct FormationMemberDetail {
     /// Cooperation-layer agent id as a stable UUID string. Paired with
     /// `connector_name` so UI layers can key by either.
@@ -84,7 +85,7 @@ pub struct FormationMemberDetail {
 }
 
 /// Enriched formation detail — `FormationInfo` plus live member details.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Type)]
 pub struct FormationDetail {
     #[serde(flatten)]
     pub info: FormationInfo,
@@ -92,7 +93,7 @@ pub struct FormationDetail {
 }
 
 /// Formation info for listing.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Type)]
 pub struct FormationInfo {
     pub id: String,
     pub name: String,
@@ -464,7 +465,7 @@ pub async fn list_formations(state: &RuntimeState) -> Result<Vec<FormationInfo>,
 // ── Team deploy (atomic OOBE operation) ─────────────────────────────────────
 
 /// Single agent slot in a team deploy request.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Type)]
 #[serde(deny_unknown_fields)]
 pub struct TeamAgentSlot {
     pub connector_name: String,
@@ -474,7 +475,7 @@ pub struct TeamAgentSlot {
 }
 
 /// Request to deploy a complete team — creates rules + formation atomically.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Type)]
 #[serde(deny_unknown_fields)]
 pub struct TeamDeployRequest {
     pub name: String,
@@ -484,7 +485,7 @@ pub struct TeamDeployRequest {
 }
 
 /// Result of a team deploy.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Type)]
 pub struct TeamDeployResult {
     pub formation_id: String,
     pub rule_ids: Vec<String>,
@@ -537,6 +538,11 @@ pub async fn deploy_team(
             },
             conditions: Vec::new(),
             actions,
+            // Team-formation rules ship Global today; the rule fires
+            // wherever the formation is active and the trigger
+            // matches. Per-formation scoping wiring lands when the
+            // formation builder threads the formation_id (Phase A+).
+            owner: springtale_core::rule::types::RuleOwner::Global,
         };
 
         match super::rules::create_rule(state, rule).await {
@@ -594,7 +600,7 @@ pub async fn deploy_team(
 const INTENTS: &[&str] = &["Reconnoiter", "Execute", "Stabilize", "Surge"];
 
 /// Intent metadata for frontend display.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Type)]
 pub struct IntentInfo {
     pub value: String,
     pub label: String,

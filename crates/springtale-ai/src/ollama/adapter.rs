@@ -45,6 +45,24 @@ impl OllamaAdapter {
         }
         Ok(result.text)
     }
+
+    /// Sibling-module accessor for the structured-extraction impl
+    /// in `extractor.rs`.
+    pub(crate) fn sanitize_for_extractor(
+        &self,
+        field: &str,
+        text: &str,
+    ) -> Result<String, AiError> {
+        self.sanitize(field, text)
+    }
+
+    pub(crate) fn ollama_client(&self) -> &super::client::OllamaClient {
+        &self.client
+    }
+
+    pub(crate) fn ollama_model(&self) -> &str {
+        &self.model
+    }
 }
 
 impl OllamaAdapter {
@@ -379,6 +397,10 @@ impl AiAdapter for OllamaAdapter {
 
     async fn is_available(&self) -> bool {
         self.client.is_available().await
+    }
+
+    fn structured_extractor(&self) -> Option<&dyn crate::extractor::StructuredExtractor> {
+        Some(self)
     }
 }
 

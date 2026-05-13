@@ -5,6 +5,7 @@ use crate::state::AppState;
 
 /// List all trusted authors.
 #[tauri::command]
+#[specta::specta]
 pub async fn list_authors(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
@@ -27,6 +28,7 @@ pub async fn list_authors(state: State<'_, AppState>) -> Result<serde_json::Valu
 
 /// Add a trusted author.
 #[tauri::command]
+#[specta::specta]
 pub async fn add_author(
     state: State<'_, AppState>,
     name: String,
@@ -50,6 +52,7 @@ pub async fn add_author(
 
 /// Remove a trusted author.
 #[tauri::command]
+#[specta::specta]
 pub async fn remove_author(state: State<'_, AppState>, name: String) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();

@@ -1,6 +1,22 @@
-use tauri::{Emitter, State};
+use serde::{Deserialize, Serialize};
+use specta::Type;
+use tauri::State;
+use tauri_specta::Event;
 
 use crate::state::AppState;
+
+/// Emitted after a successful `create_vault` or `unlock_vault` so the
+/// frontend can close the passphrase overlay and start loading data.
+/// Unit payload — the frontend re-queries vault status via the
+/// `get_vault_status` command.
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+pub struct VaultUnlocked;
+
+/// Emitted after `lock_vault` and from the autolock timer when the
+/// inactivity threshold expires. Unit payload; the frontend zeroizes
+/// any in-memory secrets and re-shows the passphrase overlay.
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+pub struct VaultLocked;
 
 /// Create a new vault with a passphrase.
 ///
@@ -8,6 +24,7 @@ use crate::state::AppState;
 /// encryption key from the passphrase and initializes the full runtime.
 /// The frontend's vault overlay closes on success.
 #[tauri::command]
+#[specta::specta]
 pub async fn create_vault(
     state: State<'_, AppState>,
     app: tauri::AppHandle,
@@ -33,12 +50,16 @@ pub async fn create_vault(
     // Zeroize passphrase — we have the derived key and the Vault object
     drop(passphrase);
 
-    crate::state::init_runtime(&state.runtime, db_key).await?;
+    // W1.F — wire a `ChannelApprovalGate` so the sentinel prompts the
+    // user via the ApprovalCard overlay instead of silently denying
+    // destructive actions.
+    let gate = crate::state::build_approval_gate(app.clone(), state.approval_dispatcher.clone());
+    crate::state::init_runtime(&state.runtime, &state.scheduler, db_key, Some(gate)).await?;
 
     let mut vault_guard = state.vault.lock().await;
     *vault_guard = Some(vault);
 
-    let _ = app.emit("vault-unlocked", ());
+    let _ = VaultUnlocked.emit(&app);
     Ok(status)
 }
 
@@ -48,6 +69,7 @@ pub async fn create_vault(
 /// the full runtime. If the runtime was previously torn down by
 /// `lock_vault`, this re-creates it with a fresh DB connection.
 #[tauri::command]
+#[specta::specta]
 pub async fn unlock_vault(
     state: State<'_, AppState>,
     app: tauri::AppHandle,
@@ -80,23 +102,28 @@ pub async fn unlock_vault(
             drop(guard);
             let mut vault_guard = state.vault.lock().await;
             *vault_guard = Some(vault);
-            let _ = app.emit("vault-unlocked", ());
+            let _ = VaultUnlocked.emit(&app);
             return Ok(status);
         }
     }
 
-    crate::state::init_runtime(&state.runtime, db_key).await?;
+    // W1.F — wire a `ChannelApprovalGate` so the sentinel prompts the
+    // user via the ApprovalCard overlay instead of silently denying
+    // destructive actions.
+    let gate = crate::state::build_approval_gate(app.clone(), state.approval_dispatcher.clone());
+    crate::state::init_runtime(&state.runtime, &state.scheduler, db_key, Some(gate)).await?;
 
     let mut vault_guard = state.vault.lock().await;
     *vault_guard = Some(vault);
 
-    let _ = app.emit("vault-unlocked", ());
+    let _ = VaultUnlocked.emit(&app);
     Ok(status)
 }
 
 /// Lock the vault — zeroes key material in memory and tears down the
 /// runtime so no DB access is possible until re-unlock.
 #[tauri::command]
+#[specta::specta]
 pub async fn lock_vault(
     state: State<'_, AppState>,
     app: tauri::AppHandle,
@@ -117,12 +144,13 @@ pub async fn lock_vault(
         *rt = None;
     }
 
-    let _ = app.emit("vault-locked", ());
+    let _ = VaultLocked.emit(&app);
     Ok(())
 }
 
 /// Get the current vault status.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_vault_status(
     state: State<'_, AppState>,
 ) -> Result<springtale_runtime::operations::vault::VaultStatus, String> {

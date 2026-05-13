@@ -6,6 +6,7 @@
 //! Results are reported back via `SubTaskResult`.
 
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use uuid::Uuid;
 
 use crate::cadence::AgentId;
@@ -16,7 +17,7 @@ use crate::capability::CapabilityDecl;
 /// Members pull subtasks matching their connector capabilities.
 /// The `assigned_to` field is a hint (role bias per §23),
 /// not a mandate — any capable member can pick up the task.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct SubTask {
     /// Unique task identifier.
     pub id: Uuid,
@@ -35,7 +36,7 @@ pub struct SubTask {
 }
 
 /// Result of a member executing a subtask.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct SubTaskResult {
     /// Which task was executed.
     pub task_id: Uuid,

@@ -155,21 +155,38 @@ async fn execute_tool_call(
         action: action.to_owned(),
         params,
     };
-    let outcome = match formation_tier {
-        Some(tier) => {
-            springtale_runtime::dispatch::dispatch_action_with_tier(
-                &action, bridge, sentinel, tier,
-            )
-            .await
-        }
-        None => {
-            springtale_runtime::dispatch::dispatch_action(&action, bridge, sentinel).await
-        }
-    };
+
+    // Tool calls fire from a chat-command path; there's no firing
+    // rule, so we mint a synthetic `RuleId` and use `Mode::Manual`.
+    // When `formation_tier` is `Some`, convert it to the matching
+    // `MomentumTier` so the cooperation envelope carries the caller's
+    // tier through `bridge.execute`.
+    let mut execution = springtale_cooperation::execution::ExecutionContext::for_global(
+        springtale_core::rule::RuleId::new(),
+        springtale_cooperation::execution::ExecutionMode::Manual,
+    );
+    if let Some(tier) = formation_tier {
+        execution.momentum = wasm_tier_to_momentum(tier);
+    }
+    let outcome = springtale_runtime::dispatch::dispatch_action(
+        &action,
+        bridge,
+        sentinel,
+        execution,
+        serde_json::Value::Null,
+    )
+    .await;
 
     match outcome {
-        Ok(msg) => {
-            let payload = json!({ "message": msg });
+        Ok(chain) => {
+            // Tool-result body is the last step's structured output,
+            // shipped back to the model as JSON. Falls back to the
+            // chain brief if the chain produced no steps.
+            let payload = chain
+                .steps
+                .last()
+                .map(|s| s.output.clone())
+                .unwrap_or_else(|| json!({ "message": chain.brief() }));
             let mut body = payload.to_string();
             if body.len() > MAX_TOOL_OUTPUT_BYTES {
                 body.truncate(MAX_TOOL_OUTPUT_BYTES);
@@ -184,6 +201,20 @@ async fn execute_tool_call(
             body: format!("{{\"error\": {}}}", serde_json::Value::String(e.to_string())),
             is_error: true,
         },
+    }
+}
+
+/// Convert connector-layer [`WasmTier`] to cooperation-layer
+/// [`springtale_cooperation::momentum::MomentumTier`]. The bot
+/// runtime sees `WasmTier` from the formation tick path; the
+/// dispatcher takes `MomentumTier`. 1:1 mapping.
+fn wasm_tier_to_momentum(tier: WasmTier) -> springtale_cooperation::momentum::MomentumTier {
+    use springtale_cooperation::momentum::MomentumTier;
+    match tier {
+        WasmTier::Cold => MomentumTier::Cold,
+        WasmTier::Warming => MomentumTier::Warming,
+        WasmTier::Hot => MomentumTier::Hot,
+        WasmTier::Fever => MomentumTier::Fever,
     }
 }
 

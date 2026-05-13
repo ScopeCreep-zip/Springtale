@@ -86,6 +86,9 @@ impl Connector for BlueskyConnector {
             "repost" => actions::repost::execute(client, &input)
                 .await
                 .map_err(ConnectorError::from),
+            "discover_destinations" => actions::discover_destinations::execute(client, &input)
+                .await
+                .map_err(ConnectorError::from),
             unknown => Err(ConnectorError::ExecutionFailed(format!(
                 "unknown action: {unknown}"
             ))),
@@ -123,6 +126,12 @@ impl Connector for BlueskyConnector {
 
     fn manifest(&self) -> &ConnectorManifest {
         &self.manifest
+    }
+
+    fn mention_extractor(
+        &self,
+    ) -> Option<&dyn springtale_connector::mention::MentionExtractor> {
+        Some(&crate::mention::BLUESKY_MENTION_EXTRACTOR)
     }
 }
 
@@ -202,14 +211,15 @@ mod tests {
     }
 
     #[test]
-    fn test_four_actions() {
+    fn test_five_actions() {
         let actions = actions::action_declarations();
-        assert_eq!(actions.len(), 4);
+        assert_eq!(actions.len(), 5);
         let names: Vec<&str> = actions.iter().map(|a| a.name.as_str()).collect();
         assert!(names.contains(&"create_post"));
         assert!(names.contains(&"reply"));
         assert!(names.contains(&"like"));
         assert!(names.contains(&"repost"));
+        assert!(names.contains(&"discover_destinations"));
     }
 
     #[test]

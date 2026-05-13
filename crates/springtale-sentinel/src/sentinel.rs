@@ -69,11 +69,24 @@ impl Sentinel {
     /// Checks in order: circuit breaker, rate limiter, dead-man switch,
     /// destructive action gate. Returns the first non-Go verdict.
     /// Logs every evaluation to the audit trail.
-    pub async fn evaluate(&self, action: &Action, connector_name: &str) -> Verdict {
+    ///
+    /// `tier` scales the rate-limit budget per the cooperation
+    /// framework's momentum tier (see [`crate::ThrottleTier`]).
+    /// Pre-Phase-0 callers without firing context should pass
+    /// [`ThrottleTier::Warming`] — the baseline budget. The runtime
+    /// dispatcher (Phase 0.2) converts each fire's
+    /// `ExecutionContext.momentum` into a [`ThrottleTier`] via
+    /// `springtale_runtime::cooperation::momentum_to_throttle_tier`.
+    pub async fn evaluate(
+        &self,
+        action: &Action,
+        connector_name: &str,
+        tier: crate::ThrottleTier,
+    ) -> Verdict {
         let action_type = format!("{:?}", std::mem::discriminant(action));
         let impact = classify_impact(action);
 
-        // 1. Circuit breaker check (per-connector)
+        // 1. Circuit breaker check (per-connector) — tier-independent.
         if !self.circuit_breaker.is_allowed(connector_name) {
             let verdict = Verdict::Quarantine(format!(
                 "circuit breaker open for connector: {connector_name}"
@@ -85,8 +98,10 @@ impl Sentinel {
             return verdict;
         }
 
-        // 2. Rate limiter check (per-connector)
-        if let Some(delay) = self.rate_limiter.check(connector_name) {
+        // 2. Rate limiter check (per-connector, tier-scoped) — the
+        //    budget scales with momentum so a Fever swarm isn't
+        //    throttled to the same baseline as a Cold solo observer.
+        if let Some(delay) = self.rate_limiter.check_at_tier(connector_name, tier) {
             let verdict = Verdict::Throttle(delay);
             let _ = self
                 .audit
@@ -196,24 +211,91 @@ mod tests {
         let action = Action::SendMessage {
             text: "hello".into(),
         };
-        let verdict = sentinel.evaluate(&action, "test-connector").await;
+        let verdict = sentinel.evaluate(&action, "test-connector", crate::ThrottleTier::Warming).await;
         assert_eq!(verdict, Verdict::Go);
     }
 
     #[tokio::test]
-    async fn test_evaluate_rate_limited() {
+    async fn test_evaluate_rate_limited_at_warming_tier() {
+        // Fresh sentinel with a high dead-man threshold so the 12-call
+        // burst tests the rate limiter, not the dead-man switch.
+        let store: Arc<dyn StorageBackend> =
+            Arc::new(SqliteBackend::open_in_memory().unwrap());
+        let sentinel = Sentinel::with_approval_gate(
+            SentinelConfig {
+                rate_limit_per_minute: 5,
+                circuit_breaker_threshold: 1000,
+                circuit_breaker_cooldown_secs: 1,
+                dead_man_threshold: 1000,
+                audit_retention_days: 90,
+            },
+            store,
+            Arc::new(crate::approval::AutoAllowApprovalGate),
+        );
+        let action = Action::SendMessage { text: "hi".into() };
+
+        // Warming tier budget: 12 actions per 60s.
+        for i in 0..12 {
+            let v = sentinel
+                .evaluate(&action, "test", crate::ThrottleTier::Warming)
+                .await;
+            assert_eq!(v, Verdict::Go, "call #{i} should be Go at Warming tier");
+        }
+
+        // 13th should throttle.
+        let v = sentinel
+            .evaluate(&action, "test", crate::ThrottleTier::Warming)
+            .await;
+        assert!(matches!(v, Verdict::Throttle(_)));
+    }
+
+    #[tokio::test]
+    async fn test_evaluate_cold_tier_is_more_restrictive_than_warming() {
         let sentinel = test_sentinel();
         let action = Action::SendMessage { text: "hi".into() };
 
-        // Exhaust rate limit (5 per minute)
-        for _ in 0..5 {
-            let v = sentinel.evaluate(&action, "test").await;
-            assert_eq!(v, Verdict::Go);
-        }
+        // Cold tier budget: 1 action per 30s.
+        let first = sentinel
+            .evaluate(&action, "cold-test", crate::ThrottleTier::Cold)
+            .await;
+        assert_eq!(first, Verdict::Go);
 
-        // 6th should throttle
-        let v = sentinel.evaluate(&action, "test").await;
-        assert!(matches!(v, Verdict::Throttle(_)));
+        let second = sentinel
+            .evaluate(&action, "cold-test", crate::ThrottleTier::Cold)
+            .await;
+        assert!(
+            matches!(second, Verdict::Throttle(_)),
+            "Cold tier should throttle on 2nd call within window, got {second:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_evaluate_fever_tier_has_higher_budget_than_warming() {
+        // Spawn a fresh sentinel with a higher dead_man threshold so
+        // the 100-call burst doesn't trip the dead-man switch.
+        let store: Arc<dyn StorageBackend> =
+            Arc::new(SqliteBackend::open_in_memory().unwrap());
+        let sentinel = Sentinel::with_approval_gate(
+            SentinelConfig {
+                rate_limit_per_minute: 5,
+                circuit_breaker_threshold: 1000,
+                circuit_breaker_cooldown_secs: 1,
+                dead_man_threshold: 1000,
+                audit_retention_days: 90,
+            },
+            store,
+            Arc::new(crate::approval::AutoAllowApprovalGate),
+        );
+        let action = Action::SendMessage { text: "hi".into() };
+
+        // Fever tier budget: 600 actions per 60s. 100 calls should
+        // all clear without a throttle.
+        for i in 0..100 {
+            let v = sentinel
+                .evaluate(&action, "fever-test", crate::ThrottleTier::Fever)
+                .await;
+            assert_eq!(v, Verdict::Go, "call #{i} should be Go at Fever tier");
+        }
     }
 
     #[tokio::test]
@@ -225,7 +307,7 @@ mod tests {
         sentinel.report_failure("test");
         sentinel.report_failure("test");
 
-        let v = sentinel.evaluate(&action, "test").await;
+        let v = sentinel.evaluate(&action, "test", crate::ThrottleTier::Warming).await;
         assert!(matches!(v, Verdict::Quarantine(_)));
     }
 
@@ -248,11 +330,11 @@ mod tests {
 
         // 3 actions allowed
         for _ in 0..3 {
-            assert_eq!(sentinel.evaluate(&action, "test").await, Verdict::Go);
+            assert_eq!(sentinel.evaluate(&action, "test", crate::ThrottleTier::Warming).await, Verdict::Go);
         }
 
         // 4th triggers dead-man
-        let v = sentinel.evaluate(&action, "test").await;
+        let v = sentinel.evaluate(&action, "test", crate::ThrottleTier::Warming).await;
         assert!(matches!(v, Verdict::Pause(_)));
     }
 
@@ -272,13 +354,13 @@ mod tests {
         );
 
         let action = Action::Delay { seconds: 0 };
-        sentinel.evaluate(&action, "t").await;
-        sentinel.evaluate(&action, "t").await;
+        sentinel.evaluate(&action, "t", crate::ThrottleTier::Warming).await;
+        sentinel.evaluate(&action, "t", crate::ThrottleTier::Warming).await;
 
         sentinel.record_user_interaction().await;
 
         // After interaction, counter reset — should be Go again
-        assert_eq!(sentinel.evaluate(&action, "t").await, Verdict::Go);
+        assert_eq!(sentinel.evaluate(&action, "t", crate::ThrottleTier::Warming).await, Verdict::Go);
     }
 
     #[test]

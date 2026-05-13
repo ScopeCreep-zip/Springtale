@@ -11,6 +11,7 @@ mod store;
 
 use serde::Serialize;
 
+use specta::Type;
 use crate::error::OperationError;
 use crate::state::RuntimeState;
 
@@ -30,7 +31,7 @@ pub use store::{
 // ── Core operations ─────────────────────────────────────────────────────────
 
 /// Connector info for listing.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Type)]
 pub struct ConnectorInfo {
     pub name: String,
     pub enabled: bool,

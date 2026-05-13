@@ -129,6 +129,15 @@ impl Connector for TelegramConnector {
                     .await
                     .map_err(ConnectorError::from)
             }
+            "onboard_url" => actions::onboard_url::execute(&self.client, &input)
+                .await
+                .map_err(ConnectorError::from),
+            "discover_destinations" => actions::discover_destinations::execute(
+                &self.client,
+                &input,
+            )
+            .await
+            .map_err(ConnectorError::from),
             unknown => Err(ConnectorError::ExecutionFailed(format!(
                 "unknown action: {unknown}"
             ))),
@@ -173,6 +182,12 @@ impl Connector for TelegramConnector {
 
     fn manifest(&self) -> &ConnectorManifest {
         &self.manifest
+    }
+
+    fn mention_extractor(
+        &self,
+    ) -> Option<&dyn springtale_connector::mention::MentionExtractor> {
+        Some(&crate::mention::TELEGRAM_MENTION_EXTRACTOR)
     }
 
     /// Verify an incoming webhook request using the `X-Telegram-Bot-Api-Secret-Token` header.
@@ -270,7 +285,9 @@ mod tests {
     #[test]
     fn test_action_count() {
         let connector = TelegramConnector::new(&test_config()).unwrap();
-        assert_eq!(connector.actions().len(), 6);
+        // 6 messaging actions + D1's `onboard_url` deep-link + D1's
+        // `discover_destinations` getUpdates wrapper.
+        assert_eq!(connector.actions().len(), 8);
     }
 
     #[tokio::test]

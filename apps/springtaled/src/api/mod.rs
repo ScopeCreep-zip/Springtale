@@ -18,6 +18,7 @@ pub mod formations;
 pub mod health;
 pub mod memory;
 pub mod onboarding;
+pub mod recipes;
 pub mod rules;
 pub mod safety;
 pub mod send;
@@ -111,7 +112,6 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/canvas", get(canvas::get_canvas))
         .route("/canvas/connections", get(canvas::get_connections))
-        .route("/canvas/update", post(canvas::update_canvas))
         .route("/canvas/stream", get(canvas_stream::stream))
         .route("/cooperation/events", get(cooperation_stream::stream))
         .route("/webhook/{connector}/{trigger}", post(webhooks::receive))
@@ -164,6 +164,23 @@ pub fn build_router(state: AppState) -> Router {
         .route("/safety/disguise/active", post(safety::set_disguise_active))
         .route("/safety/disguise/profile", post(safety::set_disguise_profile))
         .route("/safety/panic_tap_count", post(safety::set_panic_tap_count))
+        // W1.B — Recipes (click-and-play library)
+        .route("/recipes", get(recipes::list))
+        .route("/recipes/categories", get(recipes::list_categories))
+        .route("/recipes/{id}", get(recipes::get_one))
+        .route("/recipes/{id}/favorite", post(recipes::toggle_favorite))
+        .route("/recipes/{id}/recent", post(recipes::record_recent))
+        .route("/recipes/{id}/apply", post(recipes::apply))
+        .route("/recipes/{id}/render", post(recipes::render))
+        .route("/recipes/{id}/preflight", post(recipes::preflight))
+        .route("/recipes/{id}/preview", post(recipes::preview))
+        .route("/recipes/{id}/pieces", get(recipes::list_pieces))
+        // W2.B Recipe authoring
+        .route("/recipes/user", post(recipes::save_user))
+        .route("/recipes/{id}/fork", post(recipes::fork))
+        .route("/recipes/user/{id}", axum::routing::delete(recipes::delete_user))
+        .route("/recipes/{id}/export", get(recipes::export_toml))
+        .route("/recipes/import", post(recipes::import_toml))
         // Config management
         .route("/config", get(config_api::list_config))
         .route(

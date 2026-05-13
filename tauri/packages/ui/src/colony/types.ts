@@ -96,6 +96,9 @@ export type DetailView =
   | { mode: "events"; filterConnector?: string }
   | { mode: "outputs"; connectorId: string }
   | { mode: "formations"; addAgentId?: string }
+  /** W2.E — A2UI canvas block surface; renders structured output from
+   *  the bot's `CanvasState` via the shared `Canvas` component. */
+  | { mode: "canvas" }
 
 /**
  * Colony command — context-aware, type-safe.
@@ -126,8 +129,13 @@ const cmd = (icon: string, label: string, key: string, context: ColonyCommand["c
 
 export const COMMANDS: Record<string, (ColonyCommand | null)[]> = {
   none: [
+    // Canvas is live (formations + connectors + cooperation events stream
+    // in via subscriptions), so an explicit Refresh command is dead UI.
+    // Slot reclaimed for MAKE BOT — the entry point back to the
+    // bot/team selection hub (ModeSelectOverlay) for adding more bots
+    // after the canvas already has some.
+    cmd("+", "MAKE BOT", "M", "global", "global:make_bot"),
     cmd("+", "NEW RULE", "N", "global", "global:new_rule"),
-    cmd("~", "REFRESH", "R", "global", "global:refresh"),
     cmd("^", "CONNECTORS", "C", "global", "global:connectors"),
     cmd(".", "EVENTS", "E", "global", "global:events"),
     cmd("*", "BOTS", "B", "global", "global:bots"),

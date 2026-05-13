@@ -2,6 +2,7 @@
 
 use std::path::Path;
 
+use specta::Type;
 use serde::Serialize;
 
 use springtale_crypto::vault::store::Vault;
@@ -9,7 +10,7 @@ use springtale_crypto::vault::store::Vault;
 use crate::error::OperationError;
 
 /// Vault status returned to callers.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Type)]
 pub struct VaultStatus {
     pub unlocked: bool,
     pub duress_session: bool,

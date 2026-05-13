@@ -9,8 +9,9 @@
 
 use serde::Serialize;
 
+use specta::Type;
 /// A single field the user must fill in for a platform.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct FormField {
     /// Stable machine key used as the JSON property name.
     pub name: &'static str,
@@ -34,7 +35,7 @@ pub struct FormField {
 /// `Some(&FORM)` from its `ConnectorFactory::onboarding_form()` impl.
 /// Non-platform connectors (filesystem, shell, http) return `None` —
 /// they have no first-run wizard fields to collect.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct PlatformForm {
     /// Stable ID used in `apply_platform` calls.
     pub id: &'static str,

@@ -8,6 +8,7 @@ pub mod connector;
 pub mod error;
 pub mod factory;
 pub mod firehose;
+pub mod mention;
 pub mod triggers;
 
 pub use client::BlueskyApi;

@@ -1,6 +1,7 @@
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use thiserror::Error;
 
 use crate::action::SubTask;
@@ -59,7 +60,7 @@ impl Ord for PriorityTask {
 }
 
 /// Ownership record for a claimed task.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct TaskClaim {
     pub task_id: TaskId,
     pub owner: AgentId,

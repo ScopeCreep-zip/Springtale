@@ -45,6 +45,10 @@ mod tests {
     use super::*;
     use secrecy::ExposeSecret;
 
+    // Test fixture — never crosses the IPC boundary, so no Type
+    // derive. (The production AI adapter configs that DO cross IPC
+    // are tagged `#[specta(type = String)]` on their SecretBox fields
+    // — see springtale-ai/src/{openai,anthropic}/adapter.rs.)
     #[derive(Deserialize)]
     struct TestConfig {
         #[serde(deserialize_with = "deserialize_secret")]

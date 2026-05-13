@@ -1,7 +1,8 @@
 use serde::Deserialize;
 
+use specta::Type;
 /// Sentinel configuration.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Type)]
 pub struct SentinelConfig {
     /// Maximum actions per minute per connector. Default: 60.
     #[serde(default = "default_rate_limit")]

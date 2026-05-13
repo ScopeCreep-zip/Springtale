@@ -7,12 +7,13 @@
 //! Per Claude Agent SDK: tool definition { name, description, input_schema }.
 
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 /// A typed capability declaration. Connectors advertise these in their
 /// manifests; formations check them at task routing and interference
 /// detection. One struct for all capability references — not separate
 /// newtypes per capability kind.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Hash, Type)]
 pub struct CapabilityDecl {
     /// The capability name — matches connector action names.
     /// Examples: "github.read_issues", "slack.send_message", "read_env", "consensus".

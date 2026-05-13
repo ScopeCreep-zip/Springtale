@@ -7,12 +7,14 @@ use crate::state::AppState;
 
 /// Get rule schema — trigger, condition, and action type definitions.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_rule_schema() -> serde_json::Value {
     springtale_runtime::operations::rules::get_rule_schema()
 }
 
 /// List all automation rules.
 #[tauri::command]
+#[specta::specta]
 pub async fn list_rules(
     state: State<'_, AppState>,
 ) -> Result<Vec<springtale_runtime::operations::rules::RuleSummary>, String> {
@@ -23,6 +25,7 @@ pub async fn list_rules(
 
 /// Create a new automation rule.
 #[tauri::command]
+#[specta::specta]
 pub async fn create_rule(
     state: State<'_, AppState>,
     rule: serde_json::Value,
@@ -42,6 +45,7 @@ pub async fn create_rule(
 
 /// Toggle a rule's enabled/disabled status.
 #[tauri::command]
+#[specta::specta]
 pub async fn toggle_rule(
     state: State<'_, AppState>,
     id: String,
@@ -62,6 +66,7 @@ pub async fn toggle_rule(
 
 /// Delete a rule.
 #[tauri::command]
+#[specta::specta]
 pub async fn delete_rule(state: State<'_, AppState>, id: String) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
@@ -78,6 +83,7 @@ pub async fn delete_rule(state: State<'_, AppState>, id: String) -> Result<(), S
 
 /// Update a rule (replace).
 #[tauri::command]
+#[specta::specta]
 pub async fn update_rule(
     state: State<'_, AppState>,
     id: String,
@@ -101,6 +107,7 @@ pub async fn update_rule(
 
 /// Dry-run a rule — evaluate without executing actions.
 #[tauri::command]
+#[specta::specta]
 pub async fn run_rule(
     state: State<'_, AppState>,
     id: String,
@@ -119,14 +126,24 @@ pub async fn run_rule(
 }
 
 /// Create a connector-event rule from simple fields (no type tags needed).
+///
+/// The wire shape `serde_json::Value` mirrors `create_rule` /
+/// `update_rule`: the frontend posts a JSON payload, the backend
+/// deserializes it into the typed `CreateConnectorRuleRequest`. Going
+/// through Value here keeps the recursive `Condition` enum off the
+/// specta type-graph (see `springtale_core::rule::types` module doc
+/// for the policy).
 #[tauri::command]
+#[specta::specta]
 pub async fn create_connector_rule(
     state: State<'_, AppState>,
-    rule: springtale_runtime::operations::rules::CreateConnectorRuleRequest,
+    rule: serde_json::Value,
 ) -> Result<String, String> {
+    let req: springtale_runtime::operations::rules::CreateConnectorRuleRequest =
+        serde_json::from_value(rule).map_err(|e| e.to_string())?;
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
-    springtale_runtime::operations::rules::create_connector_rule(rt, rule)
+    springtale_runtime::operations::rules::create_connector_rule(rt, req)
         .await
         .map(|id| id.to_string())
         .map_err(|e| e.to_string())
@@ -134,6 +151,7 @@ pub async fn create_connector_rule(
 
 /// List rules for a specific connector.
 #[tauri::command]
+#[specta::specta]
 pub async fn list_rules_for_connector(
     state: State<'_, AppState>,
     connector_name: String,
@@ -145,6 +163,7 @@ pub async fn list_rules_for_connector(
 
 /// Test a connector by dry-running its first rule.
 #[tauri::command]
+#[specta::specta]
 pub async fn test_connector(
     state: State<'_, AppState>,
     connector_name: String,
@@ -158,6 +177,7 @@ pub async fn test_connector(
 
 /// Reassign a rule to a different connector.
 #[tauri::command]
+#[specta::specta]
 pub async fn reassign_rule_connector(
     state: State<'_, AppState>,
     id: String,
@@ -175,6 +195,7 @@ pub async fn reassign_rule_connector(
 
 /// Parse natural language intent into a Rule (preview — not persisted).
 #[tauri::command]
+#[specta::specta]
 pub async fn parse_rule(
     state: State<'_, AppState>,
     intent: String,

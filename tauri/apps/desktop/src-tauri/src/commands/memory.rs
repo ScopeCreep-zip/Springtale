@@ -5,6 +5,7 @@ use crate::state::AppState;
 
 /// Audit bot memory.
 #[tauri::command]
+#[specta::specta]
 pub async fn audit_memory(
     state: State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {
@@ -18,6 +19,7 @@ pub async fn audit_memory(
 
 /// Compact bot memory.
 #[tauri::command]
+#[specta::specta]
 pub async fn compact_memory(
     state: State<'_, AppState>,
     max_entries: usize,

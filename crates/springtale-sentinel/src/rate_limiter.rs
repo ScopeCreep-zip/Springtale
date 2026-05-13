@@ -27,9 +27,39 @@ impl RateLimiter {
         }
     }
 
-    /// Check if an action for the given connector is within the rate limit.
-    /// Returns `None` if allowed, or `Some(duration)` to throttle.
+    /// Check if an action for the given connector is within the rate
+    /// limit. Returns `None` if allowed, or `Some(duration)` to
+    /// throttle.
+    ///
+    /// Uses the limiter's configured baseline (`limit` /
+    /// `window_duration`). For momentum-aware throttling, prefer
+    /// [`Self::check_at_tier`] — pre-Phase-0 callers can stay on this
+    /// path until they thread cooperation context.
     pub fn check(&self, connector_name: &str) -> Option<Duration> {
+        self.check_with_budget(connector_name, self.limit, self.window_duration)
+    }
+
+    /// Tier-scoped check. The caller's
+    /// [`crate::ThrottleTier::rate_budget`] supplies the effective
+    /// `(limit, window)` pair, overriding the limiter's configured
+    /// baseline for this call only. Used by the runtime dispatcher
+    /// so a Fever-tier swarm isn't throttled to the same baseline as
+    /// a Cold solo observer.
+    pub fn check_at_tier(
+        &self,
+        connector_name: &str,
+        tier: crate::ThrottleTier,
+    ) -> Option<Duration> {
+        let (limit, window) = tier.rate_budget();
+        self.check_with_budget(connector_name, limit, window)
+    }
+
+    fn check_with_budget(
+        &self,
+        connector_name: &str,
+        limit: u32,
+        window_duration: Duration,
+    ) -> Option<Duration> {
         let now = Instant::now();
         let mut window = self
             .windows
@@ -39,15 +69,15 @@ impl RateLimiter {
             });
 
         // Remove expired entries
-        let cutoff = now - self.window_duration;
+        let cutoff = now - window_duration;
         while window.timestamps.front().is_some_and(|t| *t < cutoff) {
             window.timestamps.pop_front();
         }
 
-        if window.timestamps.len() >= self.limit as usize {
+        if window.timestamps.len() >= limit as usize {
             // Calculate how long until the oldest entry expires
             if let Some(oldest) = window.timestamps.front() {
-                let wait = self.window_duration - (now - *oldest);
+                let wait = window_duration - (now - *oldest);
                 return Some(wait);
             }
         }

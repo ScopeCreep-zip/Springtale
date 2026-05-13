@@ -11,6 +11,7 @@ mod schema;
 
 use serde::Serialize;
 
+use specta::Type;
 pub use create::{
     CreateConnectorRuleRequest, create_connector_rule, create_rule, delete_rule, toggle_rule,
     update_rule,
@@ -32,7 +33,7 @@ use crate::state::RuntimeState;
 const MAX_RULES: usize = 10_000;
 
 /// Rule summary for listing.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Type)]
 pub struct RuleSummary {
     pub id: String,
     pub name: String,

@@ -10,12 +10,13 @@ use std::net::SocketAddr;
 
 use foca::Identity;
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 /// Cluster-wide identity for a Springtale process. `addr` is the UDP
 /// endpoint foca probes + sends to; `bump` is a monotonic version so
 /// process restarts that re-bind the same port present as a new
 /// identity that wins the address conflict.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, Type)]
 pub struct ProcId {
     pub addr: SocketAddr,
     pub bump: u64,

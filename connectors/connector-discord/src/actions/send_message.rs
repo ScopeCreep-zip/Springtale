@@ -29,11 +29,20 @@ pub async fn execute(
     client: &dyn DiscordApi,
     input: &serde_json::Value,
 ) -> Result<ActionResult, DiscordError> {
-    let channel_id: u64 = input
+    let raw_channel = input
         .get("channel_id")
         .or_else(|| input.get("chat_id")) // bot response compat
         .and_then(|v| v.as_str())
-        .ok_or_else(|| DiscordError::InvalidInput("missing 'channel_id'".into()))?
+        .ok_or_else(|| DiscordError::InvalidInput("missing 'channel_id'".into()))?;
+    // D1 — accept raw u64 or WorkspaceKey URI. The URI's last
+    // segment is the channel id; `extract_id_for_scheme` does
+    // raw-id fallback when there's no `://`.
+    let resolved = springtale_connector::workspace_key::extract_id_for_scheme(
+        raw_channel,
+        "connector-discord",
+    )
+    .map_err(|e| DiscordError::InvalidInput(e.to_string()))?;
+    let channel_id: u64 = resolved
         .parse()
         .map_err(|_| DiscordError::InvalidInput("invalid channel_id".into()))?;
 

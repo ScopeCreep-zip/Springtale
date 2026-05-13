@@ -36,11 +36,22 @@ pub async fn execute(
         .and_then(|v| v.as_str())
         .ok_or_else(|| NostrError::InvalidInput("missing 'text'".to_owned()))?;
 
-    let chat_id = input
+    let raw_chat_id = input
         .get("chat_id")
         .or_else(|| input.get("recipient_pubkey"))
         .and_then(|v| v.as_str())
         .unwrap_or("");
+    // D1 — accept raw pubkey/npub OR `nostr://pubkey/{hex}` URI.
+    // Empty input stays empty (signals "publish public note").
+    let chat_id: &str = if raw_chat_id.is_empty() {
+        ""
+    } else {
+        springtale_connector::workspace_key::extract_id_for_scheme(
+            raw_chat_id,
+            "connector-nostr",
+        )
+        .map_err(|e| NostrError::InvalidInput(e.to_string()))?
+    };
 
     // If chat_id looks like a hex pubkey (64 chars) or npub, route to DM
     let is_pubkey = chat_id.len() == 64 && chat_id.chars().all(|c| c.is_ascii_hexdigit())

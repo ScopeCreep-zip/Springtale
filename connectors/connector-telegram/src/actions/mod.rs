@@ -1,6 +1,8 @@
 pub mod answer_callback_query;
 pub mod delete_message;
+pub mod discover_destinations;
 pub mod edit_message;
+pub mod onboard_url;
 pub mod send_inline_keyboard;
 pub mod send_message;
 pub mod send_photo;
@@ -15,5 +17,7 @@ pub fn action_declarations() -> Vec<ActionDecl> {
         delete_message::declaration(),
         send_inline_keyboard::declaration(),
         answer_callback_query::declaration(),
+        onboard_url::declaration(),
+        discover_destinations::declaration(),
     ]
 }

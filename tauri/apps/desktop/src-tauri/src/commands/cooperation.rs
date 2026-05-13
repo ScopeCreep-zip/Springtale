@@ -28,6 +28,7 @@ use crate::state::AppState;
 /// interference event, CFP/replan/commit outcome) reaches the desktop UI
 /// through this channel.
 #[tauri::command]
+#[specta::specta]
 pub async fn subscribe_cooperation(
     state: State<'_, AppState>,
     channel: Channel<CooperationEventEnvelope>,

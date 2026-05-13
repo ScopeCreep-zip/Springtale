@@ -43,6 +43,15 @@ chrono = { version = "0.4", features = ["serde"] }
 hex = "0.4"
 inventory = "0.3"  # F-conn-1: enumerate connector factories at runtime
 
+# tauri-specta — generates TypeScript bindings from Rust types and
+# Tauri commands. Replaces hand-maintained `Recipe` / `RecipeFilter` /
+# command-signature TS interfaces so the wire shape can never drift
+# from the Rust source of truth. Pin tracks the rc series both
+# `tauri-specta` and `specta-typescript` consume.
+specta            = { version = "=2.0.0-rc.25", features = ["derive", "serde_json", "uuid", "chrono"] }
+specta-typescript = "0.0.12"
+tauri-specta      = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
+
 # Springtale core crates — the commands layer delegates to these.
 # Zero Tauri dependency in the crates themselves.
 springtale-core = { path = "../../../../crates/springtale-core" }

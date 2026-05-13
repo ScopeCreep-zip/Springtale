@@ -88,4 +88,13 @@ mod tests {
         let adapter = NoopAdapter;
         assert!(!adapter.is_available().await);
     }
+
+    #[test]
+    fn test_noop_structured_extractor_is_none() {
+        // The "AI-optional" invariant — NoopAdapter advertises no
+        // structured-extraction capability so recipes using
+        // ExtractKind::LlmSchema fail preflight, not runtime.
+        let adapter = NoopAdapter;
+        assert!(adapter.structured_extractor().is_none());
+    }
 }

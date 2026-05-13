@@ -30,12 +30,19 @@ pub async fn execute(
     client: &dyn SlackApi,
     input: &serde_json::Value,
 ) -> Result<ActionResult, SlackError> {
-    // Accept both "channel" and "chat_id" (bot response dispatcher sends "chat_id")
-    let channel = input
+    // Accept both "channel" and "chat_id" (bot response dispatcher
+    // sends "chat_id"). D1 — values may also be `slack://channel/{C…}`
+    // or `slack://im/{D…}` URIs; the boundary parser unwraps.
+    let raw_channel = input
         .get("channel")
         .or_else(|| input.get("chat_id"))
         .and_then(|v| v.as_str())
         .ok_or_else(|| SlackError::InvalidInput("missing 'channel' or 'chat_id'".into()))?;
+    let channel = springtale_connector::workspace_key::extract_id_for_scheme(
+        raw_channel,
+        "connector-slack",
+    )
+    .map_err(|e| SlackError::InvalidInput(e.to_string()))?;
 
     let text = input
         .get("text")

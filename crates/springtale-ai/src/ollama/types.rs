@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+use specta::Type;
 /// Ollama /api/chat request body.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Type)]
 pub struct OllamaChatRequest {
     pub model: String,
     pub messages: Vec<OllamaChatMessage>,
@@ -11,13 +12,13 @@ pub struct OllamaChatRequest {
     pub options: Option<OllamaOptions>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Type)]
 pub struct OllamaChatMessage {
     pub role: String,
     pub content: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Type)]
 pub struct OllamaOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub temperature: Option<f32>,
@@ -26,7 +27,7 @@ pub struct OllamaOptions {
 }
 
 /// Ollama /api/chat response (non-streaming or final streaming chunk).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Type)]
 pub struct OllamaChatResponse {
     pub message: Option<OllamaResponseMessage>,
     pub done: bool,
@@ -38,25 +39,25 @@ pub struct OllamaChatResponse {
     pub eval_count: Option<u32>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Type)]
 pub struct OllamaResponseMessage {
     pub role: String,
     pub content: String,
 }
 
 /// Ollama /api/tags response (list models).
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Type)]
 pub struct OllamaTagsResponse {
     pub models: Option<Vec<OllamaModel>>,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Type)]
 pub struct OllamaModel {
     pub name: String,
 }
 
 /// Ollama adapter configuration.
-#[derive(Debug, Clone, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Deserialize, Type)]
 pub struct OllamaConfig {
     /// Base URL for the Ollama API. Default: "http://127.0.0.1:11434".
     #[serde(default = "default_base_url")]

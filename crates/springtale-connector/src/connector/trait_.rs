@@ -1,11 +1,12 @@
 use async_trait::async_trait;
+use specta::Type;
 
 use crate::connector::subscription::Subscription;
 use crate::error::ConnectorError;
 use crate::manifest::types::{ActionDecl, ConnectorManifest, TriggerDecl};
 
 /// Result of executing a connector action.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, Type)]
 pub struct ActionResult {
     /// Whether the action succeeded.
     pub success: bool,
@@ -91,5 +92,20 @@ pub trait Connector: Send + Sync + 'static {
         Err(ConnectorError::ExecutionFailed(
             "this connector does not support webhooks".to_owned(),
         ))
+    }
+
+    /// Per-connector mention extractor (D1). Connectors that emit
+    /// chat-like events (Telegram / Discord / Slack / Signal / IRC
+    /// / Nostr) override this to teach the universal harvester how
+    /// to find workspace keys in their event payloads. The
+    /// harvester upserts each returned destination into the firing
+    /// agent's formation mental_model_workspaces directory.
+    ///
+    /// Default returns `None` — connectors without chat-like
+    /// events (Cron, Filesystem, HTTP, Browser, Shell) skip the
+    /// harvest cleanly. See
+    /// `springtale-connector::mention::MentionExtractor`.
+    fn mention_extractor(&self) -> Option<&dyn crate::mention::MentionExtractor> {
+        None
     }
 }

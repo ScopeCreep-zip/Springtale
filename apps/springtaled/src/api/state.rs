@@ -3,8 +3,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use tokio::sync::{Mutex, broadcast, mpsc};
 
-use crate::scheduler::AppScheduler;
 use springtale_core::rule::engine::TriggerEvent;
+use springtale_runtime::EmbeddedScheduler;
 
 /// Shared application state for all API handlers.
 ///
@@ -24,7 +24,8 @@ pub struct AppState {
     /// Channel for dispatching trigger events to the rule engine event loop.
     pub trigger_tx: mpsc::Sender<TriggerEvent>,
     /// Trigger scheduler — manages cron and filesystem watchers for rules.
-    pub scheduler: AppScheduler,
+    /// Shared with the desktop app via `springtale_runtime::EmbeddedScheduler`.
+    pub scheduler: EmbeddedScheduler,
     /// Rate limit: maximum requests per second for the management API.
     pub rate_limit_per_sec: u64,
     /// Broadcast channel for SSE event streaming to dashboard.

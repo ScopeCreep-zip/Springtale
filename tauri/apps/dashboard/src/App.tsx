@@ -9,6 +9,11 @@ import {
   AppSettingsPanel,
   ConnectorConfigPanel,
   MemberPickerOverlay,
+  ModeSelectOverlay,
+  ProofOfLifePanel,
+  RecipeAuthorPanel,
+  RecipeDeployPanel,
+  RecipeLibraryOverlay,
   RuleBuilderOverlay,
   useDashboard,
   useI18n,
@@ -16,7 +21,7 @@ import {
   mapAgents,
   mapFormations,
 } from "@springtale/ui";
-import type { ColonySelection, TeamConfig } from "@springtale/ui";
+import type { ColonySelection, CreateMode, Recipe, RecipeApplyReport, RecipeLibraryVariant, TeamBuilderSeed, TeamConfig } from "@springtale/ui";
 import { COMMANDS } from "@springtale/ui";
 import { configure } from "./api/client";
 import { SettingsPage } from "./pages/Settings";
@@ -47,6 +52,10 @@ export const App = () => {
   const [showSessions, setShowSessions] = createSignal(false);
   const [showTeamBuilder, setShowTeamBuilder] = createSignal(false);
   const [showRuleBuilder, setShowRuleBuilder] = createSignal(false);
+  // W1.A — mode-select hub before any compose flow.
+  const [showModeSelect, setShowModeSelect] = createSignal(false);
+  // W1.B — recipe library opens after mode-select. null = closed.
+  const [recipeLibraryVariant, setRecipeLibraryVariant] = createSignal<RecipeLibraryVariant | null>(null);
   const [connected, setConnected] = createSignal(false);
   const [confirmAction, setConfirmAction] = createSignal<{
     title: string; message: string; label: string; action: () => Promise<void>;
@@ -147,13 +156,36 @@ export const App = () => {
         setShowSettings(false);
         setShowSessions(false);
         setShowTeamBuilder(false);
+        setShowModeSelect(false);
         setAiConfigAgent(null);
         setConnectorConfigData(null);
         return;
       }
 
+      // W2.E — `O` toggles the canvas (OUTPUT) view.
+      if (key === "o" && !e.ctrlKey && !e.metaKey && !e.shiftKey
+          && !showSettings() && !showSessions() && !showTeamBuilder()
+          && !showRuleBuilder() && !showModeSelect() && recipeLibraryVariant() === null
+          && recipeDeploy() === null && proofOfLife() === null
+          && !confirmAction() && !aiConfigAgent() && !connectorConfigData()) {
+        e.preventDefault();
+        setDetailView({ mode: "canvas" });
+        return;
+      }
+
+      // W1.A — `N` opens the mode-select hub.
+      if (key === "n" && !e.ctrlKey && !e.metaKey && !e.shiftKey
+          && !showSettings() && !showSessions() && !showTeamBuilder()
+          && !showRuleBuilder() && !showModeSelect() && recipeLibraryVariant() === null
+          && recipeDeploy() === null
+          && !confirmAction() && !aiConfigAgent() && !connectorConfigData()) {
+        e.preventDefault();
+        setShowModeSelect(true);
+        return;
+      }
+
       // Skip command shortcuts when any modal is open
-      if (showSettings() || showSessions() || showTeamBuilder() || showRuleBuilder() || confirmAction() || aiConfigAgent() || connectorConfigData()) return;
+      if (showSettings() || showSessions() || showTeamBuilder() || showRuleBuilder() || showModeSelect() || recipeLibraryVariant() !== null || recipeDeploy() !== null || proofOfLife() !== null || recipeAuthorDraft() !== null || confirmAction() || aiConfigAgent() || connectorConfigData()) return;
 
       // Command grid shortcuts: match key to current selection context.
       // F1: formation hotkeys come exclusively from the backend
@@ -202,7 +234,12 @@ export const App = () => {
           // targets the rule-composition surface specifically.
           setShowRuleBuilder(true);
           break;
-        case "global:refresh": await db.refresh(); break;
+        case "global:make_bot":
+          // Canvas is live so a refresh command is redundant — this slot
+          // now routes the user back to the bot/team selection hub.
+          setSelection({ id: null, type: null });
+          setShowModeSelect(true);
+          break;
         case "global:connectors":
           setSelection({ id: null, type: null });
           setDetailView({ mode: "connectors" });
@@ -360,6 +397,38 @@ export const App = () => {
     }
   };
 
+  // W1.A — mode-select dispatch. Each card opens the recipe library
+  // (W1.B) scoped to the chosen variant. The library has a "Build
+  // from scratch" escape hatch that falls through to TeamBuilder.
+  const handleModeSelect = (mode: CreateMode) => {
+    setShowModeSelect(false);
+    switch (mode) {
+      case "bot":
+        setRecipeLibraryVariant("bot");
+        break;
+      case "team":
+        setRecipeLibraryVariant("team");
+        break;
+      case "addToTeam":
+        setRecipeLibraryVariant("all");
+        break;
+    }
+  };
+
+  // W1.C — recipe deploy panel. When set, replaces the library
+  // overlay until the user deploys or cancels.
+  const [recipeDeploy, setRecipeDeploy] = createSignal<Recipe | null>(null);
+  // W1.E — post-deploy proof-of-life panel.
+  const [proofOfLife, setProofOfLife] = createSignal<RecipeApplyReport | null>(null);
+  // W2.A — seed for TeamBuilder when user picks CUSTOMIZE on a recipe.
+  const [teamBuilderSeed, setTeamBuilderSeed] = createSignal<TeamBuilderSeed | null>(null);
+  // W2.B — recipe authoring panel draft.
+  const [recipeAuthorDraft, setRecipeAuthorDraft] = createSignal<Recipe | null>(null);
+  const handleUseRecipe = (recipe: Recipe) => {
+    setRecipeLibraryVariant(null);
+    setRecipeDeploy(recipe);
+  };
+
   // ── Unified overlay — settings → confirm → hatch → sessions ──
   const shellOverlay = () => {
     // F5 — member picker takes precedence so destructive flow gets focus.
@@ -370,6 +439,73 @@ export const App = () => {
           formationId={pickerFor}
           onRemoved={async () => { await db.refresh(); }}
           onCancel={() => setMemberPickerFor(null)}
+        />
+      );
+    }
+    // W1.A — Mode select hub before any compose flow.
+    if (showModeSelect()) {
+      return (
+        <ModeSelectOverlay
+          hasExistingTeams={(db.swarms()?.length ?? 0) > 0}
+          onSelectMode={handleModeSelect}
+          onCancel={() => setShowModeSelect(false)}
+        />
+      );
+    }
+    // W1.B — Recipe library opens from any mode-select card.
+    if (recipeLibraryVariant() !== null) {
+      return (
+        <RecipeLibraryOverlay
+          variant={recipeLibraryVariant() ?? "all"}
+          favorites={new Set<string>()}
+          onSelectRecipe={handleUseRecipe}
+          onToggleFavorite={() => {}}
+          onBuildFromScratch={() => {
+            setRecipeLibraryVariant(null);
+            setTeamBuilderSeed(null);
+            setShowTeamBuilder(true);
+          }}
+          onCancel={() => setRecipeLibraryVariant(null)}
+        />
+      );
+    }
+    // W1.C — recipe deploy panel.
+    const deployRecipe = recipeDeploy();
+    if (deployRecipe) {
+      return (
+        <RecipeDeployPanel
+          recipe={deployRecipe}
+          onDeployed={async (report) => {
+            setRecipeDeploy(null);
+            await db.refresh();
+            setProofOfLife(report);
+          }}
+          onCancel={() => setRecipeDeploy(null)}
+        />
+      );
+    }
+    // W1.E — proof-of-life panel.
+    const polReport = proofOfLife();
+    if (polReport) {
+      return (
+        <ProofOfLifePanel
+          report={polReport}
+          onDismiss={() => setProofOfLife(null)}
+        />
+      );
+    }
+    // W2.B — recipe author panel.
+    const authorDraft = recipeAuthorDraft();
+    if (authorDraft) {
+      return (
+        <RecipeAuthorPanel
+          draft={authorDraft}
+          onSaved={async () => {
+            setRecipeAuthorDraft(null);
+            await db.refresh();
+            db.setError("Recipe saved to your library.");
+          }}
+          onCancel={() => setRecipeAuthorDraft(null)}
         />
       );
     }
@@ -502,6 +638,7 @@ export const App = () => {
             availableConnectors={availableConnectors()}
             connectors={db.schemas()}
             intents={intents()}
+            initialTemplate={teamBuilderSeed() ?? undefined}
             onSetupConnector={(name) => {
               const avail = availableConnectors().find((a) => a.name === name);
               setConnectorConfigData({ id: name, config: {}, configSchema: avail?.config_schema });
@@ -523,10 +660,11 @@ export const App = () => {
                 })),
               });
               setShowTeamBuilder(false);
+              setTeamBuilderSeed(null);
               await db.refresh();
               setAvailableConnectors(await db.provider.listAvailableConnectors());
             }}
-            onCancel={() => setShowTeamBuilder(false)}
+            onCancel={() => { setShowTeamBuilder(false); setTeamBuilderSeed(null); }}
           />
         </div>
       );
@@ -575,7 +713,7 @@ export const App = () => {
           onClearSelection={() => setSelection({ id: null, type: null })}
           connectorPositions={connectorPositions()}
           onConnectorDrag={handleConnectorDrag}
-          onHatch={() => setShowTeamBuilder(true)}
+          onHatch={() => setShowModeSelect(true)}
           availableConnectors={availableConnectors()}
           connectorSchemas={db.schemas()}
           onSetupConnector={(name) => {
@@ -627,7 +765,7 @@ export const App = () => {
             const avail = availableConnectors().find((a) => a.name === name);
             setConnectorConfigData({ id: name, config: {}, configSchema: avail?.config_schema });
           }}
-          onCreateBot={() => setShowTeamBuilder(true)}
+          onCreateBot={() => setShowModeSelect(true)}
         />
       }
       overlay={shellOverlay()}

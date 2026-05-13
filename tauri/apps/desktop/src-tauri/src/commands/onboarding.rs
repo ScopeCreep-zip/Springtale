@@ -8,12 +8,14 @@ use springtale_runtime::operations::onboarding::{self, ApplyReport, PlatformForm
 
 /// List all onboarding platform forms (wizard step definitions).
 #[tauri::command]
-pub async fn list_onboarding_platforms() -> Result<Vec<&'static PlatformForm>, String> {
-    Ok(onboarding::list_platforms())
+#[specta::specta]
+pub async fn list_onboarding_platforms() -> Result<Vec<PlatformForm>, String> {
+    Ok(onboarding::list_platforms().into_iter().cloned().collect())
 }
 
 /// Apply an onboarding wizard answer set — persist connector config.
 #[tauri::command]
+#[specta::specta]
 pub async fn apply_onboarding(
     state: State<'_, AppState>,
     platform: String,

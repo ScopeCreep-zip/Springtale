@@ -51,7 +51,7 @@ Fourteen first-party connectors ship today. You wire them together with rules �
 | `connector-presearch` | Presearch | privacy-first search + scraping, cached |
 | `connector-filesystem` | Local files | watch, read, write with path allow-lists |
 | `connector-shell` | Shell commands | execute with allow-list, timeout, approval gate |
-| `connector-http` | Generic HTTP | GET/POST/PUT/DELETE with host allow-list |
+| `connector-http` | Generic HTTP | GET/POST with host allow-list |
 | `connector-telegram` | Telegram | Bot API, polling + webhooks |
 | `connector-discord` | Discord | twilight gateway, slash commands, messages |
 | `connector-slack` | Slack | Socket Mode + webhooks, messages, blocks |
@@ -97,12 +97,14 @@ Springtale is a Rust workspace with strict downward-only dependencies. No cycles
 │   Tauri desktop + web dashboard (SolidJS)                │
 ├──────────────────────────────────────────────────────────┤
 │                        Bot Layer                         │
-│   bot (runtime, router, cooperation, orchestrator)       │
+│   bot (runtime, router, cooperation glue, orchestrator)  │
 │   runtime (shared init, dispatch, operations)            │
 ├──────────────────────────────────────────────────────────┤
 │                   Integration Crates                     │
+│   cooperation (40+ modules — formations, momentum,       │
+│                rally, supervision, gossip, mental model) │
 │   mcp (rmcp 1.x bridge)     ai (Anthropic/Ollama/…/Noop) │
-│   sentinel (toxic pairs, behavioural monitor)            │
+│   sentinel (toxic pairs, monitor, approval gate)         │
 │   scheduler (cron, watcher, jobs, heartbeat)             │
 ├──────────────────────────────────────────────────────────┤
 │                     Connector Layer                      │
@@ -110,10 +112,15 @@ Springtale is a Rust workspace with strict downward-only dependencies. No cycles
 │   WASM sandbox (Wasmtime — fuel, memory, epoch timeout)  │
 ├──────────────────────────────────────────────────────────┤
 │                    Foundation Crates                     │
-│   store (SQLite + WAL + 8 migrations)                    │
+│   store (SQLite + WAL + declarative schema in            │
+│          schema/sql/, apply via PRAGMA user_version)     │
 │   crypto (Ed25519, vault, Argon2id, XChaCha20-Poly1305)  │
 │   core (rule engine, pipeline, transforms, canvas)       │
 │   transport (Local / HTTP-mTLS / Veilid-stub)            │
+├──────────────────────────────────────────────────────────┤
+│             Cross-language bindings (G3)                 │
+│   wit (WIT world for WASM Component Model embedding)     │
+│   py  (pyo3 Python bindings, abi3-py39)                  │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -160,9 +167,9 @@ Security guide: [docs/guide/security.md](docs/guide/security.md) | Full threat m
 | Phase | Scope | State |
 |---|---|---|
 | 1a | Framework + connectors. Daemon, CLI, rule engine, crypto vault, WASM sandbox, 7 baseline connectors, MCP bridge. | Present. |
-| 1b | Bot foundations. `springtale-bot` with command router, cooperation framework, `connector-telegram`. | Present. 12 of 20 cooperation modules are type-defined only; 3 unaudited. |
+| 1b | Bot foundations. `springtale-bot` with command router, cooperation framework, `connector-telegram`. | Present. Cooperation framework fully extracted into `springtale-cooperation` (40+ modules, zero internal deps) and wired through a 14-step formation tick. See [`docs/arch/AUDIT-NOTES.md §3`](docs/arch/AUDIT-NOTES.md). |
 | 2a | Chat + AI. Discord, Signal, IRC, Slack, Nostr connectors. Anthropic / Ollama / OpenAI-compat adapters (all three stream). `HttpTransport` (rustls mTLS). `springtale-sentinel`. | Present. `connector-matrix` is not in the workspace — `matrix-sdk` pins a `rusqlite` with an open CVE. |
-| 2b | Desktop + safety. Tauri 2 shell, SolidJS dashboard, canvas visualisation. Duress vault, panic wipe, travel mode. | Shell, dashboard, canvas, duress, panic wipe, travel mode all present. Visual rule builder, i18n, and a11y are not implemented. |
+| 2b | Desktop + safety. Tauri 2 shell, SolidJS dashboard, canvas visualisation. Duress vault, panic wipe, travel mode, disguise tray icon (G5f), OS-wide quick-hide shortcut (G5g), destructive-action approval gate (G5b). | Shell, dashboard, canvas, duress, panic wipe, travel mode, disguise, quick-hide, approval gate all present. Visual rule builder (basic overlay shipped), i18n, and a11y still in progress. |
 | 3 | Veilid mesh. P2P transport, E2E encrypted AI chat, no server. | `VeilidTransport` is a stub — every method returns `TransportError::NotConnected`. |
 
 Full breakdown: [docs/ROADMAP.md](docs/ROADMAP.md)
@@ -180,16 +187,28 @@ Springtale draws from and contributes to a constellation of projects:
 
 | New to Springtale? | Looking something up? | Want to contribute? |
 |---|---|---|
-| [Learning path](docs/guide/) | [CLI reference](docs/reference/cli.md) | [Contributing guide](docs/contributing/) |
-| [Architecture guide](docs/guide/architecture.md) | [API reference](docs/reference/api.md) | [Design decisions](docs/contributing/design-decisions.md) |
-| [Security guide](docs/guide/security.md) | [Config reference](docs/reference/configuration.md) | [Adding a connector](docs/contributing/adding-a-connector.md) |
-| [Glossary](docs/GLOSSARY.md) | [Connector reference](docs/reference/connectors/) | [As-built arch](docs/arch/) |
+| [Learning path](docs/guide/) | [CLI reference](docs/reference/cli.md) | [CONTRIBUTING.md](CONTRIBUTING.md) |
+| [Installation](docs/installation/) | [API reference](docs/reference/api.md) | [Adding a connector](docs/contributing/adding-a-connector.md) |
+| [QUICKSTART](docs/QUICKSTART.md) | [Config reference](docs/reference/configuration.md) | [Extension points](docs/contributing/extension-points.md) |
+| [Tutorials](docs/tutorials/) | [Connector reference](docs/reference/connectors/) | [Architecture Decision Records](docs/adr/) |
+| [Cookbook](docs/cookbook/) | [API client examples](docs/reference/api-clients/) | [Design decisions](docs/contributing/design-decisions.md) |
+| [Architecture](docs/guide/architecture.md) | [Python bindings](docs/python/) | [As-built arch](docs/arch/) |
+| [Cooperation](docs/guide/cooperation.md) | [Performance reference](docs/reference/performance.md) | [Code of Conduct](CODE_OF_CONDUCT.md) |
+| [Security](docs/guide/security.md) | [Glossary](docs/GLOSSARY.md) | [Anonymous contribution](docs/anonymous-contribution.md) |
+| [FAQ](docs/FAQ.md) | [Operations](docs/operations/) | [Security disclosure](SECURITY.md) |
+| [Threat model FAQ](docs/threat-model-faq.md) | [CHANGELOG](CHANGELOG.md) | [OPSEC](docs/opsec.md) |
 
 ## Contributing
 
 Springtale is built by and for marginalized communities.
 We welcome security review, accessibility expertise, i18n, and code.
-Start with [docs/contributing/](docs/contributing/).
+
+Start with [CONTRIBUTING.md](CONTRIBUTING.md). Read the
+[Code of Conduct](CODE_OF_CONDUCT.md). If you can't put a real name
+on your commits, see [docs/anonymous-contribution.md](docs/anonymous-contribution.md).
+
+Found a vulnerability? Don't open an issue. See
+[SECURITY.md](SECURITY.md) for the disclosure policy.
 
 ## License
 

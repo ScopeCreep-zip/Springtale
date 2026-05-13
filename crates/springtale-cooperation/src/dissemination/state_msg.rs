@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 use crate::cadence::AgentId;
 use crate::momentum::MomentumTier;
@@ -10,7 +11,7 @@ use crate::types::AgentHealth;
 /// routing; anything that changes *state* visible to peers goes here. The
 /// split lives here rather than being inlined into a god-enum on the bus so
 /// adding a new signal is a one-line change in this file.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub enum StateMessage {
     AgentHealthChanged {
         agent: AgentId,

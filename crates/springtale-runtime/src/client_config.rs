@@ -13,6 +13,7 @@
 
 use std::path::Path;
 
+use specta::Type;
 use secrecy::{ExposeSecret, SecretString};
 use serde::Deserialize;
 
@@ -43,13 +44,13 @@ pub enum ClientConfigError {
 /// Deliberately `Deserialize`-only (never `Serialize`) per security.md.
 /// Unknown fields are ignored so CLI tools don't break when the daemon
 /// adds new config keys.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, Type)]
 struct PartialConfig {
     #[serde(default)]
     api: ApiSection,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Type)]
 struct ApiSection {
     #[serde(default = "default_bind")]
     bind: String,

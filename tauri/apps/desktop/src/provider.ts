@@ -12,6 +12,20 @@ import type { EventEntry, CanvasUpdate } from "@springtale/types";
 import { listConnectors, listAvailableConnectors, setupConnector, getConnectorSchemas, enableConnector, disableConnector, reloadConnector, removeConnector, removeConnectorCascade, getConnectorConfig, listConnectorOutputs } from "./ipc/connectors";
 import { listRules, createRule, toggleRule, deleteRule, updateRule, runRule, parseRuleFromIntent, listRulesForConnector, testConnector, reassignRuleConnector, createConnectorRule, getRuleSchema } from "./ipc/rules";
 import { listEvents } from "./ipc/events";
+import { listExecutions, getExecutionSteps } from "./ipc/executions";
+import { openSelectorPicker } from "./ipc/selector_picker";
+import { testRecipeStep } from "./ipc/test_step";
+import { getRecipeDrift } from "./ipc/drift";
+import {
+  listWorkspaces,
+  scanWorkspaces,
+  deleteWorkspace,
+  upsertWorkspaceManual,
+  previewOnboardUrl,
+  startOnboardStream,
+  cancelOnboardStream,
+  subscribeToChatDiscovered,
+} from "./ipc/workspaces";
 import {
   listFormations,
   getFormation,
@@ -44,8 +58,27 @@ import {
   setDisguiseActive as ipcSetDisguiseActive,
   setDisguiseProfile as ipcSetDisguiseProfile,
   setPanicTapCount as ipcSetPanicTapCount,
+  getSafetyConfig as ipcGetSafetyConfig,
+  saveSafetyConfig as ipcSaveSafetyConfig,
 } from "./ipc/safety";
 import { listOnboardingPlatforms, applyOnboarding } from "./ipc/onboarding";
+import {
+  listRecipes,
+  getRecipe,
+  listRecipeCategories,
+  toggleRecipeFavorite,
+  recordRecipeRecent,
+  applyRecipe,
+  renderRecipeToml,
+  preflightRecipe,
+  previewRecipe,
+  listRecipePieces,
+  saveUserRecipe,
+  forkRecipe,
+  deleteUserRecipe,
+  exportRecipeToml,
+  importRecipeToml,
+} from "./ipc/recipes";
 import { listTemplates, writeTemplate } from "./ipc/templates";
 import { listFixes, getFix, applyFix } from "./ipc/fixes";
 import { sendMessage } from "./ipc/send";
@@ -78,6 +111,27 @@ export function createDesktopProvider(): DataProvider {
     listRulesForConnector,
     testConnector,
     reassignRuleConnector,
+
+    // Phase B — Executions log
+    listExecutions,
+    getExecutionSteps,
+
+    // Phase B — Selector picker (authoring-time)
+    openSelectorPicker,
+
+    // Phase C — Test This Step + drift detection
+    testRecipeStep,
+    getRecipeDrift,
+
+    // D1 — External-workspace directory
+    listWorkspaces,
+    scanWorkspaces,
+    deleteWorkspace,
+    upsertWorkspaceManual,
+    previewOnboardUrl,
+    startOnboardStream,
+    cancelOnboardStream,
+    subscribeToChatDiscovered,
 
     // Events
     listEvents,
@@ -173,6 +227,8 @@ export function createDesktopProvider(): DataProvider {
     },
 
     // G5d — IPV duress surface (desktop).
+    getSafetyConfig: () => ipcGetSafetyConfig(),
+    saveSafetyConfig: (config) => ipcSaveSafetyConfig(config),
     setDisguiseActive: (active: boolean) => ipcSetDisguiseActive(active),
     setDisguiseProfile: (appName: string, iconId: string) =>
       ipcSetDisguiseProfile(appName, iconId),
@@ -184,6 +240,27 @@ export function createDesktopProvider(): DataProvider {
     // Onboarding
     listOnboardingPlatforms,
     applyOnboarding,
+    // W1.B recipes
+    listRecipes,
+    getRecipe,
+    listRecipeCategories,
+    toggleRecipeFavorite,
+    recordRecipeRecent,
+    // W1.C deploy
+    applyRecipe,
+    renderRecipeToml,
+    // W1.D preflight
+    preflightRecipe,
+    // W2.C preview
+    previewRecipe,
+    // W2.D modular pieces
+    listRecipePieces,
+    // W2.B authoring
+    saveUserRecipe,
+    forkRecipe,
+    deleteUserRecipe,
+    exportRecipeToml,
+    importRecipeToml,
 
     // Templates
     listTemplates,

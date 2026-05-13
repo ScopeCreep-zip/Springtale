@@ -8,6 +8,7 @@ use crate::state::AppState;
 
 /// List recent events.
 #[tauri::command]
+#[specta::specta]
 pub async fn list_events(
     state: State<'_, AppState>,
     limit: Option<u32>,

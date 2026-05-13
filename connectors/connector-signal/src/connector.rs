@@ -140,6 +140,11 @@ impl Connector for SignalConnector {
                     .await
                     .map_err(ConnectorError::from)
             }
+            "discover_destinations" => {
+                actions::discover_destinations::execute(&self.client, &input)
+                    .await
+                    .map_err(ConnectorError::from)
+            }
             unknown => Err(ConnectorError::ExecutionFailed(format!(
                 "unknown action: {unknown}"
             ))),
@@ -182,6 +187,12 @@ impl Connector for SignalConnector {
     fn manifest(&self) -> &ConnectorManifest {
         &self.manifest
     }
+
+    fn mention_extractor(
+        &self,
+    ) -> Option<&dyn springtale_connector::mention::MentionExtractor> {
+        Some(&crate::mention::SIGNAL_MENTION_EXTRACTOR)
+    }
 }
 
 #[cfg(test)]
@@ -196,6 +207,7 @@ mod tests {
 
     #[test]
     fn test_action_count() {
-        assert_eq!(actions::action_declarations().len(), 3);
+        // 3 messaging/admin actions + D1's `discover_destinations` enumeration.
+        assert_eq!(actions::action_declarations().len(), 4);
     }
 }

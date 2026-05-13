@@ -3,6 +3,21 @@ use secrecy::{ExposeSecret, SecretBox};
 
 use crate::error::SlackError;
 
+/// A Slack conversation discovered via active enumeration.
+///
+/// Surfaces the minimum metadata needed to build a
+/// workspace key. The Slack ID's first character determines the kind
+/// (`C` channel, `G` private/legacy channel, `D` IM, `M` mpim).
+#[derive(Debug, Clone)]
+pub struct DiscoveredSlackConversation {
+    pub id: String,
+    pub name: Option<String>,
+    pub is_im: bool,
+    pub is_mpim: bool,
+    pub is_private: bool,
+    pub num_members: Option<u64>,
+}
+
 /// Trait defining the Slack API surface used by actions.
 /// Actions depend on this trait — enables mock testing.
 #[async_trait]
@@ -40,6 +55,11 @@ pub trait SlackApi: Send + Sync {
         timestamp: &str,
         name: &str,
     ) -> Result<(), SlackError>;
+
+    /// Enumerate every conversation this bot has access to —
+    /// public + private channels, IMs, and mpims via cursor-paginated
+    /// `conversations.list`.
+    async fn list_destinations(&self) -> Result<Vec<DiscoveredSlackConversation>, SlackError>;
 }
 
 /// Concrete Slack client wrapping reqwest.
@@ -191,6 +211,54 @@ impl SlackApi for SlackClient {
         self.api_post("reactions.add", body).await?;
         Ok(())
     }
+
+    async fn list_destinations(&self) -> Result<Vec<DiscoveredSlackConversation>, SlackError> {
+        let mut out = Vec::new();
+        let mut cursor: Option<String> = None;
+        loop {
+            let mut body = serde_json::json!({
+                "types": "public_channel,private_channel,mpim,im",
+                "limit": 200,
+                "exclude_archived": true,
+            });
+            if let Some(c) = &cursor {
+                body["cursor"] = serde_json::Value::String(c.clone());
+            }
+            let resp = self.api_post("conversations.list", body).await?;
+            if let Some(channels) = resp.get("channels").and_then(|c| c.as_array()) {
+                for ch in channels {
+                    let id = match ch.get("id").and_then(|v| v.as_str()) {
+                        Some(s) => s.to_owned(),
+                        None => continue,
+                    };
+                    out.push(DiscoveredSlackConversation {
+                        id,
+                        name: ch
+                            .get("name")
+                            .and_then(|v| v.as_str())
+                            .map(str::to_owned),
+                        is_im: ch.get("is_im").and_then(|v| v.as_bool()).unwrap_or(false),
+                        is_mpim: ch.get("is_mpim").and_then(|v| v.as_bool()).unwrap_or(false),
+                        is_private: ch
+                            .get("is_private")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or(false),
+                        num_members: ch.get("num_members").and_then(|v| v.as_u64()),
+                    });
+                }
+            }
+            cursor = resp
+                .get("response_metadata")
+                .and_then(|m| m.get("next_cursor"))
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty())
+                .map(str::to_owned);
+            if cursor.is_none() {
+                break;
+            }
+        }
+        Ok(out)
+    }
 }
 
 #[cfg(test)]
@@ -256,6 +324,54 @@ pub mod test_helpers {
             _name: &str,
         ) -> Result<(), SlackError> {
             Ok(())
+        }
+
+        async fn list_destinations(&self) -> Result<Vec<DiscoveredSlackConversation>, SlackError> {
+            // Synthetic mix covering every prefix path the URI scheme
+            // distinguishes: C (public channel), G (private channel),
+            // D (IM), M (mpim).
+            Ok(vec![
+                DiscoveredSlackConversation {
+                    id: "C0PUBLIC1".to_owned(),
+                    name: Some("general".to_owned()),
+                    is_im: false,
+                    is_mpim: false,
+                    is_private: false,
+                    num_members: Some(42),
+                },
+                DiscoveredSlackConversation {
+                    id: "C0PUBLIC2".to_owned(),
+                    name: Some("random".to_owned()),
+                    is_im: false,
+                    is_mpim: false,
+                    is_private: false,
+                    num_members: Some(35),
+                },
+                DiscoveredSlackConversation {
+                    id: "G0PRIV1".to_owned(),
+                    name: Some("team-private".to_owned()),
+                    is_im: false,
+                    is_mpim: false,
+                    is_private: true,
+                    num_members: Some(8),
+                },
+                DiscoveredSlackConversation {
+                    id: "D0DM1".to_owned(),
+                    name: None,
+                    is_im: true,
+                    is_mpim: false,
+                    is_private: true,
+                    num_members: Some(2),
+                },
+                DiscoveredSlackConversation {
+                    id: "M0MPIM1".to_owned(),
+                    name: None,
+                    is_im: false,
+                    is_mpim: true,
+                    is_private: true,
+                    num_members: Some(4),
+                },
+            ])
         }
     }
 }

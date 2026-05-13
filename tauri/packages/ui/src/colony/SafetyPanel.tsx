@@ -17,19 +17,8 @@
 import { createResource, createSignal, Show } from "solid-js";
 import type { Component } from "solid-js";
 import { useDashboard } from "../dashboard/context";
+import type { SafetyConfig } from "../dashboard/types";
 import { useI18n } from "../i18n/context";
-
-/** Mirrors `springtale_store::SafetyConfigRow` — keep in sync. */
-interface SafetyConfig {
-  window_title: string;
-  auto_lock_minutes: number;
-  content_protected: boolean;
-  quick_hide_shortcut: string;
-  disguise_app_name: string;
-  disguise_icon_id: string;
-  disguise_active: boolean;
-  panic_tap_count: number;
-}
 
 const DEFAULT_CONFIG: SafetyConfig = {
   window_title: "Notes",
@@ -49,13 +38,16 @@ export interface SafetyPanelProps {
    *  shows a confirmation modal before calling the panic op. */
   onPanicWipe?: () => Promise<void>;
   /**
-   * G5f — optional hook the host App uses to apply the new
-   * disguise state to the platform shell (window title, tray icon,
-   * iOS alternate icon, Android launcher alias). The panel doesn't
-   * know what platform it's on; the host owns that translation.
-   * Called after any disguise-related backend write succeeds.
+   * Optional hook the host App uses to re-apply the persisted
+   * safety state to the running process after any panel-side save
+   * — disguise (window title, tray icon, iOS alternate icon),
+   * content protection, quick-hide shortcut, auto-lock timer, …
+   * The panel doesn't know what platform it's on; the host owns
+   * that translation. Called after any backend write succeeds —
+   * focused setters (disguise/panic-taps) AND the full-form Save
+   * gesture both fire it so every Save means "this took effect."
    */
-  onDisguiseStateChanged?: () => Promise<void>;
+  onSafetyChanged?: () => Promise<void>;
   /**
    * G5h — open the travel-mode page (encrypted backup + local wipe
    * + restore from backup; per §2.6 border-crossing threat model).
@@ -72,15 +64,17 @@ export const SafetyPanel: Component<SafetyPanelProps> = (props) => {
   const [saved, setSaved] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
-  // Initial fetch via the existing get-config provider. The
-  // provider returns `unknown` for arbitrary config keys, so we
-  // narrow at the call site.
+  // Initial fetch from the DEDICATED safety table — NOT the generic
+  // `setConfig("safety", …)` blob. The two are different SQLite tables;
+  // the OS-apply commands (`apply_content_protection`,
+  // `apply_disguise_to_shell`, …) read from this one, and historically
+  // the panel was reading/writing the wrong table — so saves persisted
+  // but never reached the apply path. See `DataProvider.getSafetyConfig`
+  // doc in `dashboard/types.ts`.
   createResource(async () => {
     try {
-      const raw = (await db.provider.getConfig("safety")) as Partial<SafetyConfig> | null;
-      if (raw) {
-        setConfig({ ...DEFAULT_CONFIG, ...raw });
-      }
+      const row = await db.provider.getSafetyConfig();
+      setConfig({ ...DEFAULT_CONFIG, ...row });
     } catch (e) {
       setError(String(e));
     }
@@ -99,7 +93,7 @@ export const SafetyPanel: Component<SafetyPanelProps> = (props) => {
       const next = !config().disguise_active;
       const persisted = await db.provider.setDisguiseActive(next);
       update({ disguise_active: persisted });
-      await props.onDisguiseStateChanged?.();
+      await props.onSafetyChanged?.();
       setError(null);
     } catch (e) {
       setError(String(e));
@@ -112,7 +106,7 @@ export const SafetyPanel: Component<SafetyPanelProps> = (props) => {
     try {
       await db.provider.setDisguiseProfile(appName, iconId);
       update({ disguise_app_name: appName, disguise_icon_id: iconId });
-      await props.onDisguiseStateChanged?.();
+      await props.onSafetyChanged?.();
       setError(null);
     } catch (e) {
       setError(String(e));
@@ -132,13 +126,23 @@ export const SafetyPanel: Component<SafetyPanelProps> = (props) => {
     }
   };
 
-  /** Full-config save for the explicit-gesture fields. */
+  /** Full-config save for the explicit-gesture fields.
+   *
+   *  After persisting, fires `onSafetyChanged` so the host App
+   *  re-applies every runtime side-effect (window title, content
+   *  protection, quick-hide shortcut, auto-lock timer). Without
+   *  this, a Save would persist to SQLite but the running process
+   *  kept its old state until the next restart — which is what
+   *  made the panel feel inert. */
   const save = async () => {
     try {
-      // setConfig persists via /config set under "safety" key —
-      // matches what the existing AppSettingsPanel patterns do for
-      // other config blocks.
-      await db.provider.setConfig("safety", config());
+      // Write to the dedicated safety table (`SafetyConfigRow`) — the
+      // same table every `apply_*` Tauri command reads from. The
+      // previous version called `setConfig("safety", …)` which
+      // persisted to a generic key/value blob that nothing else read,
+      // so toggles silently failed to take effect.
+      await db.provider.saveSafetyConfig(config());
+      await props.onSafetyChanged?.();
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
       setError(null);

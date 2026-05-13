@@ -108,13 +108,45 @@ impl RuleEngine {
     ///
     /// Returns a list of rules whose trigger matched AND whose conditions
     /// all passed. The caller is responsible for dispatching the actions.
+    ///
+    /// This entry point applies no ownership filter — all matching
+    /// rules fire regardless of [`super::RuleOwner`]. Pre-Phase-0
+    /// behavior; preserved for callers that don't yet thread firing
+    /// context (e.g. NL-rule preview, ad-hoc evaluator tests).
+    /// Production callers should use
+    /// [`Self::evaluate_with_filter`] so cross-formation rules don't
+    /// fire from the wrong context.
     pub fn evaluate(&self, event: &TriggerEvent) -> Vec<RuleMatch> {
-        // Wrap payload in Arc once — all matches share the same ref.
+        self.evaluate_with_filter(event, None, None)
+    }
+
+    /// Cooperation-aware variant of [`Self::evaluate`]. Filters out
+    /// rules whose [`super::RuleOwner`] doesn't match the firing
+    /// context's agent / formation ids.
+    ///
+    /// Lookup semantics:
+    ///   - `RuleOwner::Global` always matches (global rules fire
+    ///     regardless of context).
+    ///   - `RuleOwner::Agent { id }` matches when `agent_id == Some(id)`.
+    ///   - `RuleOwner::Formation { id }` matches when
+    ///     `formation_id == Some(id)`.
+    ///
+    /// Pass `None` for both args to fire only Global rules — this is
+    /// the "daemon queue / system cron" semantics. Pass `agent_id` to
+    /// also fire Agent rules for that agent. Pass both to fire all
+    /// three.
+    pub fn evaluate_with_filter(
+        &self,
+        event: &TriggerEvent,
+        agent_id: Option<uuid::Uuid>,
+        formation_id: Option<uuid::Uuid>,
+    ) -> Vec<RuleMatch> {
         let payload = Arc::new(event.payload.clone());
 
         self.rules
             .values()
             .filter(|rule| rule.status == RuleStatus::Enabled)
+            .filter(|rule| rule.owner.matches(agent_id, formation_id))
             .filter(|rule| trigger_matches(&rule.trigger, event))
             .filter(|rule| {
                 rule.conditions
@@ -214,6 +246,7 @@ mod tests {
                 event: event.into(),
             },
             conditions: vec![],
+            owner: super::super::types::RuleOwner::Global,
             actions: vec![Action::SendMessage {
                 text: "matched!".into(),
             }],

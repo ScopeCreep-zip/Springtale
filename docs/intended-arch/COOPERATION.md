@@ -3,7 +3,7 @@
 **Status:** Implemented (April 2026 — see `crates/springtale-cooperation/`) · **Phase:** 1b/2a · **Updated:** 2026-04-10
 **Companion to:** `COOPERATION.pdf` (game-design spec) and `ARCHITECTURE.md §14`.
 
-> The 37-module crate this document specifies is shipped and wired through a 14-step
+> The 40+-module crate this document specifies is shipped and wired through a 14-step
 > formation tick. User-facing tour: [`docs/guide/cooperation.md`](../guide/cooperation.md).
 > Wiring report: [`docs/arch/AUDIT-NOTES.md §3`](../arch/AUDIT-NOTES.md). The text below
 > is preserved as the design rationale of record.

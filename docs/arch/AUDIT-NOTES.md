@@ -61,7 +61,7 @@ end-to-end. SDK dispatch example in `sdk/connector-sdk/src/lib.rs:9-24`.
 
 **State update (April 2026):** What this section previously described as
 "type-defined, not wired" is now wired. The cooperation code moved into
-its own crate (`springtale-cooperation`, 37 modules, zero internal deps)
+its own crate (`springtale-cooperation`, 40+ modules, zero internal deps)
 and `springtale-bot` gained a 14-step per-formation tick pipeline that
 exercises every module.
 

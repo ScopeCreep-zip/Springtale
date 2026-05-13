@@ -7,12 +7,13 @@
 
 use std::path::Path;
 
+use specta::Type;
 use serde::Serialize;
 
 use crate::operations::diagnostics::{self, DiagnosticPaths};
 
 /// Static guidance for a single error ID.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct FixGuide {
     pub id: &'static str,
     pub title: &'static str,
@@ -23,7 +24,7 @@ pub struct FixGuide {
 }
 
 /// Result of an attempted automated fix.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct FixOutcome {
     pub id: &'static str,
     pub success: bool,

@@ -2,6 +2,18 @@ use async_trait::async_trait;
 
 use crate::error::SignalError;
 
+/// A Signal addressable target discovered via signal-cli enumeration.
+///
+/// `kind` is either `"group"` (then `id` is the base64 group id) or
+/// `"contact"` (then `id` is the E.164 phone number).
+#[derive(Debug, Clone)]
+pub struct DiscoveredSignalRecipient {
+    pub id: String,
+    pub display_name: String,
+    pub kind: String,
+    pub member_count: Option<u64>,
+}
+
 /// Trait defining the Signal API surface (via signal-cli daemon).
 /// Actions depend on this trait — enables mock testing.
 #[async_trait]
@@ -26,6 +38,13 @@ pub trait SignalApi: Send + Sync {
         recipient: &str,
         expires_in_seconds: u64,
     ) -> Result<(), SignalError>;
+
+    /// Enumerate every addressable Signal target — groups via
+    /// `listGroups` and 1:1 contacts via `listContacts` (both JSON-RPC
+    /// methods on signal-cli).
+    async fn list_destinations(
+        &self,
+    ) -> Result<Vec<DiscoveredSignalRecipient>, SignalError>;
 }
 
 /// Concrete Signal client bridging to signal-cli daemon via HTTP JSON-RPC.
@@ -167,6 +186,68 @@ impl SignalApi for SignalClient {
         self.rpc_call("setExpirationTimer", params).await?;
         Ok(())
     }
+
+    async fn list_destinations(
+        &self,
+    ) -> Result<Vec<DiscoveredSignalRecipient>, SignalError> {
+        let mut out = Vec::new();
+
+        // Groups: signal-cli `listGroups` returns
+        // [{"id": "<base64>", "name": "...", "members": [...], ...}, ...]
+        let params = serde_json::json!({ "account": self.account_id });
+        let groups = self.rpc_call("listGroups", params).await?;
+        if let Some(arr) = groups.as_array() {
+            for g in arr {
+                let id = match g.get("id").and_then(|v| v.as_str()) {
+                    Some(s) => s.to_owned(),
+                    None => continue,
+                };
+                let name = g
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("Signal group")
+                    .to_owned();
+                let member_count = g
+                    .get("members")
+                    .and_then(|v| v.as_array())
+                    .map(|a| a.len() as u64);
+                out.push(DiscoveredSignalRecipient {
+                    id,
+                    display_name: name,
+                    kind: "group".to_owned(),
+                    member_count,
+                });
+            }
+        }
+
+        // Contacts: signal-cli `listContacts` returns
+        // [{"number": "+1...", "name": "...", "uuid": "...", ...}, ...]
+        let params = serde_json::json!({ "account": self.account_id });
+        let contacts = self.rpc_call("listContacts", params).await?;
+        if let Some(arr) = contacts.as_array() {
+            for c in arr {
+                let phone = match c.get("number").and_then(|v| v.as_str()) {
+                    Some(s) if !s.is_empty() => s.to_owned(),
+                    _ => continue,
+                };
+                let name = c
+                    .get("name")
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or(&phone)
+                    .to_owned();
+                out.push(DiscoveredSignalRecipient {
+                    id: phone,
+                    display_name: name,
+                    kind: "contact".to_owned(),
+                    member_count: None,
+                });
+            }
+        }
+
+        Ok(out)
+    }
 }
 
 #[cfg(test)]
@@ -199,6 +280,37 @@ pub mod test_helpers {
             _expires_in_seconds: u64,
         ) -> Result<(), SignalError> {
             Ok(())
+        }
+
+        async fn list_destinations(
+            &self,
+        ) -> Result<Vec<DiscoveredSignalRecipient>, SignalError> {
+            Ok(vec![
+                DiscoveredSignalRecipient {
+                    id: "GROUP_ID_BASE64=".to_owned(),
+                    display_name: "Coordinating Cell".to_owned(),
+                    kind: "group".to_owned(),
+                    member_count: Some(8),
+                },
+                DiscoveredSignalRecipient {
+                    id: "GROUP_ID_BASE64_2=".to_owned(),
+                    display_name: "Signal group".to_owned(),
+                    kind: "group".to_owned(),
+                    member_count: Some(2),
+                },
+                DiscoveredSignalRecipient {
+                    id: "+15551234567".to_owned(),
+                    display_name: "Alice".to_owned(),
+                    kind: "contact".to_owned(),
+                    member_count: None,
+                },
+                DiscoveredSignalRecipient {
+                    id: "+15559876543".to_owned(),
+                    display_name: "+15559876543".to_owned(),
+                    kind: "contact".to_owned(),
+                    member_count: None,
+                },
+            ])
         }
     }
 }

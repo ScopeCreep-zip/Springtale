@@ -24,6 +24,7 @@
 
 use std::collections::BTreeMap;
 
+use specta::Type;
 use serde::Serialize;
 // F-conn-1: PlatformForm + FormField now live in `springtale-connector` so
 // each connector crate self-registers its onboarding form via
@@ -37,7 +38,7 @@ use super::config::set_config;
 use crate::error::OperationError;
 
 /// Summary of a successful `apply_platform` call.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct ApplyReport {
     pub platform: &'static str,
     pub stored_key: String,

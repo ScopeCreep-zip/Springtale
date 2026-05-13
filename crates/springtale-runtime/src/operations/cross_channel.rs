@@ -26,6 +26,7 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use serde_json::json;
 use tokio::sync::RwLock;
 
@@ -35,7 +36,7 @@ use crate::error::OperationError;
 use crate::state::RuntimeState;
 
 /// Request to send a message through a specific connector.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Type)]
 pub struct SendRequest {
     /// Connector name, e.g. `connector-telegram`.
     pub connector: String,
@@ -47,7 +48,7 @@ pub struct SendRequest {
 
 /// Outcome returned to the caller — connector-friendly message string
 /// and whatever structured output the connector produced.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct SendOutcome {
     pub connector: String,
     pub channel_id: String,

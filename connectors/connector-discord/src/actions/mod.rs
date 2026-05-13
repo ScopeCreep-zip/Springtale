@@ -1,5 +1,6 @@
 pub mod add_reaction;
 pub mod delete_message;
+pub mod discover_destinations;
 pub mod edit_message;
 pub mod send_embed;
 pub mod send_message;
@@ -13,5 +14,6 @@ pub fn action_declarations() -> Vec<ActionDecl> {
         edit_message::declaration(),
         delete_message::declaration(),
         add_reaction::declaration(),
+        discover_destinations::declaration(),
     ]
 }

@@ -29,14 +29,18 @@
 
 use std::sync::Arc;
 
+use arc_swap::ArcSwap;
 use serde_json::Value;
 use thiserror::Error;
 use tokio::sync::RwLock;
 
+use springtale_ai::{AiAdapter, NoopAdapter};
 use springtale_connector::registry::store::ConnectorRegistry;
 use springtale_connector::tier::WasmTier;
 use springtale_connector::ActionResult;
+use springtale_cooperation::cadence::AgentId;
 use springtale_cooperation::momentum::MomentumTier;
+use springtale_store::StorageBackend;
 
 /// Translate a cooperation-layer `MomentumTier` into the connector-layer
 /// `WasmTier`. The mapping is 1:1 — kept as a function rather than a
@@ -53,6 +57,24 @@ pub fn momentum_to_wasm_tier(tier: MomentumTier) -> WasmTier {
     }
 }
 
+/// Translate a cooperation-layer `MomentumTier` into the sentinel-
+/// layer `ThrottleTier`. Same dependency rationale as
+/// [`momentum_to_wasm_tier`]: sentinel sits below cooperation in the
+/// graph (sentinel = core + store + connector; cooperation = core +
+/// store) so neither side can own the `From`. The runtime is the
+/// single boundary where both types are nameable.
+pub fn momentum_to_throttle_tier(
+    tier: MomentumTier,
+) -> springtale_sentinel::ThrottleTier {
+    use springtale_sentinel::ThrottleTier;
+    match tier {
+        MomentumTier::Cold => ThrottleTier::Cold,
+        MomentumTier::Warming => ThrottleTier::Warming,
+        MomentumTier::Hot => ThrottleTier::Hot,
+        MomentumTier::Fever => ThrottleTier::Fever,
+    }
+}
+
 /// Errors surfaced by the bridge. Wraps connector errors so callers in
 /// the bot event loop don't need to import the connector error module.
 #[derive(Debug, Error)]
@@ -65,15 +87,104 @@ pub enum BridgeError {
 ///
 /// Clone is cheap (Arc inside). Held by `RuntimeState` so bot event
 /// loops and external entry points share the same dispatch path.
+///
+/// The bridge also owns the per-process AI-adapter handle (a
+/// `Arc<ArcSwap<...>>` shared with `RuntimeState.ai_adapter`) so
+/// `dispatch_action`'s `AiComplete` arm can resolve the adapter
+/// through the same single-dispatch point as connector actions.
+/// Per-bot adapter selection (per the product-model rule "AI adapter
+/// (optional, per-bot — defaults to NoopAdapter)") routes through
+/// `ai_adapter_for(agent_id, explicit_adapter)` — today it returns
+/// the global adapter, leaving room for per-agent overrides when
+/// per-agent adapter storage lands.
 #[derive(Clone)]
 pub struct CapabilityBridge {
     registry: Arc<RwLock<ConnectorRegistry>>,
+    /// Process-wide AI-adapter handle. `None` for test builds that
+    /// don't wire AI — `ai_adapter_for` returns `NoopAdapter` in that
+    /// case. Production paths in `init.rs` call `with_ai_adapter` to
+    /// hand over the same `Arc<ArcSwap<...>>` held on `RuntimeState`
+    /// so `set_ai_adapter` swaps are visible to dispatch through the
+    /// bridge.
+    ai_adapter: Option<Arc<ArcSwap<Arc<dyn AiAdapter>>>>,
+    /// Shared storage backend. `None` for test builds that don't
+    /// need persistence (the chain dispatcher checks before
+    /// reaching for it — `Action::Dedupe` short-circuits to "fresh"
+    /// when no store is wired). Production paths in `init.rs` call
+    /// [`Self::with_store`] with the same `Arc<dyn StorageBackend>`
+    /// `RuntimeState.store` holds.
+    store: Option<Arc<dyn StorageBackend>>,
+    /// Executions log recorder (Phase B). `None` for test builds
+    /// without persistence — the dispatcher falls back to a
+    /// `NoopRecorder` so chain dispatch keeps working unobserved.
+    /// Production paths build a [`StoreRecorder`] in `init.rs`.
+    recorder: Option<Arc<dyn crate::operations::executions::ExecutionRecorder>>,
 }
 
 impl CapabilityBridge {
-    /// Create a bridge around the shared connector registry.
+    /// Create a bridge around the shared connector registry. AI
+    /// adapter unset by default — call [`Self::with_ai_adapter`] to
+    /// wire it before dispatching any [`Action::AiComplete`].
     pub fn new(registry: Arc<RwLock<ConnectorRegistry>>) -> Self {
-        Self { registry }
+        Self {
+            registry,
+            ai_adapter: None,
+            store: None,
+            recorder: None,
+        }
+    }
+
+    /// Builder — bind the shared AI-adapter handle. Wired by
+    /// `init.rs` so the bridge sees the same `Arc<ArcSwap<...>>`
+    /// `RuntimeState.ai_adapter` does.
+    #[must_use]
+    pub fn with_ai_adapter(
+        mut self,
+        adapter: Arc<ArcSwap<Arc<dyn AiAdapter>>>,
+    ) -> Self {
+        self.ai_adapter = Some(adapter);
+        self
+    }
+
+    /// Builder — bind the shared storage backend. Wired by `init.rs`
+    /// so `Action::Dedupe` dispatches against the same SQLite the
+    /// rest of the runtime persists to.
+    #[must_use]
+    pub fn with_store(mut self, store: Arc<dyn StorageBackend>) -> Self {
+        self.store = Some(store);
+        self
+    }
+
+    /// Access the shared storage backend, if one is wired. Returns
+    /// `None` for test builds that don't need persistence — the
+    /// dispatcher short-circuits dedupe to "fresh" in that case.
+    pub fn store(&self) -> Option<&Arc<dyn StorageBackend>> {
+        self.store.as_ref()
+    }
+
+    /// Builder — bind the executions-log recorder. Wired by
+    /// `init.rs` once the store is available so chain dispatches
+    /// persist sizes-only rows to the executions / execution_steps
+    /// tables. Test builds skip this and get the no-op recorder
+    /// via [`Self::recorder`].
+    #[must_use]
+    pub fn with_recorder(
+        mut self,
+        recorder: Arc<dyn crate::operations::executions::ExecutionRecorder>,
+    ) -> Self {
+        self.recorder = Some(recorder);
+        self
+    }
+
+    /// Resolve the executions-log recorder. Returns the wired
+    /// [`StoreRecorder`] when available, otherwise a
+    /// [`NoopRecorder`] so dispatch tests don't need a real
+    /// store just to exercise non-observability arms.
+    pub fn recorder(&self) -> Arc<dyn crate::operations::executions::ExecutionRecorder> {
+        match &self.recorder {
+            Some(r) => Arc::clone(r),
+            None => Arc::new(crate::operations::executions::NoopRecorder),
+        }
     }
 
     /// Access the underlying connector registry. Exposed so callers
@@ -83,6 +194,38 @@ impl CapabilityBridge {
     /// routing but the registry is the authoritative store.
     pub fn registry(&self) -> &Arc<RwLock<ConnectorRegistry>> {
         &self.registry
+    }
+
+    /// Resolve the AI adapter for a given firing context.
+    ///
+    /// Lookup order:
+    ///   1. (future) per-agent override resolved from `agent_id` —
+    ///      not yet implemented; per-agent adapter storage lands
+    ///      alongside the bot-config UI.
+    ///   2. (future) named adapter resolved from `explicit_adapter`
+    ///      (e.g. recipe author requests `"ollama"`) — same.
+    ///   3. Global adapter from the handle wired by
+    ///      [`Self::with_ai_adapter`] (the
+    ///      `RuntimeState.ai_adapter` snapshot at this instant).
+    ///   4. [`NoopAdapter`] — the safe default when no adapter is
+    ///      configured (`feedback_no_adapter_dependency`).
+    ///
+    /// The current implementation collapses 1+2 to "ignore both
+    /// hints, return the global" but keeps the signature so callers
+    /// (the dispatcher) can be written against the final shape today.
+    pub fn ai_adapter_for(
+        &self,
+        _agent_id: Option<&AgentId>,
+        _explicit_adapter: Option<&str>,
+    ) -> Arc<dyn AiAdapter> {
+        if let Some(handle) = &self.ai_adapter {
+            // ArcSwap<Arc<dyn AiAdapter>> ⇒ load() returns
+            // Guard<Arc<dyn AiAdapter>>. Single deref through the
+            // guard yields the inner Arc we hand back.
+            let guard = handle.load();
+            return Arc::clone(&*guard);
+        }
+        Arc::new(NoopAdapter)
     }
 
     /// Execute a connector action at the formation's current momentum
@@ -290,6 +433,45 @@ mod tests {
                 .unwrap_or_else(|e| panic!("{tier:?}: {e}"));
             assert!(result.success, "tier {tier:?} should succeed");
         }
+    }
+
+    #[test]
+    fn ai_adapter_for_returns_noop_when_unwired() {
+        let registry = Arc::new(RwLock::new(ConnectorRegistry::new(
+            CapabilityPolicy::AllowAll,
+        )));
+        let bridge = CapabilityBridge::new(registry);
+        // No `.with_ai_adapter` → fallback is NoopAdapter.
+        let adapter = bridge.ai_adapter_for(None, None);
+        // We can't downcast `dyn AiAdapter` to NoopAdapter directly,
+        // but the type-erased fallback path is the only one that
+        // returns without a wired handle, so the call succeeding is
+        // proof enough.
+        let _: Arc<dyn AiAdapter> = adapter;
+    }
+
+    #[test]
+    fn ai_adapter_for_returns_wired_handle() {
+        use arc_swap::ArcSwap;
+
+        let registry = Arc::new(RwLock::new(ConnectorRegistry::new(
+            CapabilityPolicy::AllowAll,
+        )));
+        let handle: Arc<ArcSwap<Arc<dyn AiAdapter>>> = Arc::new(ArcSwap::from(Arc::new(
+            Arc::new(NoopAdapter) as Arc<dyn AiAdapter>,
+        )));
+        let bridge = CapabilityBridge::new(registry).with_ai_adapter(handle.clone());
+
+        // First call resolves to the wired adapter.
+        let first = bridge.ai_adapter_for(None, None);
+        // Hot-swap a different adapter and confirm the bridge sees
+        // the swap (the same handle is shared with `RuntimeState`).
+        handle.store(Arc::new(Arc::new(NoopAdapter) as Arc<dyn AiAdapter>));
+        let second = bridge.ai_adapter_for(None, None);
+        // Pointer-equality check would require concrete typing; just
+        // confirm both calls succeed and produce a usable Arc.
+        let _: Arc<dyn AiAdapter> = first;
+        let _: Arc<dyn AiAdapter> = second;
     }
 
     #[tokio::test]

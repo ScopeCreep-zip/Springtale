@@ -29,10 +29,20 @@ pub async fn execute(
     client: &dyn TelegramApi,
     input: &serde_json::Value,
 ) -> Result<ActionResult, TelegramError> {
-    let chat_id = input
+    let raw_chat_id = input
         .get("chat_id")
         .and_then(|v| v.as_str())
         .ok_or_else(|| TelegramError::InvalidInput("missing 'chat_id'".to_owned()))?;
+    // D1 — accept either a raw chat id (`"12345"`, `"@channel"`) or
+    // a `WorkspaceKey` URI (`"telegram://chat/12345"`). The parser
+    // extracts the raw id when the input is a URI matching this
+    // connector's scheme; falls back to raw-id semantics
+    // otherwise. Mismatched-scheme URIs surface a clear error.
+    let chat_id = springtale_connector::workspace_key::extract_id_for_scheme(
+        raw_chat_id,
+        "connector-telegram",
+    )
+    .map_err(|e| TelegramError::InvalidInput(e.to_string()))?;
     let text = input
         .get("text")
         .and_then(|v| v.as_str())

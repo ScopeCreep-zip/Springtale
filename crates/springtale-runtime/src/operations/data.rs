@@ -13,6 +13,11 @@ use crate::error::OperationError;
 /// `Serialize + Deserialize` so the same type is both the export format and
 /// the import contract — per rust-conventions, serde on data types that
 /// cross boundaries (API, storage) is explicitly allowed.
+///
+/// No `specta::Type` derive — `DataExport` transitively contains
+/// `Rule` (recursive). The Tauri `export_data` command converts to
+/// `serde_json::Value` before crossing the wire, so specta never
+/// sees this type.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct DataExport {
     /// All automation rules.
@@ -154,7 +159,7 @@ mod tests {
     use chrono::Utc;
     use springtale_core::rule::action::Action;
     use springtale_core::rule::trigger::Trigger;
-    use springtale_core::rule::types::{RuleId, RuleStatus, RuleVersion};
+    use springtale_core::rule::types::{RuleId, RuleOwner, RuleStatus, RuleVersion};
     use springtale_store::backend::InMemoryBackend;
     use uuid::Uuid;
 
@@ -172,6 +177,7 @@ mod tests {
             actions: vec![Action::SendMessage {
                 text: "hello".into(),
             }],
+            owner: RuleOwner::Global,
         }
     }
 

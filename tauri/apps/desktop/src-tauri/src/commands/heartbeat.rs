@@ -5,6 +5,7 @@ use crate::state::AppState;
 
 /// Get the heartbeat interval config value.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_heartbeat(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
@@ -15,6 +16,7 @@ pub async fn get_heartbeat(state: State<'_, AppState>) -> Result<serde_json::Val
 
 /// Set the heartbeat interval config value.
 #[tauri::command]
+#[specta::specta]
 pub async fn set_heartbeat(
     state: State<'_, AppState>,
     value: serde_json::Value,

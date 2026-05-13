@@ -9,10 +9,12 @@
 
 use std::sync::Arc;
 
-use tauri::Emitter;
+use tauri_specta::Event;
 use tokio::sync::Mutex;
 
 use springtale_crypto::vault::store::Vault;
+
+use crate::commands::vault::VaultLocked;
 
 /// Handle to a running auto-lock timer. Reset on user activity.
 pub struct AutoLockHandle {
@@ -63,7 +65,7 @@ impl AutoLockHandle {
                     }
                     *guard = None;
                     tracing::info!("auto-lock: vault locked after inactivity");
-                    let _ = app_handle.emit("vault-locked", ());
+                    let _ = VaultLocked.emit(&app_handle);
                 }
                 _ = cancel_rx => {
                     // Timer cancelled — user was active

@@ -1,13 +1,14 @@
 //! Memory operations — audit and compact bot memory.
 
 use serde::Serialize;
+use specta::Type;
 use springtale_store::StorageBackend;
 use springtale_store::schema::bot::SessionRow;
 
 use crate::error::OperationError;
 
 /// Memory audit summary.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Type)]
 pub struct MemoryAuditResult {
     /// Active bot sessions.
     pub sessions: Vec<SessionRow>,

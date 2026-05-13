@@ -86,6 +86,16 @@ impl Orchestrator {
     /// - Concurrency bounded by `config.max_concurrent` via Semaphore
     /// - Depth bounded by `config.max_depth`
     /// - Results collected via JoinSet
+    ///
+    /// **Status (W3.B audit):** reserved scaffolding. `ChildTask`
+    /// currently has no execution payload field, so each spawned
+    /// child returns the parent's output verbatim. Production code
+    /// paths do not call `spawn_children` today; only the unit tests
+    /// in this file exercise it. Future Phase 2b AI sub-pipeline
+    /// work will (a) add an execution payload to `ChildTask`
+    /// (boxed `Fn(PipelineContext) -> PipelineContext`), and (b)
+    /// invoke it inside the per-child spawn closure. Until then,
+    /// callers should not assume this method runs anything.
     pub async fn spawn_children(
         &self,
         parent_ctx: &PipelineContext,

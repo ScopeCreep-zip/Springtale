@@ -107,6 +107,7 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/connectors
 | GET | `/connectors/{name}/outputs` | Recent action outputs (cap 100, oldest dropped) |
 | POST | `/connectors/{name}/enable` | Enable a disabled connector |
 | POST | `/connectors/{name}/disable` | Disable without removing |
+| POST | `/connectors/{name}/reload` | G4 — hot-reload a connector's running instance against the latest stored config without restarting the daemon |
 | POST | `/connectors/{name}/test` | Dry-run an action with synthetic input |
 
 ### 3.3 Rules
@@ -125,7 +126,7 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/connectors
 | POST | `/rules/connector` | Create a rule for a connector event (convenience wrapper) |
 | GET | `/rules/connector/{name}` | List rules triggered by a specific connector |
 
-### 3.4 Formations
+### 3.4 Formations & cooperation streams
 
 Formations are cooperating groups of agents with a shared intent. See [`docs/guide/cooperation.md`](../guide/cooperation.md). Every formation command pushes onto the bot's `FormationCommand` channel; the bot is the only code path that materialises live `Formation` structs from DB rows.
 
@@ -149,6 +150,7 @@ Formations are cooperating groups of agents with a shared intent. See [`docs/gui
 | POST | `/formations/{id}/cycle-intent` | Cycle to the next intent template |
 | POST | `/formations/{id}/cycle-autonomy` | Cycle autonomy level of all members (observe → suggest → approve → autonomous → observe) |
 | POST | `/formations/{id}/toggle-guard` | Toggle the formation guard rails |
+| GET | `/cooperation/events` | SSE stream of formation lifecycle, momentum transitions, rally events, and interference events. Accepts `?token=...` and optional `?formation_id=...` filter. The dashboard's live cooperation overlay consumes this. |
 
 ### 3.5 Agents
 
@@ -169,8 +171,12 @@ The colony canvas is a live pixel-art visualisation of connectors, rules, agents
 |---|---|---|
 | GET | `/canvas` | Full canvas state (nodes + edges) |
 | GET | `/canvas/connections` | Just the edge metadata |
-| POST | `/canvas/update` | Apply a `CanvasUpdate` (drag, reposition, re-wire) |
 | GET | `/canvas/stream` | SSE stream of canvas updates. Accepts `?token=...` |
+
+> **Note:** there is no `POST /canvas/update` HTTP endpoint. Canvas layout
+> changes (drag, reposition, re-wire) happen in the Tauri desktop via the
+> dashboard's IPC layer, which writes directly to the dashboard's local
+> layout state. The daemon-side `CanvasState` is read-only over HTTP.
 
 ### 3.7 Events
 
@@ -223,7 +229,10 @@ Author Ed25519 public keys used to verify signed manifests.
 | Method | Path | Description |
 |---|---|---|
 | GET | `/safety` | Current sentinel / behavioural monitor config |
-| PUT | `/safety` | Update safety config (window title, auto-lock, content protection) |
+| PUT | `/safety` | Update full safety config (window title, auto-lock, content protection, disguise profile, quick-hide shortcut) |
+| POST | `/safety/disguise/active` | G5d — flip just the disguise-active flag. Focused endpoint that avoids the lost-update race two tabs would hit on the full-config PUT path. Body: `{ "active": bool }` |
+| POST | `/safety/disguise/profile` | G5f — switch the disguise icon profile (one of `calculator`, `files`, `notes`, `springtale`). Body: `{ "profile": "<id>" }`. Tray icon is swapped at runtime |
+| POST | `/safety/panic_tap_count` | Set the number of taps required on the panic gesture before the wipe fires. Body: `{ "count": u32 }` |
 
 ### 3.13 Data
 
@@ -231,13 +240,18 @@ Author Ed25519 public keys used to verify signed manifests.
 |---|---|---|
 | POST | `/data/export` | Export all user data. Optional encryption with vault passphrase. |
 
+> **Note:** import is **CLI-only**. `springtale-cli data import --input <path>`
+> calls the runtime's `import_data()` function directly against the local
+> SQLite backend. There is no HTTP endpoint because import is an offline
+> operation that requires the daemon to not be writing concurrently.
+
 ### 3.14 Send
 
 | Method | Path | Description |
 |---|---|---|
 | POST | `/send` | Execute an `Action` directly against a connector. Capability-checked through the sentinel, same as rule-dispatched actions. No back door. |
 
-### 3.15 Diagnostics, Fixes, Onboarding, Templates
+### 3.15 Diagnostics, Fixes, Onboarding, Templates, Recipes
 
 These routes back the **Doctor** and **Onboarding** flows in the desktop shell.
 
@@ -251,6 +265,21 @@ These routes back the **Doctor** and **Onboarding** flows in the desktop shell.
 | POST | `/onboarding/{platform}` | Apply an onboarding template for the given platform |
 | GET | `/templates` | List rule / connector templates bundled with the daemon |
 | POST | `/templates/{name}` | Write a template into the current store |
+| GET | `/recipes` | List curated automation recipes (browseable cookbook surface) |
+| GET | `/recipes/categories` | Recipe categories |
+| GET | `/recipes/{id}` | One recipe by id |
+| GET | `/recipes/{id}/pieces` | Modular pieces composing the recipe |
+| GET | `/recipes/{id}/export` | Export the recipe as TOML |
+| POST | `/recipes/{id}/favorite` | Toggle favorite |
+| POST | `/recipes/{id}/recent` | Mark recently viewed |
+| POST | `/recipes/{id}/apply` | Apply the recipe — installs rules / connectors as defined |
+| POST | `/recipes/{id}/render` | Render the recipe against current state (preview-friendly) |
+| POST | `/recipes/{id}/preflight` | Check preconditions (capability grants, connector availability) before apply |
+| POST | `/recipes/{id}/preview` | Dry-run preview of what apply would do |
+| POST | `/recipes/{id}/fork` | Fork a recipe into a user-saved variant |
+| POST | `/recipes/user` | Save a custom user recipe |
+| DELETE | `/recipes/user/{id}` | Delete a user-saved recipe |
+| POST | `/recipes/import` | Import a recipe from TOML |
 
 ### 3.16 Webhooks
 

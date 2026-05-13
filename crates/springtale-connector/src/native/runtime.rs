@@ -154,4 +154,8 @@ impl ConnectorHost for NativeConnectorHost {
     ) -> Result<(), ConnectorError> {
         NativeConnectorHost::verify_webhook(self, headers, body).await
     }
+
+    fn mention_extractor(&self) -> Option<&dyn crate::mention::MentionExtractor> {
+        self.inner.mention_extractor()
+    }
 }

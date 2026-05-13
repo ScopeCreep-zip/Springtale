@@ -391,6 +391,13 @@ Imported: 12 rules, 4 connectors, 8421 events
 
 If the input was produced with `data export --encrypt`, decrypt first or use `springtale travel restore --from <path>` instead.
 
+> **CLI-only operation.** Import opens the SQLite backend directly via the local
+> `SqliteBackend` and runs the runtime's `import_data()` function offline. There
+> is **no** corresponding HTTP API endpoint — by design, because import is a
+> destructive write to the store that must not race with the daemon's other
+> writers. Stop the daemon (or use `--ephemeral` for the import session) before
+> running this command.
+
 ### 13.3 `data purge`
 
 Delete all user data (rules, events, memory, formations) without touching the vault.

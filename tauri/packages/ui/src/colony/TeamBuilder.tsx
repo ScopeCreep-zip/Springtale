@@ -47,6 +47,25 @@ export interface TeamBuilderProps {
   onSaveAiConfig?: (config: Record<string, unknown>) => Promise<void>;
   onDeploy: (team: TeamConfig) => Promise<void>;
   onCancel: () => void;
+  /**
+   * W2.A — optional pre-loaded recipe. When set, TeamBuilder
+   * initialises team name, intent (from the recipe's category), and
+   * pre-selects the recipe's connectors. The user can edit any field
+   * before deploying or save the result as a fork (W2.B).
+   *
+   * The shape is intentionally narrow — TeamBuilder remains the
+   * "compose-from-parts" surface and shouldn't grow recipe-specific
+   * logic. The seed is just initial signal values, not a permanent
+   * link back to the recipe.
+   */
+  initialTemplate?: TeamBuilderSeed;
+}
+
+/** Subset of a `Recipe` TeamBuilder actually uses on init. */
+export interface TeamBuilderSeed {
+  name: string;
+  intent?: string;
+  connectorsUsed: string[];
 }
 
 export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
@@ -64,7 +83,10 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
   const [aiSaving, setAiSaving] = createSignal(false);
 
   // ── Selected services ──
-  const [selectedServices, setSelectedServices] = createSignal<Set<string>>(new Set<string>());
+  // W2.A — pre-seed from `initialTemplate.connectorsUsed` when set.
+  const [selectedServices, setSelectedServices] = createSignal<Set<string>>(
+    new Set<string>(props.initialTemplate?.connectorsUsed ?? []),
+  );
 
   // ── Squad (agent slots) ──
   let nextSlotId = 1;
@@ -72,8 +94,11 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
   const [editingSlot, setEditingSlot] = createSignal<number | null>(null);
 
   // ── Team config ──
-  const [teamName, setTeamName] = createSignal("");
-  const [intent, setIntent] = createSignal(props.intents[0]?.value ?? "");
+  // W2.A — pre-seed name + intent from the optional template.
+  const [teamName, setTeamName] = createSignal(props.initialTemplate?.name ?? "");
+  const [intent, setIntent] = createSignal(
+    props.initialTemplate?.intent ?? props.intents[0]?.value ?? "",
+  );
   const [guardMode, setGuardMode] = createSignal(false);
   const [deploying, setDeploying] = createSignal(false);
   const [error, setError] = createSignal("");

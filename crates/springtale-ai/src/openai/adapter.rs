@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use specta::Type;
 use secrecy::{ExposeSecret, SecretBox};
 use serde::Deserialize;
 
@@ -12,12 +13,13 @@ use springtale_core::rule::types::Rule;
 use super::client::OpenAiClient;
 
 /// Configuration for the OpenAI-compatible adapter.
-#[derive(Deserialize)]
+#[derive(Deserialize, Type)]
 pub struct OpenAiConfig {
     /// Base URL (e.g., "https://api.openai.com", "http://localhost:8080").
     pub base_url: String,
-    /// API key wrapped in Secret<String>.
+    /// API key wrapped in Secret<String>. TS wire shape is `string`.
     #[serde(deserialize_with = "crate::config::deserialize_secret")]
+    #[specta(type = String)]
     pub api_key: SecretBox<String>,
     /// Model name (e.g., "gpt-4o", "deepseek-chat").
     pub model: String,
@@ -67,6 +69,79 @@ impl OpenAiCompatAdapter {
             });
         }
         Ok(result.text)
+    }
+
+    /// Sibling-module accessor for the structured-extraction impl
+    /// in `extractor.rs`. Same boundary as `sanitize`, exposed at
+    /// `pub(crate)` so the trait impl can route source / hint text
+    /// through Layer-2 defense before sending it upstream.
+    pub(crate) fn sanitize_for_extractor(
+        &self,
+        field: &str,
+        text: &str,
+    ) -> Result<String, AiError> {
+        self.sanitize(field, text)
+    }
+
+    pub(crate) fn openai_client(&self) -> &super::client::OpenAiClient {
+        &self.client
+    }
+
+    /// Build the `/v1/chat/completions` body for structured
+    /// extraction. Sets `response_format: { type: "json_schema",
+    /// json_schema: { name, schema, strict: true } }` — strict
+    /// mode is the grammar-constrained path. `last_error` is the
+    /// previous attempt's validation message; when present we
+    /// surface it to the model as a follow-up `user` turn so the
+    /// retry feedback loop is grounded in the actual mismatch.
+    pub(crate) fn build_extract_body(
+        &self,
+        source: &str,
+        schema: &serde_json::Value,
+        hint: Option<&str>,
+        last_error: Option<&str>,
+        options: &crate::extractor::ExtractOptions,
+    ) -> serde_json::Value {
+        let mut messages: Vec<serde_json::Value> = Vec::new();
+        let mut system_lines: Vec<String> = vec![
+            "Extract a value that matches the provided JSON schema.".into(),
+            "Respond with JSON only — no commentary, no markdown fences.".into(),
+        ];
+        if let Some(h) = hint {
+            system_lines.push(format!("Author hint: {h}"));
+        }
+        messages.push(serde_json::json!({
+            "role": "system",
+            "content": system_lines.join(" "),
+        }));
+        messages.push(serde_json::json!({
+            "role": "user",
+            "content": source,
+        }));
+        if let Some(err) = last_error {
+            messages.push(serde_json::json!({
+                "role": "user",
+                "content": format!(
+                    "Your previous response did not satisfy the schema: {err}. \
+                     Re-emit JSON that matches the schema exactly.",
+                ),
+            }));
+        }
+
+        serde_json::json!({
+            "model": self.model,
+            "messages": messages,
+            "max_tokens": options.max_tokens,
+            "temperature": options.temperature,
+            "response_format": {
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "extract",
+                    "schema": schema,
+                    "strict": true,
+                }
+            }
+        })
     }
 }
 
@@ -378,6 +453,10 @@ impl AiAdapter for OpenAiCompatAdapter {
 
     async fn is_available(&self) -> bool {
         self.client.is_available().await
+    }
+
+    fn structured_extractor(&self) -> Option<&dyn crate::extractor::StructuredExtractor> {
+        Some(self)
     }
 }
 

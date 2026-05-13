@@ -5,6 +5,7 @@ pub mod adapter;
 pub mod anthropic;
 pub mod config;
 pub mod error;
+pub mod extractor;
 pub mod factory;
 pub mod noop;
 pub mod ollama;
@@ -21,6 +22,7 @@ pub use adapter::{
 pub use anthropic::AnthropicAdapter;
 pub use anthropic::adapter::AnthropicConfig;
 pub use error::AiError;
+pub use extractor::{ExtractOptions, ExtractOutcome, ExtractorError, StructuredExtractor};
 pub use factory::create_adapter;
 pub use noop::NoopAdapter;
 pub use ollama::OllamaAdapter;

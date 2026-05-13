@@ -9,12 +9,13 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 /// A single content block on the Canvas.
 ///
 /// Each variant maps to a specific SolidJS component in the frontend.
 /// All rendering is auto-escaped — no XSS risk.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(tag = "type")]
 pub enum CanvasBlock {
     /// Plain text paragraph.
@@ -43,7 +44,7 @@ pub enum CanvasBlock {
 }
 
 /// Status indicator for status cards.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
 pub enum StatusState {
     Info,
     Success,
@@ -53,7 +54,7 @@ pub enum StatusState {
 }
 
 /// Full canvas state — snapshot of all blocks.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct CanvasState {
     pub blocks: Vec<CanvasBlock>,
     pub title: Option<String>,
@@ -71,7 +72,7 @@ impl Default for CanvasState {
 }
 
 /// Delta update to the canvas — avoids resending all blocks on every change.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(tag = "action")]
 pub enum CanvasUpdate {
     /// Replace all blocks.

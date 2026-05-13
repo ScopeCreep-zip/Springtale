@@ -18,8 +18,18 @@
 //! focused path works. After unlock the global hotkey takes over.
 
 use std::sync::Mutex;
-use tauri::{AppHandle, Emitter, Manager, Runtime};
+
+use serde::{Deserialize, Serialize};
+use specta::Type;
+use tauri::{AppHandle, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+use tauri_specta::Event;
+
+/// Emitted from the OS-wide quick-hide shortcut handler. Unit payload —
+/// the frontend reacts by collapsing surfaces and (via separate IPC)
+/// can lock the vault.
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+pub struct QuickHide;
 
 /// Stores the currently registered shortcut so we can unregister
 /// it before swapping. `Mutex<Option<Shortcut>>` because Shortcut
@@ -41,8 +51,9 @@ impl Default for ActiveQuickHide {
 /// actions are best-effort — failure to hide must not block the
 /// vault lock, and failure to lock must not block the hide.
 #[tauri::command]
-pub async fn apply_quick_hide_shortcut<R: Runtime>(
-    app: AppHandle<R>,
+#[specta::specta]
+pub async fn apply_quick_hide_shortcut(
+    app: AppHandle,
     state: tauri::State<'_, crate::state::AppState>,
 ) -> Result<String, String> {
     let guard = crate::runtime_guard::require_runtime(&state.runtime).await?;
@@ -87,7 +98,7 @@ pub async fn apply_quick_hide_shortcut<R: Runtime>(
                 {
                     tracing::warn!(error = %e, "quick-hide window.hide failed");
                 }
-                if let Err(e) = app_for_handler.emit("quick-hide", ()) {
+                if let Err(e) = QuickHide.emit(&app_for_handler) {
                     tracing::warn!(error = %e, "quick-hide event emit failed");
                 }
             }

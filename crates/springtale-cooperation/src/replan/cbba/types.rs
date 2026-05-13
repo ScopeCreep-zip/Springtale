@@ -1,9 +1,10 @@
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 use crate::cadence::AgentId;
 use crate::routing::types::TaskId;
 
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
 pub struct Bundle {
     pub owner: AgentId,
     /// Ordered task list — order matters for Diminishing Marginal Gain.

@@ -1,7 +1,7 @@
 # Cooperation
 
 Springtale is an RTS game engine that happens to run bots. The
-`springtale-cooperation` crate is where that framing lives: 37 modules
+`springtale-cooperation` crate is where that framing lives: 40+ modules
 modelling how peer agents coordinate on a shared intent without a central
 controller. This page is a user-facing tour.
 
@@ -13,7 +13,7 @@ wiring into the bot runtime is in [architecture.md §6](architecture.md).
 
 ```
 crates/
-├── springtale-cooperation/     the crate — 37 modules, zero internal deps
+├── springtale-cooperation/     the crate — 40+ modules, zero internal deps
 │   └── src/
 │       ├── cadence.rs          tick bus
 │       ├── momentum.rs         tier state machine
@@ -30,7 +30,9 @@ crates/
 │       ├── consensus.rs        weighted voting
 │       ├── commit.rs           synchronised execution barriers
 │       ├── attention/          Army of Two aggro economy
-│       ├── awareness/          neighbour perception (gossip)
+│       ├── awareness/          neighbour perception (within-formation)
+│       ├── gossip/             cross-formation event bus (FormationView)
+│       ├── memory/             persistent shared memory (between blackboard + mental_model)
 │       ├── capability/         tier-aware capability projection
 │       ├── authority/          momentum × layer permission matrix
 │       ├── routing/            L1/L3 task routing
@@ -43,6 +45,9 @@ crates/
 │       ├── tick_processor.rs   per-tick interference aggregator
 │       ├── utility/            utility AI scoring (big-brain)
 │       ├── replan/             CBBA global re-plan
+│       ├── action.rs           SubTask / SubTaskResult (claim → result)
+│       ├── action_state.rs     per-tick action lifecycle state
+│       ├── peer.rs             PeerMsg — direct inter-agent message envelope
 │       ├── layer.rs            7-layer routing abstraction
 │       └── types.rs            FormationId, AgentHealth, etc.
 │
@@ -189,7 +194,7 @@ vocabulary.
 
 ## 11. Modules at a glance
 
-The 37 modules of `springtale-cooperation` group cleanly into six concerns. Use this as a map when reading the crate.
+The 40+ modules of `springtale-cooperation` group cleanly into seven concerns. Use this as a map when reading the crate.
 
 **Lifecycle and timing.**
 
@@ -208,9 +213,24 @@ The 37 modules of `springtale-cooperation` group cleanly into six concerns. Use 
 | `state` | Workspace, snapshot, write log. Underlies the live blackboard in `springtale-bot::cooperation::blackboard`. |
 | `context` | `FormationContext` — read-only state broadcast to members each tick. |
 | `dissemination` | Step 6 broadcast layer. |
-| `awareness` | Neighbour gossip (InMemory or chitchat substrate). |
+| `awareness` | Within-formation neighbour perception (chitchat or InMemory substrate). |
 | `comms` | Inter-agent message bus, implicit signals, cohesion signals. |
+| `peer` | `PeerMsg` — typed direct-message envelope between agents. |
 | `mental_model` | Learned domain knowledge, vocabulary, conventions. Persisted across dissolves. |
+| `memory` | Persistent shared memory between blackboard (ephemeral) and mental_model (durable). |
+
+**Cross-formation.**
+
+| Module | Role |
+|---|---|
+| `gossip` | Cross-formation event bus carrying `FormationView` snapshots — lets sibling formations see what their peers are doing without polling the API. See [guide/cross-formation.md](cross-formation.md). |
+
+**Action lifecycle.**
+
+| Module | Role |
+|---|---|
+| `action` | `SubTask` / `SubTaskResult` — what an agent claims and what it returns. |
+| `action_state` | Per-tick state of in-flight actions (claimed / running / completed / interfered). |
 
 **Coordination patterns.**
 

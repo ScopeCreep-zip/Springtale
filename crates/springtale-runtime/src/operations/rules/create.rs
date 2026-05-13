@@ -103,6 +103,13 @@ pub async fn update_rule(
 ///
 /// Frontend sends field names, backend assembles the full Rule struct.
 /// Eliminates hardcoded "ConnectorEvent"/"RunConnector" type tags in frontend.
+///
+/// Intentionally has no `specta::Type` derive: this struct transitively
+/// references the recursive `Condition` enum (in `conditions`), and per
+/// the rule-module specta policy (see `springtale_core::rule::types`
+/// module doc), rule-shaped types stay schemars-only. The Tauri
+/// command takes `serde_json::Value` and deserializes into this struct
+/// internally — the frontend learns the shape from `get_rule_schema()`.
 #[derive(Debug, serde::Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct CreateConnectorRuleRequest {
@@ -143,6 +150,10 @@ pub async fn create_connector_rule(
                 params: serde_json::Map::new(),
             }]
         },
+        // Connector-event rules created from the UI form path are
+        // global by default. Per-agent / per-formation scoping lands
+        // when the rule-builder UI surfaces an owner picker (Phase A+).
+        owner: springtale_core::rule::types::RuleOwner::Global,
     };
 
     create_rule(state, rule).await

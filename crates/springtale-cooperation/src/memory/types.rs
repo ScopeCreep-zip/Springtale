@@ -6,6 +6,7 @@
 //! lossy projection.
 
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 use crate::cadence::IntentPattern;
 use crate::momentum::MomentumTier;
@@ -14,7 +15,7 @@ use crate::types::FormationId;
 /// The raw note deposited by a formation when it dissolves. Stored
 /// verbatim by every backend; retrieval transforms a query into
 /// `Vec<PriorOutcome>` (which carries a relevance score).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct OutcomeNote {
     /// Formation that produced this record. Useful for de-dup when a
     /// formation gets re-deployed under the same id.
@@ -54,7 +55,7 @@ pub struct RetrievalQuery {
 /// estimate (0.0 .. 1.0; higher = more relevant). The
 /// `InMemoryKnowledgeStore` uses tag overlap + intent match; future
 /// vector backends will swap in cosine similarity behind the same trait.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct PriorOutcome {
     pub note: OutcomeNote,
     pub score: f32,

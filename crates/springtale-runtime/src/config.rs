@@ -5,12 +5,13 @@
 //! Desktop uses this directly.
 
 use std::collections::HashMap;
+use specta::Type;
 use std::path::PathBuf;
 
 use serde::Deserialize;
 
 /// Shared runtime configuration.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, Type)]
 pub struct RuntimeConfig {
     /// Store configuration.
     #[serde(default)]
@@ -48,7 +49,7 @@ pub struct RuntimeConfig {
 }
 
 /// Cooperation-layer runtime configuration.
-#[derive(Debug, Clone, Default, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize, Type)]
 pub struct CooperationConfig {
     /// Gossip substrate selection. `false` (default) uses the
     /// in-process `InMemoryGossipStore` (`DashMap`, zero network). `true`
@@ -92,7 +93,7 @@ fn default_cluster_id() -> String {
 // (StoreConfig::default(), None, HashMap::new()).
 
 /// Store configuration.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Type)]
 pub struct StoreConfig {
     /// Path to the SQLite database.
     #[serde(default = "default_store_path")]

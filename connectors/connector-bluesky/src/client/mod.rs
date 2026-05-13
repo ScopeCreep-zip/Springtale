@@ -12,6 +12,14 @@ use crate::error::BlueskyError;
 /// layer, not at reqwest level").
 #[async_trait]
 pub trait BlueskyApi: Send + Sync {
+    /// Return the authenticated `(did, handle)` pair.
+    ///
+    /// Surfaces the active session's account identity so callers (e.g. the
+    /// `discover_destinations` action) can register the connector's own
+    /// account as an addressable workspace without poking at session
+    /// internals.
+    async fn current_account(&self) -> Result<(String, String), BlueskyError>;
+
     /// Create a post (app.bsky.feed.post).
     async fn create_post(&self, text: &str) -> Result<serde_json::Value, BlueskyError>;
 
@@ -249,6 +257,14 @@ impl AtProtoClient {
 
 #[async_trait]
 impl BlueskyApi for AtProtoClient {
+    async fn current_account(&self) -> Result<(String, String), BlueskyError> {
+        let session = self.session.read().await;
+        session
+            .as_ref()
+            .map(|s| (s.did.clone(), s.handle.clone()))
+            .ok_or_else(|| BlueskyError::AtProtoError("no active session".to_owned()))
+    }
+
     async fn create_post(&self, text: &str) -> Result<serde_json::Value, BlueskyError> {
         let did = self.did().await?;
         let jwt = self.access_jwt().await?;
@@ -380,13 +396,23 @@ pub mod test_helpers {
     /// Configurable mock for `BlueskyApi`.
     ///
     /// Set the `response` field to the JSON value the mock should return.
-    /// All trait methods return `self.response.clone()`.
+    /// All trait methods return `self.response.clone()`. The mocked
+    /// `current_account` returns a fixed `did:plc:mocktestaccount` / `mock.bsky.social`
+    /// pair — tests that need different identities should use a custom
+    /// mock impl.
     pub struct MockBlueskyClient {
         pub response: serde_json::Value,
     }
 
     #[async_trait]
     impl BlueskyApi for MockBlueskyClient {
+        async fn current_account(&self) -> Result<(String, String), BlueskyError> {
+            Ok((
+                "did:plc:mocktestaccount".to_owned(),
+                "mock.bsky.social".to_owned(),
+            ))
+        }
+
         async fn create_post(&self, _text: &str) -> Result<serde_json::Value, BlueskyError> {
             Ok(self.response.clone())
         }

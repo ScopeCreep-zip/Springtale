@@ -8,6 +8,7 @@ pub mod config;
 pub mod connector;
 pub mod error;
 pub mod factory;
+pub mod mention;
 pub mod polling;
 pub mod triggers;
 pub mod webhook;

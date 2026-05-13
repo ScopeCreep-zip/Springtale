@@ -5,6 +5,7 @@
 //! response for the frontend to render without computing business logic.
 
 use serde::Serialize;
+use specta::Type;
 use springtale_store::StorageBackend;
 use springtale_store::schema::events::{EventEntry, EventFilter};
 
@@ -98,7 +99,7 @@ pub async fn step_autonomy(
 }
 
 /// Direction for stepping autonomy.
-#[derive(Debug, Clone, Copy, serde::Deserialize)]
+#[derive(Debug, Clone, Copy, serde::Deserialize, Type)]
 #[serde(rename_all = "lowercase")]
 pub enum AutonomyDirection {
     Up,
@@ -111,7 +112,7 @@ pub enum AutonomyDirection {
 ///
 /// This is what the frontend renders. All business logic (role inference,
 /// activity computation, fuel derivation) lives here, not in the frontend.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, Type)]
 pub struct AgentState {
     pub rule_id: String,
     pub name: String,

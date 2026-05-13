@@ -1,0 +1,35 @@
+# CODEOWNERS — who reviews what.
+#
+# This file is consulted by GitHub when a PR is opened. The owners
+# listed for a path are automatically requested as reviewers. Last
+# matching pattern wins; specific entries override general ones.
+#
+# Format: <pattern> <github-username> [<github-username> …]
+
+# Default — every file gets the maintainer as a reviewer unless overridden.
+* @radicalkjax
+
+# Security-sensitive paths — security reviewer in addition.
+/crates/springtale-crypto/      @radicalkjax
+/crates/springtale-connector/   @radicalkjax
+/crates/springtale-sentinel/    @radicalkjax
+/SECURITY.md                    @radicalkjax
+/.github/                       @radicalkjax
+/deny.toml                      @radicalkjax
+/.cargo/audit.toml              @radicalkjax
+
+# Architecture / design — review for ratchet effects.
+/docs/arch/                     @radicalkjax
+/docs/current-arch/             @radicalkjax
+/docs/intended-arch/            @radicalkjax
+/docs/adr/                      @radicalkjax
+
+# Cooperation framework — review against the spec.
+/crates/springtale-cooperation/ @radicalkjax
+/docs/guide/cooperation.md      @radicalkjax
+/docs/guide/consensus.md        @radicalkjax
+/docs/guide/intervention.md     @radicalkjax
+/docs/guide/cross-formation.md  @radicalkjax
+/docs/guide/mental-model.md     @radicalkjax
+/docs/guide/pacing.md           @radicalkjax
+/docs/guide/sacrifice.md        @radicalkjax

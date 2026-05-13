@@ -16,13 +16,14 @@
 //!     a TOML file."
 
 use std::io;
+use specta::Type;
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
 use serde::Serialize;
 
 /// A static starter template.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct Template {
     pub name: &'static str,
     pub description: &'static str,
@@ -30,14 +31,14 @@ pub struct Template {
     pub files: &'static [TemplateFile],
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct TemplateFile {
     pub relative_path: &'static str,
     pub contents: &'static str,
 }
 
 /// Outcome of writing a template to disk.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct WriteReport {
     pub template: &'static str,
     pub dir: PathBuf,

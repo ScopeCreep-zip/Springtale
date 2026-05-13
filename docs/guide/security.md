@@ -199,6 +199,10 @@ The following safety features are present:
 | **Travel mode** | `springtale travel prepare --backup-to` / `travel restore --from` | Encrypt backup to external location, wipe local install, restore at destination. |
 | **Ephemeral mode** | `ephemeral = true` in config | All state in memory, lost on exit. No file I/O for vault or database. |
 | **Sentinel monitor** | always on | Toxic-pair capability detection at install time, writes to `audit_trail` table. |
+| **Destructive-action approval gate** | sentinel `ApprovalGate` (G5b) | Sentinel's fourth check after circuit-breaker / rate-limit / dead-man. Destructive actions (per `impact::classify_impact`) route through an `ApprovalGate` before dispatch. `DefaultDenyApprovalGate` ships as the safe headless default — destructive actions are refused unless an explicit gate is wired. The desktop app wires its own gate that prompts the user. |
+| **Disguise tray icon** | `POST /safety/disguise/profile` (G5f) | Tray icon ships in four profiles — `calculator`, `files`, `notes`, `springtale` — under `tauri/apps/desktop/src-tauri/icons/disguise/`. Built once at startup and swapped at runtime based on `SafetyConfig.disguise_icon_id`. The window title is configurable too — useful in environments where an over-the-shoulder observer should not see "Springtale" on a taskbar. |
+| **Quick-hide shortcut** | `SafetyConfig.quick_hide_shortcut` (G5g) | OS-wide global hotkey (default `Ctrl+Shift+H`) that hides the window and locks the vault from anywhere on the desktop, not just when Springtale has focus. The shortcut is persisted in safety state and rebound on every app restart. |
+| **Panic-tap count** | `POST /safety/panic_tap_count` | Number of taps required on the panic gesture before the wipe fires. Defaults to 3 to prevent accidental wipe; configurable per user threat model. |
 
 ---
 

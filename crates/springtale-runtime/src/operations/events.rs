@@ -5,6 +5,7 @@
 
 use serde::Serialize;
 
+use specta::Type;
 use springtale_store::StorageBackend;
 use springtale_store::schema::events::{EventEntry, EventFilter};
 
@@ -12,7 +13,7 @@ use crate::error::OperationError;
 use crate::state::RuntimeState;
 
 /// Event info — shared presentation type for API and IPC responses.
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Type)]
 pub struct EventInfo {
     pub id: String,
     pub connector_name: String,

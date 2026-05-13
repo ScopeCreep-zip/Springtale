@@ -1,7 +1,8 @@
 use serde::{Deserialize, Serialize};
 
+use specta::Type;
 /// How the sanitizer handles detected sensitive patterns.
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub enum SanitizePolicy {
     /// Log a warning but allow the request through. Default.
     #[default]

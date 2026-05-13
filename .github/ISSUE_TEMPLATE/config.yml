@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/ScopeCreep-zip/Springtale/security/advisories/new
+    about: |
+      Don't open a public issue for security problems. Use GitHub's
+      private vulnerability reporting or email k1104jackson@hotmail.com.
+      See SECURITY.md for the full disclosure policy.
+  - name: Question or design discussion
+    url: https://github.com/ScopeCreep-zip/Springtale/discussions
+    about: |
+      Questions, design proposals, and "how do I…" belong in
+      Discussions, not issues. Issues are for bugs and concrete
+      feature requests.

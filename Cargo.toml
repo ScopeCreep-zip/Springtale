@@ -86,6 +86,11 @@ serde_json       = "1"
 toml             = "0.8"
 serde_yaml       = "0.9"
 schemars         = { version = "1", features = ["derive", "uuid1", "chrono04"] }
+# tauri-specta type generation. The runtime side derives `Type` so the
+# desktop bindings.ts is generated from Rust truth. Pin tracks the rc
+# series both `tauri-specta` and `specta-typescript` consume (the rc
+# pin is the production pattern per Spacedrive / specta-rs examples).
+specta           = { version = "=2.0.0-rc.25", features = ["derive", "serde_json", "uuid", "chrono"] }
 
 # ── Validation ─────────────────────────────────────────────────────────────────
 garde            = { version = "0.22", features = ["derive", "full"] }
@@ -114,6 +119,10 @@ subtle           = "2"
 
 # ── Identifiers ────────────────────────────────────────────────────────────────
 uuid             = { version = "1",    features = ["v4", "serde"] }
+# ULID for ExecutionId — lexicographically sortable per `started_at`, no UUIDv4
+# entropy waste in execution-log indices. `ulid::Ulid` serializes as Crockford
+# base32 (26 chars) so it stays cheap in SQLite TEXT columns.
+ulid             = { version = "1",    features = ["serde"] }
 
 # ── HTTP Server ────────────────────────────────────────────────────────────────
 axum             = { version = "0.8",  features = ["macros", "multipart"] }
@@ -147,6 +156,27 @@ notify-debouncer-full = { version = "0.7", features = ["macos_fsevent"] }
 # ── Scheduling ─────────────────────────────────────────────────────────────────
 cron             = "0.13"
 chrono           = { version = "0.4",  features = ["serde"] }
+
+# ── Extraction Ladder (Phase A) ────────────────────────────────────────────────
+# Powers the `Action::Extract` step in modular recipes: Readability for
+# main-content extraction, scraper for CSS selectors over rendered HTML,
+# serde_json_path (RFC 9535) for JSONPath over API JSON, feed-rs for unified
+# RSS/Atom/JSON Feed, icalendar + rrule for VEVENT + RRULE expansion.
+dom_smoothie     = "0.17"
+scraper          = "0.27"
+serde_json_path  = "0.7"
+feed-rs          = "2.3"
+icalendar        = { version = "0.17", features = ["chrono-tz"] }
+rrule            = "0.14"
+# HTML sanitizer (used by extraction::diff for page-change hashing).
+# Already pulled in transitively by feed-rs `sanitize` feature; pinned at
+# workspace level so the extraction module can call it directly.
+ammonia          = "4"
+# blake3 — dedupe key hashing + page-change content fingerprinting.
+blake3           = "1"
+# similar — LCS diff for the page-change-watcher recipe in Phase A
+# (changedetection.io-style word/line diff output).
+similar          = "2"
 
 # ── Cross-language bindings (G3 / `COOPERATION_IMPLEMENTATION_PLAN.md §15`) ──
 # `ts-rs` derives `TS` on cross-boundary Rust types and exports them as
@@ -261,6 +291,15 @@ tokio-tungstenite    = { version = "0.26", default-features = false, features = 
 # No TLS dependency — connects to pre-installed Chrome via DevTools Protocol.
 # Domain allow-list enforced per connector capability model.
 chromiumoxide        = { version = "0.9", default-features = false }
+# Stealth: implemented inline in `connector-browser::client` via
+# `evaluate_on_new_document`. The `chromiumoxide_stealth` crate
+# (v0.1.1, latest) reads its JS evasion sources from `src/evasions/`
+# at runtime via `fs::read_to_string(...).unwrap()` — unusable as a
+# library dep. Our inline patches cover the high-signal evasions
+# (`navigator.webdriver`, plugins, languages); per
+# `feedback_no_ban_risk` Springtale doesn't market anti-bot bypass
+# as a feature, so the minimal set suffices for *incidental*
+# detection avoidance on sites with reflexive headless blocks.
 
 # ── SQLite Encryption at Rest ─────────────────────────────────────────────────
 # Patch libsqlite3-sys to use SQLite3MultipleCiphers (sqlite3mc) amalgamation.

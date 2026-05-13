@@ -16,6 +16,7 @@ use std::collections::HashMap;
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 use crate::cadence::{AgentId, TickReport};
 use crate::supervision::Liveness;
@@ -29,7 +30,7 @@ use crate::momentum::MomentumTier;
 /// registered into the host's `inventory` crate). The serializable
 /// `RoleSignature` is what crosses gossip and persistence boundaries —
 /// a value-type enum that names the role by kind.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize, Type)]
 pub enum RoleSignature {
     General,
     Information,

@@ -104,7 +104,7 @@ async fn init_and_run_completes_within_budget() {
     let run_start = Instant::now();
 
     let (formation_cmd_tx, _formation_cmd_rx) = tokio::sync::mpsc::channel(32);
-    let runtime = init::init(&runtime_config, formation_cmd_tx, None)
+    let runtime = init::init(&runtime_config, formation_cmd_tx, None, None)
         .await
         .expect("runtime init");
 

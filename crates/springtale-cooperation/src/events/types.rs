@@ -27,6 +27,7 @@
 //! cooperation crate stays bot-agnostic.
 
 use serde::Serialize;
+use specta::Type;
 use uuid::Uuid;
 
 use crate::cadence::AgentId;
@@ -38,7 +39,7 @@ use crate::types::FormationId;
 /// `springtale-bot::orchestrator::intervention::types::Intervention` —
 /// enumerated locally so the events module doesn't depend on the bot
 /// crate (which depends on this one).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 #[serde(tag = "intervention", rename_all = "snake_case")]
 pub enum InterventionKind {
     /// `Intervention::ChangeIntent` — replaced formation intent.
@@ -53,7 +54,7 @@ pub enum InterventionKind {
 }
 
 /// Outcome of a consensus vote (§11).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum VoteOutcome {
     Approved,
@@ -64,7 +65,7 @@ pub enum VoteOutcome {
 /// Coarse interference type — mirrors `interference::types::InterferenceType`
 /// plus blackboard-claim races. Subscribers don't need the full struct,
 /// just the kind for tally/badge display.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum InterferenceKind {
     ResourceConflict,
@@ -79,7 +80,7 @@ pub enum InterferenceKind {
 /// Distills `replan::cbba::orchestrator::ReplanOutcome` into a flat
 /// JSON-friendly shape — full `ReplanOutcome` carries `HashMap<TaskId, AgentId>`
 /// which is too verbose for the events stream.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct ReplanOutcomeSummary {
     /// `"converged"` | `"stalled"` | `"unauthorized"`.
     pub status: &'static str,
@@ -93,7 +94,7 @@ pub struct ReplanOutcomeSummary {
 ///
 /// Each variant uses snake_case in `kind`, matching the existing canvas
 /// event format and SolidJS discriminated-union convention.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum CooperationEvent {
     /// L6 intervention dispatched against a formation.
@@ -210,7 +211,7 @@ pub enum CooperationEvent {
 ///
 /// Matches the existing `EventEntry` SSE shape so the dashboard's existing
 /// `BroadcastStream::filter_map` pattern works verbatim.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct CooperationEventEnvelope {
     /// Per-bot monotonic sequence — frontend uses to detect missed events.
     pub seq: u64,

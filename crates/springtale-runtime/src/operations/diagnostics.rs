@@ -8,10 +8,11 @@
 
 use std::path::{Path, PathBuf};
 
+use specta::Type;
 use serde::Serialize;
 
 /// Severity of a diagnostic finding.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     /// Everything is fine.
@@ -23,7 +24,7 @@ pub enum Severity {
 }
 
 /// One diagnostic finding.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct Check {
     /// Short identifier (e.g. `"config.exists"`).
     pub id: &'static str,
@@ -84,7 +85,7 @@ pub enum CallerContext {
 }
 
 /// Aggregated result of running all diagnostics.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct Report {
     pub checks: Vec<Check>,
 }

@@ -13,6 +13,13 @@ pub const MAX_CONDITIONS_PER_NODE: usize = 100;
 /// Conditions form a tree: `And`, `Or`, `Not` compose leaf conditions.
 /// The tree depth is limited to `MAX_CONDITION_DEPTH` to prevent DoS
 /// via deeply nested conditions.
+///
+/// **No `specta::Type` derive (architectural).** The `And { conditions:
+/// Vec<Condition> }` / `Or` / `Not { Box<Condition> }` variants are
+/// self-referential; see `Action` for the same rationale. Conditions
+/// never cross IPC as typed values — they travel inside the JSON
+/// payload of `create_rule` / `update_rule`, and are described to
+/// the rule builder via `get_rule_schema()`'s JSON Schema.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "type")]
 pub enum Condition {

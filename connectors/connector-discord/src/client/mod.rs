@@ -3,6 +3,18 @@ use async_trait::async_trait;
 use crate::config::SlashCommandConfig;
 use crate::error::DiscordError;
 
+/// A guild text channel discovered via active enumeration.
+///
+/// Surfaces the minimum metadata needed to build a
+/// `discord://guild/{guild_id}/channel/{channel_id}` workspace key.
+#[derive(Debug, Clone)]
+pub struct DiscoveredChannel {
+    pub guild_id: u64,
+    pub guild_name: String,
+    pub channel_id: u64,
+    pub channel_name: String,
+}
+
 /// Trait defining the Discord API surface used by actions.
 /// Actions depend on this trait — enables mock testing.
 #[async_trait]
@@ -48,6 +60,14 @@ pub trait DiscordApi: Send + Sync {
         guild_id: Option<u64>,
         commands: &[SlashCommandConfig],
     ) -> Result<(), DiscordError>;
+
+    /// Enumerate every text channel the bot can see across every guild it
+    /// is a member of.
+    ///
+    /// Walks `GET /users/@me/guilds` → `GET /guilds/{id}/channels` and
+    /// filters down to `ChannelType::GuildText` only. Returns one entry
+    /// per (guild, channel) pair.
+    async fn list_destinations(&self) -> Result<Vec<DiscoveredChannel>, DiscordError>;
 }
 
 /// Concrete Discord client wrapping twilight-http.
@@ -240,6 +260,49 @@ impl DiscordApi for DiscordClient {
         Ok(())
     }
 
+    async fn list_destinations(&self) -> Result<Vec<DiscoveredChannel>, DiscordError> {
+        let guilds_resp = self
+            .http
+            .current_user_guilds()
+            .await
+            .map_err(|e| DiscordError::ApiError(format!("current_user_guilds failed: {e}")))?;
+        let guilds = guilds_resp
+            .models()
+            .await
+            .map_err(|e| DiscordError::ApiError(format!("guilds.models failed: {e}")))?;
+
+        let mut out = Vec::new();
+        for g in guilds {
+            let g_id = g.id.get();
+            let g_name = g.name.clone();
+
+            let channels_resp = self.http.guild_channels(g.id).await.map_err(|e| {
+                DiscordError::ApiError(format!(
+                    "guild_channels failed (guild {g_id}): {e}"
+                ))
+            })?;
+            let channels = channels_resp.models().await.map_err(|e| {
+                DiscordError::ApiError(format!(
+                    "channels.models failed (guild {g_id}): {e}"
+                ))
+            })?;
+
+            for c in channels {
+                if c.kind != twilight_model::channel::ChannelType::GuildText {
+                    continue;
+                }
+                let c_name = c.name.clone().unwrap_or_default();
+                out.push(DiscoveredChannel {
+                    guild_id: g_id,
+                    guild_name: g_name.clone(),
+                    channel_id: c.id.get(),
+                    channel_name: c_name,
+                });
+            }
+        }
+        Ok(out)
+    }
+
     async fn register_commands(
         &self,
         application_id: u64,
@@ -360,6 +423,24 @@ pub mod test_helpers {
             _commands: &[SlashCommandConfig],
         ) -> Result<(), DiscordError> {
             Ok(())
+        }
+
+        async fn list_destinations(&self) -> Result<Vec<DiscoveredChannel>, DiscordError> {
+            // 2 guilds × 3 text channels each = 6 rows, matches the test plan.
+            let mut out = Vec::new();
+            for g in 0..2u64 {
+                let guild_id = 1000 + g;
+                let guild_name = format!("Guild {g}");
+                for c in 0..3u64 {
+                    out.push(DiscoveredChannel {
+                        guild_id,
+                        guild_name: guild_name.clone(),
+                        channel_id: guild_id * 10 + c,
+                        channel_name: format!("channel-{c}"),
+                    });
+                }
+            }
+            Ok(out)
         }
     }
 }

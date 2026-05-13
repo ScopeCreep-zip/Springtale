@@ -8,6 +8,7 @@
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 use crate::cadence::AgentId;
 use crate::capability::CapabilityDecl;
@@ -17,7 +18,7 @@ use crate::capability::CapabilityDecl;
 /// `FuelBudget` in the bot crate is the runtime tracker; this newtype is
 /// the cooperation-layer representation that travels in `RecoveryCost` and
 /// `FormationConstraints` without pulling in bot dependencies.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Type)]
 pub struct FuelAmount(pub u64);
 
 impl From<u64> for FuelAmount {
@@ -37,7 +38,7 @@ impl std::fmt::Display for FuelAmount {
 /// Used in interference detection (read_set/write_set intersection) and
 /// environment-mediated handoffs. Per Kubernetes: typed key prevents mixing
 /// workspace keys with unrelated strings.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 pub struct WorkspaceKey(pub String);
 
 impl From<&str> for WorkspaceKey {
@@ -67,7 +68,7 @@ impl PartialEq<str> for WorkspaceKey {
 /// Used in BroadcastTrigger::ResourceFound, EnvironmentalRecovery,
 /// ResourceInvestment. Distinct from WorkspaceKey (environment entries)
 /// and CapabilityDecl (agent capabilities).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 pub struct ResourceId(pub String);
 
 impl From<&str> for ResourceId {
@@ -89,7 +90,7 @@ impl PartialEq<str> for ResourceId {
 ///
 /// MH: "monster_topple", Siege: "post_plant_retake".
 /// Used in CooperationPattern.trigger and mental model graph Concept::Pattern.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 pub struct PatternId(pub String);
 
 impl From<&str> for PatternId {
@@ -108,7 +109,7 @@ impl PartialEq<str> for PatternId {
 }
 
 /// Unique identifier for a formation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 pub struct FormationId(pub uuid::Uuid);
 
 impl Default for FormationId {
@@ -138,7 +139,7 @@ impl std::fmt::Display for FormationId {
 /// Per COOPERATION.pdf §18.3 (L4D-inspired escalating fragility):
 /// Quick-fix recovery leaves the agent degraded. Proper recovery
 /// restores full capability. Repeated quick-fixes increase fragility.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
 pub enum AgentHealth {
     /// Full operational capability.
     #[default]
@@ -156,7 +157,7 @@ pub enum AgentHealth {
 /// Per §23 (Specialization vs Generalization): "The role_hint in
 /// the composer (§3.1) should bias, not mandate." Roles are
 /// tendencies, not locks. Like Army of Two's weapon-based specialization.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
 pub enum DynamicRole {
     /// Default — role not yet determined.
     #[default]
@@ -183,7 +184,7 @@ pub enum DynamicRole {
 ///   ApproveOnce     = AoE "Defensive" / OpenAI `alwaysApprove: true`
 ///   AlwaysRequire   = AoE "Stand Ground" / Claude Code modification gate
 ///   RequireConsensus = AoE "No Attack" / Microsoft AGT Ring 0 quorum
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub enum ApprovalPolicy {
     /// Auto-approve. Read-only, non-mutating actions.
     AutoApprove,
@@ -208,7 +209,7 @@ pub enum ApprovalPolicy {
 ///   Suggest = Ring 2 (standard tool access)
 ///   ActWithApproval = Ring 1 (elevated, cross-agent)
 ///   ActAutonomously = Ring 0 (full system access)
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Type)]
 pub enum AutonomyLevel {
     /// Holdfire + holdpos. Watch and report only.
     Observe,
@@ -251,7 +252,7 @@ impl AutonomyLevel {
 /// is the initial allocation consumed by actions during the formation's
 /// lifetime. `destructive_action_policy` gates high-risk actions through
 /// approval. `autonomy_ceiling` caps how autonomous any member can be.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct FormationConstraints {
     /// Maximum time the formation can run.
     pub timeout: Duration,

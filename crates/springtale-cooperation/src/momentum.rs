@@ -68,6 +68,7 @@ pub mod authority_impl;
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 /// Typed event that drives momentum transitions (spec §7).
 ///
@@ -91,7 +92,7 @@ pub enum MomentumEvent {
 /// | Warming | ✓        | ✓             | ✓     | —         | —      | —         | —   | —       |
 /// | Hot     | ✓        | ✓             | ✓     | ✓         | ✓      | —         | —   | —       |
 /// | Fever   | ✓        | ✓             | ✓     | ✓         | ✓      | ✓         | ✓   | ✓       |
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Type)]
 pub enum MomentumTier {
     /// Just assembled. Read-only environment. No chaining.
     Cold,

@@ -1,0 +1,60 @@
+version: 2
+
+updates:
+  # Cargo workspace — Springtale's Rust dependency graph.
+  # Open PRs weekly, batched into groups so we don't drown in noise.
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    labels:
+      - dependencies
+      - rust
+    groups:
+      # Group routine semver-compatible updates so they don't each
+      # need their own PR.
+      semver-compatible:
+        applies-to: version-updates
+        update-types:
+          - patch
+          - minor
+      # Security advisories — process individually so we can move fast.
+      security:
+        applies-to: security-updates
+        patterns:
+          - "*"
+    # Don't auto-update these — they're load-bearing and require manual
+    # review of the wire format / sandbox behaviour.
+    ignore:
+      - dependency-name: wasmtime
+      - dependency-name: rusqlite
+      - dependency-name: rustls
+      - dependency-name: chitchat
+      - dependency-name: foca
+      - dependency-name: pyo3
+
+  # npm — Tauri frontend (desktop + dashboard).
+  - package-ecosystem: npm
+    directory: "/tauri"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - frontend
+    groups:
+      semver-compatible:
+        applies-to: version-updates
+        update-types:
+          - patch
+          - minor
+
+  # GitHub Actions in our workflows.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    labels:
+      - dependencies
+      - ci

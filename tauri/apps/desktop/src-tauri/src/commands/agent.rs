@@ -5,6 +5,7 @@ use crate::state::AppState;
 
 /// List aggregated agent states (rules + events + autonomy).
 #[tauri::command]
+#[specta::specta]
 pub async fn list_agent_states(
     state: State<'_, AppState>,
 ) -> Result<Vec<springtale_runtime::operations::agent::AgentState>, String> {
@@ -17,6 +18,7 @@ pub async fn list_agent_states(
 
 /// Get agent autonomy level.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_autonomy(
     state: State<'_, AppState>,
     name: String,
@@ -30,6 +32,7 @@ pub async fn get_autonomy(
 
 /// Set agent autonomy level.
 #[tauri::command]
+#[specta::specta]
 pub async fn set_autonomy(
     state: State<'_, AppState>,
     name: String,
@@ -44,6 +47,7 @@ pub async fn set_autonomy(
 
 /// Step agent autonomy up or down. Returns the new level.
 #[tauri::command]
+#[specta::specta]
 pub async fn step_autonomy(
     state: State<'_, AppState>,
     name: String,

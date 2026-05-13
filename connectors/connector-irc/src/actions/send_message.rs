@@ -27,11 +27,19 @@ pub async fn execute(
     client: &dyn IrcApi,
     input: &serde_json::Value,
 ) -> Result<ActionResult, IrcError> {
-    let target = input
+    let raw_target = input
         .get("target")
         .or_else(|| input.get("chat_id")) // bot response compat
         .and_then(|v| v.as_str())
         .ok_or_else(|| IrcError::InvalidInput("missing 'target'".into()))?;
+    // D1 — accept raw `#channel` / nick OR an `irc://network/.../channel/#name`
+    // URI. The parser's last-segment extraction returns the
+    // channel name or nick.
+    let target = springtale_connector::workspace_key::extract_id_for_scheme(
+        raw_target,
+        "connector-irc",
+    )
+    .map_err(|e| IrcError::InvalidInput(e.to_string()))?;
     let message = input
         .get("message")
         .or_else(|| input.get("text")) // bot response compat

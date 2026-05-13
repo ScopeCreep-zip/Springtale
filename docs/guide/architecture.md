@@ -1,6 +1,6 @@
 # Architecture
 
-Springtale is a Rust workspace of ~30 crates — 12 library crates, 14 first-party connectors, 2 applications, plus a Tauri frontend (excluded from the workspace, built separately). This guide explains how they fit together.
+Springtale is a Rust workspace of ~33 crates — 14 library crates (12 core + `springtale-py` for Python bindings + `springtale-wit` for WASM Component Model embedding), 14 first-party connectors, 2 applications, plus a Tauri frontend (excluded from the workspace, built separately). This guide explains how they fit together.
 
 For the as-built architecture with file:line refs, see [`docs/arch/ARCHITECTURE.md`](../arch/ARCHITECTURE.md). For the locked design intent, see [`docs/current-arch/ARCHITECTURE.md`](../current-arch/ARCHITECTURE.md).
 
@@ -26,7 +26,7 @@ Every crate has a single responsibility. Dependencies flow strictly downward —
                                │       ┌──────────────────┐   │
                                │       │springtale-       │   │
                                │       │cooperation       │   │
-                               │       │37 modules        │   │
+                               │       │40+ modules        │   │
                                │       │(cadence, rally,  │   │
                                │       │ momentum, …)     │   │
                                │       │zero internal deps│   │
@@ -101,9 +101,11 @@ Every crate has a single responsibility. Dependencies flow strictly downward —
 | `springtale-ai` | `AiAdapter` trait + Noop / Ollama / OpenAI-compat / Anthropic adapters + OWASP sanitiser + tool-calling (`ToolCall` / `ToolResult` / `ToolPolicy`) |
 | `springtale-mcp` | MCP protocol bridge (`rmcp` 1.x) — wraps any `Connector` as an MCP server automatically. Handler module split; each handler owns its capability check |
 | `springtale-sentinel` | Behavioural monitor, toxic-pair capability detection, audit trail |
-| `springtale-cooperation` | Cooperation framework crate — 37 modules covering cadence, momentum, formations, rally, recovery, supervision, stigmergy, contract net, consensus, commit, interference, transformation, mental model, role dynamics, pacing, handoff, attention, awareness, authority, and more. Zero internal Springtale dependencies. See [cooperation.md](cooperation.md) |
+| `springtale-cooperation` | Cooperation framework crate — 40+ modules covering cadence, momentum, formations, rally, recovery, supervision, stigmergy, contract net, consensus, commit, interference, transformation, mental model, role dynamics, pacing, handoff, attention, awareness, authority, cross-formation gossip, persistent memory, and more. Zero internal Springtale dependencies. See [cooperation.md](cooperation.md) |
 | `springtale-runtime` | Shared init / dispatch / operations layer used by both the daemon and the Tauri desktop app. Hosts `LiveFormationReader` trait for UI formation state |
 | `springtale-bot` | Bot runtime, command router, handler registry, session memory, tool_runner, orchestrator (composer + intervention), and the 14-step cooperation tick pipeline |
+| `springtale-wit` | G3 — WIT world for WASM Component Model embedding (Bevy, Unity, wasmCloud, custom hosts). Ships the `.wit` artifact only |
+| `springtale-py` | G3 — pyo3 Python bindings (cdylib + rlib). Stable ABI works on Python 3.9+. Wrap with `maturin` to produce a distributable wheel |
 
 ---
 
@@ -342,11 +344,19 @@ The Tauri shell and the web dashboard share `tauri/packages/ui`. The **colony ca
 - `/canvas/stream` SSE — delta updates to `CanvasState`
 - `LiveFormationReader` trait (`springtale-runtime`) — enriched per-formation state (momentum, rally tokens, attention load, guard status, member health/liveness)
 
-The desktop shell wraps these through Tauri IPC commands (23 modules in `tauri/apps/desktop/src-tauri/src/commands/`); the web dashboard wraps them through HTTP + SSE. Both sit behind the `DataProvider` abstraction so components don't care which transport they're on.
+The desktop shell wraps these through Tauri IPC commands (27 modules in `tauri/apps/desktop/src-tauri/src/commands/`); the web dashboard wraps them through HTTP + SSE. Both sit behind the `DataProvider` abstraction so components don't care which transport they're on.
 
 Formation selection in the canvas opens a command grid (DEPLOY / PAUSE / RESUME / REMOVE) wired to `/formations/*` endpoints. Member detail shows rally pips (Monster Hunter carts), attention distribution bar (Army of Two aggro meter), guard status badge, aggregate operational/load/fuel row, and per-member health + liveness icons.
 
 Two themes ship: the original colony forest theme and a chiral diorama theme (default). Themes are CSS-only.
+
+**Recipes** are a curated automation library — browseable bundles of rules + connector configs + AI prompt scaffolding that one click can install into a running daemon. The recipes UI (RecipeLibraryOverlay, RecipeCard, RecipeQuickView, RecipeDeployPanel, RecipeAuthorPanel) sits in the canvas overlay layer and talks to 16 `/recipes/*` HTTP endpoints (browse, favorite, fork, preflight, apply, render, preview, import/export TOML). User-saved recipes persist under `/recipes/user/{id}`.
+
+**Cross-formation event ribbon** (EventRibbon component) streams the cooperation gossip bus into the canvas — sibling formations broadcast `FormationView` snapshots each tick, surfacing as a live ribbon along the bottom of the viewport.
+
+**Safety panel** (SafetyPanel component) surfaces the disguise tray icon picker, quick-hide shortcut binding, panic-tap count, and duress vault status. Wired to `/safety/disguise/{active,profile}`, `/safety/panic_tap_count`, and the Tauri-side `quick_hide` + `tray` commands.
+
+**Approval card** (ApprovalCard component) presents pending destructive-action approval requests from the sentinel gate (G5b). When wired, it replaces the headless `DefaultDenyApprovalGate` with an interactive prompt.
 
 Full reference: [guide/colony-canvas.md](colony-canvas.md).
 

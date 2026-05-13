@@ -9,6 +9,7 @@ pub mod connector;
 pub mod error;
 pub mod factory;
 pub mod gateway;
+pub mod mention;
 pub mod triggers;
 
 pub use config::DiscordConfig;

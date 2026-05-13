@@ -2,6 +2,16 @@ use async_trait::async_trait;
 
 use crate::error::NostrError;
 
+/// A Nostr pubkey discovered via active enumeration.
+///
+/// Pubkey is hex-encoded — matches the URI scheme
+/// `nostr://pubkey/{hex}`.
+#[derive(Debug, Clone)]
+pub struct DiscoveredNostrPubkey {
+    pub pubkey_hex: String,
+    pub alias: Option<String>,
+}
+
 /// Trait defining the Nostr API surface used by actions.
 /// Actions depend on this trait, not the concrete client — enables mock testing.
 #[async_trait]
@@ -17,6 +27,10 @@ pub trait NostrApi: Send + Sync {
 
     /// Reply to a note (kind 1 with e/p tags).
     async fn reply(&self, event_id: &str, content: &str) -> Result<String, NostrError>;
+
+    /// Fetch the bot's NIP-02 Kind 3 contact list from configured relays
+    /// and enumerate its `p` tags.
+    async fn list_destinations(&self) -> Result<Vec<DiscoveredNostrPubkey>, NostrError>;
 }
 
 /// Concrete Nostr client wrapping nostr-sdk.
@@ -153,6 +167,22 @@ impl NostrApi for NostrClient {
             .map_err(|e| NostrError::PublishFailed(format!("failed to reply: {e}")))?;
         Ok(output.val.to_hex())
     }
+
+    async fn list_destinations(&self) -> Result<Vec<DiscoveredNostrPubkey>, NostrError> {
+        let contacts = self
+            .inner
+            .get_contact_list(std::time::Duration::from_secs(5))
+            .await
+            .map_err(|e| NostrError::RelayError(format!("failed to fetch contact list: {e}")))?;
+        let out = contacts
+            .into_iter()
+            .map(|c| DiscoveredNostrPubkey {
+                pubkey_hex: c.public_key.to_hex(),
+                alias: c.alias,
+            })
+            .collect();
+        Ok(out)
+    }
 }
 
 #[cfg(test)]
@@ -176,6 +206,22 @@ pub mod test_helpers {
         }
         async fn reply(&self, _: &str, _: &str) -> Result<String, NostrError> {
             Ok(self.response_id.clone())
+        }
+        async fn list_destinations(&self) -> Result<Vec<DiscoveredNostrPubkey>, NostrError> {
+            Ok(vec![
+                DiscoveredNostrPubkey {
+                    pubkey_hex: "0".repeat(64),
+                    alias: Some("alice".to_owned()),
+                },
+                DiscoveredNostrPubkey {
+                    pubkey_hex: "1".repeat(64),
+                    alias: None,
+                },
+                DiscoveredNostrPubkey {
+                    pubkey_hex: "2".repeat(64),
+                    alias: Some("bob".to_owned()),
+                },
+            ])
         }
     }
 }

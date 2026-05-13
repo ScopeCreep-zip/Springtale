@@ -8,6 +8,7 @@ use crate::state::AppState;
 
 /// Get computed connection graph.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_connections(
     state: State<'_, AppState>,
 ) -> Result<Vec<springtale_runtime::operations::canvas::Connection>, String> {
@@ -20,21 +21,11 @@ pub async fn get_connections(
 
 /// Get the current canvas state snapshot.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_canvas_state(state: State<'_, AppState>) -> Result<CanvasState, String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
     Ok(springtale_runtime::operations::canvas::get_canvas(rt).await)
-}
-
-/// Apply a canvas update.
-#[tauri::command]
-pub async fn update_canvas(
-    state: State<'_, AppState>,
-    update: CanvasUpdate,
-) -> Result<CanvasState, String> {
-    let guard = require_runtime(&state.runtime).await?;
-    let rt = guard.as_ref().unwrap();
-    Ok(springtale_runtime::operations::canvas::update_canvas(rt, update).await)
 }
 
 /// F4 + E10: Tauri IPC streaming subscription to live canvas updates.
@@ -50,6 +41,7 @@ pub async fn update_canvas(
 /// `LiveFormationReader` through the `DataProvider` abstraction. This
 /// command is the desktop's equivalent of the web's SSE connection.
 #[tauri::command]
+#[specta::specta]
 pub async fn subscribe_canvas(
     state: State<'_, AppState>,
     channel: Channel<CanvasUpdate>,

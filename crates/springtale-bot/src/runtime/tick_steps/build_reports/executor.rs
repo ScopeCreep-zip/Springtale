@@ -229,20 +229,43 @@ pub async fn execute(ctx: ExecuteCtx<'_>) -> ExecuteOutcome {
 
     let action = crate::cooperation::task_dispatch::subtask_to_action(&task);
     let exec_start = std::time::Instant::now();
-    let exec_result = springtale_runtime::dispatch::dispatch_action_with_tier(
+
+    // Formation-tick path: build the cooperation envelope with the
+    // firing agent + formation + the formation's current momentum
+    // tier. The dispatcher forwards `momentum` to `bridge.execute(...)`
+    // so the per-tier WASM `InstancePre` selection matches the call
+    // site (§16). The synthetic RuleId is fine — formation-task
+    // dispatch is rule-less; the executions log (Phase B) keys off
+    // `bot_id` + `formation_id` instead.
+    let execution = springtale_cooperation::execution::ExecutionContext::for_formation(
+        springtale_core::rule::RuleId::new(),
+        ctx.member.agent_id,
+        springtale_cooperation::types::FormationId(ctx.formation_id),
+        ctx.formation_momentum,
+        springtale_cooperation::execution::ExecutionMode::Cooperation,
+    );
+    let exec_result = springtale_runtime::dispatch::dispatch_action(
         &action,
         ctx.bridge,
         ctx.sentinel,
-        springtale_runtime::momentum_to_wasm_tier(ctx.formation_momentum),
+        execution,
+        serde_json::Value::Null,
     )
     .await;
     let duration_ms = exec_start.elapsed().as_millis() as u64;
 
     let (success, output) = match &exec_result {
-        Ok(msg) => (true, serde_json::json!({"result": msg})),
-        Err(err) => (false, serde_json::json!({"error": err})),
+        Ok(chain) => (
+            true,
+            chain
+                .steps
+                .last()
+                .map(|s| s.output.clone())
+                .unwrap_or_else(|| serde_json::json!({ "result": chain.brief() })),
+        ),
+        Err(err) => (false, serde_json::json!({"error": err.to_string()})),
     };
-    let error_msg = exec_result.err();
+    let error_msg = exec_result.err().map(|e| e.to_string());
 
     if let Some(active) = ctx.member.active_task.as_mut() {
         if success {

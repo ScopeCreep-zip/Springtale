@@ -48,28 +48,46 @@ impl Handler for ConnectorHandler {
             action: self.action_name.clone(),
             params,
         };
-        let dispatch_outcome = match ctx.formation_tier {
-            Some(tier) => {
-                springtale_runtime::dispatch::dispatch_action_with_tier(
-                    &action,
-                    &ctx.capability_bridge,
-                    &ctx.sentinel,
-                    tier,
-                )
-                .await
-            }
-            None => {
-                springtale_runtime::dispatch::dispatch_action(
-                    &action,
-                    &ctx.capability_bridge,
-                    &ctx.sentinel,
-                )
-                .await
-            }
-        };
+
+        // Chat-command path: no firing rule context, mint a synthetic
+        // RuleId, Mode::Manual. Convert the optional formation tier
+        // into the cooperation envelope's `momentum` so it threads
+        // into `bridge.execute(...)`.
+        let mut execution = springtale_cooperation::execution::ExecutionContext::for_global(
+            springtale_core::rule::RuleId::new(),
+            springtale_cooperation::execution::ExecutionMode::Manual,
+        );
+        if let Some(tier) = ctx.formation_tier {
+            use springtale_cooperation::momentum::MomentumTier;
+            use springtale_connector::tier::WasmTier;
+            execution.momentum = match tier {
+                WasmTier::Cold => MomentumTier::Cold,
+                WasmTier::Warming => MomentumTier::Warming,
+                WasmTier::Hot => MomentumTier::Hot,
+                WasmTier::Fever => MomentumTier::Fever,
+            };
+        }
+        let dispatch_outcome = springtale_runtime::dispatch::dispatch_action(
+            &action,
+            &ctx.capability_bridge,
+            &ctx.sentinel,
+            execution,
+            serde_json::Value::Null,
+        )
+        .await;
 
         match dispatch_outcome {
-            Ok(msg) => Ok(HandlerResult { response: msg }),
+            Ok(chain) => {
+                // Surface the connector's `ActionResult.message` as
+                // the chat reply — that's the human-readable line
+                // connectors return. Falls back to the brief summary
+                // if no run_connector step landed.
+                let response = chain
+                    .last_connector_message
+                    .clone()
+                    .unwrap_or_else(|| chain.brief());
+                Ok(HandlerResult { response })
+            }
             Err(e) => Ok(HandlerResult {
                 response: format!("Action failed: {e}"),
             }),

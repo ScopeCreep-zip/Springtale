@@ -439,7 +439,14 @@ Sentinel checks run in this order per action:
 1. Circuit breaker (per-connector failure threshold)
 2. Rate limiter (per-connector actions/minute)
 3. Dead-man switch (global action count without user interaction)
-4. Destructive action gate (`RunShell` and `WriteFile` to new paths)
+4. Destructive action gate — classifies the action via `impact::classify_impact`; if `Destructive`, the verdict routes through an `ApprovalGate` before dispatch
+
+`ApprovalGate` is a trait (`crates/springtale-sentinel/src/approval.rs`) implemented per surface:
+
+- **CLI / headless** wire `DefaultDenyApprovalGate`. Safe default for the most vulnerable user — a destructive action with no human surface is refused, not silently approved.
+- **Desktop / web** wire their own gate that prompts the human operator (the colony-canvas safety panel surfaces the request and the audit trail records the response).
+
+The gate sees an `ApprovalRequest` with the action, target, and reason. Its async decision is one of `Approved` / `Denied` / `Escalated` (route to another surface, e.g. push notification).
 
 After the action completes, `sentinel.report(action, outcome)` records the result.
 

@@ -159,6 +159,9 @@ impl Connector for DiscordConnector {
             "add_reaction" => actions::add_reaction::execute(&self.client, &input)
                 .await
                 .map_err(ConnectorError::from),
+            "discover_destinations" => actions::discover_destinations::execute(&self.client, &input)
+                .await
+                .map_err(ConnectorError::from),
             unknown => Err(ConnectorError::ExecutionFailed(format!(
                 "unknown action: {unknown}"
             ))),
@@ -203,6 +206,12 @@ impl Connector for DiscordConnector {
     fn manifest(&self) -> &ConnectorManifest {
         &self.manifest
     }
+
+    fn mention_extractor(
+        &self,
+    ) -> Option<&dyn springtale_connector::mention::MentionExtractor> {
+        Some(&crate::mention::DISCORD_MENTION_EXTRACTOR)
+    }
 }
 
 #[cfg(test)]
@@ -217,6 +226,7 @@ mod tests {
 
     #[test]
     fn test_action_count() {
-        assert_eq!(actions::action_declarations().len(), 5);
+        // 5 messaging actions + D1's `discover_destinations` enumeration.
+        assert_eq!(actions::action_declarations().len(), 6);
     }
 }

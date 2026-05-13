@@ -47,6 +47,15 @@ pub struct SharedMentalModel {
 
     /// Relational knowledge graph (petgraph-backed).
     pub graph: super::graph::KnowledgeGraph,
+
+    /// External-workspace directory — Telegram chats / Discord
+    /// channels / Signal groups / IRC channels / Nostr pubkeys /
+    /// Bluesky accounts the formation has discovered or been told
+    /// about. Gossip-replicated across formation members so a
+    /// destination learned by agent A becomes visible to agent B
+    /// automatically (see `external_workspaces::merge_gossip_delta`).
+    /// Privacy invariant: sizes-only metadata, no message bodies.
+    pub external_workspaces: super::external_workspaces::ExternalWorkspaceDirectory,
 }
 
 /// A piece of domain knowledge.

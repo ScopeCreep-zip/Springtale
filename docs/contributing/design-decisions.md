@@ -141,7 +141,7 @@ Not everything is ideal. These are risks we've accepted with eyes open:
 | Veilid maturity | MEDIUM | Veilid is v0.4.x. The `VeilidTransport` stub is present but won't go live until Veilid is stable in production. |
 | WASM binary size | LOW | Even Rust WASM connectors are ~1-2MB. Acceptable for local installation, but limits distribution via a future DHT-backed registry. |
 | Compile times | LOW | Full workspace rebuild: ~3-5 minutes. Incremental builds are fast. Accepted tradeoff for Rust's guarantees. |
-| Cooperation framework status | — | Fully extracted into `crates/springtale-cooperation/` (37 modules) as of April 2026 and wired through a 14-step formation tick. Remaining work is ergonomic only — see `docs/arch/AUDIT-NOTES.md §3` and `docs/intended-arch/COOPERATION_IMPLEMENTATION_PLAN.md`. |
+| Cooperation framework status | — | Fully extracted into `crates/springtale-cooperation/` (40+ modules) as of April 2026 and wired through a 14-step formation tick. Remaining work is ergonomic only — see `docs/arch/AUDIT-NOTES.md §3` and `docs/intended-arch/COOPERATION_IMPLEMENTATION_PLAN.md`. |
 
 ---
 

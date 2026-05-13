@@ -14,6 +14,7 @@
 
 use serde::Serialize;
 
+use specta::Type;
 use crate::error::OperationError;
 use crate::operations::formations::{FormationDetail, get_formation};
 use crate::state::RuntimeState;
@@ -21,7 +22,7 @@ use crate::state::RuntimeState;
 /// Declarative command descriptor sent to the UI. The frontend renders the
 /// list as-is and dispatches by `id`. `enabled = false` items render greyed
 /// with `disabled_reason` as a tooltip.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct CommandDecl {
     /// Stable command id, e.g. `"formation:deploy"`. The frontend matches on
     /// this when dispatching to the right handler.
@@ -41,7 +42,7 @@ pub struct CommandDecl {
 /// Eligible-removal target for the `RM MBR` overlay. Backend decides which
 /// members are removable so the frontend never has to enforce invariants
 /// (e.g. "you can't remove the last member; use DISSOLVE instead").
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct MemberRef {
     /// Cooperation-layer agent id (UUID string).
     pub agent_id: String,

@@ -5,6 +5,7 @@ use crate::state::AppState;
 
 /// Export all data.
 #[tauri::command]
+#[specta::specta]
 pub async fn export_data(
     state: State<'_, AppState>,
 ) -> Result<serde_json::Value, String> {

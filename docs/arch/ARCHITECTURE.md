@@ -1,6 +1,6 @@
 # Springtale — Architecture (As-Built)
 
-> **Status:** Reflects working tree · **Updated:** 2026-04-19 · **Source of truth:** the code
+> **Status:** Reflects working tree · **Updated:** 2026-05-11 · **Source of truth:** the code
 >
 > This document describes what **actually exists** in the repository today.
 > For design intent (threat-model philosophy, Veilid transport,
@@ -45,10 +45,12 @@ Springtale/
 │   ├── springtale-ai/              #   AiAdapter + Anthropic/Ollama/OpenAI-compat/Noop + tool-calling
 │   ├── springtale-mcp/             #   rmcp 1.x bridge (stdio), split handler modules
 │   ├── springtale-sentinel/        #   behavioural monitor, toxic-pair detection
-│   ├── springtale-cooperation/     #   cooperation framework (37 modules, zero internal deps)
+│   ├── springtale-cooperation/     #   cooperation framework (40+ modules, zero internal deps)
 │   ├── springtale-runtime/         #   shared init, dispatch, operations, LiveFormationReader
 │   ├── springtale-bot/             #   runtime, router, cooperation glue, orchestrator,
 │   │                              #   memory, tool_runner, 14-step formation tick
+│   ├── springtale-wit/             #   WIT world for WASM Component Model embedding (G3)
+│   ├── springtale-py/              #   pyo3 Python bindings — cdylib + rlib (G3)
 │   └── libsqlite3-sys-mc/          #   vendored sqlite shim (SQLite3MultipleCiphers)
 │
 ├── connectors/                    # First-party connectors (all native Rust today)
@@ -388,7 +390,7 @@ All 15 are native Rust. Matrix is workspace-excluded (deferred).
 | discord | twilight gateway | interaction_received | send_message, send_embed |
 | filesystem | inotify | file_{created,modified,deleted} | read_file, write_file, list_dir |
 | github | REST v3 + webhooks | push, pr_opened, issue_opened | create_issue, post_comment |
-| http | reqwest | webhook_received | GET/POST/PUT/DELETE |
+| http | reqwest | — | GET, POST |
 | irc | native IRC | channel_message, user_joined | send_message, join, part |
 | kick | OAuth 2.1 + REST | stream_live, chat_message | send_message, start_raid, ban |
 | nostr | NIP-44 relays | note_received, dm_received | send_note, send_dm |
@@ -404,7 +406,7 @@ All 15 are native Rust. Matrix is workspace-excluded (deferred).
 
 The cooperation architecture has two parts:
 
-- `crates/springtale-cooperation/` — the crate with 37 pub modules, zero
+- `crates/springtale-cooperation/` — the crate with 39 pub modules (40+ counting nested), zero
   internal Springtale deps. Types, traits, and algorithms.
 - `crates/springtale-bot/src/cooperation/` — the glue. Holds the live
   `Formation` struct (mutable runtime fields like `active_task`,
@@ -589,6 +591,60 @@ Momentum and rally are persisted every tick. Mental model is persisted
 on formation dissolve so later formations with the same id benefit from
 what prior instances learned.
 
+### 6.8 Recipes (W-series)
+
+A separate subsystem under `crates/springtale-runtime/src/operations/recipes/`
+that wraps the cooperation/connector/rule/AI primitives in click-and-play
+"recipes" — blueprints the UI deploys without TOML editing.
+
+```
+recipes/
+├── types.rs       Recipe, RecipeCategory, FieldVisibility, FieldKind,
+│                  RecipeSource (Builtin / User / Community), RecipeBlueprint
+├── builtin.rs     Built-in recipe catalogue — shipped in the binary
+├── builtin/       One file per recipe
+├── library.rs     Server-side list / filter / sort. Built-ins + user merge
+├── apply.rs       apply_recipe() — substitute ${input_id} placeholders,
+│                  call existing connector/rule/AI ops, return ApplyReport
+├── authoring.rs   W2.B field-classification helpers (UI-side authoring)
+├── pieces.rs      Modular recipe pieces (sub-blueprints composed at apply)
+└── mod.rs
+```
+
+**Architecture invariant — backend owns the decisions.** Every "is this
+required vs optional vs advanced vs baked" decision lives in the
+`Recipe` value the backend returns. Frontends render what they're told;
+they never invent categories or classify fields. Same shape feeds
+desktop IPC, dashboard HTTP, and any future surface. See
+`feedback_thin_frontend_modular_backend` and
+`feedback_zero_frontend_logic`.
+
+**Wire:** 16 endpoints under `/recipes/*` (see §9 — Recipes group).
+
+**Storage status:**
+- Built-in recipes compile into the binary; no table needed.
+- `recipes_user` SQLite table is **planned, not yet shipped** —
+  `library::load_user_recipes()` returns `Ok(Vec::new())` until the
+  schema lands. User-saved recipes (W2.B) are wire-shaped via the
+  `/recipes/user`, `/recipes/user/{id}`, `/recipes/import` endpoints
+  but return `OperationError::NotSupported` until storage ships.
+- Community recipes (`RecipeSource::Community { author, signature }`)
+  are wire-shape only; sentinel signature verification + trusted-author
+  flow (W3.A) lights up when the marketplace lands.
+
+**W-series milestones in flight:**
+
+| Milestone | Concern | Status |
+|---|---|---|
+| W1.C | Progressive-disclosure deploy form (Required → Optional → Advanced) | Shipped |
+| W1.D | Preflight + Deploy-button gating | Shipped |
+| W1.F | Approval-gate UX dispatcher (Tauri side) | Shipped — see §10.2 below |
+| W2.B | User-recipe authoring + storage | Partial (UI shipped, table pending) |
+| W3.A | Community signature verification + trust badges | Wire-shape only |
+
+User-facing: [`docs/guide/recipes.md`](../guide/recipes.md). Format:
+[`docs/reference/recipes-format.md`](../reference/recipes-format.md).
+
 ---
 
 ## 7. AI Adapters
@@ -683,24 +739,27 @@ All authenticated routes require `Authorization: Bearer <token>` or
 
 | Group | Routes |
 |---|---|
-| **Connectors** | `GET /connectors`, `/connectors/schemas`, `/connectors/available`; `POST /connectors/setup`, `/connectors/install`; `DELETE /{name}`, `/{name}/cascade`; `GET /{name}/config`, `/{name}/outputs`; `POST /{name}/enable`, `/{name}/disable`, `/{name}/test`, `/{name}/upsert-config` |
+| **Connectors** | `GET /connectors`, `/connectors/schemas`, `/connectors/available`; `POST /connectors/setup`, `/connectors/install`; `DELETE /{name}`, `/{name}/cascade`; `GET /{name}/config`, `/{name}/outputs`; `POST /{name}/enable`, `/{name}/disable`, `/{name}/test`, `/{name}/upsert-config`, `/{name}/reload` (G4 hot-reload) |
 | **Rules** | `GET|POST /rules`; `POST /rules/parse`; `GET /rules/schema`; `PUT|DELETE /rules/{id}`; `POST /rules/{id}/{toggle|run|reassign}`; `POST /rules/connector`; `GET /rules/connector/{name}` |
-| **Formations** | `GET|POST /formations`; `GET /formations/{id}` (via `LiveFormationReader`); `GET /formations/intents`; `POST /formations/deploy-team`; `POST /formations/{id}/{deploy|pause|resume|dissolve|rally|cycle-intent|cycle-autonomy}`; `PUT /formations/{id}/intent`; `POST|DELETE /formations/{id}/members`; `POST /formations/{id}/toggle-guard` |
+| **Formations** | `GET|POST /formations`; `GET /formations/{id}` (via `LiveFormationReader`); `GET /formations/{id}/commands` (3×3 grid); `GET /formations/{id}/members/eligible`; `GET /formations/intents`; `POST /formations/deploy-team`; `POST /formations/{id}/{deploy|pause|resume|dissolve|rally|cycle-intent|cycle-autonomy}`; `PUT /formations/{id}/intent`; `POST|DELETE /formations/{id}/members`; `POST /formations/{id}/toggle-guard` |
+| **Cooperation** | `GET /cooperation/events` (SSE — formation lifecycle, momentum, rally, interference events) |
 | **Agents** | `GET /agents/states`; `GET|PUT /agents/{name}/autonomy`; `POST /agents/{name}/autonomy/step` |
-| **Canvas** | `GET /canvas`, `/canvas/connections`; `POST /canvas/update`; `GET /canvas/stream` (SSE) |
+| **Canvas** | `GET /canvas`, `/canvas/connections`; `GET /canvas/stream` (SSE). Canvas is read-only over HTTP — layout writes go through the Tauri IPC layer, not the daemon API. |
 | **Events** | `GET /events`; `GET /events/stream` (SSE) |
 | **Config** | `GET|PUT /config/{key}`; `GET /config`; `POST /config/ai`, `/config/ai/configure`, `/config/connector/{name}`; `GET|PUT /config/heartbeat` |
 | **Authors** | `GET /authors`; `POST|DELETE /authors/{name}` |
 | **Bot admin** | `GET /bot/{status|formations|memory}` |
 | **Sessions** | `GET /sessions` |
 | **Memory** | `POST /memory/audit`, `/memory/compact` |
-| **Safety** | `GET|PUT /safety` |
-| **Data** | `POST /data/export` |
+| **Safety** | `GET|PUT /safety`; `POST /safety/disguise/active` (G5d); `POST /safety/disguise/profile` (G5f); `POST /safety/panic_tap_count` |
+| **Data** | `POST /data/export`. Import is CLI-only (`springtale-cli data import`) — runs offline against the local SQLite backend. |
 | **Send** | `POST /send` (capability-gated direct action dispatch) |
 | **Diagnostics** | `GET /diagnostics` (Doctor flow) |
 | **Fixes** | `GET /fixes`, `GET /fixes/{id}`, `POST /fixes/{id}/apply` |
 | **Onboarding** | `GET /onboarding/platforms`; `POST /onboarding/{platform}` |
 | **Templates** | `GET /templates`; `POST /templates/{name}` |
+| **Recipes** | `GET /recipes`, `/recipes/categories`, `/recipes/{id}`, `/recipes/{id}/pieces`, `/recipes/{id}/export`; `POST /recipes/{id}/{favorite|recent|apply|render|preflight|preview|fork}`; `POST /recipes/user`, `/recipes/import`; `DELETE /recipes/user/{id}` |
+| **Webhooks** | `POST /webhook/{connector}/{trigger}` |
 
 CSRF protection middleware (`require_csrf_protection`) sits in front of
 all authenticated state-changing methods.
@@ -757,6 +816,7 @@ springtale
 │
 ├── data
 │   ├── export [--output <path>] [--encrypt]
+│   ├── import --input <path>
 │   └── purge
 │
 └── agent set-autonomy <name> <level>
@@ -820,27 +880,41 @@ Schema-apply ordering and the `SCHEMA_VERSION` constant live in
 ```
 tauri/
 ├── packages/
-│   ├── types/              # TS types mirroring Rust schemas
+│   ├── types/              # TS types mirroring Rust schemas + ts-rs generated
+│   │                       #   (FormationDelta, FormationOutcome, FormationStatus,
+│   │                       #    FormationView under types/src/generated/)
 │   └── ui/                 # shared SolidJS components, DataProvider interface
 │        └── src/
-│            ├── colony/    # ColonyShell, ColonyCanvas, Viewport,
-│            │              # BottomPanel, TopBar, TeamBuilder,
-│            │              # ConnectorConfigPanel, AiConfigPanel,
-│            │              # AppSettingsPanel; geometry + mappers;
-│            │              # colony.css + sprites.css
+│            ├── Canvas.tsx                # theme/provider-aware top-level wrapper
+│            └── colony/    # ColonyShell, ColonyCanvas, Viewport,
+│                           # BottomPanel, TopBar, TeamBuilder,
+│                           # ConnectorConfigPanel, AiConfigPanel,
+│                           # AppSettingsPanel; geometry + mappers;
+│                           # colony.css + sprites.css.
+│                           # Plus the G-series overlays:
+│                           #   ApprovalCard, EventRibbon (cross-formation),
+│                           #   MemberPickerOverlay, ModeSelectOverlay,
+│                           #   PreflightChecklist, PreviewPanel,
+│                           #   ProofOfLifePanel, RuleBuilderOverlay,
+│                           #   SafetyPanel (disguise + quick-hide + panic-tap),
+│                           #   RecipeAuthorPanel, RecipeCard,
+│                           #   RecipeDeployPanel, RecipeLibraryOverlay,
+│                           #   RecipeQuickView.
 │            └── dashboard/ # context, model, query, types (DataProvider ~60 methods)
 │
 └── apps/
     ├── desktop/
     │   ├── src/                              # SolidJS UI
-    │   └── src-tauri/src/commands/           # 23 command modules:
-    │                                         #   agent, authors, bot, canvas,
-    │                                         #   config, connectors, data,
-    │                                         #   diagnostics, events, fixes,
+    │   └── src-tauri/src/commands/           # 27 command modules:
+    │                                         #   agent, approval (G5b gate), authors,
+    │                                         #   bot, canvas, config, connectors,
+    │                                         #   cooperation (G6 IPC + SSE),
+    │                                         #   data, diagnostics, events, fixes,
     │                                         #   formations, heartbeat, memory,
-    │                                         #   onboarding, panic, rules, safety,
-    │                                         #   send, sessions, templates,
-    │                                         #   travel, vault; plus runtime_guard
+    │                                         #   onboarding, panic, quick_hide (G5g),
+    │                                         #   recipes, rules, safety, send,
+    │                                         #   sessions, templates, travel,
+    │                                         #   tray (G5f), vault; plus runtime_guard
     │
     └── dashboard/
         └── src/provider.ts                   # HTTP + SSE DataProvider

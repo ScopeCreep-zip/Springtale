@@ -9,6 +9,13 @@ import {
   AppSettingsPanel,
   ConnectorConfigPanel,
   MemberPickerOverlay,
+  ModeSelectOverlay,
+  ApprovalCard,
+  ProofOfLifePanel,
+  RecipeAuthorPanel,
+  RecipeDeployPanel,
+  RecipeLibraryOverlay,
+  RecipeQuickView,
   RuleBuilderOverlay,
   SafetyPanel,
   useDashboard,
@@ -17,7 +24,7 @@ import {
   mapAgents,
   mapFormations,
 } from "@springtale/ui";
-import type { ColonySelection, TeamConfig } from "@springtale/ui";
+import type { ColonySelection, CreateMode, Recipe, RecipeApplyReport, RecipeLibraryVariant, TeamBuilderSeed, TeamConfig } from "@springtale/ui";
 import { COMMANDS } from "@springtale/ui";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -45,6 +52,11 @@ export const App = () => {
   const [showTravelMode, setShowTravelMode] = createSignal(false);
   const [showRuleBuilder, setShowRuleBuilder] = createSignal(false);
   const [showTeamBuilder, setShowTeamBuilder] = createSignal(false);
+  // W1.A — ModeSelectOverlay is the entry hub before any compose flow.
+  // Triggered from the empty-canvas hint, top-bar "+ NEW", or `N` key.
+  // Per feedback_multi_path_oobe this is a hub, not a linear funnel:
+  // each card opens its own flow independently.
+  const [showModeSelect, setShowModeSelect] = createSignal(false);
   // F5 — member-picker overlay state. When set to a formation id, the
   // ColonyShell overlay slot renders MemberPickerOverlay for that
   // formation. Cleared on remove or cancel.
@@ -226,13 +238,44 @@ export const App = () => {
         setConfirmAction(null);
         setShowDesktopSettings(false);
         setShowTeamBuilder(false);
+        setShowModeSelect(false);
         setAiConfigAgent(null);
         setConnectorConfigData(null);
         return;
       }
 
+      // W2.E — `O` toggles the canvas (OUTPUT) view in the bottom
+      // panel. Lets the user reach the A2UI surface without hunting
+      // through nested menus.
+      if (key === "o" && !e.ctrlKey && !e.metaKey && !e.shiftKey
+          && !showVault() && !showDesktopSettings() && !showSafety()
+          && !showTravelMode() && !showRuleBuilder() && !showTeamBuilder()
+          && !showModeSelect() && recipeLibraryVariant() === null
+          && recipeDeploy() === null && proofOfLife() === null
+          && !confirmAction() && !aiConfigAgent()
+          && !connectorConfigData() && !memberPickerFor()) {
+        e.preventDefault();
+        setDetailView({ mode: "canvas" });
+        return;
+      }
+
+      // W1.A — `N` opens the mode-select hub (Nintendo-style entry to
+      // every compose flow). Skipped when any other modal is open per
+      // the guard below.
+      if (key === "n" && !e.ctrlKey && !e.metaKey && !e.shiftKey
+          && !showVault() && !showDesktopSettings() && !showSafety()
+          && !showTravelMode() && !showRuleBuilder() && !showTeamBuilder()
+          && !showModeSelect() && recipeLibraryVariant() === null
+          && recipeDeploy() === null
+          && !confirmAction() && !aiConfigAgent()
+          && !connectorConfigData() && !memberPickerFor()) {
+        e.preventDefault();
+        setShowModeSelect(true);
+        return;
+      }
+
       // Skip command shortcuts when any modal is open
-      if (showVault() || showDesktopSettings() || showSafety() || showTravelMode() || showRuleBuilder() || showTeamBuilder() || confirmAction() || aiConfigAgent() || connectorConfigData() || memberPickerFor()) return;
+      if (showVault() || showDesktopSettings() || showSafety() || showTravelMode() || showRuleBuilder() || showTeamBuilder() || showModeSelect() || recipeLibraryVariant() !== null || recipeDeploy() !== null || proofOfLife() !== null || recipeAuthorDraft() !== null || confirmAction() || aiConfigAgent() || connectorConfigData() || memberPickerFor()) return;
 
       // Command grid shortcuts: match key to current selection context.
       // F1: formation hotkeys come exclusively from the backend
@@ -288,6 +331,18 @@ export const App = () => {
     // handler so we don't need to hide here).
     await listen("quick-hide", () => {
       invoke("lock_vault").catch((e) => db.setError(String(e)));
+    });
+
+    // W1.F — destructive-action approval prompt. Backend emits this
+    // when the sentinel hits `ActionImpact::Destructive`; we render
+    // an ApprovalCard overlay and forward the user's decision back.
+    await listen<{
+      request_id: string;
+      connector_name: string;
+      action_type: string;
+      rationale: string;
+    }>("approval-required", (event) => {
+      setPendingApproval(event.payload);
     });
 
     try {
@@ -371,9 +426,15 @@ export const App = () => {
           // surface specifically.
           setShowRuleBuilder(true);
           break;
-        case "global:refresh":
-          await db.refresh();
-          setConnections(await db.provider.getConnections() as import("@springtale/ui").ColonyConnection[]);
+        case "global:make_bot":
+          // Canvas is live so a refresh command is redundant — this slot
+          // now routes the user back to the bot/team selection hub
+          // (ModeSelectOverlay) so they can add another bot after the
+          // canvas already has some. Same overlay the cold-boot "NEW"
+          // path opens; ModeSelectOverlay branches into RecipeLibraryOverlay
+          // (Make a Bot) or TeamBuilder (Make a Team) from there.
+          setSelection({ id: null, type: null });
+          setShowModeSelect(true);
           break;
         case "global:connectors":
           setSelection({ id: null, type: null });
@@ -557,8 +618,125 @@ export const App = () => {
     }
   };
 
+  // W1.A — Mode-select hub handler. Each card opens its own flow.
+  // Per `feedback_multi_path_oobe`, the hub doesn't carry state across
+  // modes — picking a mode dismisses the hub and opens that mode's
+  // entry surface. Returning to the hub re-enters from scratch.
+  const [recipeLibraryVariant, setRecipeLibraryVariant] = createSignal<RecipeLibraryVariant | null>(null);
+  const handleModeSelect = (mode: CreateMode) => {
+    setShowModeSelect(false);
+    switch (mode) {
+      case "bot":
+        setRecipeLibraryVariant("bot");
+        break;
+      case "team":
+        // W1.B's library covers single-bot recipes today; team recipes
+        // arrive in a later wave. Open the team-aware variant of the
+        // library so the user sees what's there and can fall through
+        // to TeamBuilder for from-scratch composition.
+        setRecipeLibraryVariant("team");
+        break;
+      case "addToTeam":
+        // Until we ship the "pick a team" picker, open the library so
+        // the user can clone a recipe into a new agent.
+        setRecipeLibraryVariant("all");
+        break;
+    }
+  };
+
+  // W1.B-quickview — `RecipeQuickView` is mounted by App.tsx (not
+  // by RecipeLibraryOverlay internally) so the library stays
+  // structurally flat (Show siblings only, mirroring
+  // MemberPickerOverlay). When set, App.tsx renders QuickView on
+  // top of the library; cancelling returns to the library.
+  const [recipeQuickView, setRecipeQuickView] = createSignal<Recipe | null>(null);
+  // Favorites Set lives at App scope so both the library grid and
+  // the quick-view modal see the same state. Backend (config_store)
+  // is the source of truth; this Set is a render-only mirror seeded
+  // on first dashboard refresh + updated when the user toggles.
+  const [recipeFavorites, setRecipeFavorites] = createSignal<Set<string>>(new Set());
+  const handleToggleRecipeFavorite = async (recipe: Recipe) => {
+    try {
+      const nowFav = await db.provider.toggleRecipeFavorite(recipe.id);
+      setRecipeFavorites((prev) => {
+        const next = new Set(prev);
+        if (nowFav) next.add(recipe.id);
+        else next.delete(recipe.id);
+        return next;
+      });
+    } catch (e) {
+      db.setError(String(e));
+    }
+  };
+  // Seed favorites from the backend config_store the first time the
+  // user opens the library after unlock. The library reads
+  // `recipeFavorites()` so the cards render the heart correctly for
+  // recipes the user has previously starred.
+  createEffect(() => {
+    if (recipeLibraryVariant() === null) return;
+    void db.provider
+      .listRecipes({ favorites_only: true })
+      .then((rs) => setRecipeFavorites(new Set(rs.map((r) => r.id))))
+      .catch(() => {});
+  });
+  // W1.C — recipe deploy panel (the layered required → optional →
+  // advanced → code form). When set, the panel replaces the library
+  // overlay until the user either deploys or backs out.
+  const [recipeDeploy, setRecipeDeploy] = createSignal<Recipe | null>(null);
+  // W2.A — seed for TeamBuilder when the user picks CUSTOMIZE on a
+  // recipe instead of USE. Reset to `null` after TeamBuilder closes.
+  const [teamBuilderSeed, setTeamBuilderSeed] = createSignal<TeamBuilderSeed | null>(null);
+  // W2.B — recipe authoring panel. Holds the draft recipe being saved.
+  const [recipeAuthorDraft, setRecipeAuthorDraft] = createSignal<Recipe | null>(null);
+  // W1.E — post-deploy proof-of-life panel. Set immediately after a
+  // successful Deploy so the user sees confirmation + test affordances.
+  const [proofOfLife, setProofOfLife] = createSignal<RecipeApplyReport | null>(null);
+  // W1.F — pending destructive-action approval request. Set when the
+  // backend emits an `approval-required` event; cleared after the
+  // user clicks Approve/Deny and the response IPC call completes.
+  const [pendingApproval, setPendingApproval] = createSignal<{
+    request_id: string;
+    connector_name: string;
+    action_type: string;
+    rationale: string;
+  } | null>(null);
+  const handleUseRecipe = (recipe: Recipe) => {
+    setRecipeLibraryVariant(null);
+    setRecipeDeploy(recipe);
+  };
+
+  // W1.F — approval response handler. Forwards the user's decision
+  // back to the backend dispatcher, then clears the pending state so
+  // the next request (or a re-prompt) can render.
+  const handleApproval = async (approve: boolean) => {
+    const pending = pendingApproval();
+    if (!pending) return;
+    try {
+      const { respondToApproval } = await import("./ipc/approval");
+      await respondToApproval(pending.request_id, approve);
+    } catch (e) {
+      db.setError(`approval response failed: ${String(e)}`);
+    } finally {
+      setPendingApproval(null);
+    }
+  };
+
   // ── Unified overlay — priority order ────────────────────
   const shellOverlay = () => {
+    // W1.F — destructive-action approval takes top priority: the
+    // sentinel is blocked on the user's answer, so we render this
+    // above everything else.
+    const approval = pendingApproval();
+    if (approval) {
+      return (
+        <ApprovalCard
+          connectorName={approval.connector_name}
+          actionType={approval.action_type}
+          rationale={approval.rationale}
+          onDecision={handleApproval}
+        />
+      );
+    }
     // F5 — member-picker for RM MBR. Renders before settings/AI panels
     // so a destructive action gets focus once requested.
     const pickerFor = memberPickerFor();
@@ -568,6 +746,116 @@ export const App = () => {
           formationId={pickerFor}
           onRemoved={async () => { await db.refresh(); }}
           onCancel={() => setMemberPickerFor(null)}
+        />
+      );
+    }
+    // W1.A — ModeSelectOverlay sits below the destructive member-picker
+    // but above the rest so first-action discoverability is high.
+    if (showModeSelect()) {
+      return (
+        <ModeSelectOverlay
+          hasExistingTeams={(db.swarms()?.length ?? 0) > 0}
+          onSelectMode={handleModeSelect}
+          onCancel={() => setShowModeSelect(false)}
+        />
+      );
+    }
+    // W1.B-quickview — RecipeQuickView lives at App scope (not
+    // inside the library) so the library JSX stays structurally
+    // flat. Priority: above the library so clicking a card opens
+    // the modal *on top* of the library; closing it returns to the
+    // library since `recipeLibraryVariant()` is still set.
+    const quick = recipeQuickView();
+    if (quick) {
+      return (
+        <RecipeQuickView
+          recipe={quick}
+          isFavorite={recipeFavorites().has(quick.id)}
+          onUse={() => {
+            setRecipeQuickView(null);
+            handleUseRecipe(quick);
+          }}
+          onCustomize={() => {
+            setRecipeQuickView(null);
+            setRecipeLibraryVariant(null);
+            setTeamBuilderSeed({
+              name: quick.name,
+              connectorsUsed: quick.connectors_used,
+            });
+            setShowTeamBuilder(true);
+          }}
+          onFork={async () => {
+            try {
+              const forked = await db.provider.forkRecipe(quick.id, `My ${quick.name}`);
+              setRecipeQuickView(null);
+              setRecipeLibraryVariant(null);
+              setRecipeAuthorDraft(forked);
+            } catch (e) {
+              db.setError(String(e));
+            }
+          }}
+          onToggleFavorite={() => handleToggleRecipeFavorite(quick)}
+          onCancel={() => setRecipeQuickView(null)}
+        />
+      );
+    }
+    // W1.B — recipe library opens from any mode-select card. Closes
+    // back to the mode-select hub when dismissed; "Build from scratch"
+    // falls through to TeamBuilder.
+    if (recipeLibraryVariant() !== null) {
+      return (
+        <RecipeLibraryOverlay
+          variant={recipeLibraryVariant() ?? "all"}
+          favorites={recipeFavorites()}
+          onSelectRecipe={(recipe) => setRecipeQuickView(recipe)}
+          onToggleFavorite={handleToggleRecipeFavorite}
+          onBuildFromScratch={() => {
+            setRecipeLibraryVariant(null);
+            setTeamBuilderSeed(null);
+            setShowTeamBuilder(true);
+          }}
+          onCancel={() => setRecipeLibraryVariant(null)}
+        />
+      );
+    }
+    // W1.C — recipe deploy panel (progressive-disclosure form).
+    const deployRecipe = recipeDeploy();
+    if (deployRecipe) {
+      return (
+        <RecipeDeployPanel
+          recipe={deployRecipe}
+          onDeployed={async (report) => {
+            setRecipeDeploy(null);
+            await db.refresh();
+            setProofOfLife(report);
+          }}
+          onCancel={() => setRecipeDeploy(null)}
+        />
+      );
+    }
+    // W1.E — proof-of-life panel runs after Deploy: test trigger,
+    // celebration sprite, dismissal.
+    const polReport = proofOfLife();
+    if (polReport) {
+      return (
+        <ProofOfLifePanel
+          report={polReport}
+          onDismiss={() => setProofOfLife(null)}
+        />
+      );
+    }
+    // W2.B — recipe author panel (save / fork / build-as-recipe).
+    const authorDraft = recipeAuthorDraft();
+    if (authorDraft) {
+      return (
+        <RecipeAuthorPanel
+          draft={authorDraft}
+          onSaved={async () => {
+            setRecipeAuthorDraft(null);
+            await db.refresh();
+            db.setError("Recipe saved to your library.");
+          }}
+          onCancel={() => setRecipeAuthorDraft(null)}
         />
       );
     }
@@ -716,22 +1004,31 @@ export const App = () => {
               db.setError(String(e));
             }
           }}
-          onDisguiseStateChanged={async () => {
-            // G5f — push the persisted disguise state onto the
-            // desktop shell so the visible chrome matches the
-            // backend immediately. iOS/Android equivalents extend
-            // this when the platform-specific mobile plugins land.
-            // G5g — also re-apply content protection so changes to
-            // content_protected take effect without a restart.
+          onSafetyChanged={async () => {
+            // F — every panel save (disguise focused-updates AND the
+            // full-form Save button) routes here so the running
+            // process picks up the new safety state without a
+            // restart. Without this, toggles persisted to SQLite but
+            // the window title, content protection, global shortcut,
+            // and auto-lock timer kept their old values until next
+            // boot — which is what made the panel feel inert.
             try {
-              const { applyDisguiseToShell, applyContentProtection, applyDisguiseToTray, applyQuickHideShortcut } = await import("./ipc/safety");
+              const {
+                applyDisguiseToShell,
+                applyContentProtection,
+                applyDisguiseToTray,
+                applyQuickHideShortcut,
+              } = await import("./ipc/safety");
+              const { resetAutoLock } = await import("./ipc/autolock");
               await applyDisguiseToShell();
               await applyDisguiseToTray();
               await applyContentProtection();
-              // G5g — user may have changed `quick_hide_shortcut`
-              // in the Safety panel; backend swaps registration
-              // atomically so this is safe to call on every change.
               await applyQuickHideShortcut();
+              // F — `reset_auto_lock` Tauri command re-reads
+              // `auto_lock_minutes` from the persisted safety config
+              // and reschedules `AppState.auto_lock` accordingly, so
+              // a panel change to the timer takes effect now.
+              await resetAutoLock();
             } catch (e) {
               db.setError(String(e));
             }
@@ -772,6 +1069,7 @@ export const App = () => {
             availableConnectors={availableConnectors()}
             connectors={db.schemas()}
             intents={intents()}
+            initialTemplate={teamBuilderSeed() ?? undefined}
             onSetupConnector={(name) => {
               const avail = availableConnectors().find((a) => a.name === name);
               setConnectorConfigData({ id: name, config: {}, configSchema: avail?.config_schema });
@@ -793,10 +1091,11 @@ export const App = () => {
                 })),
               });
               setShowTeamBuilder(false);
+              setTeamBuilderSeed(null);
               await db.refresh();
               setAvailableConnectors(await db.provider.listAvailableConnectors());
             }}
-            onCancel={() => setShowTeamBuilder(false)}
+            onCancel={() => { setShowTeamBuilder(false); setTeamBuilderSeed(null); }}
           />
         </div>
       );
@@ -833,7 +1132,7 @@ export const App = () => {
           onClearSelection={() => setSelection({ id: null, type: null })}
           connectorPositions={connectorPositions()}
           onConnectorDrag={handleConnectorDrag}
-          onHatch={() => setShowTeamBuilder(true)}
+          onHatch={() => setShowModeSelect(true)}
           availableConnectors={availableConnectors()}
           connectorSchemas={db.schemas()}
           onSetupConnector={(name) => {
@@ -885,7 +1184,7 @@ export const App = () => {
             const avail = availableConnectors().find((a) => a.name === name);
             setConnectorConfigData({ id: name, config: {}, configSchema: avail?.config_schema });
           }}
-          onCreateBot={() => setShowTeamBuilder(true)}
+          onCreateBot={() => setShowModeSelect(true)}
         />
       }
       overlay={shellOverlay()}

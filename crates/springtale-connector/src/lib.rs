@@ -10,11 +10,13 @@ pub mod error;
 pub mod factory;
 pub mod host;
 pub mod manifest;
+pub mod mention;
 pub mod native;
 pub mod registry;
 pub mod tier;
 #[cfg(feature = "wasm-sandbox")]
 pub mod wasm;
+pub mod workspace_key;
 
 pub use connector::subscription::{Subscription, SubscriptionCounter, SubscriptionId};
 pub use connector::trait_::{ActionResult, Connector, EventHandler};

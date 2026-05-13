@@ -1,6 +1,7 @@
 use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -9,7 +10,7 @@ use crate::cadence::AgentId;
 use crate::capability::CapabilityDecl;
 
 /// FIPA-CNP "call-for-proposals" message.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct CallForProposals {
     pub id: Uuid,
     pub initiator: AgentId,
@@ -20,7 +21,7 @@ pub struct CallForProposals {
 }
 
 /// A participant's bid. Utility score is 0.0..=1.0 per `utility/` module.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct Bid {
     pub cfp_id: Uuid,
     pub bidder: AgentId,
@@ -30,7 +31,7 @@ pub struct Bid {
 }
 
 /// Award message — sent to winner + rejection to all others.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct Award {
     pub cfp_id: Uuid,
     pub winner: AgentId,

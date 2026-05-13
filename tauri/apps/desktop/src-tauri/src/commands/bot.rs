@@ -5,6 +5,7 @@ use crate::state::AppState;
 
 /// Get bot status: running state, connector/rule/formation counts.
 #[tauri::command]
+#[specta::specta]
 pub async fn bot_status(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
@@ -34,6 +35,7 @@ pub async fn bot_status(state: State<'_, AppState>) -> Result<serde_json::Value,
 
 /// Get bot memory stats (session count).
 #[tauri::command]
+#[specta::specta]
 pub async fn bot_memory(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();

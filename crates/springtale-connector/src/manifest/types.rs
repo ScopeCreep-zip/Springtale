@@ -1,12 +1,13 @@
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 /// A connector's manifest — the declaration of what it is, what it needs,
 /// and what it can do. Parsed from `connector-{name}.toml`.
 ///
 /// Every connector ships with a manifest. For native connectors, the manifest
 /// is embedded. For WASM connectors, it accompanies the `.wasm` binary.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(deny_unknown_fields)]
 pub struct ConnectorManifest {
     /// Connector name (e.g., "connector-kick").
@@ -58,7 +59,7 @@ pub struct ConnectorManifest {
 ///
 /// Capabilities are declared in the manifest and verified at install time.
 /// The runtime checks capabilities BEFORE every `execute()` call.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(tag = "type")]
 pub enum Capability {
     /// Outbound network access to a specific host.
@@ -91,7 +92,7 @@ impl std::fmt::Display for Capability {
 }
 
 /// Declaration of an event a connector can emit.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Type)]
 pub struct TriggerDecl {
     /// Trigger name (e.g., "stream_live", "chat_message").
     pub name: String,
@@ -105,7 +106,7 @@ pub struct TriggerDecl {
 }
 
 /// Declaration of an action a connector can perform.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Type)]
 pub struct ActionDecl {
     /// Action name (e.g., "send_chat", "create_post").
     pub name: String,
@@ -123,7 +124,7 @@ pub struct ActionDecl {
 }
 
 /// What user data a connector accesses (for transparency/Privacy by Design).
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Type)]
 pub struct DataDisclosure {
     /// What data is accessed (e.g., "chat messages", "stream metadata").
     pub data_type: String,
@@ -140,7 +141,7 @@ pub struct DataDisclosure {
 /// Registered into `springtale_cooperation::role::RoleRegistry` at
 /// install time. See the registry module for semantics; see
 /// `CommunityRole` for how `allowed_actions` patterns are matched.
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(deny_unknown_fields)]
 pub struct RoleDecl {
     /// Human-readable role name. Namespaced by convention (e.g.,

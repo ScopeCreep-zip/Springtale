@@ -4,7 +4,9 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
+use specta::Type;
 use crate::error::AiError;
+use crate::extractor::StructuredExtractor;
 use springtale_core::rule::types::Rule;
 
 // ── Stream type ─────────────────────────────────────────────────────
@@ -36,7 +38,7 @@ pub struct StreamChunk {
 /// This is Layer 1 of the two-layer defense: compile-time type safety
 /// ensures secrets cannot accidentally enter the AI request.
 /// Layer 2 (runtime sanitization) provides defense-in-depth.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 #[non_exhaustive]
 pub enum AiRequest {
     /// Simple text completion.
@@ -55,7 +57,7 @@ pub enum AiRequest {
 /// model produced. Adapters that support tool calling translate these
 /// into their vendor-specific wire format; adapters without tool
 /// support simply drop the extra fields.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
 pub struct ChatMessage {
     /// Role: `"system"`, `"user"`, `"assistant"`, or `"tool"`.
     pub role: String,
@@ -98,7 +100,7 @@ impl ChatMessage {
 /// `ActionDecl`. Names follow the convention `<connector>__<action>`
 /// so OpenAI/Anthropic can accept them (hyphen is allowed but `::` and
 /// `.` are not).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct ToolDefinition {
     pub name: String,
     pub description: String,
@@ -109,7 +111,7 @@ pub struct ToolDefinition {
 }
 
 /// A tool invocation emitted by the model.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct ToolCall {
     /// Vendor-issued id; echoed back on the tool result message so the
     /// model can correlate requests and responses.
@@ -122,7 +124,7 @@ pub struct ToolCall {
 }
 
 /// Result of executing a tool, sent back to the model on the next turn.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct ToolResult {
     /// Id echoed from the [`ToolCall`] this result corresponds to.
     pub id: String,
@@ -143,7 +145,7 @@ pub struct ToolResult {
 /// Pattern: LangChain's `bind_tools` + MCP `annotations.requiresConsent`.
 /// Default is ZERO tools (empty `allow` list) per OWASP LLM06:
 /// "Limit extensions to the minimum necessary."
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
 pub struct ToolPolicy {
     /// Glob allow-list. e.g. `["connector-telegram__*", "connector-github__read_*"]`.
     /// Empty = no tools exposed (safe default).
@@ -275,7 +277,7 @@ impl Default for AiOptions {
 ///
 /// Each connector's `DataDisclosure` in its manifest determines this.
 /// The AI only sees what the connector declares it's willing to share.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub enum DisclosureLevel {
     /// Name and description only. AI knows the connector exists.
     NameOnly,
@@ -290,7 +292,7 @@ pub enum DisclosureLevel {
 /// Defined in springtale-ai (not springtale-connector) to avoid a
 /// dependency cycle. The application layer maps from `ConnectorManifest`
 /// to `ConnectorInfo` respecting each connector's `DataDisclosure`.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct ConnectorInfo {
     /// Connector name (e.g., "connector-kick").
     pub name: String,
@@ -305,7 +307,7 @@ pub struct ConnectorInfo {
 }
 
 /// Trigger metadata for AI context.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct TriggerInfo {
     pub name: String,
     pub description: String,
@@ -315,7 +317,7 @@ pub struct TriggerInfo {
 }
 
 /// Action metadata for AI context.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct ActionInfo {
     pub name: String,
     pub description: String,
@@ -382,4 +384,19 @@ pub trait AiAdapter: Send + Sync + 'static {
 
     /// Check if the adapter is configured and reachable.
     async fn is_available(&self) -> bool;
+
+    /// Structured-extraction capability discovery.
+    ///
+    /// Adapters that support schema-constrained JSON extraction
+    /// (OpenAI strict `json_schema`, Anthropic structured outputs /
+    /// forced tool use, Ollama `format: <schema>`) override this to
+    /// return `Some(self)`. `NoopAdapter` and adapters without
+    /// constrained decoding return `None` — recipes that request
+    /// [`springtale_core::rule::action::ExtractKind::LlmSchema`]
+    /// fail preflight with a clear "this adapter doesn't do
+    /// structured outputs" message rather than silently dropping
+    /// to JSON-mode and returning malformed data.
+    fn structured_extractor(&self) -> Option<&dyn StructuredExtractor> {
+        None
+    }
 }

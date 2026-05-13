@@ -1,4 +1,5 @@
 pub mod create_post;
+pub mod discover_destinations;
 pub mod like;
 pub mod reply;
 pub mod repost;
@@ -12,5 +13,6 @@ pub fn action_declarations() -> Vec<ActionDecl> {
         reply::declaration(),
         like::declaration(),
         repost::declaration(),
+        discover_destinations::declaration(),
     ]
 }

@@ -7,6 +7,24 @@ use tokio::sync::mpsc;
 use crate::error::SchedulerError;
 use springtale_core::rule::engine::TriggerEvent;
 
+/// Accept both POSIX 5-field cron (`min hour dom month dow`) and the
+/// Rust `cron` crate's 6-field form (`sec min hour dom month dow`).
+///
+/// The `cron` crate refuses anything other than 6 or 7 fields, so
+/// every recipe schedule the user types as `* * * * *` would otherwise
+/// fail at register time even though every other surface in the app
+/// (CronFrequencyChip, preflight classifier, deploy preview) treats it
+/// as valid. Prepending `0 ` makes the seconds field explicit at
+/// second-0 — same semantics POSIX cron implies.
+fn normalize_cron_expression(expression: &str) -> String {
+    let trimmed = expression.trim();
+    if trimmed.split_whitespace().count() == 5 {
+        format!("0 {trimmed}")
+    } else {
+        trimmed.to_owned()
+    }
+}
+
 /// A scheduled cron job.
 struct CronJob {
     /// Unique name for this job (typically the rule name).
@@ -43,12 +61,15 @@ impl CronExecutor {
 
     /// Schedule a new cron job.
     ///
-    /// The `expression` is a standard cron expression (6 or 7 fields).
-    /// Rejects expressions that fire more frequently than once per minute.
-    /// When the schedule fires, a `TriggerEvent` with type "Cron" is
-    /// sent to the rule engine.
+    /// Accepts POSIX 5-field cron (`min hour dom month dow`) and the
+    /// `cron` crate's 6/7-field form (`sec min hour dom month dow [year]`).
+    /// 5-field input is normalised to 6-field with seconds=0 — same
+    /// semantics POSIX cron implies. Rejects expressions that fire
+    /// more frequently than once per minute. When the schedule fires,
+    /// a `TriggerEvent` with type "Cron" is sent to the rule engine.
     pub fn schedule(&mut self, name: &str, expression: &str) -> Result<(), SchedulerError> {
-        let schedule = Schedule::from_str(expression)
+        let normalised = normalize_cron_expression(expression);
+        let schedule = Schedule::from_str(&normalised)
             .map_err(|e| SchedulerError::InvalidCron(format!("{expression}: {e}")))?;
 
         // Validate minimum interval by checking the gap between next 2 firings
@@ -116,8 +137,10 @@ impl CronExecutor {
     }
 
     /// Get the next fire time for a cron expression (for validation/display).
+    /// Accepts both 5-field POSIX and 6/7-field forms — see `schedule`.
     pub fn next_fire_time(expression: &str) -> Result<Option<DateTime<Utc>>, SchedulerError> {
-        let schedule = Schedule::from_str(expression)
+        let normalised = normalize_cron_expression(expression);
+        let schedule = Schedule::from_str(&normalised)
             .map_err(|e| SchedulerError::InvalidCron(format!("{expression}: {e}")))?;
         Ok(schedule.upcoming(Utc).next())
     }
@@ -256,6 +279,51 @@ mod tests {
             result.is_ok(),
             "should accept every-5-minutes: {:?}",
             result.err()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_accepts_posix_5_field_every_minute() {
+        let (tx, _rx) = mpsc::channel(10);
+        let mut executor = CronExecutor::new(tx);
+
+        let result = executor.schedule("posix-every-min", "* * * * *");
+        assert!(
+            result.is_ok(),
+            "5-field POSIX `* * * * *` should be normalised to `0 * * * * *`: {:?}",
+            result.err()
+        );
+    }
+
+    #[tokio::test]
+    async fn test_accepts_posix_5_field_daily() {
+        let (tx, _rx) = mpsc::channel(10);
+        let mut executor = CronExecutor::new(tx);
+
+        let result = executor.schedule("posix-daily", "0 8 * * *");
+        assert!(
+            result.is_ok(),
+            "5-field POSIX `0 8 * * *` (daily 8am) should normalise: {:?}",
+            result.err()
+        );
+    }
+
+    #[test]
+    fn test_normalize_cron_expression() {
+        assert_eq!(normalize_cron_expression("* * * * *"), "0 * * * * *");
+        assert_eq!(normalize_cron_expression("0 8 * * *"), "0 0 8 * * *");
+        assert_eq!(normalize_cron_expression("*/5 * * * *"), "0 */5 * * * *");
+        // Already 6-field — leave alone.
+        assert_eq!(normalize_cron_expression("0 * * * * *"), "0 * * * * *");
+        // 7-field with year — leave alone.
+        assert_eq!(
+            normalize_cron_expression("0 0 0 1 1 * 2030"),
+            "0 0 0 1 1 * 2030"
+        );
+        // Whitespace tolerant.
+        assert_eq!(
+            normalize_cron_expression("  * * * * *  "),
+            "0 * * * * *"
         );
     }
 }

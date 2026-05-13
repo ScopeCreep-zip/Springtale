@@ -5,8 +5,36 @@ use crate::rule::engine::{RuleEngine, RuleMatch, TriggerEvent};
 /// Returns all matching rules with their actions. The caller (springtaled
 /// or springtale-bot) is responsible for executing the actions through
 /// the connector framework and pipeline engine.
+///
+/// No cooperation filter — fires all matching rules regardless of
+/// [`crate::rule::types::RuleOwner`]. Equivalent to passing
+/// `(None, None)` to [`dispatch_event_with_owner`]. Use the filtered
+/// variant when the caller has agent / formation context (e.g.
+/// formation-tick path).
 pub fn dispatch_event(engine: &RuleEngine, event: &TriggerEvent) -> Vec<RuleMatch> {
-    let matches = engine.evaluate(event);
+    dispatch_event_with_owner(engine, event, None, None)
+}
+
+/// Cooperation-aware variant. Filters rules whose
+/// [`crate::rule::types::RuleOwner`] doesn't match the firing
+/// context's agent / formation ids.
+///
+/// Pass:
+///   - `(None, None)` — fire only Global rules. Daemon-queue /
+///     system-cron path.
+///   - `(Some(agent), None)` — fire Global + matching Agent rules.
+///     Solo-bot path with agent identity.
+///   - `(_, Some(formation))` — fire Global + matching Formation
+///     rules. Formation-tick path.
+///   - `(Some(agent), Some(formation))` — fire all three flavors
+///     that apply.
+pub fn dispatch_event_with_owner(
+    engine: &RuleEngine,
+    event: &TriggerEvent,
+    agent_id: Option<uuid::Uuid>,
+    formation_id: Option<uuid::Uuid>,
+) -> Vec<RuleMatch> {
+    let matches = engine.evaluate_with_filter(event, agent_id, formation_id);
 
     for m in &matches {
         tracing::info!(
@@ -47,6 +75,7 @@ mod tests {
                 actions: vec![Action::SendMessage {
                     text: "live!".into(),
                 }],
+                owner: crate::rule::types::RuleOwner::Global,
             })
             .unwrap();
 

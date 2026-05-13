@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use tauri::State;
 
 use crate::runtime_guard::require_runtime;
@@ -15,7 +16,7 @@ use crate::state::AppState;
 /// survives a save round-trip. The `updated_at` field is intentionally
 /// generated server-side in `save_safety_config`, not threaded through
 /// the IPC layer.
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Type)]
 pub struct SafetyConfig {
     pub window_title: String,
     pub auto_lock_minutes: u32,
@@ -50,6 +51,7 @@ impl From<springtale_store::SafetyConfigRow> for SafetyConfig {
 
 /// Get the current safety configuration.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_safety_config(
     state: State<'_, AppState>,
 ) -> Result<SafetyConfig, String> {
@@ -63,6 +65,7 @@ pub async fn get_safety_config(
 
 /// Save safety configuration.
 #[tauri::command]
+#[specta::specta]
 pub async fn save_safety_config(
     state: State<'_, AppState>,
     config: SafetyConfig,
@@ -89,6 +92,7 @@ pub async fn save_safety_config(
 /// full config. Eliminates the read-modify-write race two tabs would
 /// hit on the full-config PUT path.
 #[tauri::command]
+#[specta::specta]
 pub async fn set_disguise_active(
     state: State<'_, AppState>,
     active: bool,
@@ -104,6 +108,7 @@ pub async fn set_disguise_active(
 /// Doesn't flip `disguise_active`; profile selection is decoupled
 /// from whether the disguise is currently displayed.
 #[tauri::command]
+#[specta::specta]
 pub async fn set_disguise_profile(
     state: State<'_, AppState>,
     app_name: String,
@@ -120,6 +125,7 @@ pub async fn set_disguise_profile(
 /// gesture; bounded `[0, 10]` server-side so an accidental large
 /// value can't render panic-wipe unreachable.
 #[tauri::command]
+#[specta::specta]
 pub async fn set_panic_tap_count(
     state: State<'_, AppState>,
     count: u32,
@@ -133,6 +139,7 @@ pub async fn set_panic_tap_count(
 
 /// Set the window title — desktop-specific (Tauri API).
 #[tauri::command]
+#[specta::specta]
 pub async fn set_window_title(window: tauri::Window, title: String) -> Result<(), String> {
     window.set_title(&title).map_err(|e| e.to_string())
 }
@@ -149,6 +156,7 @@ pub async fn set_window_title(window: tauri::Window, title: String) -> Result<()
 /// `save_safety_config` without state drift. Returns the bool that
 /// was actually applied (matches the persisted config).
 #[tauri::command]
+#[specta::specta]
 pub async fn apply_content_protection(
     state: State<'_, AppState>,
     window: tauri::Window,
@@ -158,12 +166,20 @@ pub async fn apply_content_protection(
     let config = springtale_runtime::operations::safety::get_safety_config(rt)
         .await
         .map_err(|e| e.to_string())?;
-    if let Err(e) = window.set_content_protected(config.content_protected) {
-        tracing::debug!(
-            error = %e,
-            "set_content_protected unsupported on this platform (Linux is expected)"
-        );
-    }
+    // F — previously this swallowed the error at `tracing::debug!`
+    // and returned `Ok(applied_value)` regardless, which made a
+    // Linux failure (or any other underlying error) look identical
+    // to success from the frontend's perspective — the panel toggle
+    // appeared to do nothing and there was no error to debug.
+    // Propagate the error so SafetyPanel's `onSafetyChanged`
+    // catch routes it to `db.setError` and the user sees it.
+    window
+        .set_content_protected(config.content_protected)
+        .map_err(|e| {
+            format!(
+                "set_content_protected failed (Linux is unsupported by Tauri 2): {e}"
+            )
+        })?;
     Ok(config.content_protected)
 }
 
@@ -186,6 +202,7 @@ pub async fn apply_content_protection(
 /// plugins ship, this command extends to invoke them; the persisted
 /// `disguise_icon_id` field is already the input.
 #[tauri::command]
+#[specta::specta]
 pub async fn apply_disguise_to_shell(
     state: State<'_, AppState>,
     window: tauri::Window,
@@ -206,6 +223,7 @@ pub async fn apply_disguise_to_shell(
 
 /// Reset the auto-lock timer — desktop-specific.
 #[tauri::command]
+#[specta::specta]
 pub async fn reset_auto_lock(
     state: State<'_, AppState>,
     app: tauri::AppHandle,

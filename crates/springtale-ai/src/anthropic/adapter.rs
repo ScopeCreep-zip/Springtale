@@ -1,4 +1,5 @@
 use async_trait::async_trait;
+use specta::Type;
 use secrecy::{ExposeSecret, SecretBox};
 use serde::Deserialize;
 
@@ -12,10 +13,13 @@ use springtale_core::rule::types::Rule;
 use super::client::AnthropicClient;
 
 /// Configuration for the Anthropic adapter.
-#[derive(Deserialize)]
+#[derive(Deserialize, Type)]
 pub struct AnthropicConfig {
-    /// API key wrapped in Secret<String>.
+    /// API key wrapped in Secret<String>. On the TS wire it appears as
+    /// a plain `string` — `SecretBox` is only the in-process holder
+    /// that prevents accidental logging.
     #[serde(deserialize_with = "crate::config::deserialize_secret")]
+    #[specta(type = String)]
     pub api_key: SecretBox<String>,
     /// Model name (e.g., "claude-sonnet-4-6").
     #[serde(default = "default_model")]
@@ -81,6 +85,25 @@ impl AnthropicAdapter {
             });
         }
         Ok(result.text)
+    }
+
+    /// Sibling-module accessor for the structured-extraction impl
+    /// in `extractor.rs`. Routes source / hint text through the
+    /// Layer-2 defense the rest of the adapter uses.
+    pub(crate) fn sanitize_for_extractor(
+        &self,
+        field: &str,
+        text: &str,
+    ) -> Result<String, AiError> {
+        self.sanitize(field, text)
+    }
+
+    pub(crate) fn anthropic_client(&self) -> &super::client::AnthropicClient {
+        &self.client
+    }
+
+    pub(crate) fn anthropic_model(&self) -> &str {
+        &self.model
     }
 }
 
@@ -470,6 +493,10 @@ impl AiAdapter for AnthropicAdapter {
 
     async fn is_available(&self) -> bool {
         self.client.is_available().await
+    }
+
+    fn structured_extractor(&self) -> Option<&dyn crate::extractor::StructuredExtractor> {
+        Some(self)
     }
 }
 

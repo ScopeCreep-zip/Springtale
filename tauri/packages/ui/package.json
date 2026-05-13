@@ -8,7 +8,8 @@
   "exports": {
     ".": "./src/index.ts",
     "./i18n/context": "./src/i18n/context.ts",
-    "./i18n/types": "./src/i18n/types.ts"
+    "./i18n/types": "./src/i18n/types.ts",
+    "./dashboard/types": "./src/dashboard/types.ts"
   },
   "dependencies": {
     "@solid-primitives/i18n": "^2",

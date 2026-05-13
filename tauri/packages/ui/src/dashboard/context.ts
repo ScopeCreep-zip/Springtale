@@ -8,7 +8,7 @@
  * their platform-specific DataProvider. The returned DashboardState
  * drives the RTS layout (ResourceBar + Roster + Canvas + CommandPanel).
  */
-import { createContext, useContext, createSignal, createResource, onCleanup } from "solid-js";
+import { createContext, useContext, createSignal, createResource, createRoot, onCleanup } from "solid-js";
 import type { ConnectorSchema, CanvasState, CanvasUpdate, EventEntry, AgentState } from "@springtale/types";
 import type { ConnectorStatus, RuleItem, RuleDetail, EventItem, SwarmInfo } from "../dashboard/model";
 import type { ConditionDef } from "../ConditionEditor";
@@ -46,6 +46,22 @@ function applyCanvasUpdate(current: CanvasState | null, update: CanvasUpdate): C
 // ── Factory ──────────────────────────────────────────────
 
 export function createDashboardState(provider: DataProvider): DashboardState {
+  // Wrap the entire factory body in `createRoot` so every reactive
+  // primitive below (signals, resource, subscription onCleanups) has
+  // a real reactive owner. This factory is called at module-load
+  // time from `main.tsx`, BEFORE `render()` creates its own root —
+  // without this wrapper every primitive is an orphan computation
+  // (the source of "computations created outside a createRoot"
+  // warnings) and SolidJS's lifecycle bookkeeping loses track of
+  // them, which surfaces as `_el$N.nextSibling = null` template-
+  // walker crashes when downstream components mount Suspense +
+  // Switch pipelines on top of the corrupted owner graph. The root
+  // intentionally never disposes — the dashboard state lives for
+  // the entire app session.
+  //
+  // Per https://docs.solidjs.com/reference/reactive-utilities/create-root:
+  // "Creates a non-tracked owner detached from the parent."
+  return createRoot(() => {
   // ── Core data signals ──
   const [connectors, setConnectors] = createSignal<ConnectorStatus[]>([]);
   const [schemas, setSchemas] = createSignal<ConnectorSchema[]>([]);
@@ -374,6 +390,7 @@ export function createDashboardState(provider: DataProvider): DashboardState {
     // Provider + resubscribe
     provider, resubscribe,
   };
+  }); // close createRoot
 }
 
 // ── Context wiring ───────────────────────────────────────

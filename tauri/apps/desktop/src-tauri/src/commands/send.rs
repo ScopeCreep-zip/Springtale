@@ -6,6 +6,7 @@ use springtale_runtime::operations::cross_channel::{self, SendOutcome, SendReque
 
 /// Send a message through a specific connector to a channel.
 #[tauri::command]
+#[specta::specta]
 pub async fn send_message(
     state: State<'_, AppState>,
     req: SendRequest,

@@ -5,6 +5,7 @@ use crate::state::AppState;
 
 /// Create a new formation (swarm).
 #[tauri::command]
+#[specta::specta]
 pub async fn create_formation(
     state: State<'_, AppState>,
     name: String,
@@ -20,6 +21,7 @@ pub async fn create_formation(
 
 /// Deploy a formation.
 #[tauri::command]
+#[specta::specta]
 pub async fn deploy_formation(state: State<'_, AppState>, id: String) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
@@ -30,6 +32,7 @@ pub async fn deploy_formation(state: State<'_, AppState>, id: String) -> Result<
 
 /// Pause a formation.
 #[tauri::command]
+#[specta::specta]
 pub async fn pause_formation(state: State<'_, AppState>, id: String) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
@@ -40,6 +43,7 @@ pub async fn pause_formation(state: State<'_, AppState>, id: String) -> Result<(
 
 /// Resume a paused formation.
 #[tauri::command]
+#[specta::specta]
 pub async fn resume_formation(state: State<'_, AppState>, id: String) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
@@ -50,6 +54,7 @@ pub async fn resume_formation(state: State<'_, AppState>, id: String) -> Result<
 
 /// Dissolve a formation.
 #[tauri::command]
+#[specta::specta]
 pub async fn dissolve_formation(state: State<'_, AppState>, id: String) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
@@ -60,6 +65,7 @@ pub async fn dissolve_formation(state: State<'_, AppState>, id: String) -> Resul
 
 /// Update formation intent.
 #[tauri::command]
+#[specta::specta]
 pub async fn update_formation_intent(state: State<'_, AppState>, id: String, intent: String) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
@@ -70,6 +76,7 @@ pub async fn update_formation_intent(state: State<'_, AppState>, id: String, int
 
 /// Manually trigger self-rally for a formation.
 #[tauri::command]
+#[specta::specta]
 pub async fn rally_formation(state: State<'_, AppState>, id: String) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
@@ -80,6 +87,7 @@ pub async fn rally_formation(state: State<'_, AppState>, id: String) -> Result<(
 
 /// Add a member to a formation.
 #[tauri::command]
+#[specta::specta]
 pub async fn add_formation_member(state: State<'_, AppState>, formation_id: String, connector_name: String) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
@@ -90,6 +98,7 @@ pub async fn add_formation_member(state: State<'_, AppState>, formation_id: Stri
 
 /// Get a single formation with enriched member details.
 #[tauri::command]
+#[specta::specta]
 pub async fn get_formation(
     state: State<'_, AppState>,
     id: String,
@@ -103,6 +112,7 @@ pub async fn get_formation(
 
 /// List all formations.
 #[tauri::command]
+#[specta::specta]
 pub async fn list_formations(
     state: State<'_, AppState>,
 ) -> Result<Vec<springtale_runtime::operations::formations::FormationInfo>, String> {
@@ -115,6 +125,7 @@ pub async fn list_formations(
 
 /// List valid formation intents.
 #[tauri::command]
+#[specta::specta]
 pub async fn list_intents() -> Vec<springtale_runtime::operations::formations::IntentInfo> {
     springtale_runtime::operations::formations::list_intents()
 }
@@ -122,6 +133,7 @@ pub async fn list_intents() -> Vec<springtale_runtime::operations::formations::I
 /// Backend-supplied formation 3×3 command grid with status-aware enable/disable.
 /// Frontend renders the list as-is and dispatches by `id`.
 #[tauri::command]
+#[specta::specta]
 pub async fn formation_commands(
     state: State<'_, AppState>,
     id: String,
@@ -136,6 +148,7 @@ pub async fn formation_commands(
 /// Backend-supplied eligible-removal list for the RM MBR overlay. Backend
 /// decides which members are removable; frontend just renders.
 #[tauri::command]
+#[specta::specta]
 pub async fn formation_eligible_members(
     state: State<'_, AppState>,
     id: String,
@@ -149,6 +162,7 @@ pub async fn formation_eligible_members(
 
 /// Deploy a complete team — creates rules + formation atomically.
 #[tauri::command]
+#[specta::specta]
 pub async fn deploy_team(
     state: State<'_, AppState>,
     team: springtale_runtime::operations::formations::TeamDeployRequest,
@@ -162,6 +176,7 @@ pub async fn deploy_team(
 
 /// Remove a member from a formation.
 #[tauri::command]
+#[specta::specta]
 pub async fn remove_formation_member(state: State<'_, AppState>, formation_id: String, connector_name: String) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
@@ -172,6 +187,7 @@ pub async fn remove_formation_member(state: State<'_, AppState>, formation_id: S
 
 /// Cycle a formation's intent to the next in progression.
 #[tauri::command]
+#[specta::specta]
 pub async fn cycle_formation_intent(
     state: State<'_, AppState>,
     id: String,
@@ -185,6 +201,7 @@ pub async fn cycle_formation_intent(
 
 /// Cycle a formation's autonomy to the next level.
 #[tauri::command]
+#[specta::specta]
 pub async fn cycle_formation_autonomy(
     state: State<'_, AppState>,
     id: String,

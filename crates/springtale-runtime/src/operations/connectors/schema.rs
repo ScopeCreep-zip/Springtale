@@ -2,6 +2,7 @@
 
 use serde::Serialize;
 
+use specta::Type;
 use crate::state::RuntimeState;
 
 /// Info about a connector that CAN be installed (from factory registry).
@@ -10,7 +11,7 @@ use crate::state::RuntimeState;
 /// configured/running connector instance. The frontend uses this to
 /// show capabilities, config forms, and trigger/action pickers for
 /// connectors that aren't loaded yet.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, Type)]
 pub struct AvailableConnectorInfo {
     /// Connector name (e.g., "connector-telegram").
     pub name: String,
@@ -31,7 +32,7 @@ pub struct AvailableConnectorInfo {
 }
 
 /// Connector schema info — shared between springtaled API and desktop IPC.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, Type)]
 pub struct ConnectorSchemaInfo {
     pub name: String,
     pub version: String,
@@ -41,7 +42,7 @@ pub struct ConnectorSchemaInfo {
 }
 
 /// Trigger declaration info for schema introspection.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, Type)]
 pub struct TriggerSchemaInfo {
     pub name: String,
     pub description: String,
@@ -49,7 +50,7 @@ pub struct TriggerSchemaInfo {
 }
 
 /// Action declaration info for schema introspection.
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Clone, Type)]
 pub struct ActionSchemaInfo {
     pub name: String,
     pub description: String,

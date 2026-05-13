@@ -12,6 +12,6 @@ pub mod capability_bridge;
 pub mod role_registration;
 
 pub use capability_bridge::{
-    momentum_to_wasm_tier, BridgeError, CapabilityBridge,
+    momentum_to_throttle_tier, momentum_to_wasm_tier, BridgeError, CapabilityBridge,
 };
 pub use role_registration::{register_manifest_roles, unregister_manifest_roles};

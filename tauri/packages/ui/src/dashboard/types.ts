@@ -147,6 +147,175 @@ export interface MemberRef {
   block_reason: string | null;
 }
 
+// ── W1.B Recipe library ────────────────────────────────────────
+
+export type RecipeCategory =
+  | "messaging"
+  | "coding"
+  | "web"
+  | "ai_assistant"
+  | "daily"
+  | "safety_privacy"
+  | "custom";
+
+export type Difficulty = "quick" | "standard" | "power";
+
+export type RecipeSourceFilter = "builtin" | "user" | "community";
+
+export type RecipeSort = "recommended" | "name" | "recent";
+
+export type RecipeSource =
+  | { kind: "builtin" }
+  | { kind: "user" }
+  | { kind: "community"; author: string; signature: string };
+
+export interface SelectOption {
+  value: string;
+  label: string;
+}
+
+export type FieldKind =
+  | { kind: "text" }
+  | { kind: "secret" }
+  | { kind: "number" }
+  | { kind: "bool" }
+  | { kind: "url" }
+  | { kind: "select"; options: SelectOption[] }
+  | { kind: "cron" }
+  | { kind: "css_selector"; sample_url?: string }
+  | { kind: "json_schema"; example?: unknown }
+  | { kind: "workspace_target"; connector: string; kinds?: string[] };
+
+/**
+ * Author-declared visibility per input. Mirrors the Rust
+ * `FieldVisibility` enum (specta-generated when bindings.ts lands).
+ * Drives progressive-disclosure tiers in `RecipeDeployPanel`.
+ */
+export type FieldVisibility = "required" | "optional" | "advanced" | "baked";
+
+export interface InputField {
+  id: string;
+  label: string;
+  kind: FieldKind;
+  visibility: FieldVisibility;
+  default?: unknown;
+  hint?: string;
+}
+
+export interface Recipe {
+  id: string;
+  name: string;
+  description: string;
+  icon_id: string;
+  category: RecipeCategory;
+  tags: string[];
+  connectors_used: string[];
+  ai_required: boolean;
+  difficulty: Difficulty;
+  source: RecipeSource;
+  /**
+   * Single ordered list of inputs. Each carries its own
+   * `FieldVisibility` so components filter the relevant tier rather
+   * than depending on three separate vecs. Mirrors the Rust shape.
+   */
+  inputs: InputField[];
+  /**
+   * Blueprint passed through opaquely to `applyRecipe` — the frontend
+   * doesn't introspect it; backend owns the assembly logic.
+   */
+  blueprint: unknown;
+}
+
+export interface RecipeFilter {
+  query?: string;
+  category?: RecipeCategory;
+  tags?: string[];
+  sources?: RecipeSourceFilter[];
+  favorites_only?: boolean;
+  limit?: number;
+  sort?: RecipeSort;
+}
+
+/** Inputs the user supplied for a recipe — mirrors backend `RecipeInputs`. */
+export interface RecipeInputs {
+  values: Record<string, unknown>;
+}
+
+/** Result of applying a recipe (`POST /recipes/{id}/apply`). */
+export interface RecipeApplyReport {
+  recipe_id: string;
+  connectors_configured: string[];
+  rules_created: string[];
+  ai_configured: boolean;
+  summary: string;
+}
+
+// ── W1.D Preflight ────────────────────────────────────────────
+
+export type PreflightStatus = "blocking" | "warning" | "verified" | "pending";
+
+export type PreflightFix =
+  | { kind: "focus_input"; input_id: string }
+  | { kind: "open_ai_config" }
+  | { kind: "open_connector_config"; connector_name: string }
+  | { kind: "note"; message: string };
+
+export interface PreflightItem {
+  id: string;
+  label: string;
+  status: PreflightStatus;
+  detail: string | null;
+  fix_hint: PreflightFix | null;
+}
+
+export interface PreflightReport {
+  recipe_id: string;
+  items: PreflightItem[];
+  deployable: boolean;
+  has_warnings: boolean;
+}
+
+// ── W2.C Preview / dry-run ────────────────────────────────────
+
+export interface PreviewStep {
+  speaker: string;
+  narrative: string;
+  would_send_to: string | null;
+}
+
+export interface PreviewReport {
+  recipe_id: string;
+  steps: PreviewStep[];
+  passed: boolean;
+  errors: string[];
+}
+
+// ── W2.D Recipe pieces ────────────────────────────────────────
+
+export type RecipePiece =
+  | { kind: "trigger"; rule: { toml: string } }
+  | { kind: "connector_config"; step: { connector_name: string; config: unknown } }
+  | { kind: "ai_config"; step: { target: string; config: unknown } };
+
+export interface RecipePieceSummary {
+  id: string;
+  label: string;
+  piece: RecipePiece;
+}
+
+/** Mirrors `springtale_store::SafetyConfigRow` and the Tauri
+ *  `SafetyConfig` IPC type. Keep all three in sync. */
+export interface SafetyConfig {
+  window_title: string;
+  auto_lock_minutes: number;
+  content_protected: boolean;
+  quick_hide_shortcut: string;
+  disguise_app_name: string;
+  disguise_icon_id: string;
+  disguise_active: boolean;
+  panic_tap_count: number;
+}
+
 /**
  * Platform-agnostic data provider.
  *
@@ -237,7 +406,17 @@ export interface DataProvider {
   testConnector(connectorName: string): Promise<{ matched: boolean; rule_name: string | null }>;
   reassignRuleConnector(id: string, newConnector: string): Promise<void>;
 
-  // Config
+  // Safety — focused get/save on the dedicated `SafetyConfigRow` table.
+  // Do NOT use `setConfig("safety", …)` for these fields: that writes
+  // to a generic key/value config blob that the OS-apply commands
+  // (`apply_content_protection`, `apply_disguise_to_shell`, …) do not
+  // read. Routing through `getSafetyConfig` / `saveSafetyConfig`
+  // hits the same table the apply commands read from, so a panel
+  // Save actually takes effect at runtime.
+  getSafetyConfig(): Promise<SafetyConfig>;
+  saveSafetyConfig(config: SafetyConfig): Promise<void>;
+
+  // Config (generic key/value, NOT for safety — see above).
   getConfig(key: string): Promise<unknown>;
   setConfig(key: string, value: unknown): Promise<void>;
   listConfig(): Promise<Array<[string, unknown]>>;
@@ -299,6 +478,31 @@ export interface DataProvider {
   listOnboardingPlatforms(): Promise<PlatformForm[]>;
   applyOnboarding(platform: string, answers: Record<string, string>): Promise<ApplyReport>;
 
+  // W1.B — Recipe library. All filtering / sorting happens server-side;
+  // frontends pass a filter, get the slice back. Favorites + recent are
+  // persisted in the config store so they round-trip across surfaces.
+  listRecipes(filter?: RecipeFilter): Promise<Recipe[]>;
+  getRecipe(id: string): Promise<Recipe | null>;
+  listRecipeCategories(): Promise<RecipeCategory[]>;
+  /** Returns the new state — `true` = now a favorite. */
+  toggleRecipeFavorite(recipeId: string): Promise<boolean>;
+  recordRecipeRecent(recipeId: string): Promise<void>;
+  // W1.C — Recipe deploy + show-as-code TOML render.
+  applyRecipe(recipeId: string, inputs: RecipeInputs): Promise<RecipeApplyReport>;
+  renderRecipeToml(recipeId: string, inputs: RecipeInputs): Promise<string>;
+  // W1.D — Preflight checklist (live deploy-readiness validation).
+  preflightRecipe(recipeId: string, inputs: RecipeInputs): Promise<PreflightReport>;
+  // W2.C — Preview / dry-run with comic-strip narrative.
+  previewRecipe(recipeId: string, inputs: RecipeInputs): Promise<PreviewReport>;
+  // W2.D — Borrow named pieces (trigger / connector config / AI) from a recipe.
+  listRecipePieces(recipeId: string): Promise<RecipePieceSummary[]>;
+  // W2.B — Recipe authoring (save / fork / delete / export / import).
+  saveUserRecipe(recipe: Recipe): Promise<Recipe>;
+  forkRecipe(recipeId: string, newName: string): Promise<Recipe>;
+  deleteUserRecipe(recipeId: string): Promise<boolean>;
+  exportRecipeToml(recipeId: string): Promise<string>;
+  importRecipeToml(toml: string): Promise<Recipe>;
+
   // Templates
   listTemplates(): Promise<Template[]>;
   writeTemplate(name: string): Promise<WriteReport>;
@@ -310,6 +514,271 @@ export interface DataProvider {
 
   // Cross-channel send
   sendMessage(req: SendRequest): Promise<SendOutcome>;
+
+  // Phase B — executions log (privacy-default observability).
+  // Sizes-only. Content retention is opt-in (Phase C) and exposed
+  // through `*_blob_ref` fields, never inlined.
+  listExecutions(filter: ExecutionFilterInput): Promise<ExecutionInfo[]>;
+  getExecutionSteps(executionId: string): Promise<ExecutionStepInfo[]>;
+
+  // Phase B — selector picker (authoring-time tool).
+  // Opens a Tauri webview at `url`, returns the picked CSS
+  // selector (or null when the user cancels). Web provider may
+  // return null without ever opening a window — selector picking
+  // requires a desktop webview to work safely.
+  openSelectorPicker(url: string, hostAllowlist: string[]): Promise<string | null>;
+
+  // Phase C — per-step dry-run + drift detection.
+  // Test This Step: fires the recipe's rule[rule_index] in DryRun
+  // mode through actions[0..=step_index], returns the targeted
+  // step's recorded output. Side-effecting steps stub; read steps
+  // (HTTP get, browser navigate, AiComplete, Extract, Dedupe
+  // check-only) run for real so the UI sees realistic upstream
+  // data.
+  testRecipeStep(
+    recipeId: string,
+    inputs: RecipeInputs,
+    ruleIndex: number,
+    stepIndex: number,
+  ): Promise<TestStepReport>;
+  // Drift: aggregates the recipe's most-recent runs from the
+  // executions log into latency / success-rate / refusal-rate
+  // trends. Frontend renders as a DriftBadge per recipe row.
+  getRecipeDrift(recipeId: string, filter: DriftFilterInput): Promise<DriftReport>;
+
+  // D1 — External-workspace directory (the formation's
+  // gossip-replicated yellow pages of messaging destinations).
+  listWorkspaces(
+    formationId: string,
+    connectorFilter?: string,
+  ): Promise<WorkspaceInfo[]>;
+  scanWorkspaces(
+    formationId: string,
+    connectorName: string,
+  ): Promise<WorkspaceInfo[]>;
+  deleteWorkspace(formationId: string, workspaceKey: string): Promise<void>;
+  upsertWorkspaceManual(
+    formationId: string,
+    workspaceKey: string,
+    displayName: string,
+    connectorName: string,
+    kind: string,
+  ): Promise<void>;
+  /** Pre-deploy onboarding URL resolver.
+   *
+   *  Connector-agnostic. Hands the deploy form's connector config to
+   *  the connector factory which spins up a one-shot instance and
+   *  dispatches the connector's `onboard_url` action. Telegram
+   *  returns a `t.me/<bot>?start=…` deep link; other connectors that
+   *  implement `onboard_url` plug into the same path without any
+   *  frontend changes. Rejects (caller catches) when the connector
+   *  has no `onboard_url` action. */
+  previewOnboardUrl(
+    connectorName: string,
+    config: Record<string, unknown>,
+    payload?: string,
+  ): Promise<string>;
+
+  /** Track D — kick off the 60s auto-onboard stream.
+   *
+   *  Companion to `previewOnboardUrl`. While the user has the
+   *  onboarding link copied and is in Telegram tapping START, the
+   *  backend polls the connector's `discover_destinations` action
+   *  every 2 seconds. Each match fires a `chat-discovered` event
+   *  tagged with `sessionId`. Subscribe via `subscribeToChatDiscovered`
+   *  BEFORE invoking this so the listener doesn't miss the first
+   *  emission. */
+  startOnboardStream(
+    sessionId: string,
+    connectorName: string,
+    config: Record<string, unknown>,
+    payload?: string,
+  ): Promise<void>;
+
+  /** Track D — tear down an active onboard stream. Idempotent. */
+  cancelOnboardStream(sessionId: string): Promise<void>;
+
+  /** Track D — subscribe to `chat-discovered` events. Returns the
+   *  unlisten function (no-op on web). */
+  subscribeToChatDiscovered(
+    callback: (event: ChatDiscoveredEvent) => void,
+  ): Promise<() => void>;
+}
+
+/** Payload of the `chat-discovered` Tauri event (Track D). */
+export interface ChatDiscoveredEvent {
+  session_id: string;
+  workspace_key: string;
+  display_name: string;
+  kind: string;
+  metadata_json: string | null;
+  /** `true` when the discovery passed the `/start <payload>` filter
+   *  (i.e. it is the user's own onboarding tap). */
+  matched: boolean;
+}
+
+/**
+ * One row in the formation's external-workspace directory
+ * (`mental_model_workspaces`). Sizes-only metadata —
+ * `display_name` is the only human-readable text persisted.
+ */
+export interface WorkspaceInfo {
+  /** URI form — `"telegram://chat/12345"`, etc. */
+  workspace_key: string;
+  connector_name: string;
+  display_name: string;
+  /** `"user" | "group" | "channel" | "supergroup" | "dm" | "account" | "thread"`. */
+  kind: string;
+  /** Connector-specific extras serialized as JSON string. */
+  metadata_json: string | null;
+  first_seen_at_unix_ms: number;
+  last_seen_at_unix_ms: number;
+  /** Serialized `WorkspaceProvenance` enum. Frontend parses for
+   *  the tooltip "discovered by … via …" copy. */
+  provenance_json: string;
+}
+
+/**
+ * Test This Step result. Mirrors
+ * `springtale-runtime::operations::test_step::TestStepReport`.
+ */
+export interface TestStepReport {
+  recipe_id: string;
+  rule_index: number;
+  step_index: number;
+  ran: boolean;
+  step: TestStepOutput | null;
+  upstream: TestStepOutput[];
+  error: string | null;
+}
+
+export interface TestStepOutput {
+  index: number;
+  kind: string;
+  name: string | null;
+  /** JSON output rendered as a string. Parse client-side when needed. */
+  output_json: string;
+  duration_ms: number;
+  error: string | null;
+}
+
+/**
+ * Drift filter. All fields optional; `recent_n` / `baseline_n`
+ * default to 10 / 30 server-side.
+ */
+export interface DriftFilterInput {
+  bot_id?: string;
+  formation_id?: string;
+  rule_id?: string;
+  recent_n?: number;
+  baseline_n?: number;
+}
+
+/**
+ * Drift verdict per signal — `not_enough_data` hides the badge,
+ * `steady` shows a neutral chip, `improving` / `degrading` colour
+ * the chip accordingly.
+ */
+export type DriftClass =
+  | "not_enough_data"
+  | "steady"
+  | "improving"
+  | "degrading";
+
+export interface DriftReport {
+  recent_runs: number;
+  baseline_runs: number;
+  latency: LatencyDrift;
+  success_rate: RateDrift;
+  refusal_rate: RateDrift;
+  overall: DriftClass;
+}
+
+export interface LatencyDrift {
+  recent_median_ms: number | null;
+  recent_p95_ms: number | null;
+  baseline_median_ms: number | null;
+  baseline_p95_ms: number | null;
+  median_delta_ms: number | null;
+  class: DriftClass;
+}
+
+export interface RateDrift {
+  recent: number | null;
+  baseline: number | null;
+  delta: number | null;
+  class: DriftClass;
+}
+
+/**
+ * Executions log filter. All fields optional; `before` is a
+ * unix-ms cursor on `started_at` for pagination (return rows older
+ * than this). `limit` caps at 500 server-side.
+ */
+export interface ExecutionFilterInput {
+  bot_id?: string;
+  formation_id?: string;
+  rule_id?: string;
+  status?: ExecutionStatusTag;
+  before?: number;
+  limit?: number;
+}
+
+export type ExecutionStatusTag =
+  | "running"
+  | "succeeded"
+  | "empty"
+  | "failed"
+  | "aborted"
+  | "timed_out";
+
+export type ExecutionModeTag =
+  | "cron"
+  | "webhook"
+  | "connector_event"
+  | "file_watch"
+  | "manual"
+  | "cooperation"
+  | "retry"
+  | "dry_run";
+
+export type StepStatusTag = "succeeded" | "failed" | "suppressed" | "skipped";
+
+export type MomentumTag = "cold" | "warming" | "hot" | "fever";
+
+/** One row in the executions list — sizes-only summary. */
+export interface ExecutionInfo {
+  id: string;
+  bot_id: string | null;
+  formation_id: string | null;
+  rule_id: string | null;
+  recipe_id: string | null;
+  started_at: number;
+  finished_at: number | null;
+  duration_ms: number | null;
+  mode: ExecutionModeTag;
+  status: ExecutionStatusTag;
+  momentum: MomentumTag | null;
+  trigger_summary: string | null;
+  error_kind: string | null;
+}
+
+/** One step inside an execution. Sizes-only; content opt-in via blob refs. */
+export interface ExecutionStepInfo {
+  execution_id: string;
+  step_index: number;
+  step_kind: string;
+  connector: string | null;
+  action: string | null;
+  started_at: number;
+  finished_at: number | null;
+  status: StepStatusTag;
+  input_bytes: number;
+  output_bytes: number;
+  output_kind: string | null;
+  error_kind: string | null;
+  input_blob_ref: string | null;
+  output_blob_ref: string | null;
 }
 
 /**

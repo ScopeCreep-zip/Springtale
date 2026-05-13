@@ -1,11 +1,21 @@
+use std::collections::HashMap;
 use std::sync::Arc;
+use std::time::Duration;
 
-use tokio::sync::{Mutex, RwLock};
+use tauri::AppHandle;
+use tokio::sync::{watch, Mutex, RwLock};
 
 use springtale_crypto::vault::store::Vault;
 
 use crate::autolock::AutoLockHandle;
+use crate::commands::approval::ApprovalDispatcher;
 use crate::runtime_guard::DeferredRuntime;
+
+/// Map of active onboard-stream sessions, keyed by the client-issued
+/// session id. The value is the cancel-sender — `send(true)` shuts
+/// down the corresponding tokio task within one POLL_INTERVAL.
+/// Track D pre-deploy auto-onboard flow.
+pub type OnboardSessions = Arc<Mutex<HashMap<String, watch::Sender<bool>>>>;
 
 /// Shared application state for Tauri commands.
 ///
@@ -24,6 +34,25 @@ pub struct AppState {
     pub vault: Arc<Mutex<Option<Vault>>>,
     /// Auto-lock timer (Rust backend, not JS).
     pub auto_lock: Arc<Mutex<AutoLockHandle>>,
+    /// W1.F — Pending approval requests keyed by UUID. The dispatcher
+    /// task drops a `oneshot::Sender<bool>` here when it emits an
+    /// `approval-required` event; `respond_to_approval` removes the
+    /// entry and sends the decision back to the awaiting sentinel.
+    pub approval_dispatcher: Arc<ApprovalDispatcher>,
+    /// Track D — active pre-deploy onboard-stream cancel senders,
+    /// keyed by the session id the frontend mints. `start_onboard_stream`
+    /// inserts; `cancel_onboard_stream` and the task's own self-cleanup
+    /// remove. Holding it on `AppState` keeps the cancel surface
+    /// reachable from any command without threading the map manually.
+    pub onboard_sessions: OnboardSessions,
+    /// Track E — in-process scheduler + job queue + trigger event loop.
+    /// Mirrors what the daemon owns in its own `AppState.scheduler` —
+    /// the same `springtale_runtime::EmbeddedScheduler` type drives
+    /// both surfaces. Populated by `init_runtime` after the runtime is
+    /// ready; `None` while the vault is still locked. New rules
+    /// deployed via Tauri commands call `scheduler.schedule(&rule)` so
+    /// their cron triggers actually fire in-process.
+    pub scheduler: Arc<RwLock<Option<springtale_runtime::EmbeddedScheduler>>>,
 }
 
 impl AppState {
@@ -37,6 +66,9 @@ impl AppState {
             runtime: Arc::new(RwLock::new(None)),
             vault: Arc::new(Mutex::new(None)),
             auto_lock: Arc::new(Mutex::new(AutoLockHandle::new())),
+            approval_dispatcher: Arc::new(ApprovalDispatcher::new()),
+            onboard_sessions: Arc::new(Mutex::new(HashMap::new())),
+            scheduler: Arc::new(RwLock::new(None)),
         }
     }
 }
@@ -52,7 +84,9 @@ impl AppState {
 /// just deferred until after vault unlock instead of running at startup.
 pub async fn init_runtime(
     deferred: &DeferredRuntime,
+    scheduler_slot: &Arc<RwLock<Option<springtale_runtime::EmbeddedScheduler>>>,
     encryption_key_hex: Option<String>,
+    approval_gate: Option<Arc<dyn springtale_sentinel::ApprovalGate>>,
 ) -> Result<(), String> {
     let mut config = springtale_runtime::RuntimeConfig::default();
     config.store.encryption_key_hex = encryption_key_hex;
@@ -86,19 +120,48 @@ pub async fn init_runtime(
         config.ai_anthropic = Some(val);
     }
 
-    // Desktop connects to daemon via HTTP — it doesn't run a bot event loop.
-    // Create a channel and drop the receiver so sends just silently fail.
+    // Formation command channel — drop the receiver for now; the
+    // desktop doesn't run the bot event loop today, so formation
+    // commands sent by operations have nowhere to land. (Wiring the
+    // bot loop in-process is a follow-up to make the desktop fully
+    // self-contained — see CLAUDE.md "Desktop IS springtaled with a
+    // GUI".)
     let (formation_cmd_tx, _formation_cmd_rx) =
         tokio::sync::mpsc::channel::<springtale_cooperation::command::FormationCommand>(32);
 
-    // Desktop connects to daemon via HTTP — no bot event loop in-process,
-    // so no live formation reader available.
-    let runtime = springtale_runtime::init(&config, formation_cmd_tx, None)
+    let runtime = springtale_runtime::init(&config, formation_cmd_tx, None, approval_gate)
         .await
         .map_err(|e| format!("failed to initialize runtime: {e}"))?;
 
+    // Track E — bring up the in-process scheduler + job queue + trigger
+    // event loop. Same `bootstrap_embedded` the daemon uses, so cron
+    // expressions registered through the desktop UI actually tick.
+    // Heartbeat is off by default for the desktop — heartbeat fires
+    // a `SystemEvent("heartbeat")` trigger which only a few rules
+    // listen for, and the daemon's default `heartbeat_interval_secs`
+    // is read from `springtaled.toml` (absent here).
+    let handle = springtale_runtime::bootstrap_embedded(&runtime, 0)
+        .await
+        .map_err(|e| format!("failed to bootstrap scheduler: {e}"))?;
+
     *deferred.write().await = Some(runtime);
+    *scheduler_slot.write().await = Some(handle.scheduler);
     Ok(())
+}
+
+/// W1.F — build a `ChannelApprovalGate` wired to a background
+/// dispatcher that emits `approval-required` events to the frontend.
+/// Pass the resulting gate to [`init_runtime`] so the sentinel
+/// prompts the user instead of silently denying destructive actions.
+///
+/// 60-second timeout: if a survivor steps away mid-prompt we deny by
+/// default, but the window is long enough that an authorised user
+/// reading the dialog won't be auto-denied while they read.
+pub fn build_approval_gate(
+    app: AppHandle,
+    dispatcher: Arc<ApprovalDispatcher>,
+) -> Arc<dyn springtale_sentinel::ApprovalGate> {
+    crate::commands::approval::install(app, dispatcher, Duration::from_secs(60))
 }
 
 /// Check if the existing database requires an encryption key to open.

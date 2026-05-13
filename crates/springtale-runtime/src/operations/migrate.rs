@@ -15,6 +15,7 @@
 
 use serde::Deserialize;
 
+use specta::Type;
 use springtale_connector::manifest::types::{Capability, ConnectorManifest};
 
 use crate::error::OperationError;
@@ -30,7 +31,7 @@ pub struct MigratedSkill {
 }
 
 /// YAML frontmatter structure from SKILL.md.
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, Type)]
 struct SkillFrontmatter {
     #[serde(default)]
     name: String,
@@ -42,13 +43,13 @@ struct SkillFrontmatter {
     metadata: Option<SkillMetadata>,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, Type)]
 struct SkillMetadata {
     #[serde(default, alias = "clawdbot", alias = "clawdis")]
     openclaw: Option<OpenClawMetadata>,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, Type)]
 struct OpenClawMetadata {
     #[serde(default)]
     requires: Option<SkillRequires>,
@@ -56,7 +57,7 @@ struct OpenClawMetadata {
     primary_env: Option<String>,
 }
 
-#[derive(Debug, Deserialize, Default)]
+#[derive(Debug, Deserialize, Default, Type)]
 struct SkillRequires {
     #[serde(default)]
     env: Vec<String>,

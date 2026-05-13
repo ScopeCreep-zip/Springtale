@@ -6,6 +6,7 @@ use crate::runtime_guard::require_runtime;
 use crate::state::AppState;
 
 #[tauri::command]
+#[specta::specta]
 pub async fn list_connectors(state: State<'_, AppState>) -> Result<Vec<ConnectorInfo>, String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
@@ -13,6 +14,7 @@ pub async fn list_connectors(state: State<'_, AppState>) -> Result<Vec<Connector
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn list_available_connectors(
     state: State<'_, AppState>,
 ) -> Result<Vec<springtale_runtime::operations::connectors::AvailableConnectorInfo>, String> {
@@ -22,6 +24,7 @@ pub async fn list_available_connectors(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn setup_connector(
     state: State<'_, AppState>,
     name: String,
@@ -35,6 +38,7 @@ pub async fn setup_connector(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn enable_connector(state: State<'_, AppState>, name: String) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
@@ -44,6 +48,7 @@ pub async fn enable_connector(state: State<'_, AppState>, name: String) -> Resul
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn disable_connector(state: State<'_, AppState>, name: String) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
@@ -55,6 +60,7 @@ pub async fn disable_connector(state: State<'_, AppState>, name: String) -> Resu
 /// G4 — hot-reload a connector mid-mission. Thin IPC pass-through; the
 /// runtime op handles the atomic swap and in-flight call preservation.
 #[tauri::command]
+#[specta::specta]
 pub async fn reload_connector(state: State<'_, AppState>, name: String) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
@@ -64,6 +70,7 @@ pub async fn reload_connector(state: State<'_, AppState>, name: String) -> Resul
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn remove_connector(state: State<'_, AppState>, name: String) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
@@ -73,6 +80,7 @@ pub async fn remove_connector(state: State<'_, AppState>, name: String) -> Resul
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn remove_connector_cascade(
     state: State<'_, AppState>,
     name: String,
@@ -85,6 +93,7 @@ pub async fn remove_connector_cascade(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_connector_config(
     state: State<'_, AppState>,
     name: String,
@@ -97,6 +106,7 @@ pub async fn get_connector_config(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn list_connector_outputs(
     state: State<'_, AppState>,
     name: String,
@@ -114,6 +124,7 @@ pub async fn list_connector_outputs(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn install_connector(
     state: State<'_, AppState>,
     manifest: springtale_connector::ConnectorManifest,
@@ -126,6 +137,7 @@ pub async fn install_connector(
 }
 
 #[tauri::command]
+#[specta::specta]
 pub async fn get_connector_schemas(
     state: State<'_, AppState>,
 ) -> Result<Vec<ConnectorSchemaInfo>, String> {

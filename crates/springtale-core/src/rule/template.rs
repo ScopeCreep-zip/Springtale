@@ -8,6 +8,12 @@ use super::trigger::Trigger;
 ///
 /// Templates provide common automation patterns with configurable parameters.
 /// Users customize parameters, not logic.
+///
+/// No `specta::Type` derive — `RuleTemplate` contains `Trigger`,
+/// `Vec<Condition>`, `Vec<Action>`. Recursive rule types stay
+/// schemars-only (see `rule::types` module doc). Templates are
+/// internal scaffolding for the NL→Rule parser, never crossed over
+/// IPC as typed values.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuleTemplate {
     /// Template name (e.g., "stream-announce", "download-organizer").

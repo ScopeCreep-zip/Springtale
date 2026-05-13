@@ -15,6 +15,23 @@ import { get, post, put, del, getBaseUrl, getToken } from "./api/client";
 import { subscribeToEvents } from "./api/events";
 import { getCanvasState, subscribeToCanvasUpdates } from "./api/canvas";
 import { subscribeToCooperationEvents } from "./api/cooperation";
+import {
+  listRecipes,
+  getRecipe,
+  listRecipeCategories,
+  toggleRecipeFavorite,
+  recordRecipeRecent,
+  applyRecipe,
+  renderRecipeToml,
+  preflightRecipe,
+  previewRecipe,
+  listRecipePieces,
+  saveUserRecipe,
+  forkRecipe,
+  deleteUserRecipe,
+  exportRecipeToml,
+  importRecipeToml,
+} from "./api/recipes";
 
 export function createWebProvider(): DataProvider {
   return {
@@ -85,6 +102,106 @@ export function createWebProvider(): DataProvider {
     async listEvents(limit = 50) {
       const data = await get<{ events: EventEntry[] }>(`/events?limit=${limit}`);
       return data.events ?? [];
+    },
+
+    // Phase B — executions log. The web dashboard hits the same
+    // springtaled HTTP surface for everything else; these endpoints
+    // are pending the daemon-side handlers (out of scope for B.9 —
+    // desktop-first per the v2 plan). Empty Vec keeps the panel
+    // rendering "no runs yet" rather than crashing on web.
+    async listExecutions(_filter) {
+      return [];
+    },
+    async getExecutionSteps(_executionId) {
+      return [];
+    },
+    // Selector picker requires a desktop webview — there's no
+    // safe way to overlay a third-party site inside a hosted
+    // dashboard, so the web provider returns null. Web users
+    // type selectors manually.
+    async openSelectorPicker(_url, _hostAllowlist) {
+      return null;
+    },
+
+    // Phase C — Test This Step + drift. The springtaled HTTP
+    // surface pending implementation; for now both gracefully
+    // return empty so the panel renders "no data" rather than
+    // throwing.
+    async testRecipeStep(recipeId, _inputs, ruleIndex, stepIndex) {
+      return {
+        recipe_id: recipeId,
+        rule_index: ruleIndex,
+        step_index: stepIndex,
+        ran: false,
+        step: null,
+        upstream: [],
+        error: "Test This Step requires the desktop app today.",
+      };
+    },
+    async getRecipeDrift(_recipeId, _filter) {
+      return {
+        recent_runs: 0,
+        baseline_runs: 0,
+        latency: {
+          recent_median_ms: null,
+          recent_p95_ms: null,
+          baseline_median_ms: null,
+          baseline_p95_ms: null,
+          median_delta_ms: null,
+          class: "not_enough_data",
+        },
+        success_rate: {
+          recent: null,
+          baseline: null,
+          delta: null,
+          class: "not_enough_data",
+        },
+        refusal_rate: {
+          recent: null,
+          baseline: null,
+          delta: null,
+          class: "not_enough_data",
+        },
+        overall: "not_enough_data",
+      };
+    },
+
+    // D1 — External-workspace directory. Web HTTP surface
+    // pending; web users see empty dropdowns + can fall through
+    // to the manual-entry escape hatch on the desktop.
+    async listWorkspaces(_formationId, _connectorFilter) {
+      return [];
+    },
+    async scanWorkspaces(_formationId, _connectorName) {
+      return [];
+    },
+    async deleteWorkspace(_formationId, _workspaceKey) {
+      // No-op on web — destinations live in the desktop's
+      // local SQLite for now.
+    },
+    async upsertWorkspaceManual(
+      _formationId,
+      _workspaceKey,
+      _displayName,
+      _connectorName,
+      _kind,
+    ) {
+      // No-op on web.
+    },
+    async previewOnboardUrl(_connectorName, _config, _payload) {
+      // No-op on web — onboard flow lives on the desktop where the
+      // connector token is being entered.
+      return "";
+    },
+    async startOnboardStream(_sessionId, _connectorName, _config, _payload) {
+      // No-op on web.
+    },
+    async cancelOnboardStream(_sessionId) {
+      // No-op on web.
+    },
+    async subscribeToChatDiscovered(_callback) {
+      // No-op on web — no Tauri event bus.
+      return () => {};
     },
     subscribeToEvents(callback) {
       const token = getToken();
@@ -187,6 +304,14 @@ export function createWebProvider(): DataProvider {
       return subscribeToCooperationEvents(getBaseUrl(), token, callback);
     },
 
+    // Safety — focused get/save against the dedicated safety table.
+    async getSafetyConfig() {
+      return await get<import("@springtale/ui").SafetyConfig>("/safety/config");
+    },
+    async saveSafetyConfig(config) {
+      await post("/safety/config", config);
+    },
+
     // G5d — IPV duress surface (web).
     async setDisguiseActive(active: boolean) {
       const data = await post<{ disguise_active: boolean }>("/safety/disguise/active", { active });
@@ -213,6 +338,28 @@ export function createWebProvider(): DataProvider {
     async applyOnboarding(platform, answers) {
       return post<ApplyReport>("/onboarding/apply", { platform, answers });
     },
+
+    // W1.B — Recipe library
+    listRecipes,
+    getRecipe,
+    listRecipeCategories,
+    toggleRecipeFavorite,
+    recordRecipeRecent,
+    // W1.C — Deploy + show-as-code
+    applyRecipe,
+    renderRecipeToml,
+    // W1.D — Preflight
+    preflightRecipe,
+    // W2.C — Preview
+    previewRecipe,
+    // W2.D — Recipe pieces
+    listRecipePieces,
+    // W2.B — Recipe authoring
+    saveUserRecipe,
+    forkRecipe,
+    deleteUserRecipe,
+    exportRecipeToml,
+    importRecipeToml,
 
     // Templates
     async listTemplates() {

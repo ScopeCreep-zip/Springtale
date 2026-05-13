@@ -13,6 +13,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 use crate::cadence::AgentId;
 use crate::capability::CapabilityDecl;
@@ -74,7 +75,7 @@ pub enum HandoffType {
 /// stealer, an environment-mediated deposit, or (eventually) a Veilid
 /// edge. Expiry uses `DateTime<Utc>` rather than `Instant` so the
 /// deadline survives serialization.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct HandoffPayload {
     pub data: serde_json::Value,
     pub schema: String,

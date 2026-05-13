@@ -18,8 +18,8 @@ Springtale ships in five phases. Each phase builds on the last — no phase skip
 
 | Phase | Name | Deliverables | State |
 |---|---|---|---|
-| 1a | Framework + Connectors | Daemon, CLI, 12 crates, 7 baseline connectors, SQLite (declarative schema v1), crypto vault, WASM sandbox, MCP bridge | Present |
-| 1b | Bot Foundations | `springtale-bot`, command router (prefix / pattern / alias), cooperation framework, `connector-telegram`, session memory | Present. Cooperation framework extracted to its own `springtale-cooperation` crate (37 modules) and wired into a 14-step formation tick; see §3.2. |
+| 1a | Framework + Connectors | Daemon, CLI, 14 library crates, 7 baseline connectors (kick, presearch, bluesky, github, filesystem, shell, http), SQLite (declarative schema v1 in `schema/sql/`), crypto vault, WASM sandbox, MCP bridge | Present. Connector roster grew to 14 first-party through Phases 1b/2a. |
+| 1b | Bot Foundations | `springtale-bot`, command router (prefix / pattern / alias), cooperation framework, `connector-telegram`, session memory | Present. Cooperation framework extracted to its own `springtale-cooperation` crate (40+ modules) and wired into a 14-step formation tick; see §3.2. |
 | 2a | Chat + AI | Discord, Slack, IRC, Signal, Nostr connectors. Anthropic / Ollama / OpenAI-compat adapters (all three stream). `HttpTransport` (rustls mTLS). `springtale-sentinel`. Tool-calling across all AI adapters. | Present. Matrix is held on upstream `rusqlite` CVE. |
 | 2b | Desktop + Safety | Tauri 2 shell, SolidJS dashboard + colony canvas (RTS formation visualisation), duress vault, panic wipe, travel mode. Visual rule builder, i18n, a11y. | Shell, dashboard, colony canvas (with formation command grid, rally pips, attention bar, liveness/health encoding), duress, panic wipe, travel mode present. Visual rule builder, i18n, a11y not implemented. |
 | 3 | Veilid Mesh | `VeilidTransport`, P2P mesh, distributed registry, Rekindle integration | Not implemented. `VeilidTransport` exists as a stub — every method returns `TransportError::NotConnected`. |
@@ -77,7 +77,7 @@ Classical bot runtime with deterministic command routing. No AI needed — `/sea
 ### 3.1. Deliverables
 
 - `springtale-bot` — Command routing engine with prefix, pattern, alias, and fallback matching
-- `springtale-cooperation` — Standalone crate housing the full 37-module cooperation framework (see §3.2)
+- `springtale-cooperation` — Standalone crate housing the full 40+-module cooperation framework (see §3.2)
 - `connector-telegram` — First chat connector, Telegram Bot API (polling + webhooks)
 - Event loop: four-way `tokio::select!` over connector events, rule-engine triggers, cadence ticks, and formation commands
 - Session state: per-user, per-channel context in SQLite, AEAD-encrypted memory rows
@@ -195,7 +195,7 @@ Tauri 2 desktop shell with a SolidJS frontend that renders an RTS-inspired colon
 
 ### 5.1. Present
 
-- **Tauri 2 desktop shell** — `tauri/apps/desktop`. IPC via `invoke()` into the shared `springtale-runtime` crate. 23 command modules (agent, authors, bot, canvas, config, connectors, data, diagnostics, events, fixes, formations, heartbeat, memory, onboarding, panic, rules, safety, send, sessions, templates, travel, vault, runtime guard).
+- **Tauri 2 desktop shell** — `tauri/apps/desktop`. IPC via `invoke()` into the shared `springtale-runtime` crate. 27 command modules (agent, approval, authors, bot, canvas, config, connectors, cooperation, data, diagnostics, events, fixes, formations, heartbeat, memory, onboarding, panic, quick_hide, recipes, rules, safety, send, sessions, templates, travel, tray, vault, plus runtime_guard).
 - **Web dashboard** — `tauri/apps/dashboard`. SPA served by `springtaled`, bearer-token auth, SSE for live event and canvas streams.
 - **Shared component library** — `tauri/packages/ui` with `DataProvider` abstraction. Desktop wraps Tauri IPC; web wraps HTTP + SSE.
 - **Colony canvas** — RTS-style pixel-art ecosystem view: connectors → nodes, rules/agents → springtails, formations → zones, pipelines → mycelium. Live state over `/canvas/stream` (SSE) + `LiveFormationReader` for formation detail. Formation command grid (DEPLOY / PAUSE / RESUME / REMOVE), rally pips (Monster Hunter carts), attention distribution bar (Army of Two aggro), guard status badge, agent liveness / health encoding. See [`docs/guide/colony-canvas.md`](guide/colony-canvas.md).

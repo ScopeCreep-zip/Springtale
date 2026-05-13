@@ -8,6 +8,7 @@ use crate::state::AppState;
 /// Per ARCHITECTURE.md §2.6: must complete within 3 seconds.
 /// Delegates to shared runtime operation, then exits process.
 #[tauri::command]
+#[specta::specta]
 pub async fn panic_wipe(state: State<'_, AppState>) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();

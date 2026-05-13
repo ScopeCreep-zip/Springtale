@@ -57,8 +57,9 @@ pub fn init<R: Runtime>(app: &App<R>) -> tauri::Result<TrayHandle<R>> {
 /// the command — the safety apply chain continues so the rest of
 /// the disguise (window title, content protection) still applies.
 #[tauri::command]
-pub async fn apply_disguise_to_tray<R: Runtime>(
-    app: tauri::AppHandle<R>,
+#[specta::specta]
+pub async fn apply_disguise_to_tray(
+    app: tauri::AppHandle,
     state: tauri::State<'_, crate::state::AppState>,
 ) -> Result<String, String> {
     let guard = crate::runtime_guard::require_runtime(&state.runtime).await?;
@@ -79,7 +80,7 @@ pub async fn apply_disguise_to_tray<R: Runtime>(
         "Springtale".to_owned()
     };
 
-    let tray_state = app.state::<TrayHandle<R>>();
+    let tray_state = app.state::<TrayHandle<tauri::Wry>>();
     let tray_lock = tray_state.inner().lock().await;
     let Some(tray) = tray_lock.as_ref() else {
         // Tray not built (init failed on this platform). The other

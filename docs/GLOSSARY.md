@@ -35,6 +35,8 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
 
 ## A
 
+**ApprovalGate** — Sentinel's fourth check after circuit-breaker, rate-limit, and dead-man. When `impact::classify_impact` reports a `Destructive` action, the verdict routes through an `ApprovalGate` (`crates/springtale-sentinel/src/approval.rs`) before dispatch. `DefaultDenyApprovalGate` is the safe headless default — destructive actions are refused unless an explicit gate is wired. The desktop wires a gate that prompts the user via the safety panel.
+
 **Action** — What a rule does when its trigger fires and conditions pass. Types include `RunConnector`, `SendMessage`, `WriteFile`, `RunShell`, `Chain`, `Transform`, `Delay`, and `AiComplete`. Defined in `crates/springtale-core/src/rule/types.rs`. See [guide/rules.md](guide/rules.md).
 
 **Argon2id** — Memory-hard key derivation function used to derive encryption keys from passphrases. Springtale uses it in the vault to protect stored secrets. Implemented in `crates/springtale-crypto/src/vault/`.
@@ -59,7 +61,7 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
 
 **Capability** — A declared permission that a connector requires to function. Springtale enforces capabilities at install time and again at every action invocation. Variants: `NetworkOutbound { host }` (no wildcards), `FilesystemRead { path }`, `FilesystemWrite { path }`, `KeychainRead { key }`, `ShellExec` (always requires explicit approval). Defined in `crates/springtale-connector/src/manifest/types.rs`. See [guide/connectors.md](guide/connectors.md).
 
-**Cooperation framework** — The 37-module crate `crates/springtale-cooperation/` (extracted from `springtale-bot` in April 2026) that implements non-hierarchical multi-agent coordination: cadence, momentum, formations, shared environment, orchestrator gating, attention economy, rally, sacrifice, recovery, supervision, stigmergy, contract net, routing, mental model, role dynamics, handoff, pacing, consensus, commit barriers, interference, transformation, and more. Wired into `springtale-bot` through a 14-step formation tick in `springtale-bot::runtime::event_loop::handle_cadence_tick`. Designed against the spec in [`docs/intended-arch/COOPERATION.md`](intended-arch/COOPERATION.md); user-facing tour in [`docs/guide/cooperation.md`](guide/cooperation.md).
+**Cooperation framework** — The 40+-module crate `crates/springtale-cooperation/` (extracted from `springtale-bot` in April 2026) that implements non-hierarchical multi-agent coordination: cadence, momentum, formations, shared environment, orchestrator gating, attention economy, rally, sacrifice, recovery, supervision, stigmergy, contract net, routing, mental model, role dynamics, handoff, pacing, consensus, commit barriers, interference, transformation, and more. Wired into `springtale-bot` through a 14-step formation tick in `springtale-bot::runtime::event_loop::handle_cadence_tick`. Designed against the spec in [`docs/intended-arch/COOPERATION.md`](intended-arch/COOPERATION.md); user-facing tour in [`docs/guide/cooperation.md`](guide/cooperation.md).
 
 **Cooperation crate (`springtale-cooperation`)** — Standalone crate with zero internal Springtale dependencies. Depended on by `springtale-bot`, `springtale-runtime`, and `springtale-store`. Holds all cooperation types, traits, and algorithms. Game-informed — draws directly from Spring RTS, RimWorld ThinkTree, Erlang OTP supervision, Kubernetes liveness probes, L4D AI Director, Monster Hunter rally mechanics, Overcooked implicit signalling, Microsoft AGT momentum, 0 A.D. stance systems. See [guide/cooperation.md](guide/cooperation.md).
 
@@ -79,6 +81,8 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
 
 ## E
 
+**Disguise icon** — Tray icon profile picked from `tauri/apps/desktop/src-tauri/icons/disguise/` (`calculator`, `files`, `notes`, `springtale`). Built once at startup and swapped at runtime based on `SafetyConfig.disguise_icon_id`, set via `POST /safety/disguise/profile`. Designed for environments where the user does not want "Springtale" visible to an over-the-shoulder observer (G5f).
+
 **Ed25519** — An elliptic curve digital signature algorithm. Springtale uses Ed25519 for node identity keypairs, manifest signing, and capability token signatures. Implemented via the `ed25519-dalek` crate in `crates/springtale-crypto/`.
 
 ## F
@@ -89,9 +93,13 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
 
 **Formation intent pattern** — A high-level goal string (e.g. "reconnoiter Telegram and Nostr for harassment patterns") stored on a formation. Typed via `IntentPattern` in `crates/springtale-cooperation/src/cadence.rs`. When a formation reaches Fever momentum, the orchestrator decomposes the intent into sub-tasks using the AI adapter.
 
+**FormationView** — Read-only snapshot of a formation's running state — intent, momentum, member roster, rally tokens, attention load, guard status, and recent outcomes. Broadcast on the cross-formation gossip bus every cooperation tick by the `publish_formation_view` step. TS-generated type lives at `tauri/packages/types/src/generated/FormationView.ts` for IPC consumers.
+
 **Fuel metering** — Wasmtime's mechanism for limiting how many instructions a WASM module can execute. Springtale gives WASM connectors a budget of 10 million instructions per invocation. Exceeding the budget terminates execution. Configured in `crates/springtale-connector/src/wasm/runtime.rs`.
 
 ## G
+
+**Gossip bus (cross-formation)** — Event bus carrying `FormationView` snapshots between sibling formations. Distinct from within-formation **awareness** (chitchat/SWIM substrate inside one formation). Implemented in `crates/springtale-cooperation/src/gossip/`. Lets one formation know what its peers are doing without polling the API. See [guide/cross-formation.md](guide/cross-formation.md).
 
 **Guard status** — Per-formation toggle that gates destructive or high-impact actions on members (e.g. dissolve, force-rally, intent change). Surfaces in the colony canvas formation detail card as a badge and is toggled via `POST /formations/{id}/toggle-guard`. State lives on the live `Formation` struct and is broadcast through `LiveFormationReader`. Read by the dashboard command grid to enable/disable destructive buttons.
 
@@ -153,9 +161,15 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
 
 **Panic wipe** — Single-pass random overwrite of vault key material followed by re-creation of an empty vault file. Triggered by entering the duress passphrase or running `springtale panic`. Completes in under 3 seconds on a 1 MB vault. Implemented in `crates/springtale-crypto/src/vault/wipe.rs`. Distinct from `data purge`, which deletes user data while keeping the vault.
 
+**Persistent memory (cooperation)** — Per-formation durable shared memory sitting between the ephemeral blackboard (per-run, in-process) and the mental model (per-formation, survives dissolves with learned knowledge only). Implemented in `crates/springtale-cooperation/src/memory/` with a trait + in-memory store + persistent backend split. Used for state a formation wants to carry forward across runs but isn't part of its learned model.
+
 **Pipeline** — A sequence of processing stages that transform data between trigger and action. Each stage reads from and writes to a `PipelineContext`. Stages compose left-to-right. See [guide/rules.md](guide/rules.md).
 
 **PipelineContext** — The data bag that flows through pipeline stages. Contains input, output, errors, retry count, chain depth, and attachments. Defined in `crates/springtale-core/src/pipeline/`.
+
+## Q
+
+**Quick-hide** — OS-wide global hotkey (default `Ctrl+Shift+H`) that hides the Springtale window and locks the vault from anywhere on the desktop, not just when Springtale has focus. Persisted as `SafetyConfig.quick_hide_shortcut` and rebound on every app restart via `tauri/apps/desktop/src-tauri/src/commands/quick_hide.rs` (G5g).
 
 ## R
 

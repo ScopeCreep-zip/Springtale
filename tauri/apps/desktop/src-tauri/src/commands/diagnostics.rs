@@ -5,6 +5,7 @@ use springtale_runtime::operations::diagnostics::{self, CallerContext, Report};
 
 /// Run diagnostic checks (config, vault, database, data dir, connectors).
 #[tauri::command]
+#[specta::specta]
 pub async fn run_diagnostics(state: State<'_, AppState>) -> Result<Report, String> {
     // Diagnostics don't require the runtime to be initialized — they
     // inspect the filesystem and config independently. Use Api context

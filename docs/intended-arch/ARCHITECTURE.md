@@ -1,5 +1,11 @@
 # Springtale — Architecture Document
-> **Status:** Active Design · **Phase:** 1 of 3 · **Updated:** 2026-03-27 · **Version:** 2.0
+> **Status:** Active Design · **Phase:** 2 of 3 (1a/1b shipped, 2a/2b in progress, 3 stub) · **Updated:** 2026-05-11 · **Version:** 2.1
+>
+> This is the **forward-looking design spec**. For the as-built snapshot
+> (what's actually in the working tree right now), read
+> [`docs/arch/ARCHITECTURE.md`](../arch/ARCHITECTURE.md). Where this doc
+> describes a feature that has shipped, the line-level details may have
+> moved — trust `arch/` over `intended-arch/` for current code paths.
 
 ---
 
@@ -699,17 +705,17 @@ springtale/
 │               ├── post.rs
 │               └── webhook_listen.rs
 │
-│   # ── Phase 2 Chat Connectors (stubs, activated by feature flag) ──
-│   connector-telegram/              # Phase 1b: grammY-equivalent, Bot API typed client
-│   # connector-discord/               # Gateway WebSocket, slash commands, voice
-│   # connector-signal/                # signal-cli bridge, E2E encrypted
-│   # connector-whatsapp/              # Baileys-equivalent, sandboxed, QR pairing
-│   # connector-matrix/                # Matrix SDK, federated rooms, E2E
-│   # connector-irc/                   # Raw TCP + TLS, lightweight
-│   # connector-slack/                 # Socket mode, slash commands, blocks
-│   # connector-browser/               # Headless Chromium, domain allow-list
-│   # connector-nostr/                 # NIP-01 relay, event signing, encrypted DMs
-│   # connector-rekindle/             # Phase 3: P2P AI chat via Rekindle DMs + community channels
+│   # ── Phase 1b/2a Chat + Service Connectors (all shipped) ──
+│   connector-telegram/              # Phase 1b: Bot API typed client, polling + webhook
+│   connector-discord/               # Phase 2a: Gateway WebSocket via twilight, slash commands
+│   connector-signal/                # Phase 2a: signal-cli bridge, E2E encrypted
+│   connector-irc/                   # Phase 2a: Raw TCP + TLS, lightweight
+│   connector-slack/                 # Phase 2a: Socket mode, slash commands, blocks
+│   connector-browser/               # Phase 2a: Headless Chromium, domain allow-list
+│   connector-nostr/                 # Phase 2a: NIP-01 relay, event signing, NIP-44 DMs
+│   # connector-matrix/                # Deferred: matrix-sdk pins CVE-bearing rusqlite 0.37
+│   # connector-whatsapp/              # Removed from roadmap (Meta terms incompatible with threat model)
+│   # connector-rekindle/              # Removed: Phase 3 P2P concern, lives in Rekindle's own repo
 │
 ├── apps/
 │   ├── springtaled/                       # Headless daemon
@@ -784,11 +790,14 @@ All version pins live at workspace root. No crate specifies its own version for
 shared dependencies. This is the 2026 Rust standard for monorepos.
 
 ```toml
-# Cargo.toml (workspace root)
+# Cargo.toml (workspace root) — reflects current shipped reality (2026-05).
+# The original spec listed Phase 2 connectors as commented-out stubs;
+# they have all shipped since.
 
 [workspace]
 resolver = "2"
 members  = [
+  # Phase 1a foundation
   "crates/springtale-core",
   "crates/springtale-crypto",
   "crates/springtale-transport",
@@ -797,8 +806,18 @@ members  = [
   "crates/springtale-store",
   "crates/springtale-ai",
   "crates/springtale-mcp",
-  "crates/springtale-bot",                   # Phase 1b: classical bot runtime
-  "crates/springtale-sentinel",              # Phase 2a: runtime behavioral monitor
+  "crates/springtale-runtime",
+  # Phase 1b bot runtime + cooperation framework (extracted April 2026)
+  "crates/springtale-bot",
+  "crates/springtale-cooperation",           # 39 pub modules, zero internal deps
+  # Phase 2a sentinel
+  "crates/springtale-sentinel",
+  # G3 cross-language bindings (May 2026)
+  "crates/springtale-wit",                   # WIT world for WASM Component Model
+  "crates/springtale-py",                    # pyo3 Python bindings (cdylib + rlib)
+  # Vendored SQLite3MultipleCiphers shim
+  "crates/libsqlite3-sys-mc",
+  # Phase 1a baseline connectors (7)
   "connectors/connector-kick",
   "connectors/connector-presearch",
   "connectors/connector-bluesky",
@@ -806,17 +825,27 @@ members  = [
   "connectors/connector-filesystem",
   "connectors/connector-shell",
   "connectors/connector-http",
-  # Phase 2 connectors (stubs, activated by feature flag)
-  "connectors/connector-telegram",          # Phase 1b: first chat connector
-  # "connectors/connector-discord",
-  # "connectors/connector-signal",
-  # "connectors/connector-whatsapp",
+  # Phase 1b chat connector
+  "connectors/connector-telegram",
+  # Phase 2a connectors (all shipped — were commented out as stubs in spec v2.0)
+  "connectors/connector-discord",
+  "connectors/connector-signal",
+  "connectors/connector-irc",
+  "connectors/connector-slack",
+  "connectors/connector-nostr",
+  "connectors/connector-browser",
+  # Deferred — `matrix-sdk` pins rusqlite 0.37 with an open CVE.
+  # Excluded from workspace via exclude = [...] below.  Will ship once
+  # upstream catches up to a patched rusqlite.
   # "connectors/connector-matrix",
-  # "connectors/connector-irc",
-  # "connectors/connector-slack",
-  # "connectors/connector-browser",
-  # "connectors/connector-nostr",
-  # "connectors/connector-rekindle",    # Phase 3: P2P AI chat via Rekindle DMs
+  # Removed from intent — `connector-whatsapp` and `connector-rekindle`
+  # appeared in spec v2.0 as planned Phase 2 connectors but are no
+  # longer on the roadmap:
+  #   - WhatsApp:  Meta's API terms are incompatible with the threat
+  #     model (no anonymity, account binding to phone, ban risk for
+  #     automation).  Not shipping.
+  #   - Rekindle:  Phase 3 P2P concern; lives in Rekindle's own repo
+  #     when Veilid stabilises.
   "apps/springtaled",
   "apps/springtale-cli",
 ]

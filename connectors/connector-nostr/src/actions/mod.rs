@@ -1,3 +1,4 @@
+pub mod discover_destinations;
 pub mod publish_note;
 pub mod react;
 pub mod reply;
@@ -13,5 +14,6 @@ pub fn action_declarations() -> Vec<ActionDecl> {
         send_message::declaration(),
         react::declaration(),
         reply::declaration(),
+        discover_destinations::declaration(),
     ]
 }

@@ -10,6 +10,7 @@ pub mod error;
 pub mod impact;
 pub mod rate_limiter;
 pub mod sentinel;
+pub mod throttle_tier;
 pub mod toxic_pairs;
 pub mod verdict;
 
@@ -20,4 +21,5 @@ pub use approval::{
 pub use config::SentinelConfig;
 pub use error::SentinelError;
 pub use sentinel::Sentinel;
+pub use throttle_tier::ThrottleTier;
 pub use verdict::Verdict;

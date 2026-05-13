@@ -18,6 +18,9 @@ pub mod contract_net;
 pub mod dissemination;
 pub mod error;
 pub mod events;
+/// Cooperation envelope threaded with every chain dispatch — agent /
+/// formation / momentum tier / mode. See [`execution::ExecutionContext`].
+pub mod execution;
 pub mod gossip;
 pub mod handoff;
 pub mod interference;

@@ -1,3 +1,4 @@
+pub mod discover_destinations;
 pub mod join_channel;
 pub mod part_channel;
 pub mod send_action;
@@ -13,5 +14,6 @@ pub fn action_declarations() -> Vec<ActionDecl> {
         part_channel::declaration(),
         set_topic::declaration(),
         send_action::declaration(),
+        discover_destinations::declaration(),
     ]
 }

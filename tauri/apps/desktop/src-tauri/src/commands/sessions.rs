@@ -5,6 +5,7 @@ use crate::state::AppState;
 
 /// List all bot sessions (user/channel memory).
 #[tauri::command]
+#[specta::specta]
 pub async fn list_sessions(
     state: State<'_, AppState>,
 ) -> Result<Vec<springtale_store::SessionRow>, String> {

@@ -6,6 +6,7 @@ import type {
 import type { CommandDecl, CooperationEvent, CooperationEventEnvelope } from "../dashboard/types";
 import type { EventItem } from "../dashboard/model";
 import { useDashboard } from "../dashboard/context";
+import { Canvas } from "../Canvas";
 import { getAgentPosition, getFormationBounds, type ConnectorPositions } from "./geometry";
 import {
   COMMANDS, ROLE_SPRITES, ROLE_COLORS,
@@ -107,6 +108,9 @@ export const BottomPanel: Component<BottomPanelProps> = (props) => {
               addAgentId={(props.detailView as { addAgentId?: string }).addAgentId}
               onAddToFormation={props.onAddToFormation}
             />
+          </Match>
+          <Match when={props.detailView.mode === "canvas"}>
+            <CanvasOutputView />
           </Match>
           <Match when={true}>
             <DetailPanel
@@ -1035,3 +1039,33 @@ const OutputsListView: Component<{
     </Show>
   </div>
 );
+
+// ── W2.E Canvas tab — A2UI structured-output surface ──────────
+
+/** Renders the bot's A2UI canvas blocks. State comes from
+ *  `useDashboard().canvasState()` which subscribes to backend updates
+ *  via the provider's `subscribeToCanvasUpdates`. */
+const CanvasOutputView: Component = () => {
+  const db = useDashboard();
+  return (
+    <div class="px-4 py-3">
+      <p class="colony-text-md font-bold text-text-primary">🖼 OUTPUT</p>
+      <p class="colony-text-2xs mt-1 text-text-secondary">
+        Structured output from the bot. Updated live as bots push new blocks.
+      </p>
+      <div class="mt-3">
+        <Show
+          when={db.canvasState()}
+          fallback={
+            <p class="colony-text-3xs text-text-dim">
+              Nothing on the canvas yet. Once a deployed bot produces structured output,
+              it'll appear here.
+            </p>
+          }
+        >
+          <Canvas state={db.canvasState()} />
+        </Show>
+      </div>
+    </div>
+  );
+};

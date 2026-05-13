@@ -10,6 +10,7 @@
 //! "what's happening over there" not "exactly which task each agent claimed".
 
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use ts_rs::TS;
 
 use crate::cadence::IntentPattern;
@@ -19,7 +20,7 @@ use crate::types::FormationId;
 /// Broadcast snapshot of one formation's current state. Republished
 /// whenever the formation's intent changes, momentum tier flips, or
 /// rally tokens cross a threshold.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, Type)]
 #[ts(export, export_to = "../../../tauri/packages/types/src/generated/")]
 pub struct FormationView {
     #[ts(type = "string")]
@@ -38,7 +39,7 @@ pub struct FormationView {
 /// Lifecycle state communicated via gossip. Mirrors the colony-canvas
 /// `status` enum exposed by the runtime API so peer formations and the
 /// UI agree on terminology.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, TS, Type)]
 #[serde(rename_all = "snake_case")]
 #[ts(export, export_to = "../../../tauri/packages/types/src/generated/")]
 pub enum FormationStatus {
@@ -51,7 +52,7 @@ pub enum FormationStatus {
 /// Terminal outcome published once on dissolve. Drives "what just
 /// finished" awareness for sibling formations on the same connector
 /// graph and feeds the global mental-model persistence layer (G2).
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, Type)]
 #[ts(export, export_to = "../../../tauri/packages/types/src/generated/")]
 pub struct FormationOutcome {
     #[ts(type = "string")]
@@ -67,7 +68,7 @@ pub struct FormationOutcome {
 /// Stream item peer formations receive. Covers both the running-state
 /// snapshot stream and the terminal-outcome stream so subscribers don't
 /// have to wire two channels.
-#[derive(Debug, Clone, Serialize, Deserialize, TS)]
+#[derive(Debug, Clone, Serialize, Deserialize, TS, Type)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 #[ts(export, export_to = "../../../tauri/packages/types/src/generated/")]
 pub enum FormationDelta {

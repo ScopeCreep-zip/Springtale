@@ -10,6 +10,7 @@
 //! ticks, it's declared Down and the supervisor takes action.
 
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 /// Agent liveness state — aligned with foca::member::State.
 ///
@@ -17,7 +18,7 @@ use serde::{Deserialize, Serialize};
 /// - Alive = probe succeeding, agent is operational
 /// - Suspect = probe failing, not yet at threshold (K8s: container still runs)
 /// - Down = threshold exceeded, restart needed (K8s: container killed)
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, Type)]
 pub enum Liveness {
     /// Agent reported on a recent tick. All good.
     #[default]
