@@ -2,7 +2,7 @@ use chrono::Utc;
 use rusqlite::params;
 
 use crate::error::StoreError;
-use springtale_core::rule::types::{Rule, RuleId};
+use springtale_core::rule::types::{Rule, RuleId, RuleOwner};
 
 use super::SqliteBackend;
 
@@ -17,10 +17,11 @@ impl SqliteBackend {
             let rule_toml =
                 toml::to_string(&rule).map_err(|e| StoreError::Serialization(e.to_string()))?;
             let now = Utc::now().to_rfc3339();
+            let (owner_kind, owner_agent_id, owner_formation_id) = owner_columns(&rule.owner);
 
             conn.execute(
-                "INSERT INTO rules (id, name, description, status, version, trigger_type, rule_toml, created_at, updated_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                "INSERT INTO rules (id, name, description, status, version, trigger_type, rule_toml, owner_kind, owner_agent_id, owner_formation_id, created_at, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
                 params![
                     rule.id.0.to_string(),
                     rule.name,
@@ -29,6 +30,9 @@ impl SqliteBackend {
                     rule.version.0 as i64,
                     rule.trigger.trigger_type(),
                     rule_toml,
+                    owner_kind,
+                    owner_agent_id,
+                    owner_formation_id,
                     now,
                     now,
                 ],
@@ -191,5 +195,20 @@ impl SqliteBackend {
         })
         .await
         .map_err(|e| StoreError::Database(format!("spawn_blocking join: {e}")))?
+    }
+}
+
+/// Project a [`RuleOwner`] into the denormalized SQL columns
+/// `(owner_kind, owner_agent_id, owner_formation_id)`. The TOML
+/// payload still carries the full enum — these columns are the index
+/// for "list rules owned by X" admin queries and (Phase B) executions
+/// log joins.
+fn owner_columns(owner: &RuleOwner) -> (&'static str, Option<String>, Option<String>) {
+    match owner {
+        RuleOwner::Global => ("global", None, None),
+        RuleOwner::Agent { agent_id } => ("agent", Some(agent_id.to_string()), None),
+        RuleOwner::Formation { formation_id } => {
+            ("formation", None, Some(formation_id.to_string()))
+        }
     }
 }

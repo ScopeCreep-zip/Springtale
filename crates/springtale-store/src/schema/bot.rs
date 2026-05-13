@@ -1,10 +1,11 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 /// Row type for the `bot_sessions` table.
 ///
 /// Tracks per-(user, channel) conversation state for multi-step command flows.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct SessionRow {
     /// User identifier (platform-specific, e.g., Telegram user ID).
     pub user_id: String,
@@ -24,7 +25,7 @@ pub struct SessionRow {
 ///
 /// Per-user preferences persisted in SQLite.
 /// Notifications default to off (IPV safety requirement — §2.8).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct UserPrefsRow {
     pub user_id: String,
     /// IANA timezone (e.g., "America/New_York"). Default: "UTC".

@@ -5,6 +5,7 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 /// Safety configuration persisted to SQLite.
 ///
@@ -15,7 +16,7 @@ use serde::{Deserialize, Serialize};
 /// `disguise_icon_id`, `disguise_active`, `panic_tap_count`) so the
 /// duress surface survives restart. Migration 012 adds these columns
 /// with safe defaults.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct SafetyConfigRow {
     pub window_title: String,
     pub auto_lock_minutes: u32,

@@ -4,7 +4,7 @@ use super::*;
 use crate::backend::trait_::StorageBackend;
 use springtale_core::rule::action::Action;
 use springtale_core::rule::trigger::Trigger;
-use springtale_core::rule::types::{RuleStatus, RuleVersion};
+use springtale_core::rule::types::{RuleOwner, RuleStatus, RuleVersion};
 
 fn test_rule(name: &str) -> Rule {
     Rule {
@@ -20,6 +20,7 @@ fn test_rule(name: &str) -> Rule {
         actions: vec![Action::SendMessage {
             text: "hello".into(),
         }],
+        owner: RuleOwner::Global,
     }
 }
 

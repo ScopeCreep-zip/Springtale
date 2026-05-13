@@ -1,12 +1,13 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 /// Row type for the `connectors` table.
 ///
 /// Stores registered connector manifests. The manifest is stored as JSON
 /// so the store crate doesn't depend on springtale-connector types.
 /// The application layer deserializes the JSON into `ConnectorManifest`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct ConnectorRow {
     /// Connector name (primary key).
     pub name: String,

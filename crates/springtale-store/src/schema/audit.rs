@@ -1,5 +1,6 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use uuid::Uuid;
 
 /// Row type for the `audit_trail` table (append-only sentinel log).
@@ -7,7 +8,7 @@ use uuid::Uuid;
 /// Every action dispatched through the system is logged here with
 /// the sentinel's verdict. The table is append-only by convention —
 /// sentinel never issues UPDATE or DELETE against it.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct AuditEntry {
     /// Unique entry identifier.
     pub id: Uuid,

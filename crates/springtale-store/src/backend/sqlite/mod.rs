@@ -3,10 +3,13 @@ mod audit;
 mod config;
 mod connectors;
 mod cooperation;
+mod dedupe;
 mod events;
+mod executions;
 mod formations;
 mod jobs;
 mod memory;
+mod mental_model_workspaces;
 mod rules;
 mod safety;
 mod sessions;
@@ -574,6 +577,125 @@ impl super::trait_::StorageBackend for SqliteBackend {
 
     async fn mental_model_clear(&self, formation_id: &str) -> Result<(), StoreError> {
         self.mental_model_clear_impl(formation_id.to_owned()).await
+    }
+
+    // ── Mental Model: External-Workspace Directory (D1) ────────
+
+    async fn mental_model_workspace_upsert(
+        &self,
+        formation_id: &str,
+        row: &crate::schema::mental_model::MentalModelWorkspaceRow,
+    ) -> Result<(), StoreError> {
+        self.mental_model_workspace_upsert_impl(formation_id.to_owned(), row.clone())
+            .await
+    }
+
+    async fn mental_model_workspaces_for_formation(
+        &self,
+        formation_id: &str,
+        connector_filter: Option<&str>,
+    ) -> Result<Vec<crate::schema::mental_model::MentalModelWorkspaceRow>, StoreError> {
+        self.mental_model_workspaces_for_formation_impl(
+            formation_id.to_owned(),
+            connector_filter.map(str::to_owned),
+        )
+        .await
+    }
+
+    async fn mental_model_workspace_delete(
+        &self,
+        formation_id: &str,
+        workspace_key: &str,
+    ) -> Result<(), StoreError> {
+        self.mental_model_workspace_delete_impl(
+            formation_id.to_owned(),
+            workspace_key.to_owned(),
+        )
+        .await
+    }
+
+    async fn mental_model_workspace_touch(
+        &self,
+        formation_id: &str,
+        workspace_key: &str,
+        now_unix_ms: i64,
+    ) -> Result<(), StoreError> {
+        self.mental_model_workspace_touch_impl(
+            formation_id.to_owned(),
+            workspace_key.to_owned(),
+            now_unix_ms,
+        )
+        .await
+    }
+
+    // ── Dedupe (Phase A) ──────────────────────────────────────
+
+    async fn dedupe_check(
+        &self,
+        formation_id: Option<&str>,
+        rule_id: &str,
+        bucket: &str,
+        key_hash: &str,
+        history: u32,
+    ) -> Result<crate::schema::dedupe::DedupeOutcome, StoreError> {
+        self.dedupe_check_impl(
+            formation_id.map(str::to_owned),
+            rule_id.to_owned(),
+            bucket.to_owned(),
+            key_hash.to_owned(),
+            history,
+        )
+        .await
+    }
+
+    // ── Executions log (Phase B) ──────────────────────────────
+
+    async fn record_execution_start(
+        &self,
+        exec: crate::schema::executions::ExecutionRow,
+    ) -> Result<(), StoreError> {
+        self.record_execution_start_impl(exec).await
+    }
+
+    async fn record_execution_finish(
+        &self,
+        execution_id: &str,
+        status: crate::schema::executions::ExecutionStatus,
+        error_kind: Option<&str>,
+        finished_at: i64,
+    ) -> Result<(), StoreError> {
+        self.record_execution_finish_impl(
+            execution_id.to_owned(),
+            status,
+            error_kind.map(str::to_owned),
+            finished_at,
+        )
+        .await
+    }
+
+    async fn record_execution_step(
+        &self,
+        step: crate::schema::executions::ExecutionStepRow,
+    ) -> Result<(), StoreError> {
+        self.record_execution_step_impl(step).await
+    }
+
+    async fn list_executions(
+        &self,
+        filter: crate::schema::executions::ExecutionFilter,
+    ) -> Result<Vec<crate::schema::executions::ExecutionSummary>, StoreError> {
+        self.list_executions_impl(filter).await
+    }
+
+    async fn get_execution_steps(
+        &self,
+        execution_id: &str,
+    ) -> Result<Vec<crate::schema::executions::ExecutionStepRow>, StoreError> {
+        self.get_execution_steps_impl(execution_id.to_owned()).await
+    }
+
+    async fn vacuum_executions(&self, now_ms: i64) -> Result<u64, StoreError> {
+        self.vacuum_executions_impl(now_ms).await
     }
 
     // ── Emergency ─────────────────────────────────────────────

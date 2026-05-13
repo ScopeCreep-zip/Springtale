@@ -7,6 +7,10 @@ use springtale_core::rule::types::Rule;
 ///
 /// Wraps the core `Rule` type with persistence metadata.
 /// The rule itself is stored as TOML in `rule_toml`.
+///
+/// Internal storage type — never crosses IPC, so no `specta::Type`
+/// derive (and couldn't have one anyway: `Rule` is intentionally
+/// non-`Type` per the rule-module policy).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RuleRow {
     /// The rule definition (deserialized from TOML).

@@ -7,9 +7,10 @@
 
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use specta::Type;
 
 /// A formation stored in the database.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct FormationRow {
     pub id: String,
     pub name: String,
@@ -20,7 +21,7 @@ pub struct FormationRow {
 }
 
 /// A member of a formation (maps to a connector).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct FormationMemberRow {
     pub id: String,
     pub formation_id: String,
@@ -35,7 +36,7 @@ pub const STATUS_PAUSED: &str = "paused";
 pub const STATUS_DISSOLVED: &str = "dissolved";
 
 /// Momentum state for a formation (replaces config-store hack).
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct FormationMomentumRow {
     pub formation_id: String,
     pub tier: String,
@@ -45,7 +46,7 @@ pub struct FormationMomentumRow {
 }
 
 /// Rally token state for a formation.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct FormationRallyRow {
     pub formation_id: String,
     pub tokens_remaining: i64,

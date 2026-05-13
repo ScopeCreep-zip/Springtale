@@ -33,4 +33,12 @@ pub mod mental_model;
 pub use mental_model::{
     MentalModelBundle, MentalModelCapabilityRow, MentalModelConventionRow,
     MentalModelDomainRow, MentalModelPatternRow, MentalModelVocabularyRow,
+    MentalModelWorkspaceRow,
+};
+pub mod dedupe;
+pub use dedupe::DedupeOutcome;
+pub mod executions;
+pub use executions::{
+    ExecutionFilter, ExecutionMode, ExecutionRow, ExecutionStatus, ExecutionStepRow,
+    ExecutionSummary, MomentumTag, StepStatus,
 };

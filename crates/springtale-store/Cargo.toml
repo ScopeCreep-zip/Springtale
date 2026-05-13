@@ -9,6 +9,7 @@ description = "Local-first SQLite storage backend, schema management, and query 
 [dependencies]
 rusqlite = { workspace = true }
 serde = { workspace = true }
+specta = { workspace = true }
 serde_json = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }

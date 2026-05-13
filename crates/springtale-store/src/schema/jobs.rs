@@ -1,9 +1,10 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use uuid::Uuid;
 
 /// Unique identifier for a job in the queue.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Type)]
 pub struct JobId(pub Uuid);
 
 impl JobId {
@@ -28,7 +29,7 @@ impl std::fmt::Display for JobId {
 ///
 /// The store owns this type. The application layer maps between `JobRow`
 /// and the scheduler's `Job` type.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct JobRow {
     /// Unique job identifier.
     pub id: JobId,

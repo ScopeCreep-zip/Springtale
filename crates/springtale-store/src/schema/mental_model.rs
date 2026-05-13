@@ -52,3 +52,32 @@ pub struct MentalModelBundle {
     pub vocabulary: Vec<MentalModelVocabularyRow>,
     pub convention: Vec<MentalModelConventionRow>,
 }
+
+/// One row in `mental_model_workspaces` — an external destination
+/// (Telegram chat / Discord channel / Signal group / IRC channel /
+/// Nostr pubkey / Bluesky account) the formation has discovered.
+///
+/// Cross-crate boundary: the domain types
+/// (`ExternalWorkspaceEntry`, `WorkspaceProvenance`,
+/// `DiscoveredWorkspace`) live in `springtale-cooperation`. This
+/// row is the persistence shape — flat scalars + JSON-serialized
+/// blobs for the variant-shaped fields. Row ↔ domain conversion
+/// lives in the cooperation crate (or the runtime workspaces
+/// operations) so this crate stays domain-agnostic, matching the
+/// existing `MentalModel*Row` pattern above.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MentalModelWorkspaceRow {
+    /// URI form — `"telegram://chat/12345"`,
+    /// `"discord://guild/G/channel/C"`, etc.
+    pub workspace_key: String,
+    pub connector_name: String,
+    pub display_name: String,
+    pub kind: String,
+    /// `serde_json::Value` serialized to a string; `None` for
+    /// empty `{}` to keep nullable column semantics.
+    pub metadata_json: Option<String>,
+    pub first_seen_at_unix_ms: i64,
+    pub last_seen_at_unix_ms: i64,
+    /// Serialized `WorkspaceProvenance` enum.
+    pub provenance_json: String,
+}

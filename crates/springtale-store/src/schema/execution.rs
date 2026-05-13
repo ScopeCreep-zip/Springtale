@@ -1,5 +1,6 @@
 use serde::Serialize;
 
+use specta::Type;
 /// Input for inserting an execution result.
 ///
 /// Groups the 7 parameters of `insert_execution_result` into a struct
@@ -18,7 +19,7 @@ pub struct ExecutionResultInput<'a> {
 ///
 /// Stores the actual output data from rule/action executions.
 /// Events store metadata (what ran, when). Results store data (what was returned).
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Type)]
 pub struct ExecutionResultRow {
     pub id: String,
     pub connector_name: String,

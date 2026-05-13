@@ -1,12 +1,13 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
+use specta::Type;
 use uuid::Uuid;
 
 /// Row type for the `events` table (audit trail).
 ///
 /// Stores trigger type, connector name, timestamp, and action taken.
 /// Does NOT store trigger payload content — privacy requirement.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct EventEntry {
     /// Unique event identifier.
     pub id: Uuid,

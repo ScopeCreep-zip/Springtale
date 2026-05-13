@@ -6,13 +6,17 @@ use crate::schema::audit::{AuditEntry, AuditFilter};
 use crate::schema::bot::{MemoryRow, SessionRow, UserPrefsRow};
 use crate::schema::connectors::ConnectorRow;
 use crate::schema::cooperation::{CoopCasOutcome, CoopDepositRow};
+use crate::schema::dedupe::DedupeOutcome;
 use crate::schema::events::{EventEntry, EventFilter};
 use crate::schema::execution::ExecutionResultRow;
+use crate::schema::executions::{
+    ExecutionFilter, ExecutionRow, ExecutionStatus, ExecutionStepRow, ExecutionSummary,
+};
 use crate::schema::formations::{
     FormationMemberRow, FormationMomentumRow, FormationRallyRow, FormationRow,
 };
 use crate::schema::jobs::{JobId, JobRow};
-use crate::schema::mental_model::MentalModelBundle;
+use crate::schema::mental_model::{MentalModelBundle, MentalModelWorkspaceRow};
 use crate::schema::safety::SafetyConfigRow;
 use springtale_core::rule::types::{Rule, RuleId};
 
@@ -446,6 +450,153 @@ pub trait StorageBackend: Send + Sync + 'static {
     /// Delete all mental-model rows for a formation.
     async fn mental_model_clear(&self, _formation_id: &str) -> Result<(), StoreError> {
         Ok(())
+    }
+
+    // ── External-workspace directory (D1) ─────────────────────
+    //
+    // Per-key upsert (not bundle-snapshot like the other mental_model_*
+    // methods) because destinations arrive one at a time — passive
+    // harvest fires on each inbound event, scan returns a few at a
+    // time, and gossip merges are per-key. Bundle-snapshot semantics
+    // would force every harvest to read the whole formation's
+    // directory, conflict-resolve every entry, and write back —
+    // wasteful when 99% of the time we're just touching one row.
+
+    /// Insert or update one workspace entry. Implementations should
+    /// use SQLite's `INSERT … ON CONFLICT(formation_id, workspace_key)
+    /// DO UPDATE` semantics. Caller has already done gossip-delta
+    /// merge resolution (see
+    /// `springtale-cooperation::mental_model::external_workspaces::merge_gossip_delta`).
+    async fn mental_model_workspace_upsert(
+        &self,
+        _formation_id: &str,
+        _row: &MentalModelWorkspaceRow,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// List every workspace entry for a formation, newest-first.
+    /// `connector_filter` narrows to one connector when set — the
+    /// recipe deploy form's dropdown uses this to show only
+    /// destinations matching the recipe's connector hint.
+    async fn mental_model_workspaces_for_formation(
+        &self,
+        _formation_id: &str,
+        _connector_filter: Option<&str>,
+    ) -> Result<Vec<MentalModelWorkspaceRow>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    /// Delete one workspace entry. The user explicitly removed a
+    /// destination from the dropdown; the harvester won't recreate
+    /// it until the connector emits another event mentioning the
+    /// key.
+    async fn mental_model_workspace_delete(
+        &self,
+        _formation_id: &str,
+        _workspace_key: &str,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Touch `last_seen_at` for one workspace without changing any
+    /// other field. Called by the harvester when re-observing a
+    /// destination we already know about — keeps the dropdown
+    /// sorted by recency without rewriting the whole row.
+    async fn mental_model_workspace_touch(
+        &self,
+        _formation_id: &str,
+        _workspace_key: &str,
+        _now_unix_ms: i64,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    // ── Dedupe (Phase A) ───────────────────────────────────────
+
+    /// Check whether `key_hash` has been seen for
+    /// `(formation_id, rule_id, bucket)`. Atomic check-and-record:
+    /// on `DedupeOutcome::Fresh` the hash is now recorded so the next
+    /// call with the same key returns `SeenBefore`.
+    ///
+    /// `history` caps the entries retained per bucket (LRU prune).
+    /// The dispatcher calls this from `Action::Dedupe`; chains
+    /// short-circuit via `ChainError::Suppressed` on `SeenBefore`.
+    ///
+    /// Default impl is the conservative "always Fresh" — backends
+    /// without dedupe persistence (in-memory, mock) keep the chain
+    /// flowing rather than blocking it.
+    async fn dedupe_check(
+        &self,
+        _formation_id: Option<&str>,
+        _rule_id: &str,
+        _bucket: &str,
+        _key_hash: &str,
+        _history: u32,
+    ) -> Result<DedupeOutcome, StoreError> {
+        Ok(DedupeOutcome::Fresh)
+    }
+
+    // ── Executions log (Phase B) ───────────────────────────────
+
+    /// Record the start of a chain dispatch. Inserts one row into
+    /// `executions` with `status = "running"` and the supplied
+    /// metadata.
+    ///
+    /// Default impl is a no-op so the in-memory backend keeps
+    /// working in tests — the SQLite backend overrides.
+    async fn record_execution_start(&self, _exec: ExecutionRow) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Finalize a chain dispatch. Sets `status`, `error_kind`,
+    /// `finished_at`, and `duration_ms` on the existing row.
+    async fn record_execution_finish(
+        &self,
+        _execution_id: &str,
+        _status: ExecutionStatus,
+        _error_kind: Option<&str>,
+        _finished_at: i64,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Append one step row to `execution_steps`. Sizes-only per
+    /// the privacy default — content blob refs are populated by
+    /// the recorder when `bot.retain_step_content` is on.
+    async fn record_execution_step(
+        &self,
+        _step: ExecutionStepRow,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// List recent executions filtered by `filter`. Newest-first;
+    /// caller paginates with `filter.before` cursor.
+    async fn list_executions(
+        &self,
+        _filter: ExecutionFilter,
+    ) -> Result<Vec<ExecutionSummary>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    /// Return every step recorded for a single execution, ordered
+    /// by `step_index`.
+    async fn get_execution_steps(
+        &self,
+        _execution_id: &str,
+    ) -> Result<Vec<ExecutionStepRow>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    /// Delete every executions row whose `retention_until` is at
+    /// or before `now_ms`. Cascade deletes step rows via the
+    /// `ON DELETE CASCADE` foreign key.
+    ///
+    /// Returns the number of executions purged so the background
+    /// vacuum task can emit useful telemetry.
+    async fn vacuum_executions(&self, _now_ms: i64) -> Result<u64, StoreError> {
+        Ok(0)
     }
 
     // ── Emergency ─────────────────────────────────────────────

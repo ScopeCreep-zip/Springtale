@@ -6,7 +6,19 @@ use crate::error::StoreError;
 /// changes shape (table added, column dropped, etc.). The value is
 /// written to `PRAGMA user_version` after a successful apply, and
 /// checked on every subsequent open.
-pub const SCHEMA_VERSION: i32 = 1;
+///
+/// Version history:
+/// - 1: initial schema
+/// - 2: Phase 0.4 — `rules.owner_kind` / `owner_agent_id` /
+///   `owner_formation_id` columns + indexes for cooperation scoping
+/// - 3: Phase A — `dedupe_seen` table for `Action::Dedupe` state
+/// - 4: Phase B — `executions` + `execution_steps` tables for the
+///   privacy-default observability log (sizes-only, 14d retention)
+/// - 5: D1 — `mental_model_workspaces` table for the external-
+///   destination directory (Telegram chats / Discord channels /
+///   Signal groups / IRC channels / Nostr pubkeys / Bluesky
+///   accounts), extending the SharedMentalModel
+pub const SCHEMA_VERSION: i32 = 5;
 
 /// DDL applied in dependency order. Tables that reference other
 /// tables (formation_members → formations) must come after their
@@ -24,6 +36,9 @@ const DDL_IN_ORDER: &[(&str, &str)] = &[
     ("execution", include_str!("sql/execution.sql")),
     ("wasm", include_str!("sql/wasm.sql")),
     ("cooperation", include_str!("sql/cooperation.sql")),
+    ("dedupe", include_str!("sql/dedupe.sql")),
+    ("executions", include_str!("sql/executions.sql")),
+    ("mental_model_workspaces", include_str!("sql/mental_model_workspaces.sql")),
 ];
 
 /// Detect a database created under the (removed) numbered-migration
@@ -59,9 +74,39 @@ pub fn apply(conn: &Connection) -> Result<(), StoreError> {
         tracing::debug!(version = SCHEMA_VERSION, "schema already current");
         return Ok(());
     }
-    if found != 0 {
+
+    // In-place upgrade path. Each step bumps one version and is
+    // additive only (ALTER TABLE ADD COLUMN, CREATE INDEX, CREATE
+    // TABLE for new domains) so dev databases survive Phase 0+
+    // schema bumps without a panic-wipe. Per the declarative-schema
+    // contract, the canonical DDL in `DDL_IN_ORDER` always reflects
+    // the *current* shape — these in-place steps make older
+    // databases match.
+    if found == 1 && SCHEMA_VERSION >= 2 {
+        upgrade_v1_to_v2(conn)?;
+        // Continue to v2 → v3 below.
+    }
+    let interim: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if interim == 2 && SCHEMA_VERSION >= 3 {
+        upgrade_v2_to_v3(conn)?;
+    }
+    let interim: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if interim == 3 && SCHEMA_VERSION >= 4 {
+        upgrade_v3_to_v4(conn)?;
+    }
+    let interim: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if interim == 4 && SCHEMA_VERSION >= 5 {
+        upgrade_v4_to_v5(conn)?;
+    }
+
+    let current: i32 = conn.query_row("PRAGMA user_version", [], |row| row.get(0))?;
+    if current == SCHEMA_VERSION {
+        tracing::info!(version = SCHEMA_VERSION, "declarative schema upgraded in place");
+        return Ok(());
+    }
+    if current != 0 {
         return Err(StoreError::SchemaVersion {
-            found,
+            found: current,
             expected: SCHEMA_VERSION,
         });
     }
@@ -74,5 +119,64 @@ pub fn apply(conn: &Connection) -> Result<(), StoreError> {
     tx.execute_batch(&format!("PRAGMA user_version = {SCHEMA_VERSION};"))?;
     tx.commit()?;
     tracing::info!(version = SCHEMA_VERSION, "declarative schema applied");
+    Ok(())
+}
+
+/// D1 — add `mental_model_workspaces` table for the external-
+/// destination directory. Additive only; no existing rows
+/// touched.
+fn upgrade_v4_to_v5(conn: &Connection) -> Result<(), StoreError> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute_batch(include_str!("sql/mental_model_workspaces.sql"))
+        .map_err(|e| StoreError::Schema(format!("upgrade v4→v5: {e}")))?;
+    tx.execute_batch("PRAGMA user_version = 5;")?;
+    tx.commit()?;
+    tracing::info!("schema upgraded v4 → v5 (mental_model_workspaces table)");
+    Ok(())
+}
+
+/// Phase B — add `executions` + `execution_steps` tables for the
+/// privacy-default executions log. Additive only.
+fn upgrade_v3_to_v4(conn: &Connection) -> Result<(), StoreError> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute_batch(include_str!("sql/executions.sql"))
+        .map_err(|e| StoreError::Schema(format!("upgrade v3→v4: {e}")))?;
+    tx.execute_batch("PRAGMA user_version = 4;")?;
+    tx.commit()?;
+    tracing::info!("schema upgraded v3 → v4 (executions + execution_steps tables)");
+    Ok(())
+}
+
+/// Phase A — add `dedupe_seen` table for `Action::Dedupe` state.
+/// Additive only; no existing rows touched.
+fn upgrade_v2_to_v3(conn: &Connection) -> Result<(), StoreError> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute_batch(include_str!("sql/dedupe.sql"))
+        .map_err(|e| StoreError::Schema(format!("upgrade v2→v3: {e}")))?;
+    tx.execute_batch("PRAGMA user_version = 3;")?;
+    tx.commit()?;
+    tracing::info!("schema upgraded v2 → v3 (dedupe_seen table)");
+    Ok(())
+}
+
+/// Phase 0.4 — add `RuleOwner` columns to the `rules` table. Existing
+/// rows backfill to `owner_kind = 'global'` (the column default), so
+/// every pre-Phase-0 rule continues to fire from any context.
+fn upgrade_v1_to_v2(conn: &Connection) -> Result<(), StoreError> {
+    let tx = conn.unchecked_transaction()?;
+    tx.execute_batch(
+        r#"
+        ALTER TABLE rules ADD COLUMN owner_kind         TEXT NOT NULL DEFAULT 'global';
+        ALTER TABLE rules ADD COLUMN owner_agent_id     TEXT;
+        ALTER TABLE rules ADD COLUMN owner_formation_id TEXT;
+        CREATE INDEX IF NOT EXISTS idx_rules_owner_kind      ON rules(owner_kind);
+        CREATE INDEX IF NOT EXISTS idx_rules_owner_agent     ON rules(owner_agent_id);
+        CREATE INDEX IF NOT EXISTS idx_rules_owner_formation ON rules(owner_formation_id);
+        PRAGMA user_version = 2;
+        "#,
+    )
+    .map_err(|e| StoreError::Schema(format!("upgrade v1→v2: {e}")))?;
+    tx.commit()?;
+    tracing::info!("schema upgraded v1 → v2 (rule owner columns)");
     Ok(())
 }
