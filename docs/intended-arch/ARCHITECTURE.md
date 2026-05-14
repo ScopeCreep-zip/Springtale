@@ -809,7 +809,7 @@ members  = [
   "crates/springtale-runtime",
   # Phase 1b bot runtime + cooperation framework (extracted April 2026)
   "crates/springtale-bot",
-  "crates/springtale-cooperation",           # 39 pub modules, zero internal deps
+  "crates/springtale-cooperation",           # 40 pub modules, zero internal deps
   # Phase 2a sentinel
   "crates/springtale-sentinel",
   # G3 cross-language bindings (May 2026)

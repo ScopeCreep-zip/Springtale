@@ -1,7 +1,7 @@
 # Cooperation
 
 Springtale is an RTS game engine that happens to run bots. The
-`springtale-cooperation` crate is where that framing lives: 40+ modules
+`springtale-cooperation` crate is where that framing lives: 40 pub modules
 modelling how peer agents coordinate on a shared intent without a central
 controller. This page is a user-facing tour.
 
@@ -13,7 +13,7 @@ wiring into the bot runtime is in [architecture.md §6](architecture.md).
 
 ```
 crates/
-├── springtale-cooperation/     the crate — 40+ modules, zero internal deps
+├── springtale-cooperation/     the crate — 40 pub modules, zero internal deps
 │   └── src/
 │       ├── cadence.rs          tick bus
 │       ├── momentum.rs         tier state machine
@@ -194,7 +194,7 @@ vocabulary.
 
 ## 11. Modules at a glance
 
-The 40+ modules of `springtale-cooperation` group cleanly into seven concerns. Use this as a map when reading the crate.
+The 40 pub modules of `springtale-cooperation` group cleanly into seven concerns. Use this as a map when reading the crate.
 
 **Lifecycle and timing.**
 

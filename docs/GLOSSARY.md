@@ -61,7 +61,7 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
 
 **Capability** — A declared permission that a connector requires to function. Springtale enforces capabilities at install time and again at every action invocation. Variants: `NetworkOutbound { host }` (no wildcards), `FilesystemRead { path }`, `FilesystemWrite { path }`, `KeychainRead { key }`, `ShellExec` (always requires explicit approval). Defined in `crates/springtale-connector/src/manifest/types.rs`. See [guide/connectors.md](guide/connectors.md).
 
-**Cooperation framework** — The 40+-module crate `crates/springtale-cooperation/` (extracted from `springtale-bot` in April 2026) that implements non-hierarchical multi-agent coordination: cadence, momentum, formations, shared environment, orchestrator gating, attention economy, rally, sacrifice, recovery, supervision, stigmergy, contract net, routing, mental model, role dynamics, handoff, pacing, consensus, commit barriers, interference, transformation, and more. Wired into `springtale-bot` through a 14-step formation tick in `springtale-bot::runtime::event_loop::handle_cadence_tick`. Designed against the spec in [`docs/intended-arch/COOPERATION.md`](intended-arch/COOPERATION.md); user-facing tour in [`docs/guide/cooperation.md`](guide/cooperation.md).
+**Cooperation framework** — The 40-module crate `crates/springtale-cooperation/` (extracted from `springtale-bot` in April 2026) that implements non-hierarchical multi-agent coordination: cadence, momentum, formations, shared environment, orchestrator gating, attention economy, rally, sacrifice, recovery, supervision, stigmergy, contract net, routing, mental model, role dynamics, handoff, pacing, consensus, commit barriers, interference, transformation, and more. Wired into `springtale-bot` through a 14-step formation tick in `springtale-bot::runtime::event_loop::handle_cadence_tick`. Designed against the spec in [`docs/intended-arch/COOPERATION.md`](intended-arch/COOPERATION.md); user-facing tour in [`docs/guide/cooperation.md`](guide/cooperation.md).
 
 **Cooperation crate (`springtale-cooperation`)** — Standalone crate with zero internal Springtale dependencies. Depended on by `springtale-bot`, `springtale-runtime`, and `springtale-store`. Holds all cooperation types, traits, and algorithms. Game-informed — draws directly from Spring RTS, RimWorld ThinkTree, Erlang OTP supervision, Kubernetes liveness probes, L4D AI Director, Monster Hunter rally mechanics, Overcooked implicit signalling, Microsoft AGT momentum, 0 A.D. stance systems. See [guide/cooperation.md](guide/cooperation.md).
 
@@ -79,11 +79,25 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
 
 **Duress passphrase** — A secondary passphrase that unlocks a decoy vault instead of the real one. Implemented via two AEAD-encrypted regions in a single vault file with a constant 131,152-byte size (padding prevents traffic analysis). Writing one region preserves the other byte-for-byte. Configure via `springtale vault duress-setup`. See `crates/springtale-crypto/src/vault/duress.rs`.
 
+**Dedupe (`Action::Dedupe`)** — Phase A short-circuit action for polling recipes. Stores a blake3 hex digest of the user-supplied key in `dedupe_seen` keyed by `(formation_id, rule_id, bucket, key_hash)`; on hit, chain returns `ChainError::Suppressed` and the execution row gets `status = "empty"`. LRU prune at `history` entries (default 10,000). Plaintext keys never persist — PII-free dedupe state. See [`docs/guide/dedupe-and-extract.md`](guide/dedupe-and-extract.md).
+
+**Drift detection** — Phase B trend analysis over the executions log. `recipe_drift()` / `rule_drift()` return a `DriftReport` with latency percentiles, success/error/empty/suppressed rates, and a `DriftClass` (Stable / Improving / Degrading / Volatile). Surfaces in the UI as the `DriftBadge` chip on recipe and rule cards. See [`docs/guide/executions-and-drift.md`](guide/executions-and-drift.md).
+
 ## E
 
 **Disguise icon** — Tray icon profile picked from `tauri/apps/desktop/src-tauri/icons/disguise/` (`calculator`, `files`, `notes`, `springtale`). Built once at startup and swapped at runtime based on `SafetyConfig.disguise_icon_id`, set via `POST /safety/disguise/profile`. Designed for environments where the user does not want "Springtale" visible to an over-the-shoulder observer (G5f).
 
 **Ed25519** — An elliptic curve digital signature algorithm. Springtale uses Ed25519 for node identity keypairs, manifest signing, and capability token signatures. Implemented via the `ed25519-dalek` crate in `crates/springtale-crypto/`.
+
+**ExecutionContext** — Cooperation envelope carried with every chain fire. Holds `execution_id` (ULID), `agent_id`, `formation_id`, `momentum_tier`, `rule_id`, and `mode` (Normal / DryRun). Defined in `springtale-cooperation::execution`. Threaded through dispatch so the executions log scopes per (formation, agent, tier) — distinguished from `springtale-core::rule::ChainContext`, which holds within-fire step state.
+
+**ExecutionId** — `ulid::Ulid`. Lexicographically sortable by creation time — `WHERE bot_id = ? ORDER BY id DESC` is index-friendly without a separate timestamp sort key. Maps 1:1 to a row in the `executions` table.
+
+**Executions log** — Phase B per-chain-fire observability. `executions` table records one row per fire (status, momentum tier, mode, error_kind, summary_bytes); `execution_steps` records per-step (input_bytes, output_bytes, error_kind). Privacy posture: sizes only, no payload content, error categorisations are enum tags. Default 14-day retention. Distinct from legacy `execution_results` (per-action output) and `audit_trail` (sentinel verdicts). See [`docs/guide/executions-and-drift.md`](guide/executions-and-drift.md).
+
+**Extract (`Action::Extract`)** — Phase A action that parses bytes into structured data. `ExtractKind` variants: `Readability` (article body), `Css { schema }` (selector map), `JsonPath { schema }` (RFC 9535), `Feed` (RSS/Atom/JSON Feed), `Ical { window_days }`, `LlmSchema { schema }` (structured AI output), `Passthrough`. See [`docs/guide/dedupe-and-extract.md`](guide/dedupe-and-extract.md).
+
+**External workspace** — A discovered chat destination addressed by a URI-shaped `WorkspaceKey` (e.g. `telegram://chat/12345`). Per-formation, gossip-replicated within the formation. Populated automatically by the universal mention harvester. Stored in `mental_model_workspaces` table; lives in formation memory via `springtale-cooperation::mental_model::external_workspaces`. Privacy: names + kind + counts only, never message bodies or rosters. See [`docs/guide/external-workspaces.md`](guide/external-workspaces.md).
 
 ## F
 
@@ -100,6 +114,8 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
 ## G
 
 **Gossip bus (cross-formation)** — Event bus carrying `FormationView` snapshots between sibling formations. Distinct from within-formation **awareness** (chitchat/SWIM substrate inside one formation). Implemented in `crates/springtale-cooperation/src/gossip/`. Lets one formation know what its peers are doing without polling the API. See [guide/cross-formation.md](guide/cross-formation.md).
+
+**G-series milestones** — Internal milestone tags in code comments (`G2`, `G4`, `G5d`, `G5f`, `G5g`, `G6`) tracking the infrastructure rollout: G2 cross-formation memory store, G3 cross-language bindings (wit/py), G4 connector hot-reload, G5d disguise app fields, G5f tray icon profile, G5g quick-hide global hotkey, G6 cross-formation gossip bus.
 
 **Guard status** — Per-formation toggle that gates destructive or high-impact actions on members (e.g. dissolve, force-rally, intent change). Surfaces in the colony canvas formation detail card as a badge and is toggled via `POST /formations/{id}/toggle-guard`. State lives on the live `Formation` struct and is broadcast through `LiveFormationReader`. Read by the dashboard command grid to enable/disable destructive buttons.
 
@@ -130,6 +146,8 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
 ## M
 
 **Manifest** — A TOML file that declares a connector's metadata, capabilities, triggers, and actions. Manifests are Ed25519-signed and verified before loading. See [guide/connectors.md](guide/connectors.md).
+
+**MentionExtractor** — Trait connectors implement to harvest chat destinations from dispatched events. Pure function — no async, no I/O — from event payload to `Vec<HarvestedDestination>`. Each messaging connector implements it; the universal mention harvester calls it on every event and upserts results into `mental_model_workspaces`. Defined in `crates/springtale-connector/src/mention.rs`. See [`docs/guide/external-workspaces.md`](guide/external-workspaces.md).
 
 **MCP** — Model Context Protocol. An open protocol for connecting AI models to tools and data sources. Springtale's `springtale-mcp` crate uses `rmcp` 1.x to automatically expose any connector as an MCP server via stdio. Capabilities are re-checked at both `list_tools` and `call_tool` — MCP does not bypass the sandbox. See [guide/connectors.md](guide/connectors.md).
 
@@ -163,6 +181,12 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
 
 **Persistent memory (cooperation)** — Per-formation durable shared memory sitting between the ephemeral blackboard (per-run, in-process) and the mental model (per-formation, survives dissolves with learned knowledge only). Implemented in `crates/springtale-cooperation/src/memory/` with a trait + in-memory store + persistent backend split. Used for state a formation wants to carry forward across runs but isn't part of its learned model.
 
+**Preflight (W1.D)** — Live validation that runs as a user fills the recipe deploy form. Per-check statuses (`Blocking | Warning | Verified | Pending`) drive the `deployable` boolean. Backend owns every decision; frontend renders. Checks include required-inputs-filled, input-format, connector-loaded/capable, AI config, structured-outputs support, host allow-list, cron sanity. See [`docs/guide/recipe-authoring-tools.md`](guide/recipe-authoring-tools.md).
+
+**Phase letters** — Internal phase tags in code comments. Phase A: dedupe + extract for polling recipes. Phase B: executions log + drift detection. Phase C: opt-in content retention. Phase 0.4 / D1: cooperation scoping primitives + external workspaces. Distinct from the roadmap phases (1a, 1b, 2a, 2b, 3) — these letters track the **cooperation-alignment roadmap** within Phases 1b–2b.
+
+**Picker.js** — Bundled overlay script the selector-picker Tauri webview injects into the target page. Highlights elements on hover, emits a `selector-picked` event on click. Authoring-time only; not a headless-browser feature.
+
 **Pipeline** — A sequence of processing stages that transform data between trigger and action. Each stage reads from and writes to a `PipelineContext`. Stages compose left-to-right. See [guide/rules.md](guide/rules.md).
 
 **PipelineContext** — The data bag that flows through pipeline stages. Contains input, output, errors, retry count, chain depth, and attachments. Defined in `crates/springtale-core/src/pipeline/`.
@@ -172,6 +196,10 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
 **Quick-hide** — OS-wide global hotkey (default `Ctrl+Shift+H`) that hides the Springtale window and locks the vault from anywhere on the desktop, not just when Springtale has focus. Persisted as `SafetyConfig.quick_hide_shortcut` and rebound on every app restart via `tauri/apps/desktop/src-tauri/src/commands/quick_hide.rs` (G5g).
 
 ## R
+
+**Recipe** — A click-and-play blueprint that materialises a working bot. Backend-owned data shape: `RecipeCategory`, `Difficulty`, `RecipeSource` (Builtin / User / Community), `InputField` (each with `FieldVisibility`: Required / Optional / Advanced / Baked), `RecipeBlueprint` (connector configs + rules + AI config, all with `${input_id}` placeholders). The frontend renders what it's told, never invents categories or classifies fields. See [`docs/guide/recipes.md`](guide/recipes.md) and [`docs/reference/recipes-format.md`](reference/recipes-format.md).
+
+**RecipeSource** — Trust origin of a recipe: `Builtin` (compiled into the daemon), `User` (locally authored via W2.B, planned), `Community` (signed by an author the sentinel verifies, wire-shape only). Drives the UI's trust badge (W3.A).
 
 **Rule** — The core automation unit: a trigger, zero or more conditions, and one or more actions. Rules are authored in TOML, stored in SQLite, and evaluated by the `RuleEngine`. See [guide/rules.md](guide/rules.md).
 
@@ -230,6 +258,12 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
 **WASM connector** — A community-authored connector compiled to WASM and executed in the Wasmtime sandbox. Low trust, untrusted by default. Contrast with **Native connector**.
 
 **Wasmtime** — A WASM runtime from the Bytecode Alliance. Springtale uses Wasmtime for sandbox execution of community connectors, with fuel metering and memory limits.
+
+**WasmTier** — Per-tier WASM capability gate mirroring `MomentumTier`. `Cold | Warming | Hot | Fever`. Drives which host functions (HTTP, env writes, AI, etc.) the sandbox exposes — Cold has no network; Warming+ has HTTP. Per-tier `InstancePre` cache (`WasmTierCache`) in `crates/springtale-connector/src/wasm/tier/`. Conversion from `MomentumTier` happens in `springtale-runtime`'s `CapabilityBridge` because the connector crate cannot depend on the cooperation crate.
+
+**WorkspaceKey** — URI-shaped string addressing a discovered chat destination. Per-connector scheme (`telegram://chat/12345`, `discord://guild/G/channel/C`, `signal://group/{id}`, etc.). Cooperation layer treats it opaquely as `WorkspaceKey(String)`; only the connector layer parses. See [`docs/guide/external-workspaces.md`](guide/external-workspaces.md) and `crates/springtale-connector/src/workspace_key.rs`.
+
+**W-series milestones** — Internal milestone tags in code comments tracking the recipes-UX rollout: W1.C progressive-disclosure deploy form (Required → Optional → Advanced), W1.D preflight + Deploy gating, W1.F approval-gate UX dispatcher, W2.B user-recipe authoring + storage, W2.C live preview / test-this-step, W3.A community signature verification + trust badges. Parallel to the G-series (infrastructure) and Phase letters (cooperation alignment).
 
 ## X
 

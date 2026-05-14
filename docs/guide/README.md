@@ -77,6 +77,20 @@ not before.
 | Cross-formation gossip + outcome propagation | [cross-formation.md](cross-formation.md) |
 | When something's off — symptoms → fixes | [troubleshooting-cooperation.md](troubleshooting-cooperation.md) |
 
+## Recipes + observability (W- and Phase A/B/D1)
+
+The newer surfaces — click-and-play recipes, the executions log,
+external workspaces, dedupe semantics for polling.
+
+| Topic | Guide |
+|---|---|
+| Click-and-play recipes (browse, fill, deploy) | [recipes.md](recipes.md) |
+| Recipe data shape reference | [../reference/recipes-format.md](../reference/recipes-format.md) |
+| Authoring tools — preflight, preview, test-step, selector picker | [recipe-authoring-tools.md](recipe-authoring-tools.md) |
+| Phase A — `Action::Dedupe` and `Action::Extract` for polling | [dedupe-and-extract.md](dedupe-and-extract.md) |
+| Phase B — per-fire executions log + drift detection | [executions-and-drift.md](executions-and-drift.md) |
+| D1 — discovered chat destinations (workspace directory) | [external-workspaces.md](external-workspaces.md) |
+
 ## Safety and OPSEC
 
 Springtale targets users whose threat model is hostile attention.

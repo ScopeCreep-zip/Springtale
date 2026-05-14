@@ -3,7 +3,7 @@
 **Status:** Implemented · **Updated:** 2026-04-10 · **Companion to:** `COOPERATION.md` (spec), `COOPERATION.pdf` (design origin).
 
 > **Completion summary.** The 10-week plan below shipped: `crates/springtale-cooperation/`
-> exists with 40+ modules and zero internal Springtale deps; `springtale-bot` runs the
+> exists with 40 pub modules and zero internal Springtale deps; `springtale-bot` runs the
 > 14-step formation tick described in §3 (`crates/springtale-bot/src/runtime/event_loop.rs::handle_cadence_tick`);
 > all parity-matrix rows are covered; and the three worked examples ship as starter
 > templates (`cli-runner`, `llm-swarm`, `telegram-bot`) — the full template set lives in

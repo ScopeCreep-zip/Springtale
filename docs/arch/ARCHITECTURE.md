@@ -45,7 +45,7 @@ Springtale/
 │   ├── springtale-ai/              #   AiAdapter + Anthropic/Ollama/OpenAI-compat/Noop + tool-calling
 │   ├── springtale-mcp/             #   rmcp 1.x bridge (stdio), split handler modules
 │   ├── springtale-sentinel/        #   behavioural monitor, toxic-pair detection
-│   ├── springtale-cooperation/     #   cooperation framework (40+ modules, zero internal deps)
+│   ├── springtale-cooperation/     #   cooperation framework (40 pub modules, zero internal deps)
 │   ├── springtale-runtime/         #   shared init, dispatch, operations, LiveFormationReader
 │   ├── springtale-bot/             #   runtime, router, cooperation glue, orchestrator,
 │   │                              #   memory, tool_runner, 14-step formation tick
@@ -406,7 +406,7 @@ All 15 are native Rust. Matrix is workspace-excluded (deferred).
 
 The cooperation architecture has two parts:
 
-- `crates/springtale-cooperation/` — the crate with 39 pub modules (40+ counting nested), zero
+- `crates/springtale-cooperation/` — the crate with 40 pub modules, zero
   internal Springtale deps. Types, traits, and algorithms.
 - `crates/springtale-bot/src/cooperation/` — the glue. Holds the live
   `Formation` struct (mutable runtime fields like `active_task`,
@@ -644,6 +644,70 @@ desktop IPC, dashboard HTTP, and any future surface. See
 
 User-facing: [`docs/guide/recipes.md`](../guide/recipes.md). Format:
 [`docs/reference/recipes-format.md`](../reference/recipes-format.md).
+
+### 6.9 Executions log + drift detection (Phase B)
+
+Per-chain-fire observability that the legacy tables couldn't answer.
+`crates/springtale-runtime/src/operations/executions/`:
+
+- `recorder.rs` — `ExecutionRecorder` trait + `StoreRecorder` + `NoopRecorder`. Dispatcher calls `record_start()` / `record_step()` / `record_finish()`.
+- `query.rs` — list / steps / vacuum.
+- `drift.rs` — `recipe_drift()` / `rule_drift()` → `DriftReport { latency, rate, classification }`. `DriftClass: Stable | Improving | Degrading | Volatile`.
+
+Persistence: two new tables in `schema/sql/executions.sql`:
+- `executions` — ULID PK, per-fire row with `agent_id`, `formation_id`, `momentum_tier`, `mode` (Normal / DryRun), `status` (running / success / error / empty / suppressed), `error_kind` (enum tag), `summary_bytes`.
+- `execution_steps` — per-step row with `input_bytes`, `output_bytes`, `error_kind`.
+
+**Privacy posture:** sizes-only by default. No payload content. `error_kind` is an enum tag. Default 14-day retention swept hourly. Content retention is Phase C, opt-in, separate.
+
+**Cooperation envelope:** `springtale-cooperation::execution::ExecutionContext` carries `execution_id` (ULID), `agent_id`, `formation_id`, `momentum_tier`, `rule_id`, `mode`. Threaded through every dispatch so the executions log scopes per (formation, agent, tier).
+
+User-facing: [`docs/guide/executions-and-drift.md`](../guide/executions-and-drift.md).
+
+### 6.10 External workspaces (D1)
+
+The formation's mental-model extension that stores discovered chat
+destinations. Per-formation, gossip-replicated within a formation.
+
+- Schema: `schema/sql/mental_model_workspaces.sql`. Row keyed `(formation_id, workspace_key)`. Stores `display_name`, `kind`, `metadata_json`, `first_seen_at`, `last_seen_at`. **No message bodies, no member rosters** — names only.
+- Workspace key URIs: `telegram://chat/12345`, `discord://guild/G/channel/C`, etc. Parsed in `crates/springtale-connector/src/workspace_key.rs`. Each connector owns its scheme.
+- Harvester: `springtale-runtime::operations::workspaces::harvester::harvest_event` runs on every dispatched event, calls the connector's `MentionExtractor::extract_destinations()`, upserts into the table.
+- `MentionExtractor` trait lives in `crates/springtale-connector/src/mention.rs`. Each messaging connector implements it. Pure function — no async, no I/O.
+
+Within-formation gossip replicates new rows across members via the
+chitchat substrate. Conflict resolution in
+`crates/springtale-cooperation/src/mental_model/external_workspaces.rs::merge_gossip_delta`.
+
+User-facing: [`docs/guide/external-workspaces.md`](../guide/external-workspaces.md).
+
+### 6.11 Dedupe + Extract (Phase A)
+
+Two `Action` variants in `springtale-core::rule::action` that
+together make polling recipes practical.
+
+- `Action::Extract { source, kind }` — parse bytes into structured data. `ExtractKind` variants: `Readability` (article body), `Css { schema }` (selectors), `JsonPath { schema }` (RFC 9535), `Feed` (RSS/Atom/JSON Feed), `Ical { window_days }`, `LlmSchema { schema }` (structured AI output), `Passthrough`.
+- `Action::Dedupe { key, bucket, history }` — short-circuit the chain when the key has been seen. Plaintext key never persisted; blake3 hex digest stored in `dedupe_seen` table. Bounded to `history` entries per bucket (default 10,000) with LRU prune.
+
+Scoping per Phase 0.4 cooperation alignment: `dedupe_seen` is keyed by `(formation_id, rule_id, bucket, key_hash)`. `formation_id NULL` = global rule; `NOT NULL` = formation-scoped. Two formations running the same rule see independent dedupe state. Schema: `schema/sql/dedupe.sql`.
+
+Hit path: chain returns `ChainError::Suppressed`, execution row gets `status = "empty"` (not failed). Drift detector distinguishes empty from error.
+
+User-facing: [`docs/guide/dedupe-and-extract.md`](../guide/dedupe-and-extract.md).
+
+### 6.12 Recipe authoring tools
+
+Authoring-time helpers under `crates/springtale-runtime/src/operations/`:
+
+- `preflight/` (W1.D) — checks the recipe's preconditions before Deploy. `PreflightReport { items, deployable }`. Checks include required inputs, input format, connector loaded/capable, AI config, structured outputs support, host allow-list, cron sanity.
+- `preview.rs` (W2.C) — fresh in-memory `RuleEngine`, fires synthetic trigger, returns `PreviewReport { steps }`. No side effects.
+- `test_step.rs` (W2.C / Phase C) — runs chain in `ExecutionMode::DryRun` up to a single target step, returns recorded `StepOutput`. Read-only arms run for real; side-effecting arms stubbed. Persisted to executions log with `mode = "dry_run"`.
+
+UI: `PreflightChecklist`, `PreviewPanel`, `TestStepButton`,
+`SelectorPickerOverlay`. The selector picker opens a Tauri webview at
+the recipe's target URL, injects `picker.js`, returns the chosen CSS
+selector (authoring-time only, not a headless-browser feature).
+
+User-facing: [`docs/guide/recipe-authoring-tools.md`](../guide/recipe-authoring-tools.md).
 
 ---
 
@@ -891,30 +955,43 @@ tauri/
 │                           # ConnectorConfigPanel, AiConfigPanel,
 │                           # AppSettingsPanel; geometry + mappers;
 │                           # colony.css + sprites.css.
-│                           # Plus the G-series overlays:
-│                           #   ApprovalCard, EventRibbon (cross-formation),
+│                           # Plus the G-series + W-series overlays:
+│                           #   ApprovalCard (W1.F),
+│                           #   EventRibbon (G6 cross-formation),
 │                           #   MemberPickerOverlay, ModeSelectOverlay,
-│                           #   PreflightChecklist, PreviewPanel,
+│                           #   PreflightChecklist (W1.D),
+│                           #   PreviewPanel (W2.C),
 │                           #   ProofOfLifePanel, RuleBuilderOverlay,
 │                           #   SafetyPanel (disguise + quick-hide + panic-tap),
 │                           #   RecipeAuthorPanel, RecipeCard,
 │                           #   RecipeDeployPanel, RecipeLibraryOverlay,
-│                           #   RecipeQuickView.
+│                           #   RecipeQuickView,
+│                           #   AiSchemaEditor (Phase B structured AI),
+│                           #   CronFrequencyChip, DeploySummaryModal,
+│                           #   DriftBadge (Phase B drift trend),
+│                           #   ExecutionsPanel (Phase B log viewer),
+│                           #   SelectorPickerOverlay (web-recipe authoring),
+│                           #   TestStepButton (W2.C single-step DryRun),
+│                           #   WorkspaceTargetPicker (D1 external workspaces).
 │            └── dashboard/ # context, model, query, types (DataProvider ~60 methods)
 │
 └── apps/
     ├── desktop/
     │   ├── src/                              # SolidJS UI
-    │   └── src-tauri/src/commands/           # 27 command modules:
-    │                                         #   agent, approval (G5b gate), authors,
-    │                                         #   bot, canvas, config, connectors,
+    │   └── src-tauri/src/commands/           # 32 command modules:
+    │                                         #   agent, approval (W1.F gate dispatcher),
+    │                                         #   authors, bot, canvas, config, connectors,
     │                                         #   cooperation (G6 IPC + SSE),
-    │                                         #   data, diagnostics, events, fixes,
-    │                                         #   formations, heartbeat, memory,
+    │                                         #   data, diagnostics, drift (Phase B trend),
+    │                                         #   events, executions (Phase B log),
+    │                                         #   fixes, formations, heartbeat, memory,
     │                                         #   onboarding, panic, quick_hide (G5g),
-    │                                         #   recipes, rules, safety, send,
-    │                                         #   sessions, templates, travel,
-    │                                         #   tray (G5f), vault; plus runtime_guard
+    │                                         #   recipes, rules, safety, selector_picker
+    │                                         #   (recipe-authoring overlay), send,
+    │                                         #   sessions, templates, test_step (W2.C
+    │                                         #   single-step DryRun), travel,
+    │                                         #   tray (G5f), vault, workspaces (D1);
+    │                                         #   plus runtime_guard
     │
     └── dashboard/
         └── src/provider.ts                   # HTTP + SSE DataProvider

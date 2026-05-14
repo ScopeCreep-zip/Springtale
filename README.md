@@ -101,7 +101,7 @@ Springtale is a Rust workspace with strict downward-only dependencies. No cycles
 │   runtime (shared init, dispatch, operations)            │
 ├──────────────────────────────────────────────────────────┤
 │                   Integration Crates                     │
-│   cooperation (40+ modules — formations, momentum,       │
+│   cooperation (40 pub modules — formations, momentum,       │
 │                rally, supervision, gossip, mental model) │
 │   mcp (rmcp 1.x bridge)     ai (Anthropic/Ollama/…/Noop) │
 │   sentinel (toxic pairs, monitor, approval gate)         │
@@ -167,7 +167,7 @@ Security guide: [docs/guide/security.md](docs/guide/security.md) | Full threat m
 | Phase | Scope | State |
 |---|---|---|
 | 1a | Framework + connectors. Daemon, CLI, rule engine, crypto vault, WASM sandbox, 7 baseline connectors, MCP bridge. | Present. |
-| 1b | Bot foundations. `springtale-bot` with command router, cooperation framework, `connector-telegram`. | Present. Cooperation framework fully extracted into `springtale-cooperation` (40+ modules, zero internal deps) and wired through a 14-step formation tick. See [`docs/arch/AUDIT-NOTES.md §3`](docs/arch/AUDIT-NOTES.md). |
+| 1b | Bot foundations. `springtale-bot` with command router, cooperation framework, `connector-telegram`. | Present. Cooperation framework fully extracted into `springtale-cooperation` (40 pub modules, zero internal deps) and wired through a 14-step formation tick. See [`docs/arch/AUDIT-NOTES.md §3`](docs/arch/AUDIT-NOTES.md). |
 | 2a | Chat + AI. Discord, Signal, IRC, Slack, Nostr connectors. Anthropic / Ollama / OpenAI-compat adapters (all three stream). `HttpTransport` (rustls mTLS). `springtale-sentinel`. | Present. `connector-matrix` is not in the workspace — `matrix-sdk` pins a `rusqlite` with an open CVE. |
 | 2b | Desktop + safety. Tauri 2 shell, SolidJS dashboard, canvas visualisation. Duress vault, panic wipe, travel mode, disguise tray icon (G5f), OS-wide quick-hide shortcut (G5g), destructive-action approval gate (G5b). | Shell, dashboard, canvas, duress, panic wipe, travel mode, disguise, quick-hide, approval gate all present. Visual rule builder (basic overlay shipped), i18n, and a11y still in progress. |
 | 3 | Veilid mesh. P2P transport, E2E encrypted AI chat, no server. | `VeilidTransport` is a stub — every method returns `TransportError::NotConnected`. |
@@ -193,7 +193,10 @@ Springtale draws from and contributes to a constellation of projects:
 | [Tutorials](docs/tutorials/) | [Connector reference](docs/reference/connectors/) | [Architecture Decision Records](docs/adr/) |
 | [Cookbook](docs/cookbook/) | [API client examples](docs/reference/api-clients/) | [Design decisions](docs/contributing/design-decisions.md) |
 | [Architecture](docs/guide/architecture.md) | [Python bindings](docs/python/) | [As-built arch](docs/arch/) |
-| [Cooperation](docs/guide/cooperation.md) | [Performance reference](docs/reference/performance.md) | [Code of Conduct](CODE_OF_CONDUCT.md) |
+| [Cooperation](docs/guide/cooperation.md) | [Recipe format](docs/reference/recipes-format.md) | [Code of Conduct](CODE_OF_CONDUCT.md) |
+| [Recipes](docs/guide/recipes.md) | [Performance reference](docs/reference/performance.md) | [Anonymous contribution](docs/anonymous-contribution.md) |
+| [Executions + drift](docs/guide/executions-and-drift.md) | [Glossary](docs/GLOSSARY.md) | [Security disclosure](SECURITY.md) |
+| [External workspaces](docs/guide/external-workspaces.md) | [Operations](docs/operations/) | [OPSEC](docs/opsec.md) |
 | [Security](docs/guide/security.md) | [Glossary](docs/GLOSSARY.md) | [Anonymous contribution](docs/anonymous-contribution.md) |
 | [FAQ](docs/FAQ.md) | [Operations](docs/operations/) | [Security disclosure](SECURITY.md) |
 | [Threat model FAQ](docs/threat-model-faq.md) | [CHANGELOG](CHANGELOG.md) | [OPSEC](docs/opsec.md) |
