@@ -86,6 +86,12 @@ jobs:
           output: trivy.sarif
           severity: HIGH,CRITICAL
           exit-code: '1'
+          # CRITICAL: in SARIF mode `severity` does NOT filter the report, and
+          # `exit-code` then fires on ANY finding in it (including LOW). This
+          # makes the severity filter apply to the SARIF + exit-code, so the
+          # job gates only on HIGH/CRITICAL — not the LOW rust-dep advisories
+          # (rand/lru/rpassword) which cargo-audit already tracks.
+          limit-severities-for-sarif: true
           # Only fail on FIXABLE vulnerabilities — un-actionable upstream
           # base-OS CVEs (debian "wont-fix") can't be patched from here and are
           # picked up automatically when the distroless base is rebuilt.
