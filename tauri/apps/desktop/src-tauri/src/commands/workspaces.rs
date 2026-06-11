@@ -13,10 +13,10 @@ use tauri_specta::Event;
 
 use springtale_cooperation::cadence::AgentId;
 use springtale_runtime::operations::workspaces::{
-    delete_workspace as runtime_delete, list_workspaces as runtime_list,
-    preview_onboard_url as runtime_preview_onboard_url,
+    OnDiscoveryCallback, WorkspaceInfo, delete_workspace as runtime_delete,
+    list_workspaces as runtime_list, preview_onboard_url as runtime_preview_onboard_url,
     scan_workspaces as runtime_scan, start_onboard_stream as runtime_start_onboard_stream,
-    upsert_workspace_manual, OnDiscoveryCallback, WorkspaceInfo,
+    upsert_workspace_manual,
 };
 
 use crate::runtime_guard::require_runtime;
@@ -173,24 +173,22 @@ pub async fn start_onboard_stream(
 
     let app_for_cb = app.clone();
     let sid = session_id.clone();
-    let on_discover: OnDiscoveryCallback =
-        Arc::new(move |info: WorkspaceInfo, matched: bool| {
-            let event = ChatDiscovered {
-                session_id: sid.clone(),
-                workspace_key: info.workspace_key,
-                display_name: info.display_name,
-                kind: info.kind,
-                metadata_json: info.metadata_json,
-                matched,
-            };
-            if let Err(e) = event.emit(&app_for_cb) {
-                tracing::warn!(error = %e, "ChatDiscovered emit failed");
-            }
-        });
+    let on_discover: OnDiscoveryCallback = Arc::new(move |info: WorkspaceInfo, matched: bool| {
+        let event = ChatDiscovered {
+            session_id: sid.clone(),
+            workspace_key: info.workspace_key,
+            display_name: info.display_name,
+            kind: info.kind,
+            metadata_json: info.metadata_json,
+            matched,
+        };
+        if let Err(e) = event.emit(&app_for_cb) {
+            tracing::warn!(error = %e, "ChatDiscovered emit failed");
+        }
+    });
 
-    let cancel_tx =
-        runtime_start_onboard_stream(connector_name, config, payload, on_discover)
-            .map_err(|e| format!("start_onboard_stream: {e}"))?;
+    let cancel_tx = runtime_start_onboard_stream(connector_name, config, payload, on_discover)
+        .map_err(|e| format!("start_onboard_stream: {e}"))?;
 
     state
         .onboard_sessions

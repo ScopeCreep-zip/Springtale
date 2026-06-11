@@ -14,8 +14,9 @@
  * autocomplete and a "test extract" button that runs the schema
  * against sample text via a dry-run backend op.
  */
-import { Show, createSignal, createEffect } from "solid-js";
+
 import type { Component } from "solid-js";
+import { createEffect, createSignal, Show } from "solid-js";
 
 export interface AiSchemaEditorProps {
   /** Current schema value as a JSON object. May be null when unset. */
@@ -68,14 +69,11 @@ export const AiSchemaEditor: Component<AiSchemaEditorProps> = (props) => {
   return (
     <div class="rounded border border-bark bg-soil-mid">
       <header class="border-b border-bark px-3 py-2">
-        <p class="colony-text-sm font-bold text-text-primary">
-          AI extraction schema
-        </p>
+        <p class="colony-text-sm font-bold text-text-primary">AI extraction schema</p>
         <p class="colony-text-3xs mt-1 text-text-dim">
-          JSON Schema (draft 2020-12). Top-level properties become the
-          extracted fields. Requires an AI provider that supports
-          structured outputs (OpenAI gpt-4o-2024-08-06+, Claude Sonnet
-          4+, or Ollama 0.5+).
+          JSON Schema (draft 2020-12). Top-level properties become the extracted fields. Requires an
+          AI provider that supports structured outputs (OpenAI gpt-4o-2024-08-06+, Claude Sonnet 4+,
+          or Ollama 0.5+).
         </p>
       </header>
       <textarea
@@ -86,9 +84,7 @@ export const AiSchemaEditor: Component<AiSchemaEditorProps> = (props) => {
         spellcheck={false}
       />
       <Show when={error()}>
-        <p class="colony-text-3xs border-t border-bark px-3 py-1 text-status-warn">
-          {error()}
-        </p>
+        <p class="colony-text-3xs border-t border-bark px-3 py-1 text-status-warn">{error()}</p>
       </Show>
       <Show when={props.example}>
         <details class="border-t border-bark">

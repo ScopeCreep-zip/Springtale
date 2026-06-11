@@ -14,9 +14,6 @@ export interface ApprovalEventPayload {
   rationale: string;
 }
 
-export async function respondToApproval(
-  requestId: string,
-  approve: boolean,
-): Promise<void> {
+export async function respondToApproval(requestId: string, approve: boolean): Promise<void> {
   return invoke("respond_to_approval", { requestId, approve });
 }

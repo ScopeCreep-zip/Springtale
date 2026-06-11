@@ -1,8 +1,9 @@
 /**
  * Typed IPC wrappers for agent operations.
  */
-import { invoke } from "@tauri-apps/api/core";
+
 import type { AgentState } from "@springtale/types";
+import { invoke } from "@tauri-apps/api/core";
 
 export async function listAgentStates(): Promise<AgentState[]> {
   return invoke<AgentState[]>("list_agent_states");

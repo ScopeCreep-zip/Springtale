@@ -1,6 +1,6 @@
-import { createSignal, onMount, For } from "solid-js";
-import { useI18n } from "@springtale/ui";
 import type { EventEntry } from "@springtale/types";
+import { useI18n } from "@springtale/ui";
+import { createSignal, For, onMount } from "solid-js";
 import { listEvents } from "../ipc/events";
 
 export function EventsPage() {
@@ -24,6 +24,7 @@ export function EventsPage() {
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-bold text-white">{t("events.title")}</h1>
         <button
+          type="button"
           class="rounded bg-gray-700 px-3 py-1 text-sm text-gray-200 hover:bg-gray-600"
           onClick={fetch}
         >
@@ -31,7 +32,11 @@ export function EventsPage() {
         </button>
       </div>
       {error() && (
-        <div role="alert" aria-live="assertive" class="mt-4 rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+        <div
+          role="alert"
+          aria-live="assertive"
+          class="mt-4 rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400"
+        >
           {error()}
         </div>
       )}
@@ -50,7 +55,9 @@ export function EventsPage() {
         </For>
         {events().length === 0 && (
           <li class="list-none">
-            <p role="status" class="text-gray-500">{t("empty.events")}</p>
+            <p role="status" class="text-gray-500">
+              {t("empty.events")}
+            </p>
           </li>
         )}
       </ul>

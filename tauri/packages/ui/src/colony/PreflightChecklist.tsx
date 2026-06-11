@@ -52,18 +52,16 @@ export const PreflightChecklist: Component<PreflightChecklistProps> = (props) =>
 
       <Show when={props.report}>
         <ul class="mt-2 space-y-1">
-          <For each={props.report!.items}>
-            {(item) => (
-              <PreflightRow item={item} onFix={props.onFix} />
-            )}
+          <For each={props.report?.items}>
+            {(item) => <PreflightRow item={item} onFix={props.onFix} />}
           </For>
         </ul>
-        <Show when={!props.report!.deployable}>
+        <Show when={!props.report?.deployable}>
           <p class="colony-text-3xs mt-3 text-status-error">
             Resolve the items above to enable Deploy.
           </p>
         </Show>
-        <Show when={props.report!.deployable && props.report!.has_warnings}>
+        <Show when={props.report?.deployable && props.report?.has_warnings}>
           <p class="colony-text-3xs mt-3 text-status-warn">
             Deploy is allowed; warnings flagged above will be applied at deploy time.
           </p>
@@ -85,18 +83,19 @@ const PreflightRow: Component<PreflightRowProps> = (props) => {
       <div class="flex-1">
         <div class="text-text-primary">{props.item.label}</div>
         <Show when={props.item.detail}>
-          <div class={statusDetailClass(props.item.status)}>
-            {props.item.detail}
-          </div>
+          <div class={statusDetailClass(props.item.status)}>{props.item.detail}</div>
         </Show>
       </div>
-      <Show when={props.item.fix_hint && props.onFix}>
-        <button
-          class="colony-text-3xs rounded border border-bark px-2 py-0.5 text-text-primary hover:bg-soil-mid"
-          onClick={() => props.onFix?.(props.item.fix_hint!)}
-        >
-          {fixLabel(props.item.fix_hint!)}
-        </button>
+      <Show when={props.item.fix_hint ? { hint: props.item.fix_hint } : null} keyed>
+        {({ hint }) => (
+          <button
+            type="button"
+            class="colony-text-3xs rounded border border-bark px-2 py-0.5 text-text-primary hover:bg-soil-mid"
+            onClick={() => props.onFix?.(hint)}
+          >
+            {fixLabel(hint)}
+          </button>
+        )}
       </Show>
     </li>
   );

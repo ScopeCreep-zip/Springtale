@@ -1,8 +1,9 @@
 /**
  * Typed IPC wrappers for onboarding operations.
  */
+
+import type { ApplyReport, PlatformForm } from "@springtale/types";
 import { invoke } from "@tauri-apps/api/core";
-import type { PlatformForm, ApplyReport } from "@springtale/types";
 
 export async function listOnboardingPlatforms(): Promise<PlatformForm[]> {
   return invoke<PlatformForm[]>("list_onboarding_platforms");

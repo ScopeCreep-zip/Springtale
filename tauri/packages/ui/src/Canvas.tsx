@@ -1,6 +1,6 @@
-import { For, Show, Switch, Match } from "solid-js";
-import type { Component } from "solid-js";
 import type { CanvasBlock, CanvasState, StatusState } from "@springtale/types";
+import type { Component } from "solid-js";
+import { For, Match, Show, Switch } from "solid-js";
 
 /**
  * Canvas — generic structured-block renderer for the A2UI surface
@@ -47,9 +47,7 @@ export const Canvas: Component<CanvasProps> = (props) => {
       }
     >
       <div class="space-y-3">
-        <For each={props.state!.blocks}>
-          {(block) => <CanvasBlockView block={block} />}
-        </For>
+        <For each={props.state?.blocks}>{(block) => <CanvasBlockView block={block} />}</For>
       </div>
     </Show>
   );

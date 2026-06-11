@@ -8,8 +8,9 @@
  * page-level convenience wrapper around that channel — desktop's
  * `Canvas` page uses it to render bot-pushed blocks live.
  */
-import { invoke, Channel } from "@tauri-apps/api/core";
+
 import type { CanvasState, CanvasUpdate } from "@springtale/types";
+import { Channel, invoke } from "@tauri-apps/api/core";
 
 export interface ConnectionPipe {
   id: string;

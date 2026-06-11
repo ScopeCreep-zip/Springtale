@@ -7,7 +7,7 @@
  * connectorPositions always flows through — this is how drag overrides
  * propagate to both the main canvas and the minimap.
  */
-import type { ColonyNode, ColonyAgent, ColonyFormation } from "./types";
+import type { ColonyAgent, ColonyFormation, ColonyNode } from "./types";
 import { seeded } from "./types";
 
 export type ConnectorPositions = Record<string, { x: number; y: number }>;
@@ -32,8 +32,8 @@ export function getAgentPosition(
   if (!agent.connectorId) return { x: 50, y: 78 };
   const connectorPos = getConnectorPosition(agent.connectorId, nodes, connectorPositions);
   return {
-    x: connectorPos.x + seeded(agent.id + "tx", -5, 6),
-    y: connectorPos.y + seeded(agent.id + "ty", 10, 16),
+    x: connectorPos.x + seeded(`${agent.id}tx`, -5, 6),
+    y: connectorPos.y + seeded(`${agent.id}ty`, 10, 16),
   };
 }
 

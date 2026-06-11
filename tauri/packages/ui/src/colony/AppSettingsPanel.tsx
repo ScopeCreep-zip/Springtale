@@ -1,5 +1,5 @@
-import { createSignal, Show } from "solid-js";
 import type { Component } from "solid-js";
+import { createSignal, Show } from "solid-js";
 import { useI18n } from "../i18n/context";
 
 export interface AppSettingsPanelProps {
@@ -34,7 +34,7 @@ export interface AppSettingsPanelProps {
  * Per product model: vault, safety, language, data export.
  */
 export const AppSettingsPanel: Component<AppSettingsPanelProps> = (props) => {
-  const { t, locale, setLocale } = useI18n();
+  const { locale, setLocale } = useI18n();
   const [exporting, setExporting] = createSignal(false);
   const [compacting, setCompacting] = createSignal(false);
   const [error, setError] = createSignal("");
@@ -43,7 +43,9 @@ export const AppSettingsPanel: Component<AppSettingsPanelProps> = (props) => {
     <div class="colony-modal mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6">
       <div class="mb-4 flex items-center justify-between">
         <h2 class="colony-text-md font-bold text-text-primary">Settings</h2>
-        <button onClick={props.onClose} class="colony-close-btn">✕</button>
+        <button type="button" onClick={props.onClose} class="colony-close-btn">
+          ✕
+        </button>
       </div>
 
       {error() && (
@@ -58,26 +60,34 @@ export const AppSettingsPanel: Component<AppSettingsPanelProps> = (props) => {
           <section>
             <h3 class="colony-label mb-2">SECURITY</h3>
             <div class="space-y-2">
-              <button onClick={props.onVault}
-                class="colony-text-2xs w-full border-2 border-bark bg-soil-light px-3 py-1.5 text-text-primary hover:bg-soil-deep">
+              <button
+                type="button"
+                onClick={props.onVault}
+                class="colony-text-2xs w-full border-2 border-bark bg-soil-light px-3 py-1.5 text-text-primary hover:bg-soil-deep"
+              >
                 Vault (Lock / Unlock)
               </button>
-              <button onClick={props.onPanicWipe}
-                class="colony-text-2xs w-full border-2 border-status-error bg-soil-light px-3 py-1.5 text-status-error hover:bg-soil-deep">
+              <button
+                type="button"
+                onClick={props.onPanicWipe}
+                class="colony-text-2xs w-full border-2 border-status-error bg-soil-light px-3 py-1.5 text-status-error hover:bg-soil-deep"
+              >
                 Emergency Wipe
               </button>
               <Show when={props.onOpenSafety}>
-                <button onClick={props.onOpenSafety}
-                  class="colony-text-2xs w-full border-2 border-bark bg-soil-light px-3 py-1.5 text-text-primary hover:bg-soil-deep">
+                <button
+                  type="button"
+                  onClick={props.onOpenSafety}
+                  class="colony-text-2xs w-full border-2 border-bark bg-soil-light px-3 py-1.5 text-text-primary hover:bg-soil-deep"
+                >
                   Safety &amp; Disguise…
                 </button>
               </Show>
             </div>
             <div class="mt-2 rounded border border-bark-light bg-soil-deep p-2">
               <p class="colony-text-3xs text-text-dim">
-                If you think your device might be monitored, consider using a
-                different device to set up Springtale. For tech safety resources
-                visit techsafety.org
+                If you think your device might be monitored, consider using a different device to
+                set up Springtale. For tech safety resources visit techsafety.org
               </p>
             </div>
           </section>
@@ -122,9 +132,14 @@ export const AppSettingsPanel: Component<AppSettingsPanelProps> = (props) => {
           <h3 class="colony-label mb-2">DATA</h3>
           <div class="space-y-2">
             <button
+              type="button"
               onClick={async () => {
                 setExporting(true);
-                try { await props.onExportData(); } catch (e) { setError(String(e)); }
+                try {
+                  await props.onExportData();
+                } catch (e) {
+                  setError(String(e));
+                }
                 setExporting(false);
               }}
               disabled={exporting()}
@@ -133,9 +148,14 @@ export const AppSettingsPanel: Component<AppSettingsPanelProps> = (props) => {
               {exporting() ? "Exporting..." : "Export All Data"}
             </button>
             <button
+              type="button"
               onClick={async () => {
                 setCompacting(true);
-                try { await props.onCompactMemory(); } catch (e) { setError(String(e)); }
+                try {
+                  await props.onCompactMemory();
+                } catch (e) {
+                  setError(String(e));
+                }
                 setCompacting(false);
               }}
               disabled={compacting()}

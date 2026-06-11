@@ -6,17 +6,49 @@
  * Both feed the same createDashboardState() factory.
  */
 import type {
-  ConnectorSchema, EventEntry, CanvasState, CanvasUpdate, AvailableConnector,
-  ConfigSchema, ConfigSchemaProperty, AgentState,
-  Report, PlatformForm, ApplyReport, Template, WriteReport,
-  FixGuide, FixOutcome, SendRequest, SendOutcome,
+  AgentState,
+  ApplyReport,
+  AvailableConnector,
+  CanvasState,
+  CanvasUpdate,
+  ConfigSchema,
+  ConfigSchemaProperty,
+  ConnectorSchema,
+  EventEntry,
+  FixGuide,
+  FixOutcome,
+  PlatformForm,
+  Report,
+  SendOutcome,
+  SendRequest,
+  Template,
+  WriteReport,
 } from "@springtale/types";
-import type { ConnectorStatus, RuleItem, RuleDetail, EventItem, SwarmInfo } from "./model";
 import type { ConditionDef } from "../ConditionEditor";
+import type { ConnectorStatus, EventItem, RuleDetail, RuleItem, SwarmInfo } from "./model";
 
 // Re-export types that originated in @springtale/types but are consumed
 // by components that import from @springtale/ui
 export type { AvailableConnector, ConfigSchema, ConfigSchemaProperty };
+
+/** One persisted connector-action output row. */
+export interface ConnectorOutput {
+  id: string;
+  connector_name: string;
+  rule_name: string | null;
+  output_json: string;
+  success: boolean;
+  error_message: string | null;
+  created_at: string;
+}
+
+/** A bot reply streamed to the in-app chat panel (W5). */
+export interface ChatStreamMessage {
+  /** Session id (channel) the reply belongs to. */
+  session: string;
+  /** The reply text. */
+  text: string;
+}
 
 /** Wire-format rule summary from both IPC and HTTP. */
 export interface RuleSummary {
@@ -108,23 +140,69 @@ export interface CommandDecl {
  * one-for-one; serde uses `kind` as the discriminator (snake_case).
  */
 export type CooperationEvent =
-  | { kind: "intervention_fired"; formation_id: string; intervention: { intervention: "change_intent" } | { intervention: "inject_fuel"; amount: number } | { intervention: "forced_dissolve" } | { intervention: "escalate_to_user" }; summary: string }
+  | {
+      kind: "intervention_fired";
+      formation_id: string;
+      intervention:
+        | { intervention: "change_intent" }
+        | { intervention: "inject_fuel"; amount: number }
+        | { intervention: "forced_dissolve" }
+        | { intervention: "escalate_to_user" };
+      summary: string;
+    }
   | { kind: "pacing_phase_changed"; formation_id: string; from: string; to: string }
   | { kind: "cascade_hit"; formation_id: string; streak: number; members_affected: number }
   | { kind: "consensus_vote_opened"; formation_id: string; vote_id: string; deadline_ms: number }
-  | { kind: "consensus_vote_resolved"; formation_id: string; vote_id: string; outcome: "approved" | "denied" | "timeout" }
+  | {
+      kind: "consensus_vote_resolved";
+      formation_id: string;
+      vote_id: string;
+      outcome: "approved" | "denied" | "timeout";
+    }
   | { kind: "commit_phase_changed"; formation_id: string; barrier_id: string; phase: string }
-  | { kind: "sacrifice_yield"; formation_id: string; sacrificer: string; beneficiary: string; utility: number }
+  | {
+      kind: "sacrifice_yield";
+      formation_id: string;
+      sacrificer: string;
+      beneficiary: string;
+      utility: number;
+    }
   | { kind: "role_transformed"; formation_id: string; agent: string; from: string; to: string }
   | { kind: "member_marked_down"; formation_id: string; agent: string; since_tick: number }
   | { kind: "supervisor_escalated"; formation_id: string; reason: string }
-  | { kind: "recovery_action_taken"; formation_id: string; helper: string; in_distress: string; action: string }
-  | { kind: "surface_deposited"; formation_id: string; agent: string; surface_kind: string; ttl_ms: number }
-  | { kind: "interference_detected"; formation_id: string; interference_kind: "resource_conflict" | "action_negation" | "collateral_damage" | "task_already_claimed" | "duplicate_action"; agents: string[] }
+  | {
+      kind: "recovery_action_taken";
+      formation_id: string;
+      helper: string;
+      in_distress: string;
+      action: string;
+    }
+  | {
+      kind: "surface_deposited";
+      formation_id: string;
+      agent: string;
+      surface_kind: string;
+      ttl_ms: number;
+    }
+  | {
+      kind: "interference_detected";
+      formation_id: string;
+      interference_kind:
+        | "resource_conflict"
+        | "action_negation"
+        | "collateral_damage"
+        | "task_already_claimed"
+        | "duplicate_action";
+      agents: string[];
+    }
   | { kind: "cfp_round_started"; formation_id: string; cfp_id: string; capability: string }
   | { kind: "cfp_round_resolved"; formation_id: string; cfp_id: string; winner: string | null }
   | { kind: "cbba_replan_requested"; formation_id: string; reason: string }
-  | { kind: "cbba_replan_resolved"; formation_id: string; outcome: { status: string; sweeps: number; assigned: number; unassigned: number } };
+  | {
+      kind: "cbba_replan_resolved";
+      formation_id: string;
+      outcome: { status: string; sweeps: number; assigned: number; unassigned: number };
+    };
 
 /**
  * Wire envelope wrapping every cooperation event — adds monotonic seq +
@@ -339,21 +417,21 @@ export interface DataProvider {
   removeConnector(name: string): Promise<void>;
   removeConnectorCascade(name: string): Promise<string[]>;
   getConnectorConfig(name: string): Promise<unknown>;
-  listConnectorOutputs(name: string, limit?: number): Promise<Array<{
-    id: string;
-    connector_name: string;
-    rule_name: string | null;
-    output_json: string;
-    success: boolean;
-    error_message: string | null;
-    created_at: string;
-  }>>;
+  listConnectorOutputs(name: string, limit?: number): Promise<ConnectorOutput[]>;
 
   // Rules
   listRules(): Promise<RuleSummary[]>;
   createRule(rule: Record<string, unknown>): Promise<string>;
   toggleRule(id: string, enabled: boolean): Promise<void>;
   deleteRule(id: string): Promise<void>;
+
+  // In-app chat (W5) — the desktop/web/PWA chat panel talks to the same bot
+  // as the connectors. `sendChatMessage` injects a user turn; replies arrive
+  // over `subscribeToChat`. Platform-agnostic: web wraps POST /chat +
+  // GET /chat/stream (SSE), desktop wraps the Tauri `send_chat_message`
+  // command + a chat event channel.
+  sendChatMessage(text: string, session?: string): Promise<void>;
+  subscribeToChat(callback: (message: ChatStreamMessage) => void): () => void;
 
   // Events
   listEvents(limit?: number): Promise<EventEntry[]>;
@@ -382,7 +460,17 @@ export interface DataProvider {
   addFormationMember(formationId: string, connectorName: string): Promise<void>;
   removeFormationMember(formationId: string, connectorName: string): Promise<void>;
   listIntents(): Promise<Array<{ value: string; label: string }>>;
-  deployTeam(team: { name: string; intent: string; agents: Array<{ connector_name: string; trigger_name: string; action_connector: string; action_name: string }>; guard_mode: boolean }): Promise<{ formation_id: string; rule_ids: string[] }>;
+  deployTeam(team: {
+    name: string;
+    intent: string;
+    agents: Array<{
+      connector_name: string;
+      trigger_name: string;
+      action_connector: string;
+      action_name: string;
+    }>;
+    guard_mode: boolean;
+  }): Promise<{ formation_id: string; rule_ids: string[] }>;
   cycleFormationIntent(id: string): Promise<string>;
   cycleFormationAutonomy(id: string): Promise<string>;
   /**
@@ -391,6 +479,16 @@ export interface DataProvider {
    * from formation status (`formation_available_commands` op).
    */
   formationAvailableCommands(id: string): Promise<CommandDecl[]>;
+  /**
+   * Generic command dispatcher — forward a clicked command id (and any picker
+   * params) to the backend, which owns the command→action mapping. Keeps the
+   * frontend free of per-command branching (all logic in the backend).
+   */
+  runFormationCommand(
+    id: string,
+    commandId: string,
+    params?: Record<string, unknown>,
+  ): Promise<void>;
   /**
    * Backend-supplied eligible-removal list for the RM MBR overlay (F5).
    */
@@ -401,7 +499,18 @@ export interface DataProvider {
   runRule(id: string): Promise<{ matched: boolean }>;
   parseRuleFromIntent(intent: string): Promise<Record<string, unknown>>;
   getRuleSchema(): Promise<Record<string, unknown>>;
-  createConnectorRule(rule: { name: string; trigger_connector: string; trigger_event: string; action_connector: string; action_name: string; conditions?: unknown[] }): Promise<string>;
+  createConnectorRule(rule: {
+    name: string;
+    trigger_connector: string;
+    trigger_event: string;
+    action_connector: string;
+    action_name: string;
+    conditions?: unknown[];
+    /** W6 chain composer — extra action steps run in order after the primary. */
+    extra_actions?: { action_connector: string; action_name: string }[];
+    /** W6 all-of (false, default) vs any-of (true) for the conditions. */
+    match_any?: boolean;
+  }): Promise<string>;
   listRulesForConnector(connectorName: string): Promise<RuleSummary[]>;
   testConnector(connectorName: string): Promise<{ matched: boolean; rule_name: string | null }>;
   reassignRuleConnector(id: string, newConnector: string): Promise<void>;
@@ -445,7 +554,9 @@ export interface DataProvider {
   compactMemory(maxEntries: number): Promise<void>;
 
   // Canvas
-  getConnections(): Promise<Array<{ a: string; b: string; pipes: Array<{ id: string; dir: 1 | -1; status: string }> }>>;
+  getConnections(): Promise<
+    Array<{ a: string; b: string; pipes: Array<{ id: string; dir: 1 | -1; status: string }> }>
+  >;
   getCanvasState(): Promise<CanvasState>;
   subscribeToCanvasUpdates(callback: (update: CanvasUpdate) => void): () => void;
 
@@ -548,14 +659,8 @@ export interface DataProvider {
 
   // D1 — External-workspace directory (the formation's
   // gossip-replicated yellow pages of messaging destinations).
-  listWorkspaces(
-    formationId: string,
-    connectorFilter?: string,
-  ): Promise<WorkspaceInfo[]>;
-  scanWorkspaces(
-    formationId: string,
-    connectorName: string,
-  ): Promise<WorkspaceInfo[]>;
+  listWorkspaces(formationId: string, connectorFilter?: string): Promise<WorkspaceInfo[]>;
+  scanWorkspaces(formationId: string, connectorName: string): Promise<WorkspaceInfo[]>;
   deleteWorkspace(formationId: string, workspaceKey: string): Promise<void>;
   upsertWorkspaceManual(
     formationId: string,
@@ -600,9 +705,7 @@ export interface DataProvider {
 
   /** Track D — subscribe to `chat-discovered` events. Returns the
    *  unlisten function (no-op on web). */
-  subscribeToChatDiscovered(
-    callback: (event: ChatDiscoveredEvent) => void,
-  ): Promise<() => void>;
+  subscribeToChatDiscovered(callback: (event: ChatDiscoveredEvent) => void): Promise<() => void>;
 }
 
 /** Payload of the `chat-discovered` Tauri event (Track D). */
@@ -679,11 +782,7 @@ export interface DriftFilterInput {
  * `steady` shows a neutral chip, `improving` / `degrading` colour
  * the chip accordingly.
  */
-export type DriftClass =
-  | "not_enough_data"
-  | "steady"
-  | "improving"
-  | "degrading";
+export type DriftClass = "not_enough_data" | "steady" | "improving" | "degrading";
 
 export interface DriftReport {
   recent_runs: number;

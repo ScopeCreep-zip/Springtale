@@ -20,16 +20,17 @@
 
 import type { Component } from "solid-js";
 import {
-  For,
-  Show,
-  Suspense,
   createEffect,
   createMemo,
   createResource,
   createSignal,
+  For,
   onCleanup,
+  Show,
+  Suspense,
 } from "solid-js";
-
+import { DisclosureSection } from "../DisclosureSection";
+import { useDashboard } from "../dashboard/context";
 import type {
   FieldKind,
   InputField,
@@ -40,12 +41,10 @@ import type {
   RecipeApplyReport,
   RecipeInputs,
 } from "../dashboard/types";
-import { useDashboard } from "../dashboard/context";
-import { DisclosureSection } from "../DisclosureSection";
+import { AiSchemaEditor } from "./AiSchemaEditor";
+import { CronFrequencyChip } from "./CronFrequencyChip";
 import { PreflightChecklist } from "./PreflightChecklist";
 import { PreviewPanel } from "./PreviewPanel";
-import { CronFrequencyChip } from "./CronFrequencyChip";
-import { AiSchemaEditor } from "./AiSchemaEditor";
 import { WorkspaceTargetPicker } from "./WorkspaceTargetPicker";
 
 export interface RecipeDeployPanelProps {
@@ -156,6 +155,12 @@ export const RecipeDeployPanel: Component<RecipeDeployPanelProps> = (props) => {
     setError(null);
     try {
       const report = await db.provider.applyRecipe(props.recipe.id, inputs());
+      // Re-fetch rules/connectors so the newly-deployed bot's tree/agent
+      // sprite appears on the live colony canvas immediately — the canvas
+      // projects sprites from the rules/connectors lists, so without this
+      // the new bot only shows up after a manual refresh. Every other
+      // mutation handler in `dashboard/context.ts` refreshes the same way.
+      await db.refresh();
       props.onDeployed(report);
     } catch (e) {
       setError(String(e));
@@ -187,6 +192,7 @@ export const RecipeDeployPanel: Component<RecipeDeployPanelProps> = (props) => {
           <p class="colony-text-xs mt-1 text-text-secondary">{props.recipe.description}</p>
         </div>
         <button
+          type="button"
           class="colony-command-btn colony-text-2xs px-3 py-1"
           onClick={() => props.onCancel()}
         >
@@ -272,11 +278,7 @@ export const RecipeDeployPanel: Component<RecipeDeployPanelProps> = (props) => {
         </div>
 
         <div class="mt-4">
-          <PreflightChecklist
-            report={preflight()}
-            loading={preflightLoading()}
-            onFix={handleFix}
-          />
+          <PreflightChecklist report={preflight()} loading={preflightLoading()} onFix={handleFix} />
         </div>
 
         <Show when={preview() || previewLoading()}>
@@ -297,6 +299,7 @@ export const RecipeDeployPanel: Component<RecipeDeployPanelProps> = (props) => {
       {/* ── Sticky footer ─────────────────────────────────────── */}
       <div class="flex justify-end gap-2 border-t border-bark bg-soil-mid p-4">
         <button
+          type="button"
           class="colony-command-btn colony-text-2xs px-5 py-2"
           disabled={previewLoading()}
           onClick={handlePreview}
@@ -304,6 +307,7 @@ export const RecipeDeployPanel: Component<RecipeDeployPanelProps> = (props) => {
           {previewLoading() ? "Previewing…" : "Preview"}
         </button>
         <button
+          type="button"
           class="colony-command-btn colony-text-2xs px-5 py-2"
           style={{ "border-color": "var(--color-status-ok)" }}
           disabled={deploying() || deployBlocked()}
@@ -334,8 +338,8 @@ interface FieldInputProps {
 
 const FieldInput: Component<FieldInputProps> = (props) => {
   return (
-    <div>
-      <label class="colony-text-2xs flex items-baseline gap-2 text-text-secondary">
+    <fieldset>
+      <legend class="colony-text-2xs flex items-baseline gap-2 text-text-secondary">
         <span>{props.field.label}</span>
         <Show when={props.required}>
           <span class="colony-text-3xs text-status-warn">required</span>
@@ -343,7 +347,7 @@ const FieldInput: Component<FieldInputProps> = (props) => {
         <Show when={isSecret(props.field.kind)}>
           <span class="colony-text-3xs text-text-dim">🔒 secret</span>
         </Show>
-      </label>
+      </legend>
       <FieldControl
         field={props.field}
         value={props.value}
@@ -354,7 +358,7 @@ const FieldInput: Component<FieldInputProps> = (props) => {
       <Show when={props.field.hint}>
         <p class="colony-text-3xs mt-1 text-text-dim">{props.field.hint}</p>
       </Show>
-    </div>
+    </fieldset>
   );
 };
 
@@ -400,7 +404,7 @@ const FieldControl: Component<FieldControlProps> = (props) => {
           checked={Boolean(props.value)}
           onChange={(e) => props.onChange(e.currentTarget.checked)}
         />
-        <span>{Boolean(props.value) ? "On" : "Off"}</span>
+        <span>{props.value ? "On" : "Off"}</span>
       </label>
     );
   }
@@ -435,9 +439,7 @@ const FieldControl: Component<FieldControlProps> = (props) => {
         value={valueStr()}
         onChange={(e) => props.onChange(e.currentTarget.value)}
       >
-        <For each={k.options}>
-          {(opt) => <option value={opt.value}>{opt.label}</option>}
-        </For>
+        <For each={k.options}>{(opt) => <option value={opt.value}>{opt.label}</option>}</For>
       </select>
     );
   }
@@ -516,11 +518,7 @@ const FieldControl: Component<FieldControlProps> = (props) => {
             type="button"
             class="colony-text-3xs rounded border border-bark bg-soil-mid px-2 py-1 hover:bg-soil-light disabled:opacity-50"
             disabled={!sampleUrl() || pickerWorking()}
-            title={
-              sampleUrl()
-                ? `Open picker at ${sampleUrl()}`
-                : "Set the URL field first"
-            }
+            title={sampleUrl() ? `Open picker at ${sampleUrl()}` : "Set the URL field first"}
             onClick={openPicker}
           >
             {pickerWorking() ? "…" : "🎯 Pick"}
@@ -541,11 +539,7 @@ const FieldControl: Component<FieldControlProps> = (props) => {
     if (k.kind !== "json_schema") return null;
     return (
       <div class="mt-1">
-        <AiSchemaEditor
-          value={props.value}
-          example={k.example}
-          onChange={props.onChange}
-        />
+        <AiSchemaEditor value={props.value} example={k.example} onChange={props.onChange} />
       </div>
     );
   }

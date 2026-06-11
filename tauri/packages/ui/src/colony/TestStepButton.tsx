@@ -9,8 +9,9 @@
  * (`dry_run: true`) — the UI calls that out so users know the
  * actual destination didn't get pinged.
  */
-import { Show, createSignal } from "solid-js";
+
 import type { Component } from "solid-js";
+import { createSignal, Show } from "solid-js";
 
 import { useDashboard } from "../dashboard/context";
 import type { RecipeInputs, TestStepReport } from "../dashboard/types";
@@ -63,15 +64,14 @@ export const TestStepButton: Component<TestStepButtonProps> = (props) => {
   return (
     <div class="rounded border border-bark bg-soil-deep p-2">
       <div class="flex items-center justify-between">
-        <span class="colony-text-3xs text-text-secondary">
-          Step {props.stepIndex + 1}
-        </span>
+        <span class="colony-text-3xs text-text-secondary">Step {props.stepIndex + 1}</span>
         <button
+          type="button"
           class="colony-text-3xs rounded border border-bark bg-soil-mid px-2 py-1 hover:bg-soil-light"
           onClick={run}
           disabled={working()}
         >
-          {working() ? "Running…" : props.label ?? "🧪 Test this step"}
+          {working() ? "Running…" : (props.label ?? "🧪 Test this step")}
         </button>
       </div>
 

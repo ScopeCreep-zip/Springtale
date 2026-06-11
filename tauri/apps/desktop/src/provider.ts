@@ -4,84 +4,118 @@
  * Thin adapter: no logic, just maps existing ipc/ functions to the
  * platform-agnostic DataProvider that createDashboardState() expects.
  */
-import type { DataProvider, CooperationEventEnvelope } from "@springtale/ui";
-import { listen } from "@tauri-apps/api/event";
-import { Channel, invoke } from "@tauri-apps/api/core";
-import type { EventEntry, CanvasUpdate } from "@springtale/types";
 
-import { listConnectors, listAvailableConnectors, setupConnector, getConnectorSchemas, enableConnector, disableConnector, reloadConnector, removeConnector, removeConnectorCascade, getConnectorConfig, listConnectorOutputs } from "./ipc/connectors";
-import { listRules, createRule, toggleRule, deleteRule, updateRule, runRule, parseRuleFromIntent, listRulesForConnector, testConnector, reassignRuleConnector, createConnectorRule, getRuleSchema } from "./ipc/rules";
-import { listEvents } from "./ipc/events";
-import { listExecutions, getExecutionSteps } from "./ipc/executions";
-import { openSelectorPicker } from "./ipc/selector_picker";
-import { testRecipeStep } from "./ipc/test_step";
-import { getRecipeDrift } from "./ipc/drift";
-import {
-  listWorkspaces,
-  scanWorkspaces,
-  deleteWorkspace,
-  upsertWorkspaceManual,
-  previewOnboardUrl,
-  startOnboardStream,
-  cancelOnboardStream,
-  subscribeToChatDiscovered,
-} from "./ipc/workspaces";
-import {
-  listFormations,
-  getFormation,
-  createFormation,
-  deployFormation,
-  pauseFormation,
-  resumeFormation,
-  dissolveFormation,
-  rallyFormation,
-  updateFormationIntent,
-  addFormationMember,
-  removeFormationMember,
-  listIntents,
-  deployTeam,
-  cycleFormationIntent,
-  cycleFormationAutonomy,
-  formationAvailableCommands,
-  formationEligibleMembers,
-} from "./ipc/formations";
+import type { CanvasUpdate, EventEntry } from "@springtale/types";
+import type { CooperationEventEnvelope, DataProvider } from "@springtale/ui";
+import { Channel, invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
+import { getAutonomy, listAgentStates, setAutonomy, stepAutonomy } from "./ipc/agents";
+import { addAuthor, listAuthors, removeAuthor } from "./ipc/authors";
 import { getCanvasState, getConnections } from "./ipc/canvas";
 import {
-  getConfig, setConfig, listConfig, setAiAdapter, setConnectorConfig,
-  configureAiAdapter, upsertConnectorConfig, toggleFormationGuard,
-  exportData, auditMemory, compactMemory,
+  auditMemory,
+  compactMemory,
+  configureAiAdapter,
+  exportData,
+  getConfig,
+  listConfig,
+  setAiAdapter,
+  setConfig,
+  setConnectorConfig,
+  toggleFormationGuard,
+  upsertConnectorConfig,
 } from "./ipc/config";
-import { listAgentStates, getAutonomy, setAutonomy, stepAutonomy } from "./ipc/agents";
-import { listAuthors, addAuthor, removeAuthor } from "./ipc/authors";
-import { runDiagnostics } from "./ipc/diagnostics";
 import {
+  disableConnector,
+  enableConnector,
+  getConnectorConfig,
+  getConnectorSchemas,
+  listAvailableConnectors,
+  listConnectorOutputs,
+  listConnectors,
+  reloadConnector,
+  removeConnector,
+  removeConnectorCascade,
+  setupConnector,
+} from "./ipc/connectors";
+import { runDiagnostics } from "./ipc/diagnostics";
+import { getRecipeDrift } from "./ipc/drift";
+import { listEvents } from "./ipc/events";
+import { getExecutionSteps, listExecutions } from "./ipc/executions";
+import { applyFix, getFix, listFixes } from "./ipc/fixes";
+import {
+  addFormationMember,
+  createFormation,
+  cycleFormationAutonomy,
+  cycleFormationIntent,
+  deployFormation,
+  deployTeam,
+  dissolveFormation,
+  formationAvailableCommands,
+  runFormationCommand,
+  formationEligibleMembers,
+  getFormation,
+  listFormations,
+  listIntents,
+  pauseFormation,
+  rallyFormation,
+  removeFormationMember,
+  resumeFormation,
+  updateFormationIntent,
+} from "./ipc/formations";
+import { applyOnboarding, listOnboardingPlatforms } from "./ipc/onboarding";
+import {
+  applyRecipe,
+  deleteUserRecipe,
+  exportRecipeToml,
+  forkRecipe,
+  getRecipe,
+  importRecipeToml,
+  listRecipeCategories,
+  listRecipePieces,
+  listRecipes,
+  preflightRecipe,
+  previewRecipe,
+  recordRecipeRecent,
+  renderRecipeToml,
+  saveUserRecipe,
+  toggleRecipeFavorite,
+} from "./ipc/recipes";
+import {
+  createConnectorRule,
+  createRule,
+  deleteRule,
+  getRuleSchema,
+  listRules,
+  listRulesForConnector,
+  parseRuleFromIntent,
+  reassignRuleConnector,
+  runRule,
+  testConnector,
+  toggleRule,
+  updateRule,
+} from "./ipc/rules";
+import {
+  getSafetyConfig as ipcGetSafetyConfig,
+  saveSafetyConfig as ipcSaveSafetyConfig,
   setDisguiseActive as ipcSetDisguiseActive,
   setDisguiseProfile as ipcSetDisguiseProfile,
   setPanicTapCount as ipcSetPanicTapCount,
-  getSafetyConfig as ipcGetSafetyConfig,
-  saveSafetyConfig as ipcSaveSafetyConfig,
 } from "./ipc/safety";
-import { listOnboardingPlatforms, applyOnboarding } from "./ipc/onboarding";
-import {
-  listRecipes,
-  getRecipe,
-  listRecipeCategories,
-  toggleRecipeFavorite,
-  recordRecipeRecent,
-  applyRecipe,
-  renderRecipeToml,
-  preflightRecipe,
-  previewRecipe,
-  listRecipePieces,
-  saveUserRecipe,
-  forkRecipe,
-  deleteUserRecipe,
-  exportRecipeToml,
-  importRecipeToml,
-} from "./ipc/recipes";
-import { listTemplates, writeTemplate } from "./ipc/templates";
-import { listFixes, getFix, applyFix } from "./ipc/fixes";
+import { openSelectorPicker } from "./ipc/selector_picker";
 import { sendMessage } from "./ipc/send";
+import { listTemplates, writeTemplate } from "./ipc/templates";
+import { testRecipeStep } from "./ipc/test_step";
+import {
+  cancelOnboardStream,
+  deleteWorkspace,
+  listWorkspaces,
+  previewOnboardUrl,
+  scanWorkspaces,
+  startOnboardStream,
+  subscribeToChatDiscovered,
+  upsertWorkspaceManual,
+} from "./ipc/workspaces";
 
 export function createDesktopProvider(): DataProvider {
   return {
@@ -96,7 +130,7 @@ export function createDesktopProvider(): DataProvider {
     removeConnector: (name: string) => removeConnector(name),
     removeConnectorCascade: (name: string) => removeConnectorCascade(name),
     getConnectorConfig: (name: string) => getConnectorConfig(name),
-    listConnectorOutputs: (name: string, limit?: number) => listConnectorOutputs(name, limit) as any,
+    listConnectorOutputs: (name: string, limit?: number) => listConnectorOutputs(name, limit),
 
     // Rules
     listRules,
@@ -138,7 +172,25 @@ export function createDesktopProvider(): DataProvider {
     subscribeToEvents(callback) {
       let unlisten: (() => void) | undefined;
       listen<EventEntry>("event-fired", (e) => callback(e.payload))
-        .then((u) => { unlisten = u; })
+        .then((u) => {
+          unlisten = u;
+        })
+        .catch(() => {});
+      return () => unlisten?.();
+    },
+
+    // In-app chat — the desktop runs the same bot loop the daemon does
+    // (built in state::init_runtime). `send_chat_message` injects the turn;
+    // replies arrive as `chat-message` Tauri events.
+    async sendChatMessage(text, session) {
+      await invoke("send_chat_message", { text, session: session ?? null });
+    },
+    subscribeToChat(callback) {
+      let unlisten: (() => void) | undefined;
+      listen<{ session: string; text: string }>("chat-message", (e) => callback(e.payload))
+        .then((u) => {
+          unlisten = u;
+        })
         .catch(() => {});
       return () => unlisten?.();
     },
@@ -160,6 +212,7 @@ export function createDesktopProvider(): DataProvider {
     cycleFormationIntent,
     cycleFormationAutonomy,
     formationAvailableCommands,
+    runFormationCommand,
     formationEligibleMembers,
 
     // Config
@@ -203,7 +256,10 @@ export function createDesktopProvider(): DataProvider {
       const channel = new Channel<CanvasUpdate>();
       channel.onmessage = (update) => callback(update);
       invoke("subscribe_canvas", { channel }).catch((e) => {
-        console.warn("subscribe_canvas failed:", e);
+        // Expected before vault unlock — the runtime isn't open yet. The
+        // post-unlock `resubscribe()` re-establishes the stream, so this is
+        // not an error worth surfacing. Real failures still log.
+        if (!String(e).includes("Vault is locked")) console.warn("subscribe_canvas failed:", e);
       });
       return () => {
         // The forwarder breaks its loop when send returns Err on channel
@@ -219,7 +275,9 @@ export function createDesktopProvider(): DataProvider {
       const channel = new Channel<CooperationEventEnvelope>();
       channel.onmessage = (envelope) => callback(envelope);
       invoke("subscribe_cooperation", { channel }).catch((e) => {
-        console.warn("subscribe_cooperation failed:", e);
+        // Expected before unlock; `resubscribe()` re-establishes it after.
+        if (!String(e).includes("Vault is locked"))
+          console.warn("subscribe_cooperation failed:", e);
       });
       return () => {
         // Forwarder loop ends on channel drop.
@@ -230,8 +288,7 @@ export function createDesktopProvider(): DataProvider {
     getSafetyConfig: () => ipcGetSafetyConfig(),
     saveSafetyConfig: (config) => ipcSaveSafetyConfig(config),
     setDisguiseActive: (active: boolean) => ipcSetDisguiseActive(active),
-    setDisguiseProfile: (appName: string, iconId: string) =>
-      ipcSetDisguiseProfile(appName, iconId),
+    setDisguiseProfile: (appName: string, iconId: string) => ipcSetDisguiseProfile(appName, iconId),
     setPanicTapCount: (count: number) => ipcSetPanicTapCount(count),
 
     // Diagnostics

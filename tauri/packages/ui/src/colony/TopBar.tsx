@@ -1,7 +1,7 @@
-import { For, createSignal, createEffect } from "solid-js";
 import type { Component } from "solid-js";
-import type { ColonyAgent, ColonyNode, ColonyFormation, ColonySelection } from "./types";
+import { createEffect, createSignal, For } from "solid-js";
 import type { EventItem } from "../dashboard/model";
+import type { ColonyAgent, ColonyFormation, ColonyNode, ColonySelection } from "./types";
 
 export interface TopBarProps {
   agents: ColonyAgent[];
@@ -57,39 +57,56 @@ export const TopBar: Component<TopBarProps> = (props) => {
       <div class="flex flex-1 items-center gap-0.5 overflow-x-auto py-0.5 scrollbar-none">
         <For each={props.formations}>
           {(formation) => (
-            <div
+            <button
+              type="button"
               class="mx-0.5 flex items-center gap-0 border border-bark-light px-0.5 py-px"
               onClick={() => props.onSelectFormation(formation.id)}
             >
               <span class="colony-vertical-label mr-0.5" style={{ color: formation.color }}>
                 {formation.name.split(" ")[0]}
               </span>
-              <For each={props.agents.filter((a) => a.connectorId && formation.members.includes(a.connectorId))}>
+              <For
+                each={props.agents.filter(
+                  (a) => a.connectorId && formation.members.includes(a.connectorId),
+                )}
+              >
                 {(agent) => (
-                  <div
+                  <button
+                    type="button"
                     class={`colony-roster-slot ${props.selection.id === agent.id ? "is-selected" : ""}`}
-                    data-status={agent.status === "ok" ? "ok" : agent.status === "warn" ? "warn" : "idle"}
+                    data-status={
+                      agent.status === "ok" ? "ok" : agent.status === "warn" ? "warn" : "idle"
+                    }
                     title={`${agent.name}: ${agent.task}`}
-                    onClick={(e) => { e.stopPropagation(); props.onSelectAgent(agent.id); }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      props.onSelectAgent(agent.id);
+                    }}
                   >
                     <span>{agent.fuel < 20 ? "!" : agent.status === "idle" ? "-" : "*"}</span>
-                  </div>
+                  </button>
                 )}
               </For>
-            </div>
+            </button>
           )}
         </For>
 
-        <For each={props.agents.filter((a) => !props.formations.some((f) => a.connectorId && f.members.includes(a.connectorId)))}>
+        <For
+          each={props.agents.filter(
+            (a) =>
+              !props.formations.some((f) => a.connectorId && f.members.includes(a.connectorId)),
+          )}
+        >
           {(agent) => (
-            <div
+            <button
+              type="button"
               class={`colony-roster-slot ${props.selection.id === agent.id ? "is-selected" : ""}`}
               data-status={agent.status === "ok" ? "ok" : agent.status === "warn" ? "warn" : "idle"}
               title={`${agent.name}: ${agent.task}`}
               onClick={() => props.onSelectAgent(agent.id)}
             >
               <span>{agent.fuel < 20 ? "!" : agent.status === "idle" ? "-" : "*"}</span>
-            </div>
+            </button>
           )}
         </For>
       </div>
@@ -108,7 +125,11 @@ export const TopBar: Component<TopBarProps> = (props) => {
         </div>
         <div class="flex items-center gap-0.5">
           <span class="text-status-ok">+</span>
-          <span class={`colony-value ${guardStatus() === "OK" ? "text-status-ok" : "text-text-dim"}`}>{guardStatus()}</span>
+          <span
+            class={`colony-value ${guardStatus() === "OK" ? "text-status-ok" : "text-text-dim"}`}
+          >
+            {guardStatus()}
+          </span>
           <span class="text-text-dim">GUARD</span>
         </div>
       </div>

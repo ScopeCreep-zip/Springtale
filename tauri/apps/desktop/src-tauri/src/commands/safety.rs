@@ -52,9 +52,7 @@ impl From<springtale_store::SafetyConfigRow> for SafetyConfig {
 /// Get the current safety configuration.
 #[tauri::command]
 #[specta::specta]
-pub async fn get_safety_config(
-    state: State<'_, AppState>,
-) -> Result<SafetyConfig, String> {
+pub async fn get_safety_config(state: State<'_, AppState>) -> Result<SafetyConfig, String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
     let row = springtale_runtime::operations::safety::get_safety_config(rt)
@@ -93,10 +91,7 @@ pub async fn save_safety_config(
 /// hit on the full-config PUT path.
 #[tauri::command]
 #[specta::specta]
-pub async fn set_disguise_active(
-    state: State<'_, AppState>,
-    active: bool,
-) -> Result<bool, String> {
+pub async fn set_disguise_active(state: State<'_, AppState>, active: bool) -> Result<bool, String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
     springtale_runtime::operations::safety::set_disguise_active(rt, active)
@@ -126,10 +121,7 @@ pub async fn set_disguise_profile(
 /// value can't render panic-wipe unreachable.
 #[tauri::command]
 #[specta::specta]
-pub async fn set_panic_tap_count(
-    state: State<'_, AppState>,
-    count: u32,
-) -> Result<u32, String> {
+pub async fn set_panic_tap_count(state: State<'_, AppState>, count: u32) -> Result<u32, String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
     springtale_runtime::operations::safety::set_panic_tap_count(rt, count)
@@ -176,9 +168,7 @@ pub async fn apply_content_protection(
     window
         .set_content_protected(config.content_protected)
         .map_err(|e| {
-            format!(
-                "set_content_protected failed (Linux is unsupported by Tauri 2): {e}"
-            )
+            format!("set_content_protected failed (Linux is unsupported by Tauri 2): {e}")
         })?;
     Ok(config.content_protected)
 }

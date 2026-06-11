@@ -1,5 +1,5 @@
-import { For } from "solid-js";
 import type { Component } from "solid-js";
+import { For } from "solid-js";
 import { useI18n } from "./i18n/context";
 
 export interface ConditionDef {
@@ -29,7 +29,15 @@ export interface ConditionEditorProps {
 export const ConditionEditor: Component<ConditionEditorProps> = (props) => {
   const { t } = useI18n();
 
-  const DAY_KEYS = ["days.sun", "days.mon", "days.tue", "days.wed", "days.thu", "days.fri", "days.sat"];
+  const DAY_KEYS = [
+    "days.sun",
+    "days.mon",
+    "days.tue",
+    "days.wed",
+    "days.thu",
+    "days.fri",
+    "days.sat",
+  ];
 
   const addCondition = () => {
     const firstType = props.conditionTypes[0];
@@ -53,8 +61,9 @@ export const ConditionEditor: Component<ConditionEditorProps> = (props) => {
   return (
     <div class="space-y-3">
       <div class="flex items-center justify-between">
-        <label class="colony-text-xs font-medium text-text-secondary">{t("condition.title")}</label>
+        <h4 class="colony-text-xs font-medium text-text-secondary">{t("condition.title")}</h4>
         <button
+          type="button"
           class="rounded border border-bark bg-soil-light px-3 py-1 colony-text-3xs text-text-primary hover:border-bark-light"
           onClick={addCondition}
         >
@@ -65,9 +74,7 @@ export const ConditionEditor: Component<ConditionEditorProps> = (props) => {
       <For each={props.conditions}>
         {(condition, index) => (
           <fieldset class="flex gap-2 rounded border border-bark bg-soil-light/50 p-3">
-            <legend class="sr-only">
-              {t("condition.removeN", { n: String(index() + 1) })}
-            </legend>
+            <legend class="sr-only">{t("condition.removeN", { n: String(index() + 1) })}</legend>
 
             <select
               aria-label={t("condition.conditionType")}
@@ -80,7 +87,9 @@ export const ConditionEditor: Component<ConditionEditorProps> = (props) => {
               </For>
             </select>
 
-            {(condition.type === "FieldEquals" || condition.type === "Contains" || condition.type === "Regex") && (
+            {(condition.type === "FieldEquals" ||
+              condition.type === "Contains" ||
+              condition.type === "Regex") && (
               <>
                 <input
                   class="flex-1 rounded border border-bark bg-soil-deep px-2 py-1 colony-text-2xs text-text-primary"
@@ -91,11 +100,22 @@ export const ConditionEditor: Component<ConditionEditorProps> = (props) => {
                 />
                 <input
                   class="flex-1 rounded border border-bark bg-soil-deep px-2 py-1 colony-text-2xs text-text-primary"
-                  aria-label={condition.type === "Regex" ? t("condition.pattern") : t("condition.value")}
-                  placeholder={condition.type === "Regex" ? t("condition.pattern") : t("condition.value")}
-                  value={condition.type === "Regex" ? (condition.pattern ?? "") : (condition.value ?? "")}
+                  aria-label={
+                    condition.type === "Regex" ? t("condition.pattern") : t("condition.value")
+                  }
+                  placeholder={
+                    condition.type === "Regex" ? t("condition.pattern") : t("condition.value")
+                  }
+                  value={
+                    condition.type === "Regex" ? (condition.pattern ?? "") : (condition.value ?? "")
+                  }
                   onInput={(e) =>
-                    updateCondition(index(), condition.type === "Regex" ? { pattern: e.currentTarget.value } : { value: e.currentTarget.value })
+                    updateCondition(
+                      index(),
+                      condition.type === "Regex"
+                        ? { pattern: e.currentTarget.value }
+                        : { value: e.currentTarget.value },
+                    )
                   }
                 />
               </>
@@ -122,12 +142,13 @@ export const ConditionEditor: Component<ConditionEditorProps> = (props) => {
             )}
 
             {condition.type === "DayOfWeek" && (
-              <div role="group" aria-label={t("condition.dayGroup")} class="flex flex-wrap gap-1">
+              <fieldset aria-label={t("condition.dayGroup")} class="flex flex-wrap gap-1">
                 <For each={DAY_KEYS}>
                   {(dayKey, dayIndex) => {
                     const isSelected = () => (condition.days ?? []).includes(dayIndex());
                     return (
                       <button
+                        type="button"
                         aria-pressed={isSelected()}
                         class={`rounded px-2 py-1 colony-text-3xs ${
                           isSelected()
@@ -147,10 +168,11 @@ export const ConditionEditor: Component<ConditionEditorProps> = (props) => {
                     );
                   }}
                 </For>
-              </div>
+              </fieldset>
             )}
 
             <button
+              type="button"
               class="rounded px-2 py-1 colony-text-3xs text-status-error hover:bg-status-error/10"
               aria-label={t("condition.removeN", { n: String(index() + 1) })}
               onClick={() => removeCondition(index())}
@@ -162,7 +184,9 @@ export const ConditionEditor: Component<ConditionEditorProps> = (props) => {
       </For>
 
       {props.conditions.length === 0 && (
-        <p role="status" class="colony-text-xs text-text-dim">{t("condition.noConditions")}</p>
+        <p role="status" class="colony-text-xs text-text-dim">
+          {t("condition.noConditions")}
+        </p>
       )}
     </div>
   );

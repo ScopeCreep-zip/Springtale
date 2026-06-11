@@ -1,6 +1,6 @@
-import { createSignal, onMount, onCleanup } from "solid-js";
+import type { CanvasState, CanvasUpdate } from "@springtale/types";
 import { Canvas as CanvasComponent, useI18n } from "@springtale/ui";
-import type { CanvasState, CanvasUpdate, CanvasBlock } from "@springtale/types";
+import { createSignal, onCleanup, onMount } from "solid-js";
 import { getCanvasState, onCanvasUpdate } from "../ipc/canvas";
 
 /**
@@ -35,7 +35,11 @@ export function CanvasPage() {
         return { ...base, blocks, updated_at: new Date().toISOString() };
       }
       case "RemoveBlock":
-        return { ...base, blocks: blocks.filter((b) => b.id !== update.id), updated_at: new Date().toISOString() };
+        return {
+          ...base,
+          blocks: blocks.filter((b) => b.id !== update.id),
+          updated_at: new Date().toISOString(),
+        };
       case "Clear":
         return { ...base, blocks: [], updated_at: new Date().toISOString() };
       default:
@@ -68,7 +72,11 @@ export function CanvasPage() {
     <div>
       <h1 class="text-2xl font-bold text-white">{t("canvas.title")}</h1>
       {error() && (
-        <div role="alert" aria-live="assertive" class="mt-4 rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+        <div
+          role="alert"
+          aria-live="assertive"
+          class="mt-4 rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400"
+        >
           {error()}
         </div>
       )}

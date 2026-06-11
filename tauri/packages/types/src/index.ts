@@ -9,6 +9,21 @@
  * source: `cargo test -p springtale-cooperation --lib gossip::types`.
  */
 
+export type { AgentState } from "./agent-state";
+export type { AuditEntry, AuditFilter } from "./audit";
+export type { AvailableConnector, ConfigSchema, ConfigSchemaProperty } from "./available-connector";
+export type { CanvasBlock, CanvasState, CanvasUpdate, StatusState } from "./canvas";
+export type { Connector } from "./connector";
+export type { EventEntry, EventFilter } from "./event";
+export type {
+  AgentHealth,
+  DynamicRole,
+  FormationDetail,
+  FormationMember,
+  FormationSummary,
+  IntentPattern,
+  MomentumTier,
+} from "./formation";
 // G3 — auto-generated from `springtale-cooperation` (do not edit by hand).
 export type {
   FormationDelta,
@@ -16,37 +31,21 @@ export type {
   FormationStatus,
   FormationView,
 } from "./generated";
-
-export type { Connector } from "./connector";
-export type { Rule, RuleStatus, RuleId } from "./rule";
-export type { EventEntry, EventFilter } from "./event";
-export type { AuditEntry, AuditFilter } from "./audit";
-export type { Session } from "./session";
-export type { TriggerDecl, ActionDecl, ConnectorSchema } from "./manifest";
-export type { AvailableConnector, ConfigSchema, ConfigSchemaProperty } from "./available-connector";
-export type { AgentState } from "./agent-state";
-export type { CanvasBlock, CanvasState, CanvasUpdate, StatusState } from "./canvas";
+export type { ActionDecl, ConnectorSchema, TriggerDecl } from "./manifest";
 export type {
-  MomentumTier,
-  AgentHealth,
-  DynamicRole,
-  FormationMember,
-  FormationSummary,
-  FormationDetail,
-  IntentPattern,
-} from "./formation";
-export type {
-  Severity,
+  ApplyReport,
   Check,
-  Report,
   FixGuide,
   FixOutcome,
   FormField,
   PlatformForm,
-  ApplyReport,
-  TemplateFile,
-  Template,
-  WriteReport,
-  SendRequest,
+  Report,
   SendOutcome,
+  SendRequest,
+  Severity,
+  Template,
+  TemplateFile,
+  WriteReport,
 } from "./operations";
+export type { Rule, RuleId, RuleStatus } from "./rule";
+export type { Session } from "./session";

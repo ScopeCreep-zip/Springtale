@@ -15,10 +15,11 @@
  * highest seq it has surfaced so re-renders after history backfill never
  * re-toast old envelopes.
  */
-import { For, Show, createSignal, createEffect, onCleanup } from "solid-js";
+
 import type { Component } from "solid-js";
-import type { CooperationEvent, CooperationEventEnvelope } from "../dashboard/types";
+import { createEffect, createSignal, For, onCleanup, Show } from "solid-js";
 import { useDashboard } from "../dashboard/context";
+import type { CooperationEvent, CooperationEventEnvelope } from "../dashboard/types";
 
 interface Toast {
   seq: number;
@@ -143,6 +144,7 @@ export const EventRibbon: Component = () => {
                 <span class="colony-event-toast-detail">{toast.detail}</span>
               </Show>
               <button
+                type="button"
                 class="colony-event-toast-dismiss"
                 aria-label="Dismiss"
                 onClick={() => dismiss(toast.seq)}

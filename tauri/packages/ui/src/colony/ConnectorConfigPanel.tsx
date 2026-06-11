@@ -1,10 +1,9 @@
-import { createSignal, onMount, For, Show } from "solid-js";
+import type { ConfigSchema, ConfigSchemaProperty, ConnectorSchema } from "@springtale/types";
 import type { Component } from "solid-js";
-import type { ConnectorSchema } from "@springtale/types";
-import type { RuleItem } from "../dashboard/model";
-import { ConditionEditor } from "../ConditionEditor";
+import { createSignal, For, onMount, Show } from "solid-js";
 import type { ConditionDef } from "../ConditionEditor";
-import type { ConfigSchema, ConfigSchemaProperty } from "@springtale/types";
+import { ConditionEditor } from "../ConditionEditor";
+import type { RuleItem } from "../dashboard/model";
 
 export interface ConnectorConfigPanelProps {
   connectorId: string;
@@ -16,7 +15,14 @@ export interface ConnectorConfigPanelProps {
   onSave: (connectorId: string, config: Record<string, unknown>) => Promise<void>;
   onToggleRule: (ruleId: string, enabled: boolean) => Promise<void>;
   onDeleteRule: (ruleId: string) => Promise<void>;
-  onCreateRule: (rule: { name: string; trigger_connector: string; trigger_event: string; action_connector: string; action_name: string; conditions?: unknown[] }) => Promise<void>;
+  onCreateRule: (rule: {
+    name: string;
+    trigger_connector: string;
+    trigger_event: string;
+    action_connector: string;
+    action_name: string;
+    conditions?: unknown[];
+  }) => Promise<void>;
   onTest: (connectorId: string) => Promise<void>;
   onClose: () => void;
   /** Condition type names from backend schema. */
@@ -53,7 +59,9 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
 
   onMount(() => {
     const current = props.currentConfig;
-    const obj = (current && typeof current === "object" && current !== null ? current : {}) as Record<string, unknown>;
+    const obj = (
+      current && typeof current === "object" && current !== null ? current : {}
+    ) as Record<string, unknown>;
     setConfigText(JSON.stringify(obj, null, 2));
 
     // Pre-populate form fields from current config + schema defaults
@@ -93,11 +101,14 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
       // Coerce types
       if (prop.type === "integer" && typeof val === "string") {
         const num = parseInt(val, 10);
-        if (!isNaN(num)) result[key] = num;
+        if (!Number.isNaN(num)) result[key] = num;
       } else if (prop.type === "boolean" && typeof val === "string") {
         result[key] = val === "true";
       } else if (prop.type === "array" && typeof val === "string") {
-        result[key] = val.split(",").map((s) => s.trim()).filter(Boolean);
+        result[key] = val
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean);
       } else {
         result[key] = val;
       }
@@ -109,9 +120,8 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
     setSaving(true);
     setError("");
     try {
-      const config = hasConfigSchema() && !showRawJson()
-        ? buildConfigFromFields()
-        : JSON.parse(configText());
+      const config =
+        hasConfigSchema() && !showRawJson() ? buildConfigFromFields() : JSON.parse(configText());
       await props.onSave(props.connectorId, config);
     } catch (e) {
       setError(String(e));
@@ -160,11 +170,15 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
     <div class="colony-modal mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6">
       <div class="mb-4 flex items-center justify-between">
         <h2 class="colony-text-md font-bold text-text-primary">{props.connectorId}</h2>
-        <button onClick={props.onClose} class="colony-close-btn">✕</button>
+        <button type="button" onClick={props.onClose} class="colony-close-btn">
+          ✕
+        </button>
       </div>
 
       {error() && (
-        <div class="colony-text-2xs mb-3 border border-status-error bg-status-error/10 p-2 text-status-error">{error()}</div>
+        <div class="colony-text-2xs mb-3 border border-status-error bg-status-error/10 p-2 text-status-error">
+          {error()}
+        </div>
       )}
 
       {/* Section 1: Configuration */}
@@ -173,6 +187,7 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
           <h3 class="colony-label">CONFIGURATION</h3>
           <Show when={hasConfigSchema()}>
             <button
+              type="button"
               onClick={() => {
                 if (!showRawJson()) {
                   // Sync fields → JSON before switching
@@ -187,18 +202,23 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
           </Show>
         </div>
         <Show when={schema()}>
-          {(s) => <p class="colony-text-3xs mb-2 text-text-dim">{s().description || props.connectorId}</p>}
+          {(s) => (
+            <p class="colony-text-3xs mb-2 text-text-dim">{s().description || props.connectorId}</p>
+          )}
         </Show>
 
         {/* Schema-driven form fields */}
-        <Show when={hasConfigSchema() && !showRawJson()} fallback={
-          <textarea
-            value={configText()}
-            onInput={(e) => setConfigText(e.currentTarget.value)}
-            rows={6}
-            class="colony-textarea colony-text-2xs w-full border-2 border-bark bg-soil-deep p-2 text-text-primary focus:border-accent focus:outline-none"
-          />
-        }>
+        <Show
+          when={hasConfigSchema() && !showRawJson()}
+          fallback={
+            <textarea
+              value={configText()}
+              onInput={(e) => setConfigText(e.currentTarget.value)}
+              rows={6}
+              class="colony-textarea colony-text-2xs w-full border-2 border-bark bg-soil-deep p-2 text-text-primary focus:border-accent focus:outline-none"
+            />
+          }
+        >
           <div class="space-y-3">
             <For each={Object.entries(props.configSchema?.properties ?? {})}>
               {([key, prop]: [string, ConfigSchemaProperty]) => {
@@ -206,11 +226,11 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
                 const isSecret = prop["x-secret"] === true;
 
                 return (
-                  <div>
-                    <label class="colony-text-3xs text-text-secondary">
+                  <fieldset>
+                    <legend class="colony-text-3xs text-text-secondary">
                       {key}
                       {isRequired && <span class="ml-0.5 text-status-error">*</span>}
-                    </label>
+                    </legend>
                     <Show when={prop.description}>
                       <p class="colony-text-3xs text-text-dim">{prop.description}</p>
                     </Show>
@@ -219,6 +239,7 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
                     <Show when={prop.type === "boolean"}>
                       <div class="mt-1 flex items-center gap-2">
                         <button
+                          type="button"
                           onClick={() => setFieldValue(key, !getFieldValue(key))}
                           class={`colony-text-2xs border-2 px-3 py-1 ${
                             getFieldValue(key)
@@ -250,7 +271,9 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
                         type="password"
                         value={String(getFieldValue(key) ?? "")}
                         onInput={(e) => setFieldValue(key, e.currentTarget.value)}
-                        placeholder={prop.default !== undefined ? String(prop.default) : `Enter ${key}...`}
+                        placeholder={
+                          prop.default !== undefined ? String(prop.default) : `Enter ${key}...`
+                        }
                         class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-deep px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none"
                       />
                     </Show>
@@ -261,7 +284,9 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
                         type="text"
                         value={String(getFieldValue(key) ?? "")}
                         onInput={(e) => setFieldValue(key, e.currentTarget.value)}
-                        placeholder={prop.default !== undefined ? String(prop.default) : `Enter ${key}...`}
+                        placeholder={
+                          prop.default !== undefined ? String(prop.default) : `Enter ${key}...`
+                        }
                         class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-deep px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none"
                       />
                     </Show>
@@ -281,31 +306,40 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
                     <Show when={prop.type === "array"}>
                       <input
                         type="text"
-                        value={Array.isArray(getFieldValue(key))
-                          ? (getFieldValue(key) as string[]).join(", ")
-                          : String(getFieldValue(key) ?? "")}
+                        value={
+                          Array.isArray(getFieldValue(key))
+                            ? (getFieldValue(key) as string[]).join(", ")
+                            : String(getFieldValue(key) ?? "")
+                        }
                         onInput={(e) => setFieldValue(key, e.currentTarget.value)}
                         placeholder="Comma-separated values..."
                         class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-deep px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none"
                       />
-                      <p class="colony-text-3xs mt-0.5 text-text-dim">Separate multiple values with commas</p>
+                      <p class="colony-text-3xs mt-0.5 text-text-dim">
+                        Separate multiple values with commas
+                      </p>
                     </Show>
 
                     {/* Object field — raw JSON */}
                     <Show when={prop.type === "object"}>
                       <textarea
-                        value={typeof getFieldValue(key) === "object"
-                          ? JSON.stringify(getFieldValue(key), null, 2)
-                          : String(getFieldValue(key) ?? "{}")}
+                        value={
+                          typeof getFieldValue(key) === "object"
+                            ? JSON.stringify(getFieldValue(key), null, 2)
+                            : String(getFieldValue(key) ?? "{}")
+                        }
                         onInput={(e) => {
-                          try { setFieldValue(key, JSON.parse(e.currentTarget.value)); }
-                          catch { /* let them keep typing */ }
+                          try {
+                            setFieldValue(key, JSON.parse(e.currentTarget.value));
+                          } catch {
+                            /* let them keep typing */
+                          }
                         }}
                         rows={3}
                         class="colony-textarea colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-deep p-2 text-text-primary focus:border-accent focus:outline-none"
                       />
                     </Show>
-                  </div>
+                  </fieldset>
                 );
               }}
             </For>
@@ -313,17 +347,29 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
         </Show>
 
         <div class="mt-2 flex gap-2">
-          <button onClick={handleSave} disabled={saving()}
-            class="colony-text-3xs border-2 border-status-ok bg-soil-light px-3 py-1 text-status-ok hover:bg-soil-deep disabled:opacity-50">
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={saving()}
+            class="colony-text-3xs border-2 border-status-ok bg-soil-light px-3 py-1 text-status-ok hover:bg-soil-deep disabled:opacity-50"
+          >
             {saving() ? "Saving..." : "Save"}
           </button>
-          <button onClick={handleTest} disabled={testing()}
-            class="colony-text-3xs border-2 border-bark bg-soil-light px-3 py-1 text-text-secondary hover:bg-soil-deep disabled:opacity-50">
+          <button
+            type="button"
+            onClick={handleTest}
+            disabled={testing()}
+            class="colony-text-3xs border-2 border-bark bg-soil-light px-3 py-1 text-text-secondary hover:bg-soil-deep disabled:opacity-50"
+          >
             {testing() ? "Testing..." : "Test"}
           </button>
         </div>
         {testResult() && (
-          <p class={`colony-text-3xs mt-1 ${testResult().includes("failed") ? "text-status-error" : "text-status-ok"}`}>{testResult()}</p>
+          <p
+            class={`colony-text-3xs mt-1 ${testResult().includes("failed") ? "text-status-error" : "text-status-ok"}`}
+          >
+            {testResult()}
+          </p>
         )}
       </section>
 
@@ -337,12 +383,19 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
                 <For each={s().triggers}>
                   {(t) => (
                     <button
+                      type="button"
                       class="colony-text-2xs flex w-full items-center gap-2 border-b border-bark py-1 text-start hover:bg-soil-light"
-                      onClick={() => { setShowNewRule(true); setTriggerName(t.name); setNewRuleName(`${props.connectorId} ${t.name}`); }}
+                      onClick={() => {
+                        setShowNewRule(true);
+                        setTriggerName(t.name);
+                        setNewRuleName(`${props.connectorId} ${t.name}`);
+                      }}
                     >
                       <span class="text-status-ok">*</span>
                       <span class="text-text-primary">{t.name}</span>
-                      <Show when={t.description}><span class="truncate text-text-dim">— {t.description}</span></Show>
+                      <Show when={t.description}>
+                        <span class="truncate text-text-dim">— {t.description}</span>
+                      </Show>
                       <span class="colony-text-3xs ml-auto shrink-0 text-text-dim">+ rule</span>
                     </button>
                   )}
@@ -355,12 +408,19 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
                 <For each={s().actions}>
                   {(a) => (
                     <button
+                      type="button"
                       class="colony-text-2xs flex w-full items-center gap-2 border-b border-bark py-1 text-start hover:bg-soil-light"
-                      onClick={() => { setShowNewRule(true); setActionConnector(props.connectorId); setActionName(a.name); }}
+                      onClick={() => {
+                        setShowNewRule(true);
+                        setActionConnector(props.connectorId);
+                        setActionName(a.name);
+                      }}
                     >
                       <span class="text-mycelium-active">~</span>
                       <span class="text-text-primary">{a.name}</span>
-                      <Show when={a.description}><span class="truncate text-text-dim">— {a.description}</span></Show>
+                      <Show when={a.description}>
+                        <span class="truncate text-text-dim">— {a.description}</span>
+                      </Show>
                       <span class="colony-text-3xs ml-auto shrink-0 text-text-dim">+ rule</span>
                     </button>
                   )}
@@ -375,8 +435,11 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
       <section class="mb-4">
         <div class="mb-1 flex items-center justify-between">
           <h3 class="colony-label">RULES ({props.rules.length})</h3>
-          <button onClick={() => setShowNewRule(!showNewRule())}
-            class="colony-text-3xs border border-bark bg-soil-light px-2 py-0.5 text-text-secondary hover:border-bark-light">
+          <button
+            type="button"
+            onClick={() => setShowNewRule(!showNewRule())}
+            class="colony-text-3xs border border-bark bg-soil-light px-2 py-0.5 text-text-secondary hover:border-bark-light"
+          >
             {showNewRule() ? "Cancel" : "+ New Rule"}
           </button>
         </div>
@@ -385,17 +448,27 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
             <For each={props.rules}>
               {(rule) => (
                 <div class="flex items-center gap-2 rounded border border-bark p-1.5">
-                  <span class={`inline-block h-2 w-2 shrink-0 rounded-full ${
-                    rule.status === "enabled" ? "bg-status-ok" : "bg-status-idle"
-                  }`} />
-                  <span class="colony-text-2xs flex-1 truncate font-bold text-text-primary">{rule.name}</span>
+                  <span
+                    class={`inline-block h-2 w-2 shrink-0 rounded-full ${
+                      rule.status === "enabled" ? "bg-status-ok" : "bg-status-idle"
+                    }`}
+                  />
+                  <span class="colony-text-2xs flex-1 truncate font-bold text-text-primary">
+                    {rule.name}
+                  </span>
                   <span class="colony-text-3xs text-text-dim">{rule.triggerType}</span>
-                  <button onClick={() => props.onToggleRule(rule.id, rule.status === "enabled")}
-                    class="colony-text-3xs border border-bark px-1.5 py-0.5 text-text-secondary hover:border-bark-light">
+                  <button
+                    type="button"
+                    onClick={() => props.onToggleRule(rule.id, rule.status === "enabled")}
+                    class="colony-text-3xs border border-bark px-1.5 py-0.5 text-text-secondary hover:border-bark-light"
+                  >
                     {rule.status === "enabled" ? "Pause" : "Enable"}
                   </button>
-                  <button onClick={() => props.onDeleteRule(rule.id)}
-                    class="colony-text-3xs border border-bark px-1.5 py-0.5 text-status-error hover:border-status-error">
+                  <button
+                    type="button"
+                    onClick={() => props.onDeleteRule(rule.id)}
+                    class="colony-text-3xs border border-bark px-1.5 py-0.5 text-status-error hover:border-status-error"
+                  >
                     Delete
                   </button>
                 </div>
@@ -404,7 +477,9 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
           </div>
         </Show>
         <Show when={props.rules.length === 0 && !showNewRule()}>
-          <p class="colony-text-2xs py-2 text-text-dim">No rules. Click + New Rule to create one.</p>
+          <p class="colony-text-2xs py-2 text-text-dim">
+            No rules. Click + New Rule to create one.
+          </p>
         </Show>
       </section>
 
@@ -413,14 +488,18 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
         <section class="rounded border-2 border-bark-light bg-soil-deep p-3">
           <h3 class="colony-label mb-2">NEW RULE</h3>
           <div class="space-y-3">
-            <div>
-              <label class="colony-text-3xs text-text-secondary">Rule Name</label>
-              <input type="text" value={newRuleName()} onInput={(e) => setNewRuleName(e.currentTarget.value)}
+            <label class="block">
+              <span class="colony-text-3xs text-text-secondary">Rule Name</span>
+              <input
+                type="text"
+                value={newRuleName()}
+                onInput={(e) => setNewRuleName(e.currentTarget.value)}
                 placeholder="e.g., Monitor file changes"
-                class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-mid px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none" />
-            </div>
-            <div>
-              <label class="colony-text-3xs text-text-secondary">Trigger</label>
+                class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-mid px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none"
+              />
+            </label>
+            <label class="block">
+              <span class="colony-text-3xs text-text-secondary">Trigger</span>
               <select
                 value={triggerName()}
                 onChange={(e) => setTriggerName(e.currentTarget.value)}
@@ -428,31 +507,52 @@ export const ConnectorConfigPanel: Component<ConnectorConfigPanelProps> = (props
               >
                 <option value="">Select trigger...</option>
                 <For each={schema()?.triggers ?? []}>
-                  {(t) => <option value={t.name}>{t.name}{t.description ? ` — ${t.description}` : ""}</option>}
+                  {(t) => (
+                    <option value={t.name}>
+                      {t.name}
+                      {t.description ? ` — ${t.description}` : ""}
+                    </option>
+                  )}
                 </For>
               </select>
-            </div>
-            <div>
-              <label class="colony-text-3xs text-text-secondary">Action</label>
+            </label>
+            <label class="block">
+              <span class="colony-text-3xs text-text-secondary">Action</span>
               <select
                 value={actionName()}
-                onChange={(e) => { setActionName(e.currentTarget.value); setActionConnector(props.connectorId); }}
+                onChange={(e) => {
+                  setActionName(e.currentTarget.value);
+                  setActionConnector(props.connectorId);
+                }}
                 class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-mid px-2 py-1.5 text-text-primary"
               >
                 <option value="">Select action...</option>
                 <For each={schema()?.actions ?? []}>
-                  {(a) => <option value={a.name}>{a.name}{a.description ? ` — ${a.description}` : ""}</option>}
+                  {(a) => (
+                    <option value={a.name}>
+                      {a.name}
+                      {a.description ? ` — ${a.description}` : ""}
+                    </option>
+                  )}
                 </For>
               </select>
-            </div>
-            <div>
-              <label class="colony-text-3xs text-text-secondary">Conditions (optional)</label>
+            </label>
+            <fieldset class="block">
+              <legend class="colony-text-3xs text-text-secondary">Conditions (optional)</legend>
               <div class="mt-0.5">
-                <ConditionEditor conditions={conditions()} conditionTypes={props.conditionTypes} onChange={setConditions} />
+                <ConditionEditor
+                  conditions={conditions()}
+                  conditionTypes={props.conditionTypes}
+                  onChange={setConditions}
+                />
               </div>
-            </div>
-            <button onClick={handleCreateRule} disabled={!newRuleName() || !triggerName()}
-              class="colony-text-2xs border-2 border-status-ok bg-soil-light px-3 py-1.5 text-status-ok hover:bg-soil-deep disabled:opacity-50">
+            </fieldset>
+            <button
+              type="button"
+              onClick={handleCreateRule}
+              disabled={!newRuleName() || !triggerName()}
+              class="colony-text-2xs border-2 border-status-ok bg-soil-light px-3 py-1.5 text-status-ok hover:bg-soil-deep disabled:opacity-50"
+            >
               Create Rule
             </button>
           </div>

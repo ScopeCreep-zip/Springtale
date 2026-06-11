@@ -25,7 +25,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 use tauri::{AppHandle, State};
 use tauri_specta::Event;
-use tokio::sync::{oneshot, Mutex};
+use tokio::sync::{Mutex, oneshot};
 use uuid::Uuid;
 
 use springtale_sentinel::approval::{ApprovalRequest, ChannelApprovalGate, PendingApproval};
@@ -68,7 +68,11 @@ pub fn install(
             let payload = ApprovalRequired::from(&request_id, &request);
             // Store the responder *before* emitting so the frontend
             // can't beat us to `respond_to_approval`.
-            dispatcher.pending.lock().await.insert(request_id.clone(), respond);
+            dispatcher
+                .pending
+                .lock()
+                .await
+                .insert(request_id.clone(), respond);
             if let Err(e) = payload.emit(&app_for_task) {
                 tracing::warn!(error = %e, "approval-required event emit failed");
                 // The frontend can't see this request — surface the

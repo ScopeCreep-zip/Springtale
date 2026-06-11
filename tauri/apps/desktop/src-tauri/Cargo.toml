@@ -20,7 +20,7 @@ license = "MIT"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2", features = ["isolation"] }
 
 [dependencies]
 # `image-png` feature is required for the runtime tray-icon swap path
@@ -28,9 +28,14 @@ tauri-build = { version = "2", features = [] }
 # `Image::from_bytes` which needs PNG decode support compiled in.
 # `image-ico` is the Windows-friendly counterpart; we ship both so
 # survivors get tray-icon swap on every desktop platform.
-tauri = { version = "2", features = ["image-png", "image-ico", "tray-icon"] }
+tauri = { version = "2", features = ["image-png", "image-ico", "tray-icon", "isolation"] }
 tauri-plugin-dialog = "2"
 tauri-plugin-global-shortcut = "2"
+# Best-effort OS notifications for fired Notify/SendMessage recipes —
+# the delivery layer fans a scheduled bot's message to both the in-app
+# chat panel and a native notification so a briefing/reminder reaches
+# the user even when the window isn't focused.
+tauri-plugin-notification = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
@@ -59,6 +64,12 @@ springtale-crypto = { path = "../../../../crates/springtale-crypto" }
 springtale-store = { path = "../../../../crates/springtale-store" }
 springtale-connector = { path = "../../../../crates/springtale-connector" }
 springtale-runtime = { path = "../../../../crates/springtale-runtime" }
+springtale-bot = { path = "../../../../crates/springtale-bot" }
 springtale-ai = { path = "../../../../crates/springtale-ai" }
 springtale-cooperation = { path = "../../../../crates/springtale-cooperation" }
 springtale-sentinel = { path = "../../../../crates/springtale-sentinel" }
+# springtale-transport is pulled in only for the PQ rustls crypto-provider
+# bootstrap call at the top of `lib.rs::run`. No other transport surface is
+# touched from the Tauri side — the daemon shares the same process and runs
+# its own server.
+springtale-transport = { path = "../../../../crates/springtale-transport" }

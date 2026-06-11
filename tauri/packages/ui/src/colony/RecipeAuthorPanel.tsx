@@ -16,9 +16,9 @@
  */
 
 import type { Component } from "solid-js";
-import { For, Show, createSignal } from "solid-js";
-import type { Recipe, RecipeCategory } from "../dashboard/types";
+import { createSignal, For, Show } from "solid-js";
 import { useDashboard } from "../dashboard/context";
+import type { Recipe, RecipeCategory } from "../dashboard/types";
 
 export interface RecipeAuthorPanelProps {
   /** Starting shape — typically the recipe behind a deployed bot or
@@ -77,8 +77,7 @@ export const RecipeAuthorPanel: Component<RecipeAuthorPanelProps> = (props) => {
       <div class="border-b border-bark p-4">
         <p class="colony-text-md font-bold text-text-primary">Save as recipe</p>
         <p class="colony-text-xs mt-1 text-text-secondary">
-          Promote this configuration into your personal library. Future deploys
-          can start from here.
+          Promote this configuration into your personal library. Future deploys can start from here.
         </p>
       </div>
 
@@ -109,9 +108,7 @@ export const RecipeAuthorPanel: Component<RecipeAuthorPanelProps> = (props) => {
               value={category()}
               onChange={(e) => setCategory(e.currentTarget.value as RecipeCategory)}
             >
-              <For each={CATEGORIES}>
-                {(c) => <option value={c.value}>{c.label}</option>}
-              </For>
+              <For each={CATEGORIES}>{(c) => <option value={c.value}>{c.label}</option>}</For>
             </select>
           </label>
           <label class="block">
@@ -127,8 +124,8 @@ export const RecipeAuthorPanel: Component<RecipeAuthorPanelProps> = (props) => {
 
         <Show when={props.draft.inputs.length > 0}>
           <p class="colony-text-3xs mt-3 text-text-dim">
-            Fields auto-classified from the source. Edit per-field defaults inside
-            the deploy form after saving.
+            Fields auto-classified from the source. Edit per-field defaults inside the deploy form
+            after saving.
           </p>
         </Show>
 
@@ -142,6 +139,7 @@ export const RecipeAuthorPanel: Component<RecipeAuthorPanelProps> = (props) => {
       {/* ── Sticky footer ─────────────────────────────────────── */}
       <div class="flex justify-end gap-2 border-t border-bark bg-soil-mid p-4">
         <button
+          type="button"
           class="colony-command-btn colony-text-2xs px-4 py-2"
           disabled={saving()}
           onClick={() => props.onCancel()}
@@ -149,6 +147,7 @@ export const RecipeAuthorPanel: Component<RecipeAuthorPanelProps> = (props) => {
           Cancel
         </button>
         <button
+          type="button"
           class="colony-command-btn colony-text-2xs px-5 py-2"
           style={{ "border-color": "var(--color-status-ok)" }}
           disabled={saving() || name().trim().length === 0}

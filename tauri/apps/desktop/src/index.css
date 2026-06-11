@@ -1,4 +1,5 @@
-@import url('https://fonts.googleapis.com/css2?family=Silkscreen:wght@400;700&display=swap');
+/* Silkscreen is self-hosted in colony.css (@font-face) — no external font
+   fetch, no IP leak to Google. */
 @import "tailwindcss";
 @source "../../../packages/ui/src";
 @import "../../../packages/ui/src/colony/colony.css";
@@ -63,9 +64,9 @@
   --color-momentum-fever: #a828a0;
 
   /* Text hierarchy */
-  --color-text-primary: #d8d0c0;
-  --color-text-secondary: #8a8478;
-  --color-text-dim: #5a564e;
+  --color-text-primary: #ece6da;
+  --color-text-secondary: #cec6b6;
+  --color-text-dim: #a8a094;
 
   /* Sprite pixel art details */
   --color-sprite-eye: #111111;
@@ -170,8 +171,8 @@
 
   /* Text — cool blue-white */
   --color-text-primary: #c8d8e8;
-  --color-text-secondary: #6888a0;
-  --color-text-dim: #3a5568;
+  --color-text-secondary: #9bb4c8;
+  --color-text-dim: #6888a0;
 
   /* Sprite colors — glowing eyes */
   --color-sprite-eye: #00d4ff;
@@ -230,8 +231,8 @@ body {
   *,
   *::before,
   *::after {
-    animation-duration: 0.01ms !important;
-    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms;
+    transition-duration: 0.01ms;
   }
 }
 
@@ -285,6 +286,6 @@ body {
   outline: 1px solid var(--color-bark-light);
 }
 [data-theme="springtale"] .colony-agent:hover {
-  filter: none !important;
+  filter: none;
   outline: 1px solid var(--color-accent);
 }

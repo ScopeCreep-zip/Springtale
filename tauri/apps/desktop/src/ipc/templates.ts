@@ -1,8 +1,9 @@
 /**
  * Typed IPC wrappers for template operations.
  */
-import { invoke } from "@tauri-apps/api/core";
+
 import type { Template, WriteReport } from "@springtale/types";
+import { invoke } from "@tauri-apps/api/core";
 
 export async function listTemplates(): Promise<Template[]> {
   return invoke<Template[]>("list_templates");

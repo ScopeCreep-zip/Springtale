@@ -4,6 +4,24 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="dark" />
+    <!--
+      NO Content-Security-Policy <meta> here, deliberately. Tauri is the CSP
+      authority: at build time it parses the bundle and injects per-launch
+      nonce/hash sources (and the isolation-iframe origin) into the
+      `app.security.csp` policy in tauri.conf.json — see
+      https://v2.tauri.app/security/csp/. A static <meta> CSP can NEVER carry
+      those runtime nonces, so it refuses Tauri's own injected scripts and the
+      isolation iframe, silently breaking all `invoke()` IPC (empty recipe
+      book, empty connectors, …). The shipped app is fully locked by the
+      tauri.conf.json header CSP (`default-src 'none'`, hashed scripts, etc.);
+      `tauri dev` doesn't apply that header (tauri-apps/tauri#11692), but dev
+      runs on the developer's own machine, outside the threat model.
+
+      `frame-ancestors` is omitted too — it is ignored when delivered via
+      <meta> and only works as a header, which tauri.conf.json provides.
+    -->
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <meta http-equiv="Referrer-Policy" content="no-referrer" />
     <title>Springtale</title>
   </head>
   <body>

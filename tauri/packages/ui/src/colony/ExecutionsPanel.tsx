@@ -12,8 +12,9 @@
  * status, mode, momentum, duration, trigger summary. Selecting a
  * row reveals its step list below.
  */
-import { For, Show, createResource, createSignal } from "solid-js";
+
 import type { Component } from "solid-js";
+import { createResource, createSignal, For, Show } from "solid-js";
 
 import { useDashboard } from "../dashboard/context";
 import type {
@@ -74,13 +75,10 @@ export const ExecutionsPanel: Component<ExecutionsPanelProps> = (props) => {
   });
 
   const [selectedRunId, setSelectedRunId] = createSignal<string | null>(null);
-  const [steps, { refetch: refetchSteps }] = createResource(
-    selectedRunId,
-    async (id) => {
-      if (!id) return [] as ExecutionStepInfo[];
-      return db.provider.getExecutionSteps(id);
-    },
-  );
+  const [steps, { refetch: refetchSteps }] = createResource(selectedRunId, async (id) => {
+    if (!id) return [] as ExecutionStepInfo[];
+    return db.provider.getExecutionSteps(id);
+  });
 
   // Reload list whenever the underlying filter changes.
   const _ = filterKey; // referenced for reactivity
@@ -90,6 +88,7 @@ export const ExecutionsPanel: Component<ExecutionsPanelProps> = (props) => {
       <header class="flex items-center justify-between border-b border-bark px-3 py-2">
         <p class="colony-text-sm font-bold text-text-primary">Executions</p>
         <button
+          type="button"
           class="colony-text-3xs rounded border border-bark px-2 py-1 hover:bg-soil-deep"
           onClick={() => {
             refetch();
@@ -105,9 +104,7 @@ export const ExecutionsPanel: Component<ExecutionsPanelProps> = (props) => {
       </Show>
 
       <Show when={!runs.loading && (runs()?.length ?? 0) === 0}>
-        <p class="colony-text-xs px-3 py-3 text-text-dim">
-          No runs recorded yet.
-        </p>
+        <p class="colony-text-xs px-3 py-3 text-text-dim">No runs recorded yet.</p>
       </Show>
 
       <ul class="max-h-[40vh] overflow-y-auto">
@@ -131,14 +128,10 @@ export const ExecutionsPanel: Component<ExecutionsPanelProps> = (props) => {
             <p class="colony-text-3xs mt-1 text-text-dim">Loading steps…</p>
           </Show>
           <Show when={!steps.loading && (steps()?.length ?? 0) === 0}>
-            <p class="colony-text-3xs mt-1 text-text-dim">
-              No steps recorded for this run.
-            </p>
+            <p class="colony-text-3xs mt-1 text-text-dim">No steps recorded for this run.</p>
           </Show>
           <ul class="mt-1">
-            <For each={steps() ?? []}>
-              {(step) => <StepRow step={step} />}
-            </For>
+            <For each={steps() ?? []}>{(step) => <StepRow step={step} />}</For>
           </ul>
         </div>
       </Show>
@@ -153,6 +146,7 @@ const RunRow: Component<{
 }> = (props) => {
   return (
     <button
+      type="button"
       class="w-full border-b border-bark px-3 py-2 text-left hover:bg-soil-deep"
       classList={{ "bg-soil-deep": props.selected }}
       onClick={props.onSelect}
@@ -162,25 +156,19 @@ const RunRow: Component<{
           {STATUS_LABEL[props.run.status]}
         </span>
         <span class="colony-text-3xs text-text-dim">
-          {props.run.duration_ms != null
-            ? `${props.run.duration_ms}ms`
-            : "—"}
+          {props.run.duration_ms != null ? `${props.run.duration_ms}ms` : "—"}
         </span>
       </div>
       <div class="colony-text-3xs mt-0.5 text-text-secondary">
         {props.run.trigger_summary ?? props.run.mode}
         <Show when={props.run.momentum}>
-          <span class="ml-2 text-text-dim">
-            · {props.run.momentum}
-          </span>
+          <span class="ml-2 text-text-dim">· {props.run.momentum}</span>
         </Show>
       </div>
       <div class="colony-text-3xs text-text-dim">
         {formatTimestamp(props.run.started_at)}
         <Show when={props.run.error_kind}>
-          <span class="ml-2 text-status-warn">
-            · {props.run.error_kind}
-          </span>
+          <span class="ml-2 text-status-warn">· {props.run.error_kind}</span>
         </Show>
       </div>
     </button>
@@ -189,9 +177,7 @@ const RunRow: Component<{
 
 const StepRow: Component<{ step: ExecutionStepInfo }> = (props) => {
   const duration = () =>
-    props.step.finished_at != null
-      ? props.step.finished_at - props.step.started_at
-      : null;
+    props.step.finished_at != null ? props.step.finished_at - props.step.started_at : null;
   return (
     <li class="colony-text-3xs mt-1 rounded border border-bark px-2 py-1">
       <div class="flex justify-between">
@@ -211,11 +197,7 @@ const StepRow: Component<{ step: ExecutionStepInfo }> = (props) => {
         out: {humanBytes(props.step.output_bytes)} ({props.step.output_kind ?? "—"})
         <Show
           when={props.step.output_blob_ref == null}
-          fallback={
-            <span class="ml-2 text-text-secondary">
-              · content retained
-            </span>
-          }
+          fallback={<span class="ml-2 text-text-secondary">· content retained</span>}
         >
           <span class="ml-2">· content not retained</span>
         </Show>

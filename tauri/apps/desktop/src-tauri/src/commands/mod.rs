@@ -10,6 +10,7 @@ pub mod approval;
 pub mod authors;
 pub mod bot;
 pub mod canvas;
+pub mod chat;
 pub mod config;
 pub mod connectors;
 pub mod cooperation;

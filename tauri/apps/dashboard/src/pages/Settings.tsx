@@ -1,6 +1,6 @@
-import { createSignal, onMount } from "solid-js";
-import { useI18n } from "@springtale/ui";
 import type { Locale } from "@springtale/ui";
+import { useI18n } from "@springtale/ui";
+import { createSignal, onMount } from "solid-js";
 import { configure, get, put } from "../api/client";
 
 /**
@@ -16,9 +16,7 @@ import { configure, get, put } from "../api/client";
  */
 export function SettingsPage(props: { onSaved?: () => void }) {
   const { t, locale, setLocale } = useI18n();
-  const [apiUrl, setApiUrl] = createSignal(
-    `${window.location.protocol}//${window.location.host}`,
-  );
+  const [apiUrl, setApiUrl] = createSignal(`${window.location.protocol}//${window.location.host}`);
   const [token, setToken] = createSignal("");
   const [saved, setSaved] = createSignal(false);
   const [heartbeatInterval, setHeartbeatInterval] = createSignal(1800);
@@ -35,9 +33,7 @@ export function SettingsPage(props: { onSaved?: () => void }) {
 
   const fetchHeartbeat = async () => {
     try {
-      const data = await get<{ interval_secs: number; enabled: boolean }>(
-        "/config/heartbeat",
-      );
+      const data = await get<{ interval_secs: number; enabled: boolean }>("/config/heartbeat");
       setHeartbeatInterval(data.interval_secs);
       setHeartbeatEnabled(data.enabled);
     } catch {
@@ -47,10 +43,9 @@ export function SettingsPage(props: { onSaved?: () => void }) {
 
   const saveHeartbeat = async () => {
     try {
-      const data = await put<{ interval_secs: number; enabled: boolean }>(
-        "/config/heartbeat",
-        { interval_secs: heartbeatInterval() },
-      );
+      const data = await put<{ interval_secs: number; enabled: boolean }>("/config/heartbeat", {
+        interval_secs: heartbeatInterval(),
+      });
       setHeartbeatInterval(data.interval_secs);
       setHeartbeatEnabled(data.enabled);
       setHeartbeatSaved(true);
@@ -69,7 +64,13 @@ export function SettingsPage(props: { onSaved?: () => void }) {
           <h2 id="connection-heading" class="text-lg font-semibold text-gray-200">
             {t("settings.connection")}
           </h2>
-          <form onSubmit={(e) => { e.preventDefault(); saveConnection(); }} class="mt-3 space-y-3">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              saveConnection();
+            }}
+            class="mt-3 space-y-3"
+          >
             <div>
               <label for="api-url" class="block text-sm font-medium text-gray-300">
                 {t("settings.apiUrl")}
@@ -113,10 +114,14 @@ export function SettingsPage(props: { onSaved?: () => void }) {
           <h2 id="heartbeat-heading" class="text-lg font-semibold text-gray-200">
             {t("settings.heartbeat")}
           </h2>
-          <p class="mt-1 text-sm text-gray-400">
-            {t("settings.heartbeatDesc")}
-          </p>
-          <form onSubmit={(e) => { e.preventDefault(); saveHeartbeat(); }} class="mt-3 space-y-3">
+          <p class="mt-1 text-sm text-gray-400">{t("settings.heartbeatDesc")}</p>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              saveHeartbeat();
+            }}
+            class="mt-3 space-y-3"
+          >
             <div>
               <label for="heartbeat-interval" class="block text-sm font-medium text-gray-300">
                 {t("settings.heartbeatInterval")}
@@ -125,17 +130,14 @@ export function SettingsPage(props: { onSaved?: () => void }) {
                 id="heartbeat-interval"
                 type="number"
                 value={heartbeatInterval()}
-                onInput={(e) =>
-                  setHeartbeatInterval(parseInt(e.currentTarget.value) || 0)
-                }
+                onInput={(e) => setHeartbeatInterval(parseInt(e.currentTarget.value, 10) || 0)}
                 class="mt-1 w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
                 placeholder="1800"
                 min="0"
                 aria-describedby="heartbeat-help"
               />
               <p id="heartbeat-help" class="mt-1 text-xs text-gray-500">
-                {t("settings.heartbeatDefault")}
-                {" "}
+                {t("settings.heartbeatDefault")}{" "}
                 {heartbeatEnabled()
                   ? t("settings.heartbeatRunning")
                   : t("settings.heartbeatStopped")}
@@ -155,7 +157,9 @@ export function SettingsPage(props: { onSaved?: () => void }) {
             {t("settings.language")}
           </h2>
           <div class="mt-3">
-            <label for="language-select" class="sr-only">{t("settings.language")}</label>
+            <label for="language-select" class="sr-only">
+              {t("settings.language")}
+            </label>
             <select
               id="language-select"
               value={locale()}

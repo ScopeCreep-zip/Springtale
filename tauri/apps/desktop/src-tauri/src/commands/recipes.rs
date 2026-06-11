@@ -8,11 +8,10 @@ use tauri::State;
 
 use springtale_runtime::operations::preflight::{self, PreflightReport};
 use springtale_runtime::operations::preview::{self, PreviewReport};
-use springtale_runtime::operations::recipes::{
-    self, ApplyReport, Recipe, RecipeCategory, RecipeFilter, RecipeInputs,
-    RecipePieceSummary,
-};
 use springtale_runtime::operations::recipes::authoring;
+use springtale_runtime::operations::recipes::{
+    self, ApplyReport, Recipe, RecipeCategory, RecipeFilter, RecipeInputs, RecipePieceSummary,
+};
 
 use crate::runtime_guard::require_runtime;
 use crate::state::AppState;
@@ -32,10 +31,7 @@ pub async fn list_recipes(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn get_recipe(
-    state: State<'_, AppState>,
-    id: String,
-) -> Result<Option<Recipe>, String> {
+pub async fn get_recipe(state: State<'_, AppState>, id: String) -> Result<Option<Recipe>, String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
     recipes::get_recipe(&*rt.store, &id)
@@ -95,28 +91,37 @@ pub async fn apply_recipe(
         .await
         .map_err(|e| e.to_string())?;
 
-    // Track E — register every cron / file_watch trigger created by
-    // this deploy with the scheduler. Without this, the rule lives
-    // in the store + RuleEngine but nothing ticks its trigger.
-    if let Some(scheduler) = state.scheduler.read().await.as_ref() {
-        let rules = rt
-            .store
-            .list_rules()
-            .await
-            .map_err(|e| format!("failed to list rules after apply: {e}"))?;
-        for rule_id in &report.rules_created {
-            if let Some(rule) = rules.iter().find(|r| r.id.0.to_string() == *rule_id) {
-                if let Err(e) = scheduler.schedule(rule).await {
-                    tracing::warn!(
-                        rule = %rule.name,
-                        error = %e,
-                        "failed to schedule trigger for newly-applied rule",
-                    );
+    // Track E — activate every trigger created by this deploy: schedule
+    // cron / file_watch AND attach ConnectorEvent handlers (the shared
+    // `activate_rule` the daemon and rule-CRUD commands use). Without the
+    // connector-event attach, a deployed messaging recipe (Telegram /
+    // Discord / Nostr reply, echo) would persist but never fire — the
+    // recipe-library deploy is the primary flow, so it must do the FULL
+    // activation, not just cron.
+    {
+        let sched = state.scheduler.read().await;
+        let reg = state.trigger_registry.read().await;
+        match (sched.as_ref(), reg.as_ref()) {
+            (Some(scheduler), Some(registry)) => {
+                let rules = rt
+                    .store
+                    .list_rules()
+                    .await
+                    .map_err(|e| format!("failed to list rules after apply: {e}"))?;
+                for rule_id in &report.rules_created {
+                    if let Some(rule) = rules.iter().find(|r| r.id.0.to_string() == *rule_id) {
+                        springtale_runtime::activate_rule(
+                            rule,
+                            scheduler,
+                            registry,
+                            &rt.registry,
+                        )
+                        .await;
+                    }
                 }
             }
+            _ => tracing::warn!("scheduler/trigger registry not initialised; new rules will not fire"),
         }
-    } else {
-        tracing::warn!("scheduler not initialised; new rules will not fire");
     }
 
     // Track the recipe as recently used so the library reflects it.

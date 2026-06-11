@@ -14,8 +14,9 @@
  * path because they need an explicit "Save" gesture from the
  * survivor (avoid leaking partial drafts in a tense moment).
  */
-import { createResource, createSignal, Show } from "solid-js";
+
 import type { Component } from "solid-js";
+import { createResource, createSignal, Show } from "solid-js";
 import { useDashboard } from "../dashboard/context";
 import type { SafetyConfig } from "../dashboard/types";
 import { useI18n } from "../i18n/context";
@@ -154,15 +155,18 @@ export const SafetyPanel: Component<SafetyPanelProps> = (props) => {
   return (
     <div class="colony-modal mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6">
       <div class="mb-4 flex items-center justify-between">
-        <h2 class="colony-text-md font-bold text-text-primary">
-          {t("safety.title")}
-        </h2>
-        <button onClick={props.onClose} class="colony-close-btn">✕</button>
+        <h2 class="colony-text-md font-bold text-text-primary">{t("safety.title")}</h2>
+        <button type="button" onClick={props.onClose} class="colony-close-btn">
+          ✕
+        </button>
       </div>
 
       <Show when={error()}>
-        <div role="alert" aria-live="assertive"
-             class="colony-text-2xs mb-3 border border-status-error bg-status-error/10 p-2 text-status-error">
+        <div
+          role="alert"
+          aria-live="assertive"
+          class="colony-text-2xs mb-3 border border-status-error bg-status-error/10 p-2 text-status-error"
+        >
           {error()}
         </div>
       </Show>
@@ -170,7 +174,9 @@ export const SafetyPanel: Component<SafetyPanelProps> = (props) => {
       <div class="space-y-4">
         {/* G5d — app disguise */}
         <section aria-labelledby="disguise-h">
-          <h3 id="disguise-h" class="colony-label mb-1">{t("safety.appDisguise")}</h3>
+          <h3 id="disguise-h" class="colony-label mb-1">
+            {t("safety.appDisguise")}
+          </h3>
           <p class="colony-text-3xs mb-2 text-text-dim">{t("safety.appDisguiseDesc")}</p>
 
           <label for="sp-window-title" class="colony-text-2xs block text-text-secondary">
@@ -237,7 +243,9 @@ export const SafetyPanel: Component<SafetyPanelProps> = (props) => {
 
         {/* Auto-lock */}
         <section aria-labelledby="autolock-h">
-          <h3 id="autolock-h" class="colony-label mb-1">{t("safety.autoLock")}</h3>
+          <h3 id="autolock-h" class="colony-label mb-1">
+            {t("safety.autoLock")}
+          </h3>
           <p class="colony-text-3xs mb-2 text-text-dim">{t("safety.autoLockDesc")}</p>
           <label for="sp-autolock" class="colony-text-2xs block text-text-secondary">
             {t("safety.autoLockMinutes")}
@@ -254,7 +262,9 @@ export const SafetyPanel: Component<SafetyPanelProps> = (props) => {
 
         {/* Content protection */}
         <section aria-labelledby="cp-h">
-          <h3 id="cp-h" class="colony-label mb-1">{t("safety.contentProtection")}</h3>
+          <h3 id="cp-h" class="colony-label mb-1">
+            {t("safety.contentProtection")}
+          </h3>
           <p class="colony-text-3xs mb-2 text-text-dim">{t("safety.contentProtectionDesc")}</p>
           <div class="flex items-center gap-2">
             <input
@@ -272,11 +282,12 @@ export const SafetyPanel: Component<SafetyPanelProps> = (props) => {
 
         {/* G5d — panic-tap threshold */}
         <section aria-labelledby="panic-tap-h">
-          <h3 id="panic-tap-h" class="colony-label mb-1">Panic-tap threshold</h3>
+          <h3 id="panic-tap-h" class="colony-label mb-1">
+            Panic-tap threshold
+          </h3>
           <p class="colony-text-3xs mb-2 text-text-dim">
-            Rapid title-bar taps that trigger panic-wipe. 0 disables.
-            Server bounds the value to [0, 10] so panic-wipe stays
-            reachable in a real emergency.
+            Rapid title-bar taps that trigger panic-wipe. 0 disables. Server bounds the value to [0,
+            10] so panic-wipe stays reachable in a real emergency.
           </p>
           <input
             id="sp-panic-taps"
@@ -293,7 +304,9 @@ export const SafetyPanel: Component<SafetyPanelProps> = (props) => {
             global shortcut belongs to the platform shell, not this
             panel). */}
         <section aria-labelledby="qh-h">
-          <h3 id="qh-h" class="colony-label mb-1">{t("safety.quickHide")}</h3>
+          <h3 id="qh-h" class="colony-label mb-1">
+            {t("safety.quickHide")}
+          </h3>
           <p class="colony-text-3xs mb-2 text-text-dim">{t("safety.quickHideDesc")}</p>
           <p class="colony-text-2xs border border-bark bg-soil-deep px-2 py-1.5 text-text-secondary">
             {config().quick_hide_shortcut}
@@ -302,12 +315,15 @@ export const SafetyPanel: Component<SafetyPanelProps> = (props) => {
 
         <Show when={props.onOpenTravelMode}>
           <section aria-labelledby="travel-h">
-            <h3 id="travel-h" class="colony-label mb-1">Travel mode</h3>
+            <h3 id="travel-h" class="colony-label mb-1">
+              Travel mode
+            </h3>
             <p class="colony-text-3xs mb-2 text-text-dim">
-              Export an encrypted backup + wipe local data before a border
-              crossing or device handover. Restore from backup later.
+              Export an encrypted backup + wipe local data before a border crossing or device
+              handover. Restore from backup later.
             </p>
             <button
+              type="button"
               onClick={props.onOpenTravelMode}
               class="colony-text-2xs w-full border-2 border-bark bg-soil-light px-3 py-1.5 text-text-primary hover:bg-soil-deep"
             >
@@ -317,14 +333,20 @@ export const SafetyPanel: Component<SafetyPanelProps> = (props) => {
         </Show>
 
         <div class="flex gap-2 pt-2">
-          <button onClick={save}
-                  class="colony-text-2xs border-2 border-status-ok bg-soil-light px-3 py-1.5 text-status-ok hover:bg-soil-deep">
+          <button
+            type="button"
+            onClick={save}
+            class="colony-text-2xs border-2 border-status-ok bg-soil-light px-3 py-1.5 text-status-ok hover:bg-soil-deep"
+          >
             {saved() ? t("common.saved") : t("safety.saveSafety")}
           </button>
 
           <Show when={props.onPanicWipe}>
             <button
-              onClick={() => { void props.onPanicWipe?.(); }}
+              type="button"
+              onClick={() => {
+                void props.onPanicWipe?.();
+              }}
               class="colony-text-2xs ml-auto border-2 border-status-error bg-soil-light px-3 py-1.5 text-status-error hover:bg-soil-deep"
             >
               {t("safety.panicWipeButton")}

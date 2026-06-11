@@ -13,7 +13,7 @@
  */
 
 import type { Component, JSX } from "solid-js";
-import { Show, createSignal } from "solid-js";
+import { createSignal, Show } from "solid-js";
 
 export interface DisclosureSectionProps {
   /** Short heading rendered next to the toggle chevron. */
@@ -39,11 +39,9 @@ export const DisclosureSection: Component<DisclosureSectionProps> = (props) => {
     props.onToggle?.(next);
   };
   return (
-    <div
-      class="border-l-2 border-bark/40"
-      style={{ "padding-left": `${level() * 12 + 8}px` }}
-    >
+    <div class="border-l-2 border-bark/40" style={{ "padding-left": `${level() * 12 + 8}px` }}>
       <button
+        type="button"
         class="colony-text-2xs flex w-full items-center gap-2 py-2 text-left text-text-secondary hover:text-text-primary"
         onClick={handleToggle}
       >

@@ -4,7 +4,7 @@ use springtale_runtime::operations::error_fixes::{self, FixGuide, FixOutcome};
 #[tauri::command]
 #[specta::specta]
 pub async fn list_fixes() -> Result<Vec<FixGuide>, String> {
-    Ok(error_fixes::all_guides().iter().cloned().collect())
+    Ok(error_fixes::all_guides().to_vec())
 }
 
 /// Look up a fix guide by error ID (e.g. "E001").

@@ -19,10 +19,7 @@ pub async fn list_agent_states(
 /// Get agent autonomy level.
 #[tauri::command]
 #[specta::specta]
-pub async fn get_autonomy(
-    state: State<'_, AppState>,
-    name: String,
-) -> Result<String, String> {
+pub async fn get_autonomy(state: State<'_, AppState>, name: String) -> Result<String, String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
     springtale_runtime::operations::agent::get_autonomy(&*rt.store, &name)

@@ -63,19 +63,29 @@ pub async fn apply_quick_hide_shortcut(
         .map_err(|e| e.to_string())?;
     drop(guard);
 
-    let shortcut_str = config.quick_hide_shortcut.clone();
-    let shortcut: Shortcut = shortcut_str
-        .parse()
-        .map_err(|e| format!("invalid shortcut '{shortcut_str}': {e}"))?;
+    let configured = config.quick_hide_shortcut.clone();
 
-    // Atomically unregister the previous binding (if any) before
-    // installing the new one. Swap order matters: register first
-    // would risk two handlers firing on the same key during the
-    // brief overlap.
+    // A global shortcut is a CONVENIENCE, not a requirement
+    // (https://v2.tauri.app/plugin/global-shortcut/). On macOS,
+    // `RegisterEventHotKey` fails when another app already owns the combo —
+    // that must never be fatal or block the UI. Strategy (per the Tauri
+    // guidance): try the user's combo, then progressively-less-likely-to-
+    // conflict fallbacks, and degrade gracefully if none take — the
+    // in-window listener still hides on focus, and the user can rebind in
+    // Settings → Safety. Returns the combo that actually registered, or an
+    // empty string if none did.
+    let mut candidates = vec![configured.clone()];
+    for fb in ["Alt+Shift+H", "Ctrl+Shift+J", "Ctrl+Alt+Shift+H"] {
+        if fb != configured {
+            candidates.push(fb.to_owned());
+        }
+    }
+
+    // Drop whatever was bound before trying new combos (idempotent re-apply).
     let active = app.state::<ActiveQuickHide>();
     let previous = {
         let mut lock = active.0.lock().map_err(|e| e.to_string())?;
-        lock.replace(shortcut)
+        lock.take()
     };
     if let Some(prev) = previous
         && let Err(e) = app.global_shortcut().unregister(prev)
@@ -83,27 +93,51 @@ pub async fn apply_quick_hide_shortcut(
         tracing::warn!(error = %e, "unregister previous quick-hide failed");
     }
 
-    let app_for_handler = app.clone();
-    app.global_shortcut()
-        .on_shortcut(shortcut, move |_app, _shortcut, event| {
-            if event.state() == ShortcutState::Pressed {
-                // Hide the window immediately for instant survivor
-                // feedback — anything that talks to the runtime
-                // happens on the frontend's "quick-hide" event
-                // handler so we share its lock-vault teardown flow
-                // instead of duplicating the multi-step sequence
-                // in `commands::vault::lock_vault`.
-                if let Some(window) = app_for_handler.get_webview_window("main")
-                    && let Err(e) = window.hide()
-                {
-                    tracing::warn!(error = %e, "quick-hide window.hide failed");
+    for cand in &candidates {
+        let Ok(shortcut) = cand.parse::<Shortcut>() else {
+            tracing::warn!(shortcut = %cand, "quick-hide: unparseable shortcut, skipping");
+            continue;
+        };
+        let app_for_handler = app.clone();
+        let result = app
+            .global_shortcut()
+            .on_shortcut(shortcut, move |_app, _shortcut, event| {
+                if event.state() == ShortcutState::Pressed {
+                    // Hide immediately for instant survivor feedback; the
+                    // runtime-touching teardown runs on the frontend's
+                    // "quick-hide" event handler (shared lock-vault flow).
+                    if let Some(window) = app_for_handler.get_webview_window("main")
+                        && let Err(e) = window.hide()
+                    {
+                        tracing::warn!(error = %e, "quick-hide window.hide failed");
+                    }
+                    if let Err(e) = QuickHide.emit(&app_for_handler) {
+                        tracing::warn!(error = %e, "quick-hide event emit failed");
+                    }
                 }
-                if let Err(e) = QuickHide.emit(&app_for_handler) {
-                    tracing::warn!(error = %e, "quick-hide event emit failed");
+            });
+        match result {
+            Ok(()) => {
+                if let Ok(mut lock) = active.0.lock() {
+                    *lock = Some(shortcut);
                 }
+                if cand != &configured {
+                    tracing::warn!(
+                        configured = %configured,
+                        fallback = %cand,
+                        "quick-hide: configured shortcut unavailable — registered fallback"
+                    );
+                }
+                return Ok(cand.clone());
             }
-        })
-        .map_err(|e| format!("register quick-hide '{shortcut_str}': {e}"))?;
+            Err(e) => {
+                tracing::warn!(shortcut = %cand, error = %e, "quick-hide: shortcut unavailable");
+            }
+        }
+    }
 
-    Ok(shortcut_str)
+    // None registered — non-fatal. Empty string tells the UI to degrade
+    // quietly (no error banner); the in-window listener still covers focus.
+    tracing::warn!("quick-hide: no global shortcut could be registered (all in use)");
+    Ok(String::new())
 }

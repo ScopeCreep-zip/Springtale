@@ -17,10 +17,10 @@
  * - Zapier onboarding (3-minute first automation, NL copilot)
  * - Strategy game UI (minimize screen-switching, show micro+macro)
  */
-import { createSignal, For, Show } from "solid-js";
+
+import type { AvailableConnector, ConnectorSchema } from "@springtale/types";
 import type { Component } from "solid-js";
-import type { ConnectorSchema } from "@springtale/types";
-import type { AvailableConnector } from "@springtale/types";
+import { createSignal, For, Show } from "solid-js";
 
 /** A single agent slot in the squad. */
 interface AgentSlot {
@@ -72,7 +72,7 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
   // ── Task description ──
   const [taskIntent, setTaskIntent] = createSignal("");
   const [aiLoading, setAiLoading] = createSignal(false);
-  const [aiResult, setAiResult] = createSignal<Record<string, unknown> | null>(null);
+  const [_aiResult, setAiResult] = createSignal<Record<string, unknown> | null>(null);
 
   // ── Inline AI config (shown when AI not yet configured) ──
   const [showAiSetup, setShowAiSetup] = createSignal(false);
@@ -104,7 +104,7 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
   const [error, setError] = createSignal("");
 
   // ── Derived ──
-  const loadedServices = () =>
+  const _loadedServices = () =>
     props.availableConnectors.filter((a) => a.loaded && selectedServices().has(a.name));
 
   const allSchemas = () => {
@@ -116,8 +116,17 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
           name: avail.name,
           version: "",
           description: "",
-          triggers: avail.triggers.map((t) => ({ name: t.name, description: t.description, schema: t.schema })),
-          actions: avail.actions.map((a) => ({ name: a.name, description: a.description, input_schema: a.input_schema, output_schema: a.output_schema })),
+          triggers: avail.triggers.map((t) => ({
+            name: t.name,
+            description: t.description,
+            schema: t.schema,
+          })),
+          actions: avail.actions.map((a) => ({
+            name: a.name,
+            description: a.description,
+            input_schema: a.input_schema,
+            output_schema: a.output_schema,
+          })),
         });
       }
     }
@@ -148,19 +157,29 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
       const actName = firstAction?.action ?? "";
 
       if (connName) {
-        setSelectedServices((prev) => { const next = new Set(prev); next.add(connName); return next; });
+        setSelectedServices((prev) => {
+          const next = new Set(prev);
+          next.add(connName);
+          return next;
+        });
       }
       if (actConn) {
-        setSelectedServices((prev) => { const next = new Set(prev); next.add(actConn); return next; });
+        setSelectedServices((prev) => {
+          const next = new Set(prev);
+          next.add(actConn);
+          return next;
+        });
       }
 
-      setAgents([{
-        id: nextSlotId++,
-        connectorName: connName,
-        triggerName: trigName,
-        actionConnector: actConn,
-        actionName: actName,
-      }]);
+      setAgents([
+        {
+          id: nextSlotId++,
+          connectorName: connName,
+          triggerName: trigName,
+          actionConnector: actConn,
+          actionName: actName,
+        },
+      ]);
 
       if (!teamName()) {
         setTeamName((rule.name as string) ?? "My Team");
@@ -182,7 +201,11 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
       applyAiResult(rule);
     } catch (e) {
       const msg = String(e);
-      if (msg.includes("disabled") || msg.includes("NoopAdapter") || msg.includes("not configured")) {
+      if (
+        msg.includes("disabled") ||
+        msg.includes("NoopAdapter") ||
+        msg.includes("not configured")
+      ) {
         setShowAiSetup(true);
       } else {
         setError(msg);
@@ -239,9 +262,7 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
   };
 
   const updateAgent = (id: number, field: keyof AgentSlot, value: string) => {
-    setAgents((prev) =>
-      prev.map((a) => (a.id === id ? { ...a, [field]: value } : a))
-    );
+    setAgents((prev) => prev.map((a) => (a.id === id ? { ...a, [field]: value } : a)));
   };
 
   const handleDeploy = async () => {
@@ -278,7 +299,9 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
     <div class="space-y-4">
       <div class="mb-2 flex items-center justify-between">
         <h2 class="colony-text-md font-bold text-text-primary">Build Your Bot/Team</h2>
-        <button onClick={props.onCancel} class="colony-close-btn">✕</button>
+        <button type="button" onClick={props.onCancel} class="colony-close-btn">
+          ✕
+        </button>
       </div>
 
       {error() && (
@@ -301,6 +324,7 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
           />
           <Show when={props.onParseRule}>
             <button
+              type="button"
               onClick={handleAiGenerate}
               disabled={aiLoading()}
               class="colony-text-2xs border-2 border-accent bg-soil-light px-3 py-1.5 text-accent hover:bg-soil-deep disabled:opacity-50"
@@ -310,7 +334,9 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
           </Show>
         </div>
         <Show when={!props.onParseRule}>
-          <p class="colony-text-3xs mt-1 text-text-dim">No AI configured — pick services and agents manually below</p>
+          <p class="colony-text-3xs mt-1 text-text-dim">
+            No AI configured — pick services and agents manually below
+          </p>
         </Show>
 
         {/* Inline AI setup — appears when AI button is clicked but no adapter is configured */}
@@ -318,21 +344,46 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
           <div class="mt-3 rounded border-2 border-accent/50 bg-soil-deep p-3 space-y-3">
             <div class="flex items-center justify-between">
               <p class="colony-text-2xs font-bold text-accent">Set up AI adapter</p>
-              <button onClick={() => setShowAiSetup(false)} class="colony-text-3xs text-text-dim hover:text-text-secondary">skip</button>
+              <button
+                type="button"
+                onClick={() => setShowAiSetup(false)}
+                class="colony-text-3xs text-text-dim hover:text-text-secondary"
+              >
+                skip
+              </button>
             </div>
             <div class="space-y-1.5">
-              <For each={[
-                { value: "ollama", label: "Ollama (Local)", desc: "Private — no data leaves your machine" },
-                { value: "openai", label: "OpenAI Compatible", desc: "GPT, Gemini, DeepSeek, OpenRouter" },
-                { value: "anthropic", label: "Anthropic", desc: "Claude with native tool use" },
-              ]}>
+              <For
+                each={[
+                  {
+                    value: "ollama",
+                    label: "Ollama (Local)",
+                    desc: "Private — no data leaves your machine",
+                  },
+                  {
+                    value: "openai",
+                    label: "OpenAI Compatible",
+                    desc: "GPT, Gemini, DeepSeek, OpenRouter",
+                  },
+                  { value: "anthropic", label: "Anthropic", desc: "Claude with native tool use" },
+                ]}
+              >
                 {(opt) => (
-                  <label class={`flex cursor-pointer items-start gap-2 rounded border-2 p-2 ${
-                    aiAdapterType() === opt.value ? "border-status-ok bg-status-ok/5" : "border-bark hover:border-bark-light"
-                  }`}>
-                    <input type="radio" name="oobe-ai" value={opt.value}
+                  <label
+                    class={`flex cursor-pointer items-start gap-2 rounded border-2 p-2 ${
+                      aiAdapterType() === opt.value
+                        ? "border-status-ok bg-status-ok/5"
+                        : "border-bark hover:border-bark-light"
+                    }`}
+                  >
+                    <input
+                      type="radio"
+                      name="oobe-ai"
+                      value={opt.value}
                       checked={aiAdapterType() === opt.value}
-                      onChange={() => setAiAdapterType(opt.value)} class="mt-0.5" />
+                      onChange={() => setAiAdapterType(opt.value)}
+                      class="mt-0.5"
+                    />
                     <div>
                       <span class="colony-text-2xs font-bold text-text-primary">{opt.label}</span>
                       <p class="colony-text-3xs text-text-dim">{opt.desc}</p>
@@ -343,60 +394,92 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
             </div>
             <Show when={aiAdapterType() === "ollama"}>
               <div class="space-y-2">
-                <div>
-                  <label class="colony-text-3xs text-text-secondary">Ollama URL</label>
-                  <input type="text" value={aiBaseUrl()} onInput={(e) => setAiBaseUrl(e.currentTarget.value)}
+                <label class="block">
+                  <span class="colony-text-3xs text-text-secondary">Ollama URL</span>
+                  <input
+                    type="text"
+                    value={aiBaseUrl()}
+                    onInput={(e) => setAiBaseUrl(e.currentTarget.value)}
                     placeholder="http://127.0.0.1:11434"
-                    class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-mid px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none" />
-                </div>
-                <div>
-                  <label class="colony-text-3xs text-text-secondary">Model</label>
-                  <input type="text" value={aiModel()} onInput={(e) => setAiModel(e.currentTarget.value)}
+                    class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-mid px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none"
+                  />
+                </label>
+                <label class="block">
+                  <span class="colony-text-3xs text-text-secondary">Model</span>
+                  <input
+                    type="text"
+                    value={aiModel()}
+                    onInput={(e) => setAiModel(e.currentTarget.value)}
                     placeholder="llama3.2"
-                    class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-mid px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none" />
-                </div>
+                    class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-mid px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none"
+                  />
+                </label>
               </div>
             </Show>
             <Show when={aiAdapterType() === "openai"}>
               <div class="space-y-2">
-                <div>
-                  <label class="colony-text-3xs text-text-secondary">API Base URL</label>
-                  <input type="text" value={aiBaseUrl()} onInput={(e) => setAiBaseUrl(e.currentTarget.value)}
+                <label class="block">
+                  <span class="colony-text-3xs text-text-secondary">API Base URL</span>
+                  <input
+                    type="text"
+                    value={aiBaseUrl()}
+                    onInput={(e) => setAiBaseUrl(e.currentTarget.value)}
                     placeholder="https://api.openai.com"
-                    class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-mid px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none" />
-                </div>
-                <div>
-                  <label class="colony-text-3xs text-text-secondary">API Key</label>
-                  <input type="password" value={aiApiKey()} onInput={(e) => setAiApiKey(e.currentTarget.value)}
+                    class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-mid px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none"
+                  />
+                </label>
+                <label class="block">
+                  <span class="colony-text-3xs text-text-secondary">API Key</span>
+                  <input
+                    type="password"
+                    value={aiApiKey()}
+                    onInput={(e) => setAiApiKey(e.currentTarget.value)}
                     placeholder="sk-..."
-                    class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-mid px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none" />
-                </div>
-                <div>
-                  <label class="colony-text-3xs text-text-secondary">Model</label>
-                  <input type="text" value={aiModel()} onInput={(e) => setAiModel(e.currentTarget.value)}
+                    class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-mid px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none"
+                  />
+                </label>
+                <label class="block">
+                  <span class="colony-text-3xs text-text-secondary">Model</span>
+                  <input
+                    type="text"
+                    value={aiModel()}
+                    onInput={(e) => setAiModel(e.currentTarget.value)}
                     placeholder="gpt-4o"
-                    class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-mid px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none" />
-                </div>
+                    class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-mid px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none"
+                  />
+                </label>
               </div>
             </Show>
             <Show when={aiAdapterType() === "anthropic"}>
               <div class="space-y-2">
-                <div>
-                  <label class="colony-text-3xs text-text-secondary">API Key</label>
-                  <input type="password" value={aiApiKey()} onInput={(e) => setAiApiKey(e.currentTarget.value)}
+                <label class="block">
+                  <span class="colony-text-3xs text-text-secondary">API Key</span>
+                  <input
+                    type="password"
+                    value={aiApiKey()}
+                    onInput={(e) => setAiApiKey(e.currentTarget.value)}
                     placeholder="sk-ant-..."
-                    class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-mid px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none" />
-                </div>
-                <div>
-                  <label class="colony-text-3xs text-text-secondary">Model</label>
-                  <input type="text" value={aiModel()} onInput={(e) => setAiModel(e.currentTarget.value)}
+                    class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-mid px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none"
+                  />
+                </label>
+                <label class="block">
+                  <span class="colony-text-3xs text-text-secondary">Model</span>
+                  <input
+                    type="text"
+                    value={aiModel()}
+                    onInput={(e) => setAiModel(e.currentTarget.value)}
                     placeholder="claude-sonnet-4-20250514"
-                    class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-mid px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none" />
-                </div>
+                    class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-mid px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none"
+                  />
+                </label>
               </div>
             </Show>
-            <button onClick={handleSaveAiConfig} disabled={aiSaving()}
-              class="colony-text-2xs border-2 border-status-ok bg-soil-light px-3 py-1.5 text-status-ok hover:bg-soil-deep disabled:opacity-50">
+            <button
+              type="button"
+              onClick={handleSaveAiConfig}
+              disabled={aiSaving()}
+              class="colony-text-2xs border-2 border-status-ok bg-soil-light px-3 py-1.5 text-status-ok hover:bg-soil-deep disabled:opacity-50"
+            >
               {aiSaving() ? "Saving..." : "Save & Generate"}
             </button>
           </div>
@@ -413,6 +496,7 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
               const isLoaded = () => conn.loaded || !conn.requires_config;
               return (
                 <button
+                  type="button"
                   onClick={() => {
                     if (!isLoaded() && !isSelected()) {
                       props.onSetupConnector(conn.name);
@@ -425,7 +509,9 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
                       : "border-bark bg-soil-deep text-text-secondary hover:border-bark-light"
                   }`}
                 >
-                  <span class="colony-text-2xs font-bold">{conn.name.replace("connector-", "")}</span>
+                  <span class="colony-text-2xs font-bold">
+                    {conn.name.replace("connector-", "")}
+                  </span>
                   <Show when={!isLoaded()}>
                     <span class="colony-text-3xs ml-1 text-status-warn">(configure)</span>
                   </Show>
@@ -447,6 +533,7 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
         <div class="mb-1 flex items-center justify-between">
           <h3 class="colony-label">SQUAD ({agents().length} agents)</h3>
           <button
+            type="button"
             onClick={addAgent}
             class="colony-text-3xs border border-bark bg-soil-light px-2 py-0.5 text-text-secondary hover:border-bark-light"
           >
@@ -481,12 +568,14 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
                     </div>
                     <div class="flex gap-1">
                       <button
+                        type="button"
                         onClick={() => setEditingSlot(isEditing() ? null : agent.id)}
                         class="colony-text-3xs border border-bark px-1.5 py-0.5 text-text-secondary hover:border-bark-light"
                       >
                         {isEditing() ? "Done" : "Configure"}
                       </button>
                       <button
+                        type="button"
                         onClick={() => removeAgent(agent.id)}
                         class="colony-text-3xs border border-bark px-1.5 py-0.5 text-status-error hover:border-status-error"
                       >
@@ -498,8 +587,8 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
                   {/* Expanded config */}
                   <Show when={isEditing()}>
                     <div class="mt-2 space-y-2 border-t border-bark pt-2">
-                      <div>
-                        <label class="colony-text-3xs text-text-secondary">Trigger connector</label>
+                      <label class="block">
+                        <span class="colony-text-3xs text-text-secondary">Trigger connector</span>
                         <select
                           value={agent.connectorName}
                           onChange={(e) => {
@@ -510,16 +599,20 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
                         >
                           <option value="">Select service...</option>
                           <For each={selectedConnectorNames()}>
-                            {(name) => <option value={name}>{name.replace("connector-", "")}</option>}
+                            {(name) => (
+                              <option value={name}>{name.replace("connector-", "")}</option>
+                            )}
                           </For>
                         </select>
-                      </div>
+                      </label>
                       <Show when={agent.connectorName}>
-                        <div>
-                          <label class="colony-text-3xs text-text-secondary">Trigger event</label>
+                        <label class="block">
+                          <span class="colony-text-3xs text-text-secondary">Trigger event</span>
                           <select
                             value={agent.triggerName}
-                            onChange={(e) => updateAgent(agent.id, "triggerName", e.currentTarget.value)}
+                            onChange={(e) =>
+                              updateAgent(agent.id, "triggerName", e.currentTarget.value)
+                            }
                             class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-mid px-2 py-1.5 text-text-primary"
                           >
                             <option value="">Select trigger...</option>
@@ -527,10 +620,10 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
                               {(t) => <option value={t.name}>{t.name}</option>}
                             </For>
                           </select>
-                        </div>
+                        </label>
                       </Show>
-                      <div>
-                        <label class="colony-text-3xs text-text-secondary">Action connector</label>
+                      <label class="block">
+                        <span class="colony-text-3xs text-text-secondary">Action connector</span>
                         <select
                           value={agent.actionConnector}
                           onChange={(e) => {
@@ -541,16 +634,20 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
                         >
                           <option value="">Select service...</option>
                           <For each={selectedConnectorNames()}>
-                            {(name) => <option value={name}>{name.replace("connector-", "")}</option>}
+                            {(name) => (
+                              <option value={name}>{name.replace("connector-", "")}</option>
+                            )}
                           </For>
                         </select>
-                      </div>
+                      </label>
                       <Show when={agent.actionConnector}>
-                        <div>
-                          <label class="colony-text-3xs text-text-secondary">Action</label>
+                        <label class="block">
+                          <span class="colony-text-3xs text-text-secondary">Action</span>
                           <select
                             value={agent.actionName}
-                            onChange={(e) => updateAgent(agent.id, "actionName", e.currentTarget.value)}
+                            onChange={(e) =>
+                              updateAgent(agent.id, "actionName", e.currentTarget.value)
+                            }
                             class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-mid px-2 py-1.5 text-text-primary"
                           >
                             <option value="">Select action...</option>
@@ -558,7 +655,7 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
                               {(a) => <option value={a.name}>{a.name}</option>}
                             </For>
                           </select>
-                        </div>
+                        </label>
                       </Show>
                     </div>
                   </Show>
@@ -573,8 +670,8 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
       <section class="rounded border-2 border-bark-light bg-soil-deep p-3">
         <h3 class="colony-label mb-2">TEAM OVERVIEW</h3>
         <div class="space-y-2">
-          <div>
-            <label class="colony-text-3xs text-text-secondary">Team name</label>
+          <label class="block">
+            <span class="colony-text-3xs text-text-secondary">Team name</span>
             <input
               type="text"
               value={teamName()}
@@ -582,22 +679,21 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
               placeholder="e.g., GitHub Monitor"
               class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-mid px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none"
             />
-          </div>
+          </label>
           <div class="flex gap-3">
-            <div class="flex-1">
-              <label class="colony-text-3xs text-text-secondary">Intent</label>
+            <label class="block flex-1">
+              <span class="colony-text-3xs text-text-secondary">Intent</span>
               <select
                 value={intent()}
                 onChange={(e) => setIntent(e.currentTarget.value)}
                 class="colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-mid px-2 py-1.5 text-text-primary"
               >
-                <For each={props.intents}>
-                  {(i) => <option value={i.value}>{i.label}</option>}
-                </For>
+                <For each={props.intents}>{(i) => <option value={i.value}>{i.label}</option>}</For>
               </select>
-            </div>
+            </label>
             <div class="flex items-end">
               <button
+                type="button"
                 onClick={() => setGuardMode(!guardMode())}
                 class={`colony-text-2xs border-2 px-3 py-1.5 ${
                   guardMode()
@@ -611,18 +707,31 @@ export const TeamBuilder: Component<TeamBuilderProps> = (props) => {
           </div>
           <div class="colony-text-3xs text-text-dim">
             {agents().length} agent{agents().length !== 1 ? "s" : ""} •{" "}
-            {[...new Set(agents().map((a) => a.connectorName).filter(Boolean))].map((n) => n.replace("connector-", "")).join(", ") || "no services"} •{" "}
-            {intent()} intent
+            {[
+              ...new Set(
+                agents()
+                  .map((a) => a.connectorName)
+                  .filter(Boolean),
+              ),
+            ]
+              .map((n) => n.replace("connector-", ""))
+              .join(", ") || "no services"}{" "}
+            • {intent()} intent
           </div>
         </div>
       </section>
 
       {/* ── DEPLOY ── */}
       <div class="flex justify-between">
-        <button onClick={props.onCancel} class="colony-text-2xs text-text-dim hover:text-text-secondary">
+        <button
+          type="button"
+          onClick={props.onCancel}
+          class="colony-text-2xs text-text-dim hover:text-text-secondary"
+        >
           Cancel
         </button>
         <button
+          type="button"
           onClick={handleDeploy}
           disabled={!canDeploy() || deploying()}
           class="colony-text-2xs border-2 border-status-ok bg-soil-light px-4 py-2 font-bold text-status-ok hover:bg-soil-deep disabled:opacity-50"

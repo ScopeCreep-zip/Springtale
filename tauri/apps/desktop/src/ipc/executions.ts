@@ -5,21 +5,18 @@
  * Content retention is opt-in (Phase C) and exposed through the
  * `*_blob_ref` fields, never inlined.
  */
-import { invoke } from "@tauri-apps/api/core";
+
 import type {
   ExecutionFilterInput,
   ExecutionInfo,
   ExecutionStepInfo,
 } from "@springtale/ui/dashboard/types";
+import { invoke } from "@tauri-apps/api/core";
 
-export async function listExecutions(
-  filter: ExecutionFilterInput,
-): Promise<ExecutionInfo[]> {
+export async function listExecutions(filter: ExecutionFilterInput): Promise<ExecutionInfo[]> {
   return invoke<ExecutionInfo[]>("list_executions", { filter });
 }
 
-export async function getExecutionSteps(
-  executionId: string,
-): Promise<ExecutionStepInfo[]> {
+export async function getExecutionSteps(executionId: string): Promise<ExecutionStepInfo[]> {
   return invoke<ExecutionStepInfo[]>("get_execution_steps", { executionId });
 }

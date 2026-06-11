@@ -5,7 +5,7 @@
  * server-side; this module only translates between the SolidJS
  * provider surface and the `commands::recipes` Tauri commands.
  */
-import { invoke } from "@tauri-apps/api/core";
+
 import type {
   PreflightReport,
   PreviewReport,
@@ -16,6 +16,7 @@ import type {
   RecipeInputs,
   RecipePieceSummary,
 } from "@springtale/ui";
+import { invoke } from "@tauri-apps/api/core";
 
 export async function listRecipes(filter?: RecipeFilter): Promise<Recipe[]> {
   return invoke<Recipe[]>("list_recipes", { filter: filter ?? null });
@@ -44,10 +45,7 @@ export async function applyRecipe(
   return invoke<RecipeApplyReport>("apply_recipe", { recipeId, inputs });
 }
 
-export async function renderRecipeToml(
-  recipeId: string,
-  inputs: RecipeInputs,
-): Promise<string> {
+export async function renderRecipeToml(recipeId: string, inputs: RecipeInputs): Promise<string> {
   return invoke<string>("render_recipe_toml", { recipeId, inputs });
 }
 

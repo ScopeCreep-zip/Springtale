@@ -1,10 +1,16 @@
-import { createSignal, For, Show } from "solid-js";
-import type { Component, JSX } from "solid-js";
-import type { ColonyNode, ColonyAgent, ColonyConnection, ColonyFormation, ColonySelection } from "./types";
-import type { EventItem } from "../dashboard/model";
 import type { AvailableConnector, ConnectorSchema } from "@springtale/types";
+import type { Component, JSX } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
+import type { EventItem } from "../dashboard/model";
 import { ColonyCanvas } from "./ColonyCanvas";
 import { EventRibbon } from "./EventRibbon";
+import type {
+  ColonyAgent,
+  ColonyConnection,
+  ColonyFormation,
+  ColonyNode,
+  ColonySelection,
+} from "./types";
 
 export interface ViewportProps {
   nodes: ColonyNode[];
@@ -67,12 +73,14 @@ export const Viewport: Component<ViewportProps> = (props) => {
       {/* Layer toggle — top left */}
       <div class="absolute left-1.5 top-1.5 z-[15] flex gap-0.5">
         <button
+          type="button"
           class={`colony-layer-btn ${!underground() ? "is-active" : ""}`}
           onClick={() => setUnderground(false)}
         >
           NETWORK
         </button>
         <button
+          type="button"
           class={`colony-layer-btn ${underground() ? "is-active" : ""}`}
           onClick={() => setUnderground(true)}
         >
@@ -86,9 +94,14 @@ export const Viewport: Component<ViewportProps> = (props) => {
           {(event) => (
             <div class={`colony-feed-entry ${event.severity === "error" ? "is-warning" : ""}`}>
               <span class="min-w-[32px] text-text-dim">
-                {new Date(event.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                {new Date(event.timestamp).toLocaleTimeString([], {
+                  hour: "2-digit",
+                  minute: "2-digit",
+                })}
               </span>
-              <span class={`min-w-[38px] font-bold ${event.severity === "error" ? "text-status-warn" : "text-status-ok"}`}>
+              <span
+                class={`min-w-[38px] font-bold ${event.severity === "error" ? "text-status-warn" : "text-status-ok"}`}
+              >
                 {event.connectorName}
               </span>
               <span class="overflow-hidden text-ellipsis whitespace-nowrap text-text-secondary">

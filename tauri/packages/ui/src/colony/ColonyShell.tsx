@@ -1,7 +1,7 @@
-import { Show } from "solid-js";
 import type { Component, JSX } from "solid-js";
-import { useI18n } from "../i18n/context";
+import { Show } from "solid-js";
 import { useDashboard } from "../dashboard/context";
+import { useI18n } from "../i18n/context";
 
 export interface ColonyShellProps {
   topBar: JSX.Element;
@@ -40,18 +40,22 @@ export const ColonyShell: Component<ColonyShellProps> = (props) => {
       <Show when={db.error()}>
         <div class="colony-text-2xs flex items-center justify-between border-b border-status-error bg-status-error/10 px-3 py-1 text-status-error">
           <span>{db.error()}</span>
-          <button onClick={() => db.clearError()} class="colony-close-btn ml-2">✕</button>
+          <button type="button" onClick={() => db.clearError()} class="colony-close-btn ml-2">
+            ✕
+          </button>
         </div>
       </Show>
 
       {/* Notification banner — auto-dismiss, colored by type */}
       <Show when={props.notification}>
-        <div class={`colony-text-2xs flex items-center px-3 py-1 ${
-          props.notification!.type === "ok"
-            ? "border-b border-status-ok bg-status-ok/10 text-status-ok"
-            : "border-b border-status-warn bg-status-warn/10 text-status-warn"
-        }`}>
-          <span>{props.notification!.message}</span>
+        <div
+          class={`colony-text-2xs flex items-center px-3 py-1 ${
+            props.notification?.type === "ok"
+              ? "border-b border-status-ok bg-status-ok/10 text-status-ok"
+              : "border-b border-status-warn bg-status-warn/10 text-status-warn"
+          }`}
+        >
+          <span>{props.notification?.message}</span>
         </div>
       </Show>
 

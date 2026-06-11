@@ -8,8 +8,9 @@
  * `MemberPickerOverlay` callback shape per the existing
  * thin-frontend pattern.
  */
-import { Show, createSignal } from "solid-js";
+
 import type { Component } from "solid-js";
+import { createSignal, Show } from "solid-js";
 
 import { useDashboard } from "../dashboard/context";
 
@@ -54,18 +55,15 @@ export const SelectorPickerOverlay: Component<SelectorPickerOverlayProps> = (pro
 
   return (
     <div class="mx-auto max-w-2xl rounded border-2 border-bark bg-soil-mid p-6">
-      <p class="colony-text-md font-bold text-text-primary">
-        Pick an element
-      </p>
+      <p class="colony-text-md font-bold text-text-primary">Pick an element</p>
       <p class="colony-text-xs mt-2 text-text-secondary">
-        Opens <span class="text-text-primary">{props.initialUrl}</span> in a
-        picker window. Hover an element to highlight, click to copy its CSS
-        selector back into this form. Press <kbd>Esc</kbd> to cancel.
+        Opens <span class="text-text-primary">{props.initialUrl}</span> in a picker window. Hover an
+        element to highlight, click to copy its CSS selector back into this form. Press{" "}
+        <kbd>Esc</kbd> to cancel.
       </p>
       <Show when={(props.hostAllowlist?.length ?? 0) > 0}>
         <p class="colony-text-3xs mt-2 text-text-dim">
-          Recipe allow-list:{" "}
-          {(props.hostAllowlist ?? []).join(", ") || "(none)"}
+          Recipe allow-list: {(props.hostAllowlist ?? []).join(", ") || "(none)"}
         </p>
       </Show>
 
@@ -76,9 +74,8 @@ export const SelectorPickerOverlay: Component<SelectorPickerOverlayProps> = (pro
       <Show when={webFallback()}>
         <div class="mt-4 rounded border border-bark bg-soil-deep p-3">
           <p class="colony-text-xs text-status-warn">
-            The selector picker requires the desktop app. On the web
-            dashboard, type the CSS selector directly — use your
-            browser's DevTools (Inspect → right-click the element →
+            The selector picker requires the desktop app. On the web dashboard, type the CSS
+            selector directly — use your browser's DevTools (Inspect → right-click the element →
             Copy → Selector) to grab one.
           </p>
         </div>
@@ -86,6 +83,7 @@ export const SelectorPickerOverlay: Component<SelectorPickerOverlayProps> = (pro
 
       <div class="mt-6 flex justify-end gap-2">
         <button
+          type="button"
           class="colony-text-sm rounded border border-bark px-4 py-2 hover:bg-soil-deep"
           onClick={props.onCancel}
           disabled={working()}
@@ -94,6 +92,7 @@ export const SelectorPickerOverlay: Component<SelectorPickerOverlayProps> = (pro
         </button>
         <Show when={!webFallback()}>
           <button
+            type="button"
             class="colony-text-sm rounded border border-bark bg-soil-deep px-4 py-2 text-text-primary hover:bg-soil-light"
             onClick={openPicker}
             disabled={working()}

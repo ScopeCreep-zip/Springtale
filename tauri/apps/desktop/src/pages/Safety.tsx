@@ -1,14 +1,14 @@
-import { createSignal, onMount } from "solid-js";
-import { useI18n } from "@springtale/ui";
 import type { Locale } from "@springtale/ui";
+import { useI18n } from "@springtale/ui";
+import { createSignal, onMount } from "solid-js";
 import {
   getSafetyConfig,
+  type SafetyConfig,
   saveSafetyConfig,
-  setWindowTitle,
   setDisguiseActive,
   setDisguiseProfile,
   setPanicTapCount,
-  type SafetyConfig,
+  setWindowTitle,
 } from "../ipc/safety";
 
 /**
@@ -129,7 +129,11 @@ export function SafetyPage() {
     <div>
       <h1 class="text-2xl font-bold text-white">{t("safety.title")}</h1>
       {error() && (
-        <div role="alert" aria-live="assertive" class="mt-4 rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+        <div
+          role="alert"
+          aria-live="assertive"
+          class="mt-4 rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400"
+        >
           {error()}
         </div>
       )}
@@ -139,11 +143,11 @@ export function SafetyPage() {
           <h2 id="disguise-heading" class="text-lg font-semibold text-gray-200">
             {t("safety.appDisguise")}
           </h2>
-          <p class="mt-1 text-sm text-gray-400">
-            {t("safety.appDisguiseDesc")}
-          </p>
+          <p class="mt-1 text-sm text-gray-400">{t("safety.appDisguiseDesc")}</p>
           <div class="mt-3">
-            <label for="window-title" class="sr-only">{t("safety.appDisguise")}</label>
+            <label for="window-title" class="sr-only">
+              {t("safety.appDisguise")}
+            </label>
             <select
               id="window-title"
               value={config().window_title}
@@ -210,9 +214,7 @@ export function SafetyPage() {
           <h2 id="autolock-heading" class="text-lg font-semibold text-gray-200">
             {t("safety.autoLock")}
           </h2>
-          <p class="mt-1 text-sm text-gray-400">
-            {t("safety.autoLockDesc")}
-          </p>
+          <p class="mt-1 text-sm text-gray-400">{t("safety.autoLockDesc")}</p>
           <div class="mt-3">
             <label for="autolock-minutes" class="block text-sm font-medium text-gray-300">
               {t("safety.autoLockMinutes")}
@@ -222,7 +224,9 @@ export function SafetyPage() {
               type="number"
               min="0"
               value={config().auto_lock_minutes}
-              onInput={(e) => updateConfig({ auto_lock_minutes: parseInt(e.currentTarget.value) || 0 })}
+              onInput={(e) =>
+                updateConfig({ auto_lock_minutes: parseInt(e.currentTarget.value, 10) || 0 })
+              }
               class="mt-1 w-full rounded border border-gray-700 bg-gray-800 px-3 py-2 text-white placeholder-gray-500 focus:border-blue-500 focus:outline-none"
             />
           </div>
@@ -232,9 +236,7 @@ export function SafetyPage() {
           <h2 id="quickhide-heading" class="text-lg font-semibold text-gray-200">
             {t("safety.quickHide")}
           </h2>
-          <p class="mt-1 text-sm text-gray-400">
-            {t("safety.quickHideDesc")}
-          </p>
+          <p class="mt-1 text-sm text-gray-400">{t("safety.quickHideDesc")}</p>
           <div class="mt-3">
             <p class="rounded border border-gray-700 bg-gray-800 px-3 py-2 text-sm text-gray-300">
               {config().quick_hide_shortcut}
@@ -246,9 +248,7 @@ export function SafetyPage() {
           <h2 id="content-protection-heading" class="text-lg font-semibold text-gray-200">
             {t("safety.contentProtection")}
           </h2>
-          <p class="mt-1 text-sm text-gray-400">
-            {t("safety.contentProtectionDesc")}
-          </p>
+          <p class="mt-1 text-sm text-gray-400">{t("safety.contentProtectionDesc")}</p>
           <div class="mt-3 flex items-center gap-3">
             <input
               id="content-protected"
@@ -269,12 +269,13 @@ export function SafetyPage() {
             Panic-tap threshold
           </h2>
           <p class="mt-1 text-sm text-gray-400">
-            Rapid title-bar taps that trigger panic wipe. <strong>0</strong> disables
-            the gesture; valid range <strong>0–10</strong>. The platform shell
-            counts taps within a short window.
+            Rapid title-bar taps that trigger panic wipe. <strong>0</strong> disables the gesture;
+            valid range <strong>0–10</strong>. The platform shell counts taps within a short window.
           </p>
           <div class="mt-3">
-            <label for="panic-tap-count" class="sr-only">Panic-tap count</label>
+            <label for="panic-tap-count" class="sr-only">
+              Panic-tap count
+            </label>
             <input
               id="panic-tap-count"
               type="number"
@@ -292,7 +293,9 @@ export function SafetyPage() {
             {t("settings.language")}
           </h2>
           <div class="mt-3">
-            <label for="dt-language-select" class="sr-only">{t("settings.language")}</label>
+            <label for="dt-language-select" class="sr-only">
+              {t("settings.language")}
+            </label>
             <select
               id="dt-language-select"
               value={locale()}
@@ -312,6 +315,7 @@ export function SafetyPage() {
         </section>
 
         <button
+          type="button"
           onClick={save}
           class="rounded bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-500"
         >
@@ -322,18 +326,17 @@ export function SafetyPage() {
           <h2 id="panic-heading" class="text-lg font-semibold text-red-400">
             {t("safety.panicWipe")}
           </h2>
-          <p class="mt-1 text-sm text-gray-400">
-            {t("safety.panicWipeDesc")}
-          </p>
+          <p class="mt-1 text-sm text-gray-400">{t("safety.panicWipeDesc")}</p>
           <div class="mt-3">
             <button
+              type="button"
               onClick={async () => {
                 try {
                   const { ask } = await import("@tauri-apps/plugin-dialog");
-                  const confirmed = await ask(
-                    t("safety.panicWipeConfirm"),
-                    { title: t("safety.panicWipe"), kind: "warning" },
-                  );
+                  const confirmed = await ask(t("safety.panicWipeConfirm"), {
+                    title: t("safety.panicWipe"),
+                    kind: "warning",
+                  });
                   if (confirmed) {
                     const { panicWipe } = await import("../ipc/panic");
                     await panicWipe();

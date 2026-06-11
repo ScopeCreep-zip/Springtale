@@ -74,6 +74,15 @@ export interface ColonyFormation {
    * "disruption"). Stored slugged for direct CSS-attribute use.
    */
   pacingPhase?: "prep" | "active" | "peak" | "recovery" | "disrupted";
+  /**
+   * W7 — current cascade streak, present only while this formation is
+   * *actively* cascading. Derived from the most-recent `cascade_hit`
+   * cooperation event, gated on recency against the colony's own latest
+   * event timestamp (not wall-clock), so it reflects "cascading right now"
+   * and clears on its own as the event timeline moves past it. `undefined`
+   * = not cascading; never decoration.
+   */
+  cascadeStreak?: number;
 }
 
 export interface ColonySelection {
@@ -98,7 +107,7 @@ export type DetailView =
   | { mode: "formations"; addAgentId?: string }
   /** W2.E — A2UI canvas block surface; renders structured output from
    *  the bot's `CanvasState` via the shared `Canvas` component. */
-  | { mode: "canvas" }
+  | { mode: "canvas" };
 
 /**
  * Colony command — context-aware, type-safe.
@@ -120,12 +129,25 @@ export interface ColonyCommand {
   context: "global" | "connector" | "agent" | "formation";
   /** Unique action ID for dispatch (context:action) */
   action: string;
+  /**
+   * W6 Nintendo 3-action rule: the command grid leads with the (≤3)
+   * `primary` commands per context and tucks the rest behind a "MORE"
+   * drawer, so a new user is never shown more than three choices at once.
+   * Marked on the everyday actions; everything else is secondary.
+   */
+  primary?: boolean;
 }
 
 // ── Command definitions per context ─────────────────────
 
-const cmd = (icon: string, label: string, key: string, context: ColonyCommand["context"], action: string): ColonyCommand =>
-  ({ icon, label, key, context, action });
+const cmd = (
+  icon: string,
+  label: string,
+  key: string,
+  context: ColonyCommand["context"],
+  action: string,
+  primary = false,
+): ColonyCommand => ({ icon, label, key, context, action, primary });
 
 export const COMMANDS: Record<string, (ColonyCommand | null)[]> = {
   none: [
@@ -134,18 +156,28 @@ export const COMMANDS: Record<string, (ColonyCommand | null)[]> = {
     // Slot reclaimed for MAKE BOT — the entry point back to the
     // bot/team selection hub (ModeSelectOverlay) for adding more bots
     // after the canvas already has some.
+    // ASK is the primary chat entry point (W5) — talk to the bot directly
+    // to get the weather, research, scrape, or make a change. First slot so
+    // it's the home grid's lead action (Nintendo 3-action: Ask / Bots /
+    // Connectors are the everyday three).
+    // Primary three (Nintendo rule): Ask / Bots / Connectors — what a user
+    // reaches for every day. The rest live behind MORE.
+    cmd("?", "ASK", "A", "global", "global:chat", true),
+    cmd("*", "BOTS", "B", "global", "global:bots", true),
+    cmd("^", "CONNECTORS", "C", "global", "global:connectors", true),
     cmd("+", "MAKE BOT", "M", "global", "global:make_bot"),
     cmd("+", "NEW RULE", "N", "global", "global:new_rule"),
-    cmd("^", "CONNECTORS", "C", "global", "global:connectors"),
     cmd(".", "EVENTS", "E", "global", "global:events"),
-    cmd("*", "BOTS", "B", "global", "global:bots"),
     cmd("%", "SETTINGS", "S", "global", "global:settings"),
-    null, null, null,
+    null,
+    null,
   ],
   agent: [
-    cmd("@", "AI", "A", "agent", "agent:ai_config"),
-    cmd("^", "AUTO +", "=", "agent", "agent:autonomy_up"),
-    cmd("v", "AUTO -", "-", "agent", "agent:autonomy_down"),
+    // Primary three: configure AI, dial autonomy up/down — the levers you
+    // touch on a running agent. Pause/reassign/detach/etc. behind MORE.
+    cmd("@", "AI", "A", "agent", "agent:ai_config", true),
+    cmd("^", "AUTO +", "=", "agent", "agent:autonomy_up", true),
+    cmd("v", "AUTO -", "-", "agent", "agent:autonomy_down", true),
     cmd("||", "PAUSE", "P", "agent", "agent:pause"),
     cmd("<>", "REASSIGN", "R", "agent", "agent:reassign"),
     cmd("x", "DETACH", "D", "agent", "agent:detach"),
@@ -154,14 +186,16 @@ export const COMMANDS: Record<string, (ColonyCommand | null)[]> = {
     cmd("<<", "RECALL", "C", "agent", "agent:recall"),
   ],
   connector: [
-    cmd("+", "ENABLE", "E", "connector", "connector:enable"),
+    // Primary three: enable / config / test — the setup-and-verify loop.
+    cmd("+", "ENABLE", "E", "connector", "connector:enable", true),
+    cmd("%", "CONFIG", "C", "connector", "connector:config", true),
+    cmd(">", "TEST", "T", "connector", "connector:test", true),
     cmd("x", "DISABLE", "D", "connector", "connector:disable"),
-    cmd("%", "CONFIG", "C", "connector", "connector:config"),
     cmd("-", "REMOVE", "R", "connector", "connector:remove"),
     cmd(".", "EVENTS", "V", "connector", "connector:events"),
-    cmd(">", "TEST", "T", "connector", "connector:test"),
     cmd("^", "OUTPUTS", "O", "connector", "connector:outputs"),
-    null, null,
+    null,
+    null,
   ],
   // F1: formation context is backend-supplied via
   // `provider.formationAvailableCommands(id)` (B11). The status-aware
@@ -216,17 +250,21 @@ export const TIER_CAPABILITIES: Record<number, string[]> = {
   3: ["read env", "neighbors", "chain", "write env", "commit", "consensus", "AI", "recruit"],
 };
 
-export const MUSHROOM_SPRITES = ["sprite-mushroom-gold", "sprite-mushroom-purple", "sprite-mushroom-teal"];
+export const MUSHROOM_SPRITES = [
+  "sprite-mushroom-gold",
+  "sprite-mushroom-purple",
+  "sprite-mushroom-teal",
+];
 
 /** Deterministic hash for stable layout positions */
 export function hash(str: string): number {
   let h = 5381;
   for (let i = 0; i < str.length; i++) {
-    h = ((h << 5) + h) + str.charCodeAt(i);
+    h = (h << 5) + h + str.charCodeAt(i);
   }
   return h;
 }
 
 export function seeded(key: string, min: number, max: number): number {
-  return min + ((hash(key) & 0x7FFFFFFF) % (max - min));
+  return min + ((hash(key) & 0x7fffffff) % (max - min));
 }

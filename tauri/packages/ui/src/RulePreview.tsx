@@ -16,14 +16,17 @@ export interface RulePreviewProps {
 export const RulePreview: Component<RulePreviewProps> = (props) => {
   const { t } = useI18n();
 
+  // `aria-labelledby` ties the section to its heading so screen
+  // readers announce the region correctly; `<section>` is the right
+  // semantic landmark.
   return (
-    <div role="region" aria-label={t("preview.label")}>
-      <label class="block colony-text-xs font-medium text-text-secondary">
+    <section aria-labelledby="rule-preview-heading">
+      <h3 id="rule-preview-heading" class="block colony-text-xs font-medium text-text-secondary">
         {t("preview.label")}
-      </label>
+      </h3>
       <pre class="colony-textarea mt-1 max-h-64 overflow-auto rounded border border-bark bg-soil-deep p-3 colony-text-2xs text-text-secondary">
         {props.toml || t("preview.placeholder")}
       </pre>
-    </div>
+    </section>
   );
 };

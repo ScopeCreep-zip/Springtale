@@ -46,73 +46,65 @@ function sourceBadge(s: RecipeSource): string | null {
 export const RecipeCard: Component<RecipeCardProps> = (props) => {
   const diff = () => difficultyStars(props.recipe.difficulty);
   const badge = () => sourceBadge(props.recipe.source);
-  // Outer wrapper is a `<div role="button">`, NOT a real `<button>`.
-  // The card contains an interactive favorite-toggle child button —
-  // and per HTML5 parsing rules, a `<button>` nested inside a
-  // `<button>` is a parse error: the parser implicitly CLOSES the
-  // outer button when it encounters the inner one, scattering the
-  // remaining children as siblings of the outer. That collapsed DOM
-  // shape diverges from the static-template shape the dom-expressions
-  // compiler walks via `_el$N.firstChild` / `.nextSibling`, so the
-  // walker dereferences `_el$5.nextSibling = null` at mount time
-  // (the symptom we kept chasing through the recipe stack). Using a
-  // div + `role="button"` + keyboard handler keeps the inner
-  // favorite `<button>` valid and the DOM tree matches the template.
-  const handleKey = (e: KeyboardEvent) => {
-    if (e.key === "Enter" || e.key === " ") {
-      e.preventDefault();
-      props.onClick();
-    }
-  };
+  // HTML5 disallows nested interactive content: a `<button>` inside a
+  // `<button>` is a parse error and the parser auto-closes the outer
+  // one, scattering its remaining children as siblings. That breaks the
+  // SolidJS dom-expressions template walker (it asserts the templated
+  // child tree and dereferences `_el$N.nextSibling`, which becomes
+  // `null` after the auto-close — see the recipe-stack mount crash we
+  // chased through Phase B). We keep the favourite toggle as a SIBLING
+  // of the card button, positioned absolutely, so both can be real
+  // `<button>` elements.
   return (
-    <div
-      class="colony-command-btn flex h-full flex-col items-start gap-2 p-4 text-left transition"
-      style={{ "min-height": "160px", cursor: "pointer" }}
-      role="button"
-      tabindex="0"
-      onClick={() => props.onClick()}
-      onKeyDown={handleKey}
-    >
-      <div class="flex w-full items-center justify-between">
-        <div class="colony-text-xl">{props.recipe.icon_id ? labelGlyph(props.recipe.icon_id) : "📦"}</div>
-        <button
-          class="colony-text-sm hover:text-status-ok"
-          aria-label={props.isFavorite ? "Remove from favorites" : "Add to favorites"}
-          onClick={(e) => {
-            e.stopPropagation();
-            props.onToggleFavorite();
-          }}
-        >
-          {props.isFavorite ? "⭐" : "☆"}
-        </button>
-      </div>
-
-      <div class="colony-text-sm font-bold text-text-primary">{props.recipe.name}</div>
-      <div class="colony-text-2xs flex-1 text-text-secondary line-clamp-2">
-        {props.recipe.description}
-      </div>
-
-      <div class="flex w-full items-center justify-between">
-        <div class="colony-text-3xs text-text-dim" title={diff().label}>
-          {diff().stars}
+    <article class="relative h-full">
+      <button
+        type="button"
+        class="colony-command-btn flex h-full w-full flex-col items-start gap-2 p-4 text-left transition"
+        style={{ "min-height": "160px" }}
+        onClick={() => props.onClick()}
+      >
+        <div class="colony-text-xl">
+          {props.recipe.icon_id ? labelGlyph(props.recipe.icon_id) : "📦"}
         </div>
-        <Show when={badge()}>
-          <div class="colony-text-3xs text-text-dim">[{badge()}]</div>
+
+        <div class="colony-text-sm font-bold text-text-primary">{props.recipe.name}</div>
+        <div class="colony-text-2xs flex-1 text-text-secondary line-clamp-2">
+          {props.recipe.description}
+        </div>
+
+        <div class="flex w-full items-center justify-between">
+          <div class="colony-text-3xs text-text-dim" title={diff().label}>
+            {diff().stars}
+          </div>
+          <Show when={badge()}>
+            <div class="colony-text-3xs text-text-dim">[{badge()}]</div>
+          </Show>
+        </div>
+
+        <Show when={props.recipe.connectors_used.length > 0}>
+          <div class="flex flex-wrap gap-1">
+            <For each={props.recipe.connectors_used}>
+              {(c) => (
+                <span class="colony-text-3xs rounded border border-bark bg-soil-deep px-1 py-px text-text-dim">
+                  {c.replace(/^connector-/, "")}
+                </span>
+              )}
+            </For>
+          </div>
         </Show>
-      </div>
-
-      <Show when={props.recipe.connectors_used.length > 0}>
-        <div class="flex flex-wrap gap-1">
-          <For each={props.recipe.connectors_used}>
-            {(c) => (
-              <span class="colony-text-3xs rounded border border-bark bg-soil-deep px-1 py-px text-text-dim">
-                {c.replace(/^connector-/, "")}
-              </span>
-            )}
-          </For>
-        </div>
-      </Show>
-    </div>
+      </button>
+      <button
+        type="button"
+        class="colony-text-sm absolute right-4 top-4 hover:text-status-ok"
+        aria-label={props.isFavorite ? "Remove from favorites" : "Add to favorites"}
+        onClick={(e) => {
+          e.stopPropagation();
+          props.onToggleFavorite();
+        }}
+      >
+        {props.isFavorite ? "⭐" : "☆"}
+      </button>
+    </article>
   );
 };
 

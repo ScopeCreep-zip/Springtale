@@ -1,9 +1,17 @@
 {
-  "$schema": "https://raw.githubusercontent.com/nicehash/Tauri/dev/crates/tauri-utils/schema.json",
+  "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Default capability for the main window",
+  "description": "Springtale desktop minimum capability — only the Tauri built-in IPC surfaces the frontend actually invokes. The 125 custom commands registered via `invoke_handler` in lib.rs are NOT gated by capability — Tauri auto-allows registered custom commands. The Rust functions themselves enforce app-level auth (vault unlock, capability bridge, sentinel). See docs/security/RISK-REGISTER.md R-012 / R-013.",
   "windows": ["main"],
   "permissions": [
-    "core:default"
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-minimize",
+    "dialog:allow-ask",
+    "dialog:allow-open",
+    "dialog:allow-save",
+    "global-shortcut:allow-register",
+    "global-shortcut:allow-unregister",
+    "notification:default"
   ]
 }

@@ -19,9 +19,9 @@
  */
 
 import type { Component } from "solid-js";
-import { For, Match, Show, Switch, createSignal } from "solid-js";
-import type { RecipeApplyReport } from "../dashboard/types";
+import { createSignal, For, Match, Show, Switch } from "solid-js";
 import { useDashboard } from "../dashboard/context";
+import type { RecipeApplyReport } from "../dashboard/types";
 
 export interface ProofOfLifePanelProps {
   report: RecipeApplyReport;
@@ -69,12 +69,11 @@ export const ProofOfLifePanel: Component<ProofOfLifePanelProps> = (props) => {
     <div class="mx-auto max-w-2xl rounded border-2 border-bark bg-soil-mid p-6">
       <div class="flex items-start justify-between">
         <div>
-          <p class="colony-text-md font-bold text-text-primary">
-            🟢 Bot is loaded
-          </p>
+          <p class="colony-text-md font-bold text-text-primary">🟢 Bot is loaded</p>
           <p class="colony-text-xs mt-1 text-text-secondary">{props.report.summary}</p>
         </div>
         <button
+          type="button"
           class="colony-command-btn colony-text-2xs px-3 py-1"
           onClick={() => props.onDismiss()}
         >
@@ -105,6 +104,7 @@ export const ProofOfLifePanel: Component<ProofOfLifePanelProps> = (props) => {
               {(rid) => (
                 <li class="flex items-start gap-2">
                   <button
+                    type="button"
                     class="colony-command-btn colony-text-3xs px-3 py-1"
                     disabled={testStates()[rid]?.kind === "running"}
                     onClick={() => handleTest(rid)}
@@ -125,9 +125,7 @@ export const ProofOfLifePanel: Component<ProofOfLifePanelProps> = (props) => {
       <Show when={celebrate()}>
         <div class="mt-4 rounded border border-status-ok bg-status-ok/10 p-3 text-center">
           <p class="colony-text-md">🎉</p>
-          <p class="colony-text-xs mt-1 font-bold text-status-ok">
-            Bot acted!
-          </p>
+          <p class="colony-text-xs mt-1 font-bold text-status-ok">Bot acted!</p>
           <p class="colony-text-3xs mt-1 text-text-dim">
             Your bot is wired up and responding to events.
           </p>

@@ -1,8 +1,8 @@
 /**
  * Typed IPC wrappers for rule operations.
  */
+
 import { invoke } from "@tauri-apps/api/core";
-import type { Rule, RuleId } from "@springtale/types";
 
 export interface RuleSummary {
   id: string;
@@ -41,8 +41,14 @@ export async function parseRuleFromIntent(intent: string): Promise<Record<string
 }
 
 export async function createConnectorRule(rule: {
-  name: string; trigger_connector: string; trigger_event: string;
-  action_connector: string; action_name: string; conditions?: unknown[];
+  name: string;
+  trigger_connector: string;
+  trigger_event: string;
+  action_connector: string;
+  action_name: string;
+  conditions?: unknown[];
+  extra_actions?: { action_connector: string; action_name: string }[];
+  match_any?: boolean;
 }): Promise<string> {
   return invoke<string>("create_connector_rule", { rule });
 }
@@ -55,7 +61,9 @@ export async function listRulesForConnector(connectorName: string): Promise<Rule
   return invoke<RuleSummary[]>("list_rules_for_connector", { connectorName });
 }
 
-export async function testConnector(connectorName: string): Promise<{ matched: boolean; rule_name: string | null }> {
+export async function testConnector(
+  connectorName: string,
+): Promise<{ matched: boolean; rule_name: string | null }> {
   return invoke("test_connector", { connectorName });
 }
 

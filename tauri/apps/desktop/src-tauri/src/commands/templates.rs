@@ -4,7 +4,7 @@ use springtale_runtime::operations::templates::{self, Template, WriteReport};
 #[tauri::command]
 #[specta::specta]
 pub async fn list_templates() -> Result<Vec<Template>, String> {
-    Ok(templates::list().iter().cloned().collect())
+    Ok(templates::list().to_vec())
 }
 
 /// Write a template's files to a daemon-chosen directory.

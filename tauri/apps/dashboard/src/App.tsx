@@ -1,31 +1,39 @@
-import { createSignal, createEffect, onMount, onCleanup, Show } from "solid-js";
+import type {
+  ColonySelection,
+  ConnectorOutput,
+  CreateMode,
+  Recipe,
+  RecipeApplyReport,
+  RecipeLibraryVariant,
+  TeamBuilderSeed,
+  TeamConfig,
+} from "@springtale/ui";
 import {
-  ColonyShell,
-  TopBar,
-  Viewport,
-  BottomPanel,
-  TeamBuilder,
   AiConfigPanel,
-  AppSettingsPanel,
+  BottomPanel,
+  COMMANDS,
+  ChatPanel,
+  ColonyShell,
   ConnectorConfigPanel,
   MemberPickerOverlay,
   ModeSelectOverlay,
+  mapAgents,
+  mapFormations,
+  mapNodes,
   ProofOfLifePanel,
   RecipeAuthorPanel,
   RecipeDeployPanel,
   RecipeLibraryOverlay,
   RuleBuilderOverlay,
+  TeamBuilder,
+  TopBar,
   useDashboard,
   useI18n,
-  mapNodes,
-  mapAgents,
-  mapFormations,
+  Viewport,
 } from "@springtale/ui";
-import type { ColonySelection, CreateMode, Recipe, RecipeApplyReport, RecipeLibraryVariant, TeamBuilderSeed, TeamConfig } from "@springtale/ui";
-import { COMMANDS } from "@springtale/ui";
-import { configure } from "./api/client";
-import { SettingsPage } from "./pages/Settings";
+import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { SessionsPage } from "./pages/Sessions";
+import { SettingsPage } from "./pages/Settings";
 
 /**
  * Springtale Web Dashboard — colony ecosystem view.
@@ -45,29 +53,52 @@ export const App = () => {
 
   // ── Colony state ────────────────────────────────────────
   const [selection, setSelection] = createSignal<ColonySelection>({ id: null, type: null });
-  const [connectorPositions, setConnectorPositions] = createSignal<Record<string, { x: number; y: number }>>({});
+  const [connectorPositions, setConnectorPositions] = createSignal<
+    Record<string, { x: number; y: number }>
+  >({});
   const [showSettings, setShowSettings] = createSignal(false);
   // F5 — member-picker overlay state.
   const [memberPickerFor, setMemberPickerFor] = createSignal<string | null>(null);
   const [showSessions, setShowSessions] = createSignal(false);
+  const [showChat, setShowChat] = createSignal(false);
   const [showTeamBuilder, setShowTeamBuilder] = createSignal(false);
   const [showRuleBuilder, setShowRuleBuilder] = createSignal(false);
   // W1.A — mode-select hub before any compose flow.
   const [showModeSelect, setShowModeSelect] = createSignal(false);
   // W1.B — recipe library opens after mode-select. null = closed.
-  const [recipeLibraryVariant, setRecipeLibraryVariant] = createSignal<RecipeLibraryVariant | null>(null);
+  const [recipeLibraryVariant, setRecipeLibraryVariant] = createSignal<RecipeLibraryVariant | null>(
+    null,
+  );
   const [connected, setConnected] = createSignal(false);
   const [confirmAction, setConfirmAction] = createSignal<{
-    title: string; message: string; label: string; action: () => Promise<void>;
+    title: string;
+    message: string;
+    label: string;
+    action: () => Promise<void>;
   } | null>(null);
-  const [aiConfigAgent, setAiConfigAgent] = createSignal<{ id: string; name: string; scope: "agent" | "formation" } | null>(null);
-  const [detailView, setDetailView] = createSignal<import("@springtale/ui").DetailView>({ mode: "colony" });
+  const [aiConfigAgent, setAiConfigAgent] = createSignal<{
+    id: string;
+    name: string;
+    scope: "agent" | "formation";
+  } | null>(null);
+  const [detailView, setDetailView] = createSignal<import("@springtale/ui").DetailView>({
+    mode: "colony",
+  });
   const [pendingAddToFormation, setPendingAddToFormation] = createSignal<string | null>(null);
   const [pendingReassignAgent, setPendingReassignAgent] = createSignal<string | null>(null);
-  const [connectorConfigData, setConnectorConfigData] = createSignal<{ id: string; config: unknown; configSchema?: import("@springtale/types").ConfigSchema } | null>(null);
-  const [notification, setNotification] = createSignal<{ message: string; type: "ok" | "warn" } | null>(null);
-  const [connectorOutputs, setConnectorOutputs] = createSignal<unknown[]>([]);
-  const [availableConnectors, setAvailableConnectors] = createSignal<import("@springtale/types").AvailableConnector[]>([]);
+  const [connectorConfigData, setConnectorConfigData] = createSignal<{
+    id: string;
+    config: unknown;
+    configSchema?: import("@springtale/types").ConfigSchema;
+  } | null>(null);
+  const [notification, setNotification] = createSignal<{
+    message: string;
+    type: "ok" | "warn";
+  } | null>(null);
+  const [connectorOutputs, setConnectorOutputs] = createSignal<ConnectorOutput[]>([]);
+  const [availableConnectors, setAvailableConnectors] = createSignal<
+    import("@springtale/types").AvailableConnector[]
+  >([]);
   const [intents, setIntents] = createSignal<Array<{ value: string; label: string }>>([]);
   const [conditionTypes, setConditionTypes] = createSignal<string[]>([]);
 
@@ -84,7 +115,10 @@ export const App = () => {
   let localeInitialized = false;
   createEffect(() => {
     const loc = locale();
-    if (!localeInitialized) { localeInitialized = true; return; }
+    if (!localeInitialized) {
+      localeInitialized = true;
+      return;
+    }
     db.provider.setConfig("locale", loc).catch(() => {});
   });
 
@@ -93,7 +127,10 @@ export const App = () => {
   createEffect(() => {
     const t = theme();
     applyTheme(t);
-    if (!themeInitialized) { themeInitialized = true; return; }
+    if (!themeInitialized) {
+      themeInitialized = true;
+      return;
+    }
     db.provider.setConfig("theme", t).catch(() => {});
   });
 
@@ -103,11 +140,13 @@ export const App = () => {
     await db.refresh();
     setAvailableConnectors(await db.provider.listAvailableConnectors());
     setIntents(await db.provider.listIntents());
-    const schema = await db.provider.getRuleSchema() as Record<string, Record<string, unknown>>;
+    const schema = (await db.provider.getRuleSchema()) as Record<string, Record<string, unknown>>;
     if (schema.conditions) {
       setConditionTypes(Object.keys(schema.conditions));
     }
-    setConnections(await db.provider.getConnections() as import("@springtale/ui").ColonyConnection[]);
+    setConnections(
+      (await db.provider.getConnections()) as import("@springtale/ui").ColonyConnection[],
+    );
 
     // Load saved tree positions
     try {
@@ -115,7 +154,9 @@ export const App = () => {
       if (saved && typeof saved === "object") {
         setConnectorPositions(saved as Record<string, { x: number; y: number }>);
       }
-    } catch { /* seeded defaults will be used */ }
+    } catch {
+      /* seeded defaults will be used */
+    }
 
     // Restore persisted locale
     try {
@@ -123,7 +164,9 @@ export const App = () => {
       if (savedLocale && typeof savedLocale === "string") {
         setLocale(savedLocale as "en");
       }
-    } catch { /* Default locale is fine */ }
+    } catch {
+      /* Default locale is fine */
+    }
 
     // Restore persisted theme
     try {
@@ -131,18 +174,25 @@ export const App = () => {
       if (savedTheme && typeof savedTheme === "string") {
         setTheme(savedTheme);
       }
-    } catch { /* Default theme is fine */ }
+    } catch {
+      /* Default theme is fine */
+    }
   };
 
   // ── Keyboard shortcuts ─────────────────────────────────
   onMount(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement) return;
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        e.target instanceof HTMLSelectElement
+      )
+        return;
       const key = e.key.toLowerCase();
 
       // 1-9: select agent by index
       if (key >= "1" && key <= "9") {
-        const idx = parseInt(key) - 1;
+        const idx = parseInt(key, 10) - 1;
         const a = agents();
         const agent = a[idx];
         if (agent) setSelection({ id: agent.id, type: "agent" });
@@ -155,6 +205,7 @@ export const App = () => {
         setConfirmAction(null);
         setShowSettings(false);
         setShowSessions(false);
+        setShowChat(false);
         setShowTeamBuilder(false);
         setShowModeSelect(false);
         setAiConfigAgent(null);
@@ -163,29 +214,67 @@ export const App = () => {
       }
 
       // W2.E — `O` toggles the canvas (OUTPUT) view.
-      if (key === "o" && !e.ctrlKey && !e.metaKey && !e.shiftKey
-          && !showSettings() && !showSessions() && !showTeamBuilder()
-          && !showRuleBuilder() && !showModeSelect() && recipeLibraryVariant() === null
-          && recipeDeploy() === null && proofOfLife() === null
-          && !confirmAction() && !aiConfigAgent() && !connectorConfigData()) {
+      if (
+        key === "o" &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.shiftKey &&
+        !showSettings() &&
+        !showSessions() &&
+        !showTeamBuilder() &&
+        !showRuleBuilder() &&
+        !showModeSelect() &&
+        recipeLibraryVariant() === null &&
+        recipeDeploy() === null &&
+        proofOfLife() === null &&
+        !confirmAction() &&
+        !aiConfigAgent() &&
+        !connectorConfigData()
+      ) {
         e.preventDefault();
         setDetailView({ mode: "canvas" });
         return;
       }
 
       // W1.A — `N` opens the mode-select hub.
-      if (key === "n" && !e.ctrlKey && !e.metaKey && !e.shiftKey
-          && !showSettings() && !showSessions() && !showTeamBuilder()
-          && !showRuleBuilder() && !showModeSelect() && recipeLibraryVariant() === null
-          && recipeDeploy() === null
-          && !confirmAction() && !aiConfigAgent() && !connectorConfigData()) {
+      if (
+        key === "n" &&
+        !e.ctrlKey &&
+        !e.metaKey &&
+        !e.shiftKey &&
+        !showSettings() &&
+        !showSessions() &&
+        !showTeamBuilder() &&
+        !showRuleBuilder() &&
+        !showModeSelect() &&
+        recipeLibraryVariant() === null &&
+        recipeDeploy() === null &&
+        !confirmAction() &&
+        !aiConfigAgent() &&
+        !connectorConfigData()
+      ) {
         e.preventDefault();
         setShowModeSelect(true);
         return;
       }
 
       // Skip command shortcuts when any modal is open
-      if (showSettings() || showSessions() || showTeamBuilder() || showRuleBuilder() || showModeSelect() || recipeLibraryVariant() !== null || recipeDeploy() !== null || proofOfLife() !== null || recipeAuthorDraft() !== null || confirmAction() || aiConfigAgent() || connectorConfigData()) return;
+      if (
+        showSettings() ||
+        showSessions() ||
+        showChat() ||
+        showTeamBuilder() ||
+        showRuleBuilder() ||
+        showModeSelect() ||
+        recipeLibraryVariant() !== null ||
+        recipeDeploy() !== null ||
+        proofOfLife() !== null ||
+        recipeAuthorDraft() !== null ||
+        confirmAction() ||
+        aiConfigAgent() ||
+        connectorConfigData()
+      )
+        return;
 
       // Command grid shortcuts: match key to current selection context.
       // F1: formation hotkeys come exclusively from the backend
@@ -219,7 +308,9 @@ export const App = () => {
   // ── Data → Colony visual model (real data, no fakes) ───
   const nodes = () => mapNodes(db.connectors());
   const agents = () => mapAgents(db.rules(), db.agentStates());
-  const [connections, setConnections] = createSignal<import("@springtale/ui").ColonyConnection[]>([]);
+  const [connections, setConnections] = createSignal<import("@springtale/ui").ColonyConnection[]>(
+    [],
+  );
   const formations = () => mapFormations(db.swarms(), db.cooperationEvents());
 
   // ── Command dispatch — context:action pattern ───────────
@@ -246,13 +337,36 @@ export const App = () => {
           setAvailableConnectors(await db.provider.listAvailableConnectors());
           await db.refresh();
           break;
-        case "global:events": setSelection({ id: null, type: null }); setDetailView({ mode: "events" }); break;
-        case "global:bots": setSelection({ id: null, type: null }); setDetailView({ mode: "bots" }); break;
-        case "global:settings": setShowSettings(true); setShowSessions(false); break;
+        case "global:events":
+          setSelection({ id: null, type: null });
+          setDetailView({ mode: "events" });
+          break;
+        case "global:bots":
+          setSelection({ id: null, type: null });
+          setDetailView({ mode: "bots" });
+          break;
+        case "global:settings":
+          setShowSettings(true);
+          setShowSessions(false);
+          break;
+        case "global:chat":
+          // W5 — open the in-app chat panel (the "Ask" primary action).
+          setShowChat(true);
+          break;
 
         // ── Tree ──
-        case "connector:enable": if (sel.id) { await db.provider.enableConnector(sel.id); await db.refresh(); } break;
-        case "connector:disable": if (sel.id) { await db.provider.disableConnector(sel.id); await db.refresh(); } break;
+        case "connector:enable":
+          if (sel.id) {
+            await db.provider.enableConnector(sel.id);
+            await db.refresh();
+          }
+          break;
+        case "connector:disable":
+          if (sel.id) {
+            await db.provider.disableConnector(sel.id);
+            await db.refresh();
+          }
+          break;
         case "connector:config":
           if (sel.id) {
             const config = await db.provider.getConnectorConfig(sel.id);
@@ -262,13 +376,14 @@ export const App = () => {
           break;
         case "connector:remove":
           if (sel.id) {
-            const deps = await db.provider.listRulesForConnector(sel.id);
+            const targetId = sel.id;
+            const deps = await db.provider.listRulesForConnector(targetId);
             setConfirmAction({
               title: "Remove Connector",
-              message: `Remove ${sel.id} and ${deps.length} dependent rule(s)?`,
+              message: `Remove ${targetId} and ${deps.length} dependent rule(s)?`,
               label: "Remove",
               action: async () => {
-                await db.provider.removeConnectorCascade(sel.id!);
+                await db.provider.removeConnectorCascade(targetId);
                 setSelection({ id: null, type: null });
                 await db.refresh();
               },
@@ -276,14 +391,18 @@ export const App = () => {
           }
           break;
         case "connector:events":
-          if (sel.id) { setDetailView({ mode: "events", filterConnector: sel.id }); }
+          if (sel.id) {
+            setDetailView({ mode: "events", filterConnector: sel.id });
+          }
           break;
         case "connector:test":
           if (sel.id) {
             try {
               const result = await db.provider.testConnector(sel.id);
               setNotification({
-                message: result.matched ? `Test passed: "${result.rule_name}"` : `No match: "${result.rule_name}"`,
+                message: result.matched
+                  ? `Test passed: "${result.rule_name}"`
+                  : `No match: "${result.rule_name}"`,
                 type: result.matched ? "ok" : "warn",
               });
             } catch {
@@ -307,15 +426,31 @@ export const App = () => {
             setAiConfigAgent({ id: sel.id, name: agentForAi?.name ?? sel.id, scope: "agent" });
           }
           break;
-        case "agent:pause": if (sel.id) { await db.handleToggle(sel.id, true); await db.refresh(); } break;
-        case "agent:recall": if (sel.id) { await db.handleToggle(sel.id, true); setSelection({ id: null, type: null }); await db.refresh(); } break;
+        case "agent:pause":
+          if (sel.id) {
+            await db.handleToggle(sel.id, true);
+            await db.refresh();
+          }
+          break;
+        case "agent:recall":
+          if (sel.id) {
+            await db.handleToggle(sel.id, true);
+            setSelection({ id: null, type: null });
+            await db.refresh();
+          }
+          break;
         case "agent:detach":
           if (sel.id) {
+            const targetId = sel.id;
             setConfirmAction({
               title: "Detach Agent",
               message: "This will delete the rule. The agent will be removed from the colony.",
               label: "Detach",
-              action: async () => { await db.handleDelete(sel.id!); setSelection({ id: null, type: null }); await db.refresh(); },
+              action: async () => {
+                await db.handleDelete(targetId);
+                setSelection({ id: null, type: null });
+                await db.refresh();
+              },
             });
           }
           break;
@@ -323,7 +458,9 @@ export const App = () => {
           setDetailView({ mode: "entity" });
           break;
         case "agent:group":
-          if (sel.id) { setDetailView({ mode: "formations", addAgentId: sel.id }); }
+          if (sel.id) {
+            setDetailView({ mode: "formations", addAgentId: sel.id });
+          }
           break;
         case "agent:reassign":
           if (sel.id) {
@@ -332,37 +469,64 @@ export const App = () => {
           }
           break;
         case "agent:autonomy_up":
-          if (sel.id) { await db.provider.stepAutonomy(sel.id, "up"); await db.refresh(); }
+          if (sel.id) {
+            await db.provider.stepAutonomy(sel.id, "up");
+            await db.refresh();
+          }
           break;
         case "agent:autonomy_down":
-          if (sel.id) { await db.provider.stepAutonomy(sel.id, "down"); await db.refresh(); }
+          if (sel.id) {
+            await db.provider.stepAutonomy(sel.id, "down");
+            await db.refresh();
+          }
           break;
 
         // ── Formation ──
         case "formation:deploy":
-          if (sel.id) { await db.handleDeployFormation(sel.id); await db.refresh(); }
+          if (sel.id) {
+            await db.handleDeployFormation(sel.id);
+            await db.refresh();
+          }
           break;
         case "formation:pause":
-          if (sel.id) { await db.handlePauseFormation(sel.id); await db.refresh(); }
+          if (sel.id) {
+            await db.handlePauseFormation(sel.id);
+            await db.refresh();
+          }
           break;
         case "formation:resume":
-          if (sel.id) { await db.handleResumeFormation(sel.id); await db.refresh(); }
+          if (sel.id) {
+            await db.handleResumeFormation(sel.id);
+            await db.refresh();
+          }
           break;
         case "formation:dissolve":
           if (sel.id) {
+            const targetId = sel.id;
             setConfirmAction({
               title: "Dissolve Formation",
               message: "All agents will be released from this formation.",
               label: "Dissolve",
-              action: async () => { await db.handleDissolveFormation(sel.id!); setSelection({ id: null, type: null }); await db.refresh(); },
+              action: async () => {
+                await db.handleDissolveFormation(targetId);
+                setSelection({ id: null, type: null });
+                await db.refresh();
+              },
             });
           }
           break;
         case "formation:remove_member":
           // F5 — open the member-picker overlay scoped to this formation.
-          if (sel.id) { setMemberPickerFor(sel.id); }
+          if (sel.id) {
+            setMemberPickerFor(sel.id);
+          }
           break;
-        case "formation:rally": if (sel.id) { await db.handleRallyFormation(sel.id); await db.refresh(); } break;
+        case "formation:rally":
+          if (sel.id) {
+            await db.handleRallyFormation(sel.id);
+            await db.refresh();
+          }
+          break;
         case "formation:ai_config":
         case "formation:ai_adapter":
           // G7 — per-formation AI override panel. Saves config under
@@ -374,10 +538,16 @@ export const App = () => {
           }
           break;
         case "formation:autonomy":
-          if (sel.id) { await db.provider.cycleFormationAutonomy(sel.id); await db.refresh(); }
+          if (sel.id) {
+            await db.provider.cycleFormationAutonomy(sel.id);
+            await db.refresh();
+          }
           break;
         case "formation:intent":
-          if (sel.id) { await db.provider.cycleFormationIntent(sel.id); await db.refresh(); }
+          if (sel.id) {
+            await db.provider.cycleFormationIntent(sel.id);
+            await db.refresh();
+          }
           break;
         case "formation:add":
           if (sel.id) {
@@ -389,7 +559,10 @@ export const App = () => {
           setDetailView({ mode: "entity" });
           break;
         case "formation:guard":
-          if (sel.id) { await db.provider.toggleFormationGuard(sel.id); await db.refresh(); }
+          if (sel.id) {
+            await db.provider.toggleFormationGuard(sel.id);
+            await db.refresh();
+          }
           break;
       }
     } catch (e) {
@@ -437,7 +610,9 @@ export const App = () => {
       return (
         <MemberPickerOverlay
           formationId={pickerFor}
-          onRemoved={async () => { await db.refresh(); }}
+          onRemoved={async () => {
+            await db.refresh();
+          }}
           onCancel={() => setMemberPickerFor(null)}
         />
       );
@@ -487,12 +662,7 @@ export const App = () => {
     // W1.E — proof-of-life panel.
     const polReport = proofOfLife();
     if (polReport) {
-      return (
-        <ProofOfLifePanel
-          report={polReport}
-          onDismiss={() => setProofOfLife(null)}
-        />
-      );
+      return <ProofOfLifePanel report={polReport} onDismiss={() => setProofOfLife(null)} />;
     }
     // W2.B — recipe author panel.
     const authorDraft = recipeAuthorDraft();
@@ -515,7 +685,9 @@ export const App = () => {
           <div class="mb-4 flex items-center justify-between">
             <h2 class="colony-text-md font-bold text-text-primary">{t("settings.title")}</h2>
             <Show when={connected()}>
-              <button onClick={() => setShowSettings(false)} class="colony-close-btn">✕</button>
+              <button type="button" onClick={() => setShowSettings(false)} class="colony-close-btn">
+                ✕
+              </button>
             </Show>
           </div>
           <SettingsPage onSaved={handleSettingsSaved} />
@@ -534,24 +706,33 @@ export const App = () => {
       );
     }
 
-    if (confirmAction()) {
-      const ca = confirmAction()!;
+    const ca = confirmAction();
+    if (ca) {
       return (
         <div class="mx-auto max-w-lg rounded border-2 border-bark bg-soil-mid p-6 text-center">
           <p class="colony-text-md font-bold text-text-primary">{ca.title}</p>
           <p class="colony-text-xs mt-2 text-text-secondary">{ca.message}</p>
           <div class="mt-4 flex justify-center gap-3">
             <button
-              class="colony-command-btn colony-text-2xs px-4 py-2"
-              style={{ "border-color": "var(--color-status-error)" }}
+              type="button"
+              class="colony-command-btn colony-command-btn--danger colony-text-2xs px-4 py-2"
               onClick={async () => {
-                try { await ca.action(); setConfirmAction(null); }
-                catch (e) { db.setError(String(e)); setConfirmAction(null); }
+                try {
+                  await ca.action();
+                  setConfirmAction(null);
+                } catch (e) {
+                  db.setError(String(e));
+                  setConfirmAction(null);
+                }
               }}
             >
               {ca.label}
             </button>
-            <button class="colony-command-btn colony-text-2xs px-4 py-2" onClick={() => setConfirmAction(null)}>
+            <button
+              type="button"
+              class="colony-command-btn colony-text-2xs px-4 py-2"
+              onClick={() => setConfirmAction(null)}
+            >
               Cancel
             </button>
           </div>
@@ -560,17 +741,15 @@ export const App = () => {
     }
 
     // Per-bot / per-formation AI config (G7)
-    if (aiConfigAgent()) {
-      const aca = aiConfigAgent()!;
+    const aca = aiConfigAgent();
+    if (aca) {
       return (
         <AiConfigPanel
           targetId={aca.id}
           targetName={aca.name}
           scope={aca.scope}
           onSave={async (targetId, config) => {
-            const key = aca.scope === "formation"
-              ? `ai:formation:${targetId}`
-              : `ai:${targetId}`;
+            const key = aca.scope === "formation" ? `ai:formation:${targetId}` : `ai:${targetId}`;
             await db.provider.configureAiAdapter(key, config);
             await db.refresh();
           }}
@@ -580,8 +759,8 @@ export const App = () => {
     }
 
     // Connector config — full management panel
-    if (connectorConfigData()) {
-      const ccd = connectorConfigData()!;
+    const ccd = connectorConfigData();
+    if (ccd) {
       return (
         <ConnectorConfigPanel
           connectorId={ccd.id}
@@ -621,7 +800,9 @@ export const App = () => {
       return (
         <RuleBuilderOverlay
           onCancel={() => setShowRuleBuilder(false)}
-          onSaved={async () => { await db.refresh(); }}
+          onSaved={async () => {
+            await db.refresh();
+          }}
         />
       );
     }
@@ -632,7 +813,13 @@ export const App = () => {
         <div class="colony-modal mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6">
           <div class="mb-4 flex items-center justify-between">
             <h2 class="colony-text-md font-bold text-text-primary">Build Your Team</h2>
-            <button onClick={() => setShowTeamBuilder(false)} class="colony-close-btn">✕</button>
+            <button
+              type="button"
+              onClick={() => setShowTeamBuilder(false)}
+              class="colony-close-btn"
+            >
+              ✕
+            </button>
           </div>
           <TeamBuilder
             availableConnectors={availableConnectors()}
@@ -664,7 +851,10 @@ export const App = () => {
               await db.refresh();
               setAvailableConnectors(await db.provider.listAvailableConnectors());
             }}
-            onCancel={() => { setShowTeamBuilder(false); setTeamBuilderSeed(null); }}
+            onCancel={() => {
+              setShowTeamBuilder(false);
+              setTeamBuilderSeed(null);
+            }}
           />
         </div>
       );
@@ -675,9 +865,27 @@ export const App = () => {
         <div class="colony-modal mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6">
           <div class="mb-4 flex items-center justify-between">
             <h2 class="colony-text-md font-bold text-text-primary">{t("sessions.title")}</h2>
-            <button onClick={() => setShowSessions(false)} class="colony-close-btn">✕</button>
+            <button type="button" onClick={() => setShowSessions(false)} class="colony-close-btn">
+              ✕
+            </button>
           </div>
           <SessionsPage />
+        </div>
+      );
+    }
+
+    if (showChat()) {
+      return (
+        <div class="colony-modal mx-auto flex h-[80vh] max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded border-2 border-bark bg-soil-mid">
+          <div class="flex items-center justify-between border-b border-soil-line p-3">
+            <h2 class="colony-text-md font-bold text-text-primary">Ask Springtale</h2>
+            <button type="button" onClick={() => setShowChat(false)} class="colony-close-btn">
+              ✕
+            </button>
+          </div>
+          <div class="min-h-0 flex-1">
+            <ChatPanel />
+          </div>
         </div>
       );
     }
@@ -695,8 +903,14 @@ export const App = () => {
           formations={formations()}
           events={db.events()}
           selection={selection()}
-          onSelectAgent={(id) => { setSelection({ id, type: "agent" }); setDetailView({ mode: "entity" }); }}
-          onSelectFormation={(id) => { setSelection({ id, type: "formation" }); setDetailView({ mode: "entity" }); }}
+          onSelectAgent={(id) => {
+            setSelection({ id, type: "agent" });
+            setDetailView({ mode: "entity" });
+          }}
+          onSelectFormation={(id) => {
+            setSelection({ id, type: "formation" });
+            setDetailView({ mode: "entity" });
+          }}
         />
       }
       viewport={
@@ -707,9 +921,18 @@ export const App = () => {
           formations={formations()}
           events={db.events()}
           selection={selection()}
-          onSelectConnector={(id) => { setSelection({ id, type: "connector" }); setDetailView({ mode: "entity" }); }}
-          onSelectAgent={(id) => { setSelection({ id, type: "agent" }); setDetailView({ mode: "entity" }); }}
-          onSelectFormation={(id) => { setSelection({ id, type: "formation" }); setDetailView({ mode: "entity" }); }}
+          onSelectConnector={(id) => {
+            setSelection({ id, type: "connector" });
+            setDetailView({ mode: "entity" });
+          }}
+          onSelectAgent={(id) => {
+            setSelection({ id, type: "agent" });
+            setDetailView({ mode: "entity" });
+          }}
+          onSelectFormation={(id) => {
+            setSelection({ id, type: "formation" });
+            setDetailView({ mode: "entity" });
+          }}
           onClearSelection={() => setSelection({ id: null, type: null })}
           connectorPositions={connectorPositions()}
           onConnectorDrag={handleConnectorDrag}
@@ -731,13 +954,16 @@ export const App = () => {
           formations={formations()}
           connectorPositions={connectorPositions()}
           events={db.events()}
-          outputs={connectorOutputs() as any}
+          outputs={connectorOutputs()}
           availableConnectors={availableConnectors()}
           selection={selection()}
           detailView={detailView()}
           formationCommands={db.formationCommands()}
           onCommand={handleCommand}
-          onSelectAgent={(id) => { setSelection({ id, type: "agent" }); setDetailView({ mode: "entity" }); }}
+          onSelectAgent={(id) => {
+            setSelection({ id, type: "agent" });
+            setDetailView({ mode: "entity" });
+          }}
           onSelectConnector={async (id) => {
             const reassignId = pendingReassignAgent();
             const formationId = pendingAddToFormation();

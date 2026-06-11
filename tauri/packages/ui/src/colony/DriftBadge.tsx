@@ -15,8 +15,9 @@
  * percentages from the report so power users can see what's
  * actually changing.
  */
-import { Show, createResource } from "solid-js";
+
 import type { Component } from "solid-js";
+import { createResource, Show } from "solid-js";
 
 import { useDashboard } from "../dashboard/context";
 import type { DriftClass, DriftReport } from "../dashboard/types";
@@ -57,15 +58,19 @@ export const DriftBadge: Component<DriftBadgeProps> = (props) => {
   );
 
   return (
-    <Show when={report() && report()!.overall !== "not_enough_data"}>
-      <span
-        class={`colony-text-3xs rounded border px-1 ${
-          CLASS_FOR[report()!.overall]
-        }`}
-        title={tooltip(report()!)}
-      >
-        {LABEL[report()!.overall]}
-      </span>
+    <Show when={report() && report()?.overall !== "not_enough_data"} keyed>
+      {(_) => {
+        const r = report();
+        if (!r) return null;
+        return (
+          <span
+            class={`colony-text-3xs rounded border px-1 ${CLASS_FOR[r.overall]}`}
+            title={tooltip(r)}
+          >
+            {LABEL[r.overall]}
+          </span>
+        );
+      }}
     </Show>
   );
 };

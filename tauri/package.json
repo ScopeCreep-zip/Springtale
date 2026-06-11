@@ -5,10 +5,13 @@
   "scripts": {
     "dev": "pnpm -r --parallel run dev",
     "build": "pnpm -r run build",
-    "lint": "pnpm -r run lint",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "format": "biome format --write .",
     "typecheck": "pnpm -r run typecheck"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.0",
     "typescript": "^5.7"
   },
   "dependencies": {

@@ -1,10 +1,10 @@
-import { createSignal, onMount } from "solid-js";
 import { useI18n } from "@springtale/ui";
+import { createSignal, onMount } from "solid-js";
 import {
   createVault,
-  unlockVault,
-  lockVault,
   getVaultStatus,
+  lockVault,
+  unlockVault,
   type VaultStatus,
 } from "../ipc/vault";
 
@@ -83,16 +83,24 @@ export function VaultPage() {
     <div>
       <h1 class="text-2xl font-bold text-white">{t("vault.title")}</h1>
       {error() && (
-        <div role="alert" aria-live="assertive" class="mt-4 rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+        <div
+          role="alert"
+          aria-live="assertive"
+          class="mt-4 rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400"
+        >
           {error()}
         </div>
       )}
 
       {!vaultExists() ? (
-        <form onSubmit={(e) => { e.preventDefault(); create(); }} class="mt-6 max-w-md space-y-4">
-          <p class="text-sm text-gray-400">
-            {t("vault.createDesc")}
-          </p>
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            create();
+          }}
+          class="mt-6 max-w-md space-y-4"
+        >
+          <p class="text-sm text-gray-400">{t("vault.createDesc")}</p>
           <div>
             <label for="new-passphrase" class="block text-sm font-medium text-gray-300">
               {t("vault.passphrase")}
@@ -131,6 +139,7 @@ export function VaultPage() {
             <p class="font-medium text-green-400">{t("vault.unlocked")}</p>
           </div>
           <button
+            type="button"
             class="rounded bg-gray-700 px-4 py-2 text-sm font-medium text-gray-200 hover:bg-gray-600"
             onClick={lock}
           >
@@ -138,7 +147,13 @@ export function VaultPage() {
           </button>
         </div>
       ) : (
-        <form onSubmit={(e) => { e.preventDefault(); unlock(); }} class="mt-6 max-w-md space-y-4">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            unlock();
+          }}
+          class="mt-6 max-w-md space-y-4"
+        >
           <div>
             <label for="vault-passphrase" class="block text-sm font-medium text-gray-300">
               {t("vault.passphrase")}

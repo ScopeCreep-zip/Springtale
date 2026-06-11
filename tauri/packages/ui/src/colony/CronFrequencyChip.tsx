@@ -16,8 +16,9 @@
  * Backend preflight remains authoritative; this chip is purely a
  * visual hint while the user types.
  */
-import { Show } from "solid-js";
+
 import type { Component } from "solid-js";
+import { Show } from "solid-js";
 
 export interface CronFrequencyChipProps {
   /** Current cron expression value. */

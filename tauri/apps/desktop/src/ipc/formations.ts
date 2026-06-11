@@ -101,7 +101,10 @@ export async function updateFormationIntent(id: string, intent: string): Promise
   return invoke("update_formation_intent", { id, intent });
 }
 
-export async function addFormationMember(formationId: string, connectorName: string): Promise<void> {
+export async function addFormationMember(
+  formationId: string,
+  connectorName: string,
+): Promise<void> {
   return invoke("add_formation_member", { formationId, connectorName });
 }
 
@@ -145,7 +148,10 @@ export async function cycleFormationAutonomy(id: string): Promise<string> {
   return invoke<string>("cycle_formation_autonomy", { id });
 }
 
-export async function removeFormationMember(formationId: string, connectorName: string): Promise<void> {
+export async function removeFormationMember(
+  formationId: string,
+  connectorName: string,
+): Promise<void> {
   return invoke("remove_formation_member", { formationId, connectorName });
 }
 
@@ -154,6 +160,19 @@ import type { CommandDecl, MemberRef } from "@springtale/ui";
 /** B11 thin-frontend API: backend-supplied 3×3 formation command grid. */
 export async function formationAvailableCommands(id: string): Promise<CommandDecl[]> {
   return invoke<CommandDecl[]>("formation_commands", { id });
+}
+
+/**
+ * Generic command dispatcher — forward the clicked command id (and any picker
+ * params) to the backend, which owns the command→action mapping. Keeps the
+ * frontend free of per-command branching: `onCommand(id)` → this call.
+ */
+export async function runFormationCommand(
+  id: string,
+  commandId: string,
+  params?: Record<string, unknown>,
+): Promise<void> {
+  return invoke<void>("run_formation_command", { id, commandId, params });
 }
 
 /** F5: backend-supplied eligible-removal list for the RM MBR overlay. */

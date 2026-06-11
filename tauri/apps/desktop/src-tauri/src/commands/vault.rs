@@ -32,11 +32,9 @@ pub async fn create_vault(
 ) -> Result<springtale_runtime::operations::vault::VaultStatus, String> {
     let vault_path = springtale_store::paths::default_vault_path();
 
-    let (vault, status) = springtale_runtime::operations::vault::create_vault(
-        &vault_path,
-        passphrase.as_bytes(),
-    )
-    .map_err(|e| e.to_string())?;
+    let (vault, status) =
+        springtale_runtime::operations::vault::create_vault(&vault_path, passphrase.as_bytes())
+            .map_err(|e| e.to_string())?;
 
     // Derive the DB encryption key from the same passphrase, then
     // initialize the runtime (opens DB, loads rules, connectors, etc.).
@@ -54,7 +52,16 @@ pub async fn create_vault(
     // user via the ApprovalCard overlay instead of silently denying
     // destructive actions.
     let gate = crate::state::build_approval_gate(app.clone(), state.approval_dispatcher.clone());
-    crate::state::init_runtime(&state.runtime, &state.scheduler, db_key, Some(gate)).await?;
+    crate::state::init_runtime(
+        app.clone(),
+        &state.runtime,
+        &state.scheduler,
+        &state.trigger_registry,
+        &state.bot_msg_tx,
+        db_key,
+        Some(gate),
+    )
+    .await?;
 
     let mut vault_guard = state.vault.lock().await;
     *vault_guard = Some(vault);
@@ -77,11 +84,9 @@ pub async fn unlock_vault(
 ) -> Result<springtale_runtime::operations::vault::VaultStatus, String> {
     let vault_path = springtale_store::paths::default_vault_path();
 
-    let (vault, status) = springtale_runtime::operations::vault::open_vault(
-        &vault_path,
-        passphrase.as_bytes(),
-    )
-    .map_err(|e| e.to_string())?;
+    let (vault, status) =
+        springtale_runtime::operations::vault::open_vault(&vault_path, passphrase.as_bytes())
+            .map_err(|e| e.to_string())?;
 
     // Derive the DB key from the same passphrase, then init the runtime.
     let db_key = if crate::state::detect_encryption_needed() {
@@ -111,7 +116,16 @@ pub async fn unlock_vault(
     // user via the ApprovalCard overlay instead of silently denying
     // destructive actions.
     let gate = crate::state::build_approval_gate(app.clone(), state.approval_dispatcher.clone());
-    crate::state::init_runtime(&state.runtime, &state.scheduler, db_key, Some(gate)).await?;
+    crate::state::init_runtime(
+        app.clone(),
+        &state.runtime,
+        &state.scheduler,
+        &state.trigger_registry,
+        &state.bot_msg_tx,
+        db_key,
+        Some(gate),
+    )
+    .await?;
 
     let mut vault_guard = state.vault.lock().await;
     *vault_guard = Some(vault);
@@ -124,10 +138,7 @@ pub async fn unlock_vault(
 /// runtime so no DB access is possible until re-unlock.
 #[tauri::command]
 #[specta::specta]
-pub async fn lock_vault(
-    state: State<'_, AppState>,
-    app: tauri::AppHandle,
-) -> Result<(), String> {
+pub async fn lock_vault(state: State<'_, AppState>, app: tauri::AppHandle) -> Result<(), String> {
     // Zero vault key material
     {
         let mut vault_guard = state.vault.lock().await;
@@ -156,6 +167,6 @@ pub async fn get_vault_status(
 ) -> Result<springtale_runtime::operations::vault::VaultStatus, String> {
     let vault_guard = state.vault.lock().await;
     Ok(springtale_runtime::operations::vault::get_vault_status(
-        &*vault_guard,
+        &vault_guard,
     ))
 }

@@ -3,7 +3,7 @@ mod commands;
 pub mod runtime_guard;
 mod state;
 
-use tauri_specta::{collect_commands, collect_events, Builder};
+use tauri_specta::{Builder, collect_commands, collect_events};
 use tracing_subscriber::EnvFilter;
 
 /// Run the Tauri application.
@@ -25,6 +25,14 @@ use tracing_subscriber::EnvFilter;
 /// targets. Per `v2.tauri.app/start/project-structure/`.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Install the post-quantum-preferring rustls crypto provider before
+    // any TLS-touching code runs. See
+    // `springtale_transport::crypto_provider::install_default_pq` and
+    // `docs/security/CRYPTO-INVENTORY.md`. Same call lives at the head of
+    // `apps/springtaled/main.rs`; both entry points need it because the
+    // desktop binary is springtaled-with-a-window.
+    springtale_transport::crypto_provider::install_default_pq();
+
     // Initialize tracing
     tracing_subscriber::fmt()
         .with_env_filter(
@@ -157,6 +165,7 @@ pub fn run() {
             commands::formations::cycle_formation_intent,
             commands::formations::cycle_formation_autonomy,
             commands::formations::formation_commands,
+            commands::formations::run_formation_command,
             commands::formations::formation_eligible_members,
             commands::config::get_config,
             commands::config::set_config,
@@ -185,6 +194,7 @@ pub fn run() {
             commands::fixes::get_fix,
             commands::fixes::apply_fix,
             commands::send::send_message,
+            commands::chat::send_chat_message,
             commands::bot::bot_status,
             commands::bot::bot_memory,
             commands::sessions::list_sessions,
@@ -246,6 +256,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .manage(app_state)
         .manage(approval_dispatcher)
         .manage(commands::quick_hide::ActiveQuickHide::default())

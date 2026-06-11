@@ -27,12 +27,9 @@ export const RecipeQuickView: Component<RecipeQuickViewProps> = (props) => {
     return blueprint?.summary ?? null;
   };
   // Derive each visibility tier from the single inputs array.
-  const requiredInputs = () =>
-    props.recipe.inputs.filter((f) => f.visibility === "required");
-  const optionalCount = () =>
-    props.recipe.inputs.filter((f) => f.visibility === "optional").length;
-  const advancedCount = () =>
-    props.recipe.inputs.filter((f) => f.visibility === "advanced").length;
+  const requiredInputs = () => props.recipe.inputs.filter((f) => f.visibility === "required");
+  const optionalCount = () => props.recipe.inputs.filter((f) => f.visibility === "optional").length;
+  const advancedCount = () => props.recipe.inputs.filter((f) => f.visibility === "advanced").length;
   return (
     <div class="mx-auto max-w-2xl rounded border-2 border-bark bg-soil-mid p-6">
       <div class="flex items-start justify-between">
@@ -41,6 +38,7 @@ export const RecipeQuickView: Component<RecipeQuickViewProps> = (props) => {
           <p class="colony-text-xs mt-1 text-text-secondary">{props.recipe.description}</p>
         </div>
         <button
+          type="button"
           class="colony-text-md hover:text-status-ok"
           aria-label={props.isFavorite ? "Remove from favorites" : "Add to favorites"}
           onClick={() => props.onToggleFavorite()}
@@ -101,13 +99,13 @@ export const RecipeQuickView: Component<RecipeQuickViewProps> = (props) => {
 
       <Show when={optionalCount() > 0 || advancedCount() > 0}>
         <p class="colony-text-3xs mt-3 text-text-dim">
-          + {optionalCount()} optional, {advancedCount()} advanced
-          (shown after you click USE)
+          + {optionalCount()} optional, {advancedCount()} advanced (shown after you click USE)
         </p>
       </Show>
 
       <div class="mt-6 flex flex-wrap gap-2">
         <button
+          type="button"
           class="colony-command-btn colony-text-2xs px-4 py-2"
           style={{ "border-color": "var(--color-status-ok)" }}
           onClick={() => props.onUse()}
@@ -116,6 +114,7 @@ export const RecipeQuickView: Component<RecipeQuickViewProps> = (props) => {
         </button>
         <Show when={props.onCustomize}>
           <button
+            type="button"
             class="colony-command-btn colony-text-2xs px-4 py-2"
             onClick={() => props.onCustomize?.()}
           >
@@ -124,6 +123,7 @@ export const RecipeQuickView: Component<RecipeQuickViewProps> = (props) => {
         </Show>
         <Show when={props.onFork}>
           <button
+            type="button"
             class="colony-command-btn colony-text-2xs px-4 py-2"
             onClick={() => props.onFork?.()}
           >
@@ -132,6 +132,7 @@ export const RecipeQuickView: Component<RecipeQuickViewProps> = (props) => {
         </Show>
         <div class="flex-1" />
         <button
+          type="button"
           class="colony-command-btn colony-text-2xs px-4 py-2"
           onClick={() => props.onCancel()}
         >

@@ -9,7 +9,7 @@
 use tauri::State;
 
 use springtale_runtime::operations::executions::{
-    recipe_drift, rule_drift, DriftFilter, DriftReport,
+    DriftFilter, DriftReport, recipe_drift, rule_drift,
 };
 
 use crate::runtime_guard::require_runtime;

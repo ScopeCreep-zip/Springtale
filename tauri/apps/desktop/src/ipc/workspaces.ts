@@ -6,12 +6,10 @@
  * `provenance_json`. No message bodies, no roster lists past a
  * count.
  */
+
+import type { ChatDiscoveredEvent, WorkspaceInfo } from "@springtale/ui/dashboard/types";
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
-import type {
-  ChatDiscoveredEvent,
-  WorkspaceInfo,
-} from "@springtale/ui/dashboard/types";
 
 export async function listWorkspaces(
   formationId: string,
@@ -33,10 +31,7 @@ export async function scanWorkspaces(
   });
 }
 
-export async function deleteWorkspace(
-  formationId: string,
-  workspaceKey: string,
-): Promise<void> {
+export async function deleteWorkspace(formationId: string, workspaceKey: string): Promise<void> {
   return invoke<void>("delete_workspace", { formationId, workspaceKey });
 }
 
@@ -108,7 +103,5 @@ export async function cancelOnboardStream(sessionId: string): Promise<void> {
 export async function subscribeToChatDiscovered(
   callback: (event: ChatDiscoveredEvent) => void,
 ): Promise<UnlistenFn> {
-  return listen<ChatDiscoveredEvent>("chat-discovered", (e) =>
-    callback(e.payload),
-  );
+  return listen<ChatDiscoveredEvent>("chat-discovered", (e) => callback(e.payload));
 }

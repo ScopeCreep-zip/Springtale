@@ -11,8 +11,5 @@ pub async fn list_sessions(
 ) -> Result<Vec<springtale_store::SessionRow>, String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
-    rt.store
-        .list_sessions()
-        .await
-        .map_err(|e| e.to_string())
+    rt.store.list_sessions().await.map_err(|e| e.to_string())
 }

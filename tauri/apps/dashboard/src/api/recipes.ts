@@ -75,30 +75,21 @@ export async function applyRecipe(
   recipeId: string,
   inputs: RecipeInputs,
 ): Promise<RecipeApplyReport> {
-  return post<RecipeApplyReport>(
-    `/recipes/${encodeURIComponent(recipeId)}/apply`,
-    inputs,
-  );
+  return post<RecipeApplyReport>(`/recipes/${encodeURIComponent(recipeId)}/apply`, inputs);
 }
 
 export async function preflightRecipe(
   recipeId: string,
   inputs: RecipeInputs,
 ): Promise<PreflightReport> {
-  return post<PreflightReport>(
-    `/recipes/${encodeURIComponent(recipeId)}/preflight`,
-    inputs,
-  );
+  return post<PreflightReport>(`/recipes/${encodeURIComponent(recipeId)}/preflight`, inputs);
 }
 
 export async function previewRecipe(
   recipeId: string,
   inputs: RecipeInputs,
 ): Promise<PreviewReport> {
-  return post<PreviewReport>(
-    `/recipes/${encodeURIComponent(recipeId)}/preview`,
-    inputs,
-  );
+  return post<PreviewReport>(`/recipes/${encodeURIComponent(recipeId)}/preview`, inputs);
 }
 
 export async function listRecipePieces(recipeId: string): Promise<RecipePieceSummary[]> {
@@ -112,20 +103,14 @@ export async function saveUserRecipe(recipe: Recipe): Promise<Recipe> {
 }
 
 export async function forkRecipe(recipeId: string, newName: string): Promise<Recipe> {
-  return post<Recipe>(
-    `/recipes/${encodeURIComponent(recipeId)}/fork`,
-    { new_name: newName },
-  );
+  return post<Recipe>(`/recipes/${encodeURIComponent(recipeId)}/fork`, { new_name: newName });
 }
 
 export async function deleteUserRecipe(recipeId: string): Promise<boolean> {
-  const response = await fetch(
-    `${getBaseUrl()}/recipes/user/${encodeURIComponent(recipeId)}`,
-    {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${getToken()}` },
-    },
-  );
+  const response = await fetch(`${getBaseUrl()}/recipes/user/${encodeURIComponent(recipeId)}`, {
+    method: "DELETE",
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
   if (response.status === 404) return false;
   if (!response.ok) {
     throw new Error(`API error: ${response.status} ${response.statusText}`);
@@ -134,10 +119,9 @@ export async function deleteUserRecipe(recipeId: string): Promise<boolean> {
 }
 
 export async function exportRecipeToml(recipeId: string): Promise<string> {
-  const response = await fetch(
-    `${getBaseUrl()}/recipes/${encodeURIComponent(recipeId)}/export`,
-    { headers: { Authorization: `Bearer ${getToken()}` } },
-  );
+  const response = await fetch(`${getBaseUrl()}/recipes/${encodeURIComponent(recipeId)}/export`, {
+    headers: { Authorization: `Bearer ${getToken()}` },
+  });
   if (!response.ok) {
     throw new Error(`API error: ${response.status} ${response.statusText}`);
   }
@@ -159,22 +143,16 @@ export async function importRecipeToml(toml: string): Promise<Recipe> {
   return response.json() as Promise<Recipe>;
 }
 
-export async function renderRecipeToml(
-  recipeId: string,
-  inputs: RecipeInputs,
-): Promise<string> {
+export async function renderRecipeToml(recipeId: string, inputs: RecipeInputs): Promise<string> {
   // The render endpoint returns a plain string body.
-  const response = await fetch(
-    `${getBaseUrl()}/recipes/${encodeURIComponent(recipeId)}/render`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${getToken()}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(inputs),
+  const response = await fetch(`${getBaseUrl()}/recipes/${encodeURIComponent(recipeId)}/render`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${getToken()}`,
+      "Content-Type": "application/json",
     },
-  );
+    body: JSON.stringify(inputs),
+  });
   if (!response.ok) {
     throw new Error(`API error: ${response.status} ${response.statusText}`);
   }

@@ -40,12 +40,9 @@ pub async fn get_execution_steps(
 ) -> Result<Vec<ExecutionStepInfo>, String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
-    springtale_runtime::operations::executions::get_execution_steps_ipc(
-        &rt.store,
-        &execution_id,
-    )
-    .await
-    .map_err(|e| format!("get_execution_steps: {e}"))
+    springtale_runtime::operations::executions::get_execution_steps_ipc(&rt.store, &execution_id)
+        .await
+        .map_err(|e| format!("get_execution_steps: {e}"))
 }
 
 /// Drop expired rows now (rather than waiting for the next

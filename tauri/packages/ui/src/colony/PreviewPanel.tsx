@@ -32,6 +32,7 @@ export const PreviewPanel: Component<PreviewPanelProps> = (props) => {
         <p class="colony-text-2xs font-bold text-text-primary">Preview — what this bot will do</p>
         <Show when={props.onClose}>
           <button
+            type="button"
             class="colony-text-3xs text-text-dim hover:text-text-primary"
             onClick={() => props.onClose?.()}
           >
@@ -45,16 +46,16 @@ export const PreviewPanel: Component<PreviewPanelProps> = (props) => {
       </Show>
 
       <Show when={props.report && !props.loading}>
-        <Show when={!props.report!.passed}>
+        <Show when={!props.report?.passed}>
           <div class="mt-2 rounded border border-status-error bg-status-error/10 p-2">
             <p class="colony-text-3xs text-status-error">Preview failed:</p>
             <ul class="colony-text-3xs mt-1 list-disc pl-4 text-status-error">
-              <For each={props.report!.errors}>{(err) => <li>{err}</li>}</For>
+              <For each={props.report?.errors}>{(err) => <li>{err}</li>}</For>
             </ul>
           </div>
         </Show>
         <ul class="mt-2 space-y-2">
-          <For each={props.report!.steps}>
+          <For each={props.report?.steps}>
             {(step) => (
               <li class="rounded border border-bark bg-soil-mid p-2">
                 <div class="colony-text-3xs text-text-dim">{step.speaker}</div>

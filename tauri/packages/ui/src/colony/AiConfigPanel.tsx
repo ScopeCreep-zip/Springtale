@@ -1,5 +1,5 @@
-import { createSignal, Show, For } from "solid-js";
 import type { Component } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 
 export interface AiConfigPanelProps {
   /** Subject id — agent id for per-bot configs, formation id for
@@ -14,8 +14,16 @@ export interface AiConfigPanelProps {
 
 const ADAPTER_TYPES = [
   { value: "noop", label: "No AI", description: "Classical command routing only. No API calls." },
-  { value: "ollama", label: "Ollama (Local)", description: "Local LLM via Ollama. Private — no data leaves your machine." },
-  { value: "openai", label: "OpenAI Compatible", description: "GPT, Gemini, DeepSeek, OpenRouter, vLLM, llama.cpp server." },
+  {
+    value: "ollama",
+    label: "Ollama (Local)",
+    description: "Local LLM via Ollama. Private — no data leaves your machine.",
+  },
+  {
+    value: "openai",
+    label: "OpenAI Compatible",
+    description: "GPT, Gemini, DeepSeek, OpenRouter, vLLM, llama.cpp server.",
+  },
   { value: "anthropic", label: "Anthropic", description: "Claude API with native tool use." },
 ] as const;
 
@@ -53,15 +61,16 @@ export const AiConfigPanel: Component<AiConfigPanelProps> = (props) => {
     }
   };
 
-  const inputClass = "colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-deep px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none";
+  const inputClass =
+    "colony-text-2xs mt-0.5 w-full border-2 border-bark bg-soil-deep px-2 py-1.5 text-text-primary placeholder-text-dim focus:border-accent focus:outline-none";
 
   return (
     <div class="colony-modal mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6">
       <div class="mb-4 flex items-center justify-between">
-        <h2 class="colony-text-md font-bold text-text-primary">
-          AI Adapter — {props.targetName}
-        </h2>
-        <button onClick={props.onClose} class="colony-close-btn">✕</button>
+        <h2 class="colony-text-md font-bold text-text-primary">AI Adapter — {props.targetName}</h2>
+        <button type="button" onClick={props.onClose} class="colony-close-btn">
+          ✕
+        </button>
       </div>
 
       <p class="colony-text-3xs mb-4 text-text-dim">
@@ -69,10 +78,9 @@ export const AiConfigPanel: Component<AiConfigPanelProps> = (props) => {
           when={props.scope === "formation"}
           fallback="Choose an AI adapter for this bot. Default is No AI — the bot works entirely on classical command matching. AI adds freeform conversation and NL→Rule parsing."
         >
-          Per-formation AI override (G7). Members of this formation will
-          use this adapter at Fever-tier orchestration instead of the
-          global / per-bot defaults. Resolution order: agent → formation
-          → global.
+          Per-formation AI override (G7). Members of this formation will use this adapter at
+          Fever-tier orchestration instead of the global / per-bot defaults. Resolution order: agent
+          → formation → global.
         </Show>
       </p>
 
@@ -113,66 +121,113 @@ export const AiConfigPanel: Component<AiConfigPanelProps> = (props) => {
       {/* Adapter-specific fields */}
       <Show when={adapterType() === "ollama"}>
         <div class="mb-4 space-y-3">
-          <div>
-            <label class="colony-text-2xs text-text-secondary">Ollama URL</label>
-            <input type="text" value={baseUrl()} onInput={(e) => setBaseUrl(e.currentTarget.value)}
-              placeholder="http://127.0.0.1:11434" class={inputClass} />
-          </div>
-          <div>
-            <label class="colony-text-2xs text-text-secondary">Model</label>
-            <input type="text" value={model()} onInput={(e) => setModel(e.currentTarget.value)}
-              placeholder="llama3.2" class={inputClass} />
-          </div>
+          <label class="block">
+            <span class="colony-text-2xs text-text-secondary">Ollama URL</span>
+            <input
+              type="text"
+              value={baseUrl()}
+              onInput={(e) => setBaseUrl(e.currentTarget.value)}
+              placeholder="http://127.0.0.1:11434"
+              class={inputClass}
+            />
+          </label>
+          <label class="block">
+            <span class="colony-text-2xs text-text-secondary">Model</span>
+            <input
+              type="text"
+              value={model()}
+              onInput={(e) => setModel(e.currentTarget.value)}
+              placeholder="llama3.2"
+              class={inputClass}
+            />
+          </label>
         </div>
       </Show>
 
       <Show when={adapterType() === "openai"}>
         <div class="mb-4 space-y-3">
-          <div>
-            <label class="colony-text-2xs text-text-secondary">API Base URL</label>
-            <input type="text" value={baseUrl()} onInput={(e) => setBaseUrl(e.currentTarget.value)}
-              placeholder="https://api.openai.com" class={inputClass} />
-          </div>
-          <div>
-            <label class="colony-text-2xs text-text-secondary">API Key</label>
-            <input type="password" value={apiKey()} onInput={(e) => setApiKey(e.currentTarget.value)}
-              placeholder="sk-..." class={inputClass} />
-          </div>
-          <div>
-            <label class="colony-text-2xs text-text-secondary">Model</label>
-            <input type="text" value={model()} onInput={(e) => setModel(e.currentTarget.value)}
-              placeholder="gpt-4o" class={inputClass} />
-          </div>
+          <label class="block">
+            <span class="colony-text-2xs text-text-secondary">API Base URL</span>
+            <input
+              type="text"
+              value={baseUrl()}
+              onInput={(e) => setBaseUrl(e.currentTarget.value)}
+              placeholder="https://api.openai.com"
+              class={inputClass}
+            />
+          </label>
+          <label class="block">
+            <span class="colony-text-2xs text-text-secondary">API Key</span>
+            <input
+              type="password"
+              value={apiKey()}
+              onInput={(e) => setApiKey(e.currentTarget.value)}
+              placeholder="sk-..."
+              class={inputClass}
+            />
+          </label>
+          <label class="block">
+            <span class="colony-text-2xs text-text-secondary">Model</span>
+            <input
+              type="text"
+              value={model()}
+              onInput={(e) => setModel(e.currentTarget.value)}
+              placeholder="gpt-4o"
+              class={inputClass}
+            />
+          </label>
         </div>
       </Show>
 
       <Show when={adapterType() === "anthropic"}>
         <div class="mb-4 space-y-3">
-          <div>
-            <label class="colony-text-2xs text-text-secondary">API Key</label>
-            <input type="password" value={apiKey()} onInput={(e) => setApiKey(e.currentTarget.value)}
-              placeholder="sk-ant-..." class={inputClass} />
-          </div>
-          <div>
-            <label class="colony-text-2xs text-text-secondary">Model</label>
-            <input type="text" value={model()} onInput={(e) => setModel(e.currentTarget.value)}
-              placeholder="claude-sonnet-4-20250514" class={inputClass} />
-          </div>
-          <div>
-            <label class="colony-text-2xs text-text-secondary">Base URL</label>
-            <input type="text" value={baseUrl()} onInput={(e) => setBaseUrl(e.currentTarget.value)}
-              placeholder="https://api.anthropic.com" class={inputClass} />
-          </div>
+          <label class="block">
+            <span class="colony-text-2xs text-text-secondary">API Key</span>
+            <input
+              type="password"
+              value={apiKey()}
+              onInput={(e) => setApiKey(e.currentTarget.value)}
+              placeholder="sk-ant-..."
+              class={inputClass}
+            />
+          </label>
+          <label class="block">
+            <span class="colony-text-2xs text-text-secondary">Model</span>
+            <input
+              type="text"
+              value={model()}
+              onInput={(e) => setModel(e.currentTarget.value)}
+              placeholder="claude-sonnet-4-20250514"
+              class={inputClass}
+            />
+          </label>
+          <label class="block">
+            <span class="colony-text-2xs text-text-secondary">Base URL</span>
+            <input
+              type="text"
+              value={baseUrl()}
+              onInput={(e) => setBaseUrl(e.currentTarget.value)}
+              placeholder="https://api.anthropic.com"
+              class={inputClass}
+            />
+          </label>
         </div>
       </Show>
 
       <div class="flex gap-3">
-        <button onClick={handleSave} disabled={saving()}
-          class="colony-text-2xs border-2 border-status-ok bg-soil-light px-3 py-1.5 text-status-ok hover:bg-soil-deep disabled:opacity-50">
+        <button
+          type="button"
+          onClick={handleSave}
+          disabled={saving()}
+          class="colony-text-2xs border-2 border-status-ok bg-soil-light px-3 py-1.5 text-status-ok hover:bg-soil-deep disabled:opacity-50"
+        >
           {saving() ? "Saving..." : "Save"}
         </button>
-        <button onClick={props.onClose}
-          class="colony-text-2xs border-2 border-bark bg-soil-light px-3 py-1.5 text-text-secondary hover:bg-soil-deep">
+        <button
+          type="button"
+          onClick={props.onClose}
+          class="colony-text-2xs border-2 border-bark bg-soil-light px-3 py-1.5 text-text-secondary hover:bg-soil-deep"
+        >
           Cancel
         </button>
       </div>

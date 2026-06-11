@@ -19,8 +19,9 @@
  * Existing recipes that pass raw IDs continue to work — the
  * parser falls back to raw-id semantics when no `://` is present.
  */
-import { For, Show, createMemo, createResource, createSignal, onCleanup } from "solid-js";
+
 import type { Component } from "solid-js";
+import { createMemo, createResource, createSignal, For, onCleanup, Show } from "solid-js";
 
 import { useDashboard } from "../dashboard/context";
 import type { ChatDiscoveredEvent, WorkspaceInfo } from "../dashboard/types";
@@ -46,9 +47,7 @@ export interface WorkspaceTargetPickerProps {
   formInputs?: Record<string, unknown>;
 }
 
-export const WorkspaceTargetPicker: Component<WorkspaceTargetPickerProps> = (
-  props,
-) => {
+export const WorkspaceTargetPicker: Component<WorkspaceTargetPickerProps> = (props) => {
   const db = useDashboard();
   const [scanning, setScanning] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
@@ -58,9 +57,7 @@ export const WorkspaceTargetPicker: Component<WorkspaceTargetPickerProps> = (
   // Track D — transient discoveries from the live onboarding stream.
   // Keyed by `workspace_key` so the same chat can't show up twice
   // when the stream fires multiple events for it.
-  const [liveDiscoveries, setLiveDiscoveries] = createSignal<
-    Record<string, WorkspaceInfo>
-  >({});
+  const [liveDiscoveries, setLiveDiscoveries] = createSignal<Record<string, WorkspaceInfo>>({});
 
   const filterKey = () =>
     JSON.stringify({
@@ -209,8 +206,8 @@ export const WorkspaceTargetPicker: Component<WorkspaceTargetPickerProps> = (
           </button>
         </div>
         <p class="colony-text-3xs mt-1 text-text-dim">
-          Type a raw id ({placeholderForConnector(props.connector)}) or a
-          full URI like <code>{schemeForConnector(props.connector)}://…</code>.
+          Type a raw id ({placeholderForConnector(props.connector)}) or a full URI like{" "}
+          <code>{schemeForConnector(props.connector)}://…</code>.
         </p>
       </Show>
 
@@ -353,11 +350,7 @@ const OnboardButton: Component<{
 
     // Clipboard write fires SYNCHRONOUSLY — the URL fetch is wrapped
     // in a Promise-backed ClipboardItem so user activation stays alive.
-    const urlPromise = db.provider.previewOnboardUrl(
-      props.connector,
-      config,
-      payload,
-    );
+    const urlPromise = db.provider.previewOnboardUrl(props.connector, config, payload);
     const blobPromise: Promise<Blob> = urlPromise.then((url) => {
       if (!url) {
         throw new Error(
@@ -432,9 +425,7 @@ function placeholderForConnector(connector: string): string {
 }
 
 function schemeForConnector(connector: string): string {
-  return connector.startsWith("connector-")
-    ? connector.slice("connector-".length)
-    : connector;
+  return connector.startsWith("connector-") ? connector.slice("connector-".length) : connector;
 }
 
 function guessKindFromKey(key: string): string {

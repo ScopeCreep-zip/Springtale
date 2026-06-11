@@ -22,15 +22,24 @@ export async function setAiAdapter(config: Record<string, unknown>): Promise<voi
   return invoke("set_ai_adapter", { config });
 }
 
-export async function setConnectorConfig(name: string, config: Record<string, unknown>): Promise<void> {
+export async function setConnectorConfig(
+  name: string,
+  config: Record<string, unknown>,
+): Promise<void> {
   return invoke("set_connector_config", { name, config });
 }
 
-export async function configureAiAdapter(target: string, config: Record<string, unknown>): Promise<void> {
+export async function configureAiAdapter(
+  target: string,
+  config: Record<string, unknown>,
+): Promise<void> {
   return invoke("configure_ai_adapter", { target, config });
 }
 
-export async function upsertConnectorConfig(name: string, config: Record<string, unknown>): Promise<boolean> {
+export async function upsertConnectorConfig(
+  name: string,
+  config: Record<string, unknown>,
+): Promise<boolean> {
   return invoke("upsert_connector_config", { name, config });
 }
 
@@ -51,4 +60,3 @@ export async function auditMemory(): Promise<unknown> {
 export async function compactMemory(maxEntries: number): Promise<void> {
   return invoke("compact_memory", { maxEntries });
 }
-

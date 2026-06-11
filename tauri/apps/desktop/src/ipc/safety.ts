@@ -41,10 +41,7 @@ export async function setDisguiseActive(active: boolean): Promise<boolean> {
 }
 
 /** G5d — atomically update the disguise profile (app name + icon id). */
-export async function setDisguiseProfile(
-  appName: string,
-  iconId: string,
-): Promise<void> {
+export async function setDisguiseProfile(appName: string, iconId: string): Promise<void> {
   return invoke("set_disguise_profile", { appName, iconId });
 }
 

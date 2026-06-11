@@ -66,7 +66,11 @@ pub async fn dissolve_formation(state: State<'_, AppState>, id: String) -> Resul
 /// Update formation intent.
 #[tauri::command]
 #[specta::specta]
-pub async fn update_formation_intent(state: State<'_, AppState>, id: String, intent: String) -> Result<(), String> {
+pub async fn update_formation_intent(
+    state: State<'_, AppState>,
+    id: String,
+    intent: String,
+) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
     springtale_runtime::operations::formations::update_intent(rt, &id, &intent)
@@ -88,7 +92,11 @@ pub async fn rally_formation(state: State<'_, AppState>, id: String) -> Result<(
 /// Add a member to a formation.
 #[tauri::command]
 #[specta::specta]
-pub async fn add_formation_member(state: State<'_, AppState>, formation_id: String, connector_name: String) -> Result<(), String> {
+pub async fn add_formation_member(
+    state: State<'_, AppState>,
+    formation_id: String,
+    connector_name: String,
+) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
     springtale_runtime::operations::formations::add_member(rt, &formation_id, &connector_name)
@@ -145,6 +153,29 @@ pub async fn formation_commands(
         .map_err(|e| e.to_string())
 }
 
+/// Generic formation command dispatcher — the frontend forwards the clicked
+/// command id (and any picker params) and the backend maps it to the right
+/// operation. Keeps ALL command→action logic in Rust (zero TS decision logic).
+#[tauri::command]
+#[specta::specta]
+pub async fn run_formation_command(
+    state: State<'_, AppState>,
+    id: String,
+    command_id: String,
+    params: Option<serde_json::Value>,
+) -> Result<(), String> {
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    springtale_runtime::operations::commands::run_formation_command(
+        rt,
+        &id,
+        &command_id,
+        params.as_ref(),
+    )
+    .await
+    .map_err(|e| e.to_string())
+}
+
 /// Backend-supplied eligible-removal list for the RM MBR overlay. Backend
 /// decides which members are removable; frontend just renders.
 #[tauri::command]
@@ -177,7 +208,11 @@ pub async fn deploy_team(
 /// Remove a member from a formation.
 #[tauri::command]
 #[specta::specta]
-pub async fn remove_formation_member(state: State<'_, AppState>, formation_id: String, connector_name: String) -> Result<(), String> {
+pub async fn remove_formation_member(
+    state: State<'_, AppState>,
+    formation_id: String,
+    connector_name: String,
+) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
     springtale_runtime::operations::formations::remove_member(rt, &formation_id, &connector_name)

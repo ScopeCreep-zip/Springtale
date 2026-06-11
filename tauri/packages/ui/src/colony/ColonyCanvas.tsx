@@ -1,13 +1,17 @@
-import { For, Show, createSignal, createEffect } from "solid-js";
 import { createElementSize } from "@solid-primitives/resize-observer";
-import type { Component } from "solid-js";
-import type {
-  ColonyNode, ColonyAgent, ColonyConnection, ColonyFormation, ColonySelection,
-} from "./types";
-import type { EventItem } from "../dashboard/model";
-import { NODE_SPRITES, NODE_SIZES, ROLE_SPRITES, MUSHROOM_SPRITES, seeded } from "./types";
-import { getConnectorPosition, getAgentPosition, getFormationAgents, getFormationBounds } from "./geometry";
 import type { AvailableConnector, ConnectorSchema } from "@springtale/types";
+import type { Component } from "solid-js";
+import { createEffect, createSignal, For, Show } from "solid-js";
+import type { EventItem } from "../dashboard/model";
+import { getAgentPosition, getConnectorPosition, getFormationBounds } from "./geometry";
+import type {
+  ColonyAgent,
+  ColonyConnection,
+  ColonyFormation,
+  ColonyNode,
+  ColonySelection,
+} from "./types";
+import { MUSHROOM_SPRITES, NODE_SIZES, NODE_SPRITES, ROLE_SPRITES, seeded } from "./types";
 
 export interface ColonyCanvasProps {
   nodes: ColonyNode[];
@@ -39,11 +43,28 @@ const SIMLISH_ACTIVE = ["bzzk!", "snrf...", "pip!"];
 
 function getSimlish(activity: string): { text: string; type: "normal" | "urgent" } | null {
   switch (activity) {
-    case "firing": return { text: SIMLISH_FIRING[Math.floor(Math.random() * SIMLISH_FIRING.length)] ?? "zib!", type: "normal" };
-    case "error": return { text: SIMLISH_ERROR[Math.floor(Math.random() * SIMLISH_ERROR.length)] ?? "vrm!", type: "urgent" };
-    case "waiting": return { text: SIMLISH_WAITING[Math.floor(Math.random() * SIMLISH_WAITING.length)] ?? "...", type: "normal" };
-    case "active": return { text: SIMLISH_ACTIVE[Math.floor(Math.random() * SIMLISH_ACTIVE.length)] ?? "bzzk!", type: "normal" };
-    default: return null;
+    case "firing":
+      return {
+        text: SIMLISH_FIRING[Math.floor(Math.random() * SIMLISH_FIRING.length)] ?? "zib!",
+        type: "normal",
+      };
+    case "error":
+      return {
+        text: SIMLISH_ERROR[Math.floor(Math.random() * SIMLISH_ERROR.length)] ?? "vrm!",
+        type: "urgent",
+      };
+    case "waiting":
+      return {
+        text: SIMLISH_WAITING[Math.floor(Math.random() * SIMLISH_WAITING.length)] ?? "...",
+        type: "normal",
+      };
+    case "active":
+      return {
+        text: SIMLISH_ACTIVE[Math.floor(Math.random() * SIMLISH_ACTIVE.length)] ?? "bzzk!",
+        type: "normal",
+      };
+    default:
+      return null;
   }
 }
 
@@ -70,8 +91,8 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
     const x2 = (posB.x * width) / 100;
     const y2 = (posB.y * height) / 100;
     const key = conn.a + conn.b;
-    const cx = seeded(key + "cx", -35, 36);
-    const cy = seeded(key + "cy", 8, 45);
+    const cx = seeded(`${key}cx`, -35, 36);
+    const cy = seeded(`${key}cy`, 8, 45);
     return `M${x1},${y1} Q${(x1 + x2) / 2 + cx},${(y1 + y2) / 2 + cy} ${x2},${y2}`;
   };
 
@@ -81,7 +102,7 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
   // tree dragged), the CSS transition animates the move and we show
   // the is-walking class until transitionend fires.
   const [walkingAgents, setWalkingAgents] = createSignal<Set<string>>(new Set());
-  let prevPositions: Record<string, { x: number; y: number }> = {};
+  const prevPositions: Record<string, { x: number; y: number }> = {};
 
   createEffect(() => {
     const nextWalking = new Set<string>();
@@ -101,14 +122,18 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
   });
 
   // ── Agent activity state — comes from backend ──────────
-  const getAgentActivity = (agent: ColonyAgent): "firing" | "error" | "active" | "waiting" | "idle" => {
+  const getAgentActivity = (
+    agent: ColonyAgent,
+  ): "firing" | "error" | "active" | "waiting" | "idle" => {
     return (agent.activity ?? "waiting") as "firing" | "error" | "active" | "waiting" | "idle";
   };
 
   // ── Simlish bubbles (event-driven, not random) ─────────
-  const [bubbles, setBubbles] = createSignal<Record<string, { text: string; type: string; key: number }>>({});
+  const [bubbles, setBubbles] = createSignal<
+    Record<string, { text: string; type: string; key: number }>
+  >({});
   let bubbleKey = 0;
-  let prevActivities: Record<string, string> = {};
+  const prevActivities: Record<string, string> = {};
 
   createEffect(() => {
     for (const agent of props.agents) {
@@ -118,11 +143,15 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
         if (simlish) {
           const key = ++bubbleKey;
           setBubbles((prev) => ({ ...prev, [agent.id]: { ...simlish, key } }));
-          setTimeout(() => setBubbles((prev) => {
-            const next = { ...prev };
-            if (next[agent.id]?.key === key) delete next[agent.id];
-            return next;
-          }), 3000);
+          setTimeout(
+            () =>
+              setBubbles((prev) => {
+                const next = { ...prev };
+                if (next[agent.id]?.key === key) delete next[agent.id];
+                return next;
+              }),
+            3000,
+          );
         }
       }
       prevActivities[agent.id] = act;
@@ -138,17 +167,30 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
   const canvasWidth = () => canvasSize.width ?? 1280;
   const canvasHeight = () => canvasSize.height ?? 600;
 
+  // RTS-style canvas: child sprites are the real interactive targets
+  // (each one carries data-agent-id / data-connector-id /
+  // data-formation-id). The root delegates pointer events so we don't
+  // need every sprite to ship its own handler. role="application" tells
+  // assistive tech to pass keystrokes through to the app-level handler
+  // in App.tsx (Escape, 1-9, etc.) instead of consuming them for
+  // screen-reader navigation.
   return (
     <div
       ref={(el) => setCanvasRef(el)}
+      role="application"
+      aria-label="Colony canvas"
+      tabindex={0}
       class={`relative h-full w-full ${props.underground ? "colony-underground" : ""}`}
+      // Keyboard navigation handled at the document level in App.tsx;
+      // this hook satisfies useKeyWithClickEvents without re-handling.
+      onKeyDown={() => {}}
       onClick={(e) => {
         // Event delegation (v8 reference pattern, lines 1069-1084).
         // Single handler on canvas root — uses closest() to find the
         // nearest interactive ancestor. Works even when the click lands
         // on a tiny child element (1px sprite, overhead text, etc.).
         const target = (e.target as HTMLElement).closest?.(
-          "[data-agent-id], [data-connector-id], [data-formation-id]"
+          "[data-agent-id], [data-connector-id], [data-formation-id]",
         );
         if (target instanceof HTMLElement) {
           if (target.dataset.agentId) {
@@ -171,8 +213,12 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
           const pctY = ((e.clientY - rect.top) / rect.height) * 100;
           for (const f of props.formations) {
             const b = getFormationBounds(f, props.agents, props.nodes, props.connectorPositions);
-            if (pctX >= b.cx - b.rx && pctX <= b.cx + b.rx &&
-                pctY >= b.cy - b.ry && pctY <= b.cy + b.ry) {
+            if (
+              pctX >= b.cx - b.rx &&
+              pctX <= b.cx + b.rx &&
+              pctY >= b.cy - b.ry &&
+              pctY <= b.cy + b.ry
+            ) {
               props.onSelectFormation(f.id);
               return;
             }
@@ -197,9 +243,13 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
             Press BUILD BOT/TEAM or click below to begin
           </p>
           <button
+            type="button"
             class="colony-command-btn mt-6 colony-text-sm"
             style={{ "border-color": "var(--color-status-ok)", padding: "8px 24px" }}
-            onClick={(e) => { e.stopPropagation(); props.onHatch?.(); }}
+            onClick={(e) => {
+              e.stopPropagation();
+              props.onHatch?.();
+            }}
           >
             BUILD BOT/TEAM
           </button>
@@ -209,20 +259,22 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
       {/* Board texture — decorative ground scatter */}
       <For each={Array.from({ length: 45 }, (_, i) => i)}>
         {(i) => {
-          const x = seeded("litter" + i + "x", 3, 97);
-          const y = seeded("litter" + i + "y", 8, 92);
-          const w = seeded("litter" + i + "w", 2, 4);
-          const h = seeded("litter" + i + "h", 1, 3);
-          const hue = seeded("litter" + i + "hue", 35, 50);
-          const sat = seeded("litter" + i + "sat", 20, 40);
-          const lgt = seeded("litter" + i + "lgt", 8, 16);
+          const x = seeded(`litter${i}x`, 3, 97);
+          const y = seeded(`litter${i}y`, 8, 92);
+          const w = seeded(`litter${i}w`, 2, 4);
+          const h = seeded(`litter${i}h`, 1, 3);
+          const hue = seeded(`litter${i}hue`, 35, 50);
+          const sat = seeded(`litter${i}sat`, 20, 40);
+          const lgt = seeded(`litter${i}lgt`, 8, 16);
           const opacity = 0.12 + ((i * 7) % 20) / 100;
           return (
             <div
               class="colony-litter"
               style={{
-                left: `${x}%`, top: `${y}%`,
-                width: `${w}px`, height: `${h}px`,
+                left: `${x}%`,
+                top: `${y}%`,
+                width: `${w}px`,
+                height: `${h}px`,
                 background: `hsl(${hue},${sat}%,${lgt}%)`,
                 opacity: `${opacity}`,
               }}
@@ -237,13 +289,16 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
           viewBox={`0 0 ${canvasWidth()} ${canvasHeight()}`}
           class="h-full w-full"
           preserveAspectRatio="none"
+          role="img"
+          aria-label="Connector pipeline paths"
         >
+          <title>Connector pipeline paths</title>
           <defs>
             <filter id="strand-glow">
-              <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur"/>
+              <feGaussianBlur in="SourceGraphic" stdDeviation="2" result="blur" />
               <feMerge>
-                <feMergeNode in="blur"/>
-                <feMergeNode in="SourceGraphic"/>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
               </feMerge>
             </filter>
           </defs>
@@ -252,8 +307,12 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
               const pathData = () => getMyceliumPath(conn, canvasWidth(), canvasHeight());
               const hasActive = conn.pipes.some((p) => p.status === "active");
               const hasWarning = conn.pipes.some((p) => p.status === "warning");
-              const strokeColor = hasActive ? "var(--color-mycelium-active)" : hasWarning ? "var(--color-mycelium-warning)" : "var(--color-mycelium)";
-              const opacity = props.underground ? (hasActive ? 0.8 : 0.45) : (hasActive ? 0.45 : 0.2);
+              const strokeColor = hasActive
+                ? "var(--color-mycelium-active)"
+                : hasWarning
+                  ? "var(--color-mycelium-warning)"
+                  : "var(--color-mycelium)";
+              const opacity = props.underground ? (hasActive ? 0.8 : 0.45) : hasActive ? 0.45 : 0.2;
               const strokeWidth = props.underground ? 2.5 : 1.5;
 
               return (
@@ -268,10 +327,12 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                     {(pipe) => (
                       <circle r="2.5" fill={strokeColor} opacity="0.6">
                         <animateMotion
-                          dur={`${2 + seeded(pipe.id + "dur", 0, 20) / 10}s`}
+                          dur={`${2 + seeded(`${pipe.id}dur`, 0, 20) / 10}s`}
                           repeatCount="indefinite"
                           path={pathData()}
-                          {...(pipe.dir === -1 ? { keyPoints: "1;0", keyTimes: "0;1", calcMode: "linear" } : {})}
+                          {...(pipe.dir === -1
+                            ? { keyPoints: "1;0", keyTimes: "0;1", calcMode: "linear" }
+                            : {})}
                         />
                       </circle>
                     )}
@@ -289,17 +350,26 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
           clicks on the interior pass through to agents/nodes underneath. */}
       <For each={props.formations}>
         {(formation) => {
-          const bounds = () => getFormationBounds(
-            formation, props.agents, props.nodes, props.connectorPositions,
-          );
-          const isSelected = () => props.selection.id === formation.id && props.selection.type === "formation";
+          const bounds = () =>
+            getFormationBounds(formation, props.agents, props.nodes, props.connectorPositions);
+          const isSelected = () =>
+            props.selection.id === formation.id && props.selection.type === "formation";
           return (
             <>
-              {/* Ring — SVG ellipse, stroke-only hit testing */}
+              {/* Ring — SVG ellipse, stroke-only hit testing. The
+                  surrounding SVG carries `data-formation-id` so clicks
+                  on the ellipse bubble to the canvas root's event
+                  delegate (which dispatches `props.onSelectFormation`).
+                  Keyboard navigation lives in the formations list and
+                  the App-level shortcuts; the SVG itself is decorative
+                  to assistive tech. */}
               <svg
                 class="colony-formation"
                 data-status={formation.status}
                 data-pacing={formation.pacingPhase}
+                data-formation-id={formation.id}
+                role="img"
+                aria-label={`Formation ${formation.name}`}
                 style={{
                   left: `calc(${bounds().cx}% - ${bounds().rx}% - 8px)`,
                   top: `calc(${bounds().cy}% - ${bounds().ry}% - 8px)`,
@@ -308,6 +378,7 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                   overflow: "visible",
                 }}
               >
+                <title>{`Formation ${formation.name}`}</title>
                 <ellipse
                   cx="50%"
                   cy="50%"
@@ -319,7 +390,15 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                   stroke-dasharray={isSelected() ? "none" : "4 6"}
                   pointer-events="stroke"
                   cursor="pointer"
-                  onClick={(e) => { e.stopPropagation(); props.onSelectFormation(formation.id); }}
+                  /* W7 — ring glows while the formation is actively
+                     cascading (real `cascade_hit` event, recency-gated). */
+                  style={
+                    formation.cascadeStreak
+                      ? {
+                          filter: `drop-shadow(0 0 3px ${formation.color}) drop-shadow(0 0 6px ${formation.color})`,
+                        }
+                      : undefined
+                  }
                 />
               </svg>
               {/* Label — positioned above the ring */}
@@ -338,11 +417,66 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                 <span style={{ color: formation.color, cursor: "pointer" }}>{formation.name}</span>
                 <span
                   class="px-1 font-bold"
-                  style={{ "font-size": "5px", background: formation.color, color: "var(--color-soil-deep)", cursor: "pointer" }}
+                  style={{
+                    "font-size": "5px",
+                    background: formation.color,
+                    color: "var(--color-soil-deep)",
+                    cursor: "pointer",
+                  }}
                 >
                   {formation.momentumLabel}
                 </span>
+                {/* W7 — live cascade streak (real `cascade_hit.streak`),
+                    shown only while the cascade is current. */}
+                <Show when={formation.cascadeStreak}>
+                  <span
+                    class="px-1 font-bold"
+                    style={{
+                      "font-size": "5px",
+                      background: "var(--color-status-warn)",
+                      color: "var(--color-soil-deep)",
+                    }}
+                    title={`Cascade streak ${formation.cascadeStreak}`}
+                  >
+                    {`⚡${formation.cascadeStreak}`}
+                  </span>
+                </Show>
               </div>
+              {/* Rally pips on the ring — a faithful read of the formation's
+                  real rally-token budget (`rally_tokens`/`rally_max` from the
+                  backend, the same source the RALLY command gates on). Filled
+                  = an available token, hollow = spent. Hidden entirely when a
+                  formation has no rally budget, so this never draws decoration
+                  without backing state. */}
+              <Show when={formation.rallyMax > 0}>
+                <div
+                  class="absolute z-[3] flex gap-0.5"
+                  style={{
+                    left: `${bounds().cx}%`,
+                    top: `calc(${bounds().cy}% + ${bounds().ry}% + 4px)`,
+                    transform: "translateX(-50%)",
+                    "pointer-events": "none",
+                  }}
+                  title={`Rally ${formation.rallyTokens}/${formation.rallyMax}`}
+                >
+                  <For each={Array.from({ length: formation.rallyMax })}>
+                    {(_, i) => (
+                      <div
+                        style={{
+                          width: "4px",
+                          height: "4px",
+                          "border-radius": "1px",
+                          background:
+                            i() < formation.rallyTokens
+                              ? "var(--color-status-warn)"
+                              : "transparent",
+                          border: `1px solid ${formation.color}`,
+                        }}
+                      />
+                    )}
+                  </For>
+                </div>
+              </Show>
             </>
           );
         }}
@@ -369,14 +503,19 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
           };
           const onPointerMove = (e: PointerEvent) => {
             if (!dragStart) return;
-            if (Math.abs(e.clientX - dragStart.cx) > 3 || Math.abs(e.clientY - dragStart.cy) > 3) wasDragged = true;
+            if (Math.abs(e.clientX - dragStart.cx) > 3 || Math.abs(e.clientY - dragStart.cy) > 3)
+              wasDragged = true;
             if (!wasDragged) return;
             const parent = (e.currentTarget as HTMLElement).parentElement;
             if (!parent) return;
             const rect = parent.getBoundingClientRect();
             const pctX = ((e.clientX - dragStart.cx) / rect.width) * 100;
             const pctY = ((e.clientY - dragStart.cy) / rect.height) * 100;
-            props.onConnectorDrag(node.id, Math.max(3, Math.min(97, dragStart.ox + pctX)), Math.max(3, Math.min(97, dragStart.oy + pctY)));
+            props.onConnectorDrag(
+              node.id,
+              Math.max(3, Math.min(97, dragStart.ox + pctX)),
+              Math.max(3, Math.min(97, dragStart.oy + pctY)),
+            );
           };
           const onPointerUp = (e: PointerEvent) => {
             (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
@@ -385,8 +524,10 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
           };
 
           return (
-            <div
+            <button
+              type="button"
               class={`colony-tree ${props.selection.id === node.id && props.selection.type === "connector" ? "is-selected" : ""}`}
+              aria-label={`Connector ${node.label}`}
               style={{
                 left: `calc(${pos().x}% - ${size.width / 2}px)`,
                 top: `calc(${pos().y}% - ${size.height}px)`,
@@ -399,16 +540,28 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
               onPointerMove={onPointerMove}
               onPointerUp={onPointerUp}
               onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  props.onSelectConnector(node.id);
+                }
+              }}
             >
               <div class={`pixel-sprite ${spriteClass}`} />
               <div
                 class="absolute"
                 style={{
-                  bottom: "-4px", left: "50%", transform: "translateX(-50%)",
-                  width: "5px", height: "5px",
-                  background: node.status === "active" ? "var(--color-status-ok)"
-                    : node.status === "paused" ? "var(--color-status-warn)"
-                    : "var(--color-status-idle)",
+                  bottom: "-4px",
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  width: "5px",
+                  height: "5px",
+                  background:
+                    node.status === "active"
+                      ? "var(--color-status-ok)"
+                      : node.status === "paused"
+                        ? "var(--color-status-warn)"
+                        : "var(--color-status-idle)",
                 }}
               />
               <div
@@ -417,7 +570,7 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
               >
                 {node.label}
               </div>
-            </div>
+            </button>
           );
         }}
       </For>
@@ -427,11 +580,11 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
         {(node) => {
           const connectorPos = () => getConnectorPos(node.id);
           return (
-            <For each={Array.from({ length: seeded(node.id + "mushcount", 1, 3) }, (_, i) => i)}>
+            <For each={Array.from({ length: seeded(`${node.id}mushcount`, 1, 3) }, (_, i) => i)}>
               {(i) => {
-                const spriteClass = MUSHROOM_SPRITES[seeded(node.id + "mt" + i, 0, 3)];
-                const ox = seeded(node.id + "mx" + i, -4, 5);
-                const oy = seeded(node.id + "my" + i, 5, 12);
+                const spriteClass = MUSHROOM_SPRITES[seeded(`${node.id}mt${i}`, 0, 3)];
+                const ox = seeded(`${node.id}mx${i}`, -4, 5);
+                const oy = seeded(`${node.id}my${i}`, 5, 12);
                 return (
                   <div
                     class="colony-mushroom"
@@ -452,7 +605,8 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
           const pos = () => agentPos(agent);
           const spriteClass = ROLE_SPRITES[agent.role];
           const act = () => getAgentActivity(agent);
-          const isSelected = () => props.selection.id === agent.id && props.selection.type === "agent";
+          const isSelected = () =>
+            props.selection.id === agent.id && props.selection.type === "agent";
 
           return (
             <div
@@ -476,10 +630,26 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
               {/* Overhead info */}
               <div
                 class="pointer-events-none absolute flex flex-col items-center gap-px"
-                style={{ bottom: "100%", left: "50%", transform: "translateX(-50%)", "margin-bottom": "2px" }}
+                style={{
+                  bottom: "100%",
+                  left: "50%",
+                  transform: "translateX(-50%)",
+                  "margin-bottom": "2px",
+                }}
               >
-                <span class="colony-text-sm" style={{ filter: "drop-shadow(0 0 2px var(--color-shadow-deep))" }}>
-                  {act() === "error" ? "!!" : act() === "firing" ? "!" : act() === "idle" ? "-" : act() === "waiting" ? "~" : "*"}
+                <span
+                  class="colony-text-sm"
+                  style={{ filter: "drop-shadow(0 0 2px var(--color-shadow-deep))" }}
+                >
+                  {act() === "error"
+                    ? "!!"
+                    : act() === "firing"
+                      ? "!"
+                      : act() === "idle"
+                        ? "-"
+                        : act() === "waiting"
+                          ? "~"
+                          : "*"}
                 </span>
                 {/* Fuel bars — visible when not at full */}
                 <Show when={agent.fuel < 100 || agent.hp < 100}>
@@ -505,8 +675,10 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                 <div
                   class="absolute"
                   style={{
-                    top: "-2px", right: "-2px",
-                    width: "5px", height: "5px",
+                    top: "-2px",
+                    right: "-2px",
+                    width: "5px",
+                    height: "5px",
                     background: "var(--color-status-warn)",
                     "border-radius": "50%",
                     "pointer-events": "none",

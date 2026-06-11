@@ -19,10 +19,9 @@
  */
 
 import type { Component } from "solid-js";
-import { For, Show, createResource, createSignal, createMemo, onMount } from "solid-js";
-
-import type { Recipe, RecipeCategory, RecipeFilter } from "../dashboard/types";
+import { createMemo, createResource, createSignal, For, onMount, Show } from "solid-js";
 import { useDashboard } from "../dashboard/context";
+import type { Recipe, RecipeCategory, RecipeFilter } from "../dashboard/types";
 import { RecipeCard } from "./RecipeCard";
 
 /** Visual variant — applied as a hard server-side filter so the
@@ -63,7 +62,7 @@ function arrayEq<T>(a: T[] | undefined, b: T[] | undefined): boolean {
   const al = a?.length ?? 0;
   const bl = b?.length ?? 0;
   if (al !== bl) return false;
-  for (let i = 0; i < al; i++) if (a![i] !== b![i]) return false;
+  for (let i = 0; i < al; i++) if (a?.[i] !== b?.[i]) return false;
   return true;
 }
 
@@ -141,6 +140,7 @@ export const RecipeLibraryOverlay: Component<RecipeLibraryOverlayProps> = (props
           onClick={() => setBucket({ kind: "user" })}
         />
         <button
+          type="button"
           class="colony-command-btn colony-text-2xs mt-4 w-full px-2 py-2"
           onClick={() => props.onBuildFromScratch()}
         >
@@ -152,11 +152,10 @@ export const RecipeLibraryOverlay: Component<RecipeLibraryOverlayProps> = (props
       <section class="flex flex-1 flex-col overflow-hidden">
         <header class="border-b-2 border-bark p-3">
           <div class="flex items-center gap-2">
-            <p class="colony-text-md font-bold text-text-primary">
-              {bucketTitle(bucket())}
-            </p>
+            <p class="colony-text-md font-bold text-text-primary">{bucketTitle(bucket())}</p>
             <div class="flex-1" />
             <button
+              type="button"
               class="colony-command-btn colony-text-2xs px-3 py-1"
               onClick={() => props.onCancel()}
             >
@@ -184,10 +183,11 @@ export const RecipeLibraryOverlay: Component<RecipeLibraryOverlayProps> = (props
             </div>
           </Show>
 
-          <Show when={!recipes.loading && !recipes.error && recipes() && recipes()!.length === 0}>
+          <Show when={!recipes.loading && !recipes.error && recipes() && recipes()?.length === 0}>
             <div class="flex h-full flex-col items-center justify-center gap-3 text-center">
               <p class="colony-text-xs text-text-dim">{emptyMessage(bucket(), query())}</p>
               <button
+                type="button"
                 class="colony-command-btn colony-text-2xs px-4 py-2"
                 onClick={() => props.onBuildFromScratch()}
               >
@@ -196,7 +196,7 @@ export const RecipeLibraryOverlay: Component<RecipeLibraryOverlayProps> = (props
             </div>
           </Show>
 
-          <Show when={recipes() && recipes()!.length > 0}>
+          <Show when={(recipes()?.length ?? 0) > 0}>
             <div class="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
               <For each={recipes()}>
                 {(r) => (
@@ -224,6 +224,7 @@ interface SidebarItemProps {
 
 const SidebarItem: Component<SidebarItemProps> = (props) => (
   <button
+    type="button"
     class="colony-text-xs w-full rounded px-2 py-1 text-left text-text-primary transition hover:bg-soil-deep"
     classList={{ "bg-soil-deep border-l-2 border-accent": props.active }}
     onClick={() => props.onClick()}

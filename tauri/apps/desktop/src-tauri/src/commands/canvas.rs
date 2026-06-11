@@ -1,5 +1,5 @@
-use tauri::ipc::Channel;
 use tauri::State;
+use tauri::ipc::Channel;
 
 use springtale_core::canvas::{CanvasState, CanvasUpdate};
 

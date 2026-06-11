@@ -1,6 +1,6 @@
-import { createSignal, onMount, For } from "solid-js";
-import { useI18n } from "@springtale/ui";
 import type { Session } from "@springtale/types";
+import { useI18n } from "@springtale/ui";
+import { createSignal, For, onMount } from "solid-js";
 import { get } from "../api/client";
 
 /**
@@ -36,6 +36,7 @@ export function SessionsPage() {
       <div class="flex items-center justify-between">
         <h1 class="text-2xl font-bold text-white">{t("sessions.title")}</h1>
         <button
+          type="button"
           class="rounded bg-gray-700 px-3 py-1 text-sm text-gray-200 hover:bg-gray-600"
           onClick={fetchSessions}
         >
@@ -43,12 +44,18 @@ export function SessionsPage() {
         </button>
       </div>
       {error() && (
-        <div role="alert" aria-live="assertive" class="mt-4 rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+        <div
+          role="alert"
+          aria-live="assertive"
+          class="mt-4 rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400"
+        >
           {error()}
         </div>
       )}
       {loading() ? (
-        <p role="status" aria-live="polite" class="mt-4 text-gray-400">{t("common.loading")}</p>
+        <p role="status" aria-live="polite" class="mt-4 text-gray-400">
+          {t("common.loading")}
+        </p>
       ) : (
         <ul class="mt-4 space-y-2">
           <For each={sessions()}>
@@ -79,7 +86,9 @@ export function SessionsPage() {
           </For>
           {sessions().length === 0 && (
             <li class="list-none">
-              <p role="status" class="text-gray-500">{t("empty.sessions")}</p>
+              <p role="status" class="text-gray-500">
+                {t("empty.sessions")}
+              </p>
             </li>
           )}
         </ul>

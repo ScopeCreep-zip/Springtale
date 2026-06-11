@@ -56,17 +56,13 @@ pub async fn open_selector_picker(
     let (tx, rx) = oneshot::channel::<Option<String>>();
     let tx = Arc::new(std::sync::Mutex::new(Some(tx)));
 
-    let window = WebviewWindowBuilder::new(
-        &app,
-        label.clone(),
-        WebviewUrl::External(parsed),
-    )
-    .title("Pick an element")
-    .inner_size(1024.0, 768.0)
-    .resizable(true)
-    .visible(true)
-    .build()
-    .map_err(|e| format!("failed to open picker window: {e}"))?;
+    let window = WebviewWindowBuilder::new(&app, label.clone(), WebviewUrl::External(parsed))
+        .title("Pick an element")
+        .inner_size(1024.0, 768.0)
+        .resizable(true)
+        .visible(true)
+        .build()
+        .map_err(|e| format!("failed to open picker window: {e}"))?;
 
     // Forward the host_allowlist into the page on load so picker.js
     // can advise the user when they navigate away.
@@ -96,10 +92,10 @@ pub async fn open_selector_picker(
         let payload_str = event.payload();
         let parsed: Option<SelectorPickedPayload> = serde_json::from_str(payload_str).ok();
         let selector = parsed.map(|p| p.selector);
-        if let Ok(mut slot) = tx_picked.lock() {
-            if let Some(sender) = slot.take() {
-                let _ = sender.send(selector);
-            }
+        if let Ok(mut slot) = tx_picked.lock()
+            && let Some(sender) = slot.take()
+        {
+            let _ = sender.send(selector);
         }
         // Close the picker window so the user doesn't see a stuck
         // overlay after picking.
@@ -111,13 +107,12 @@ pub async fn open_selector_picker(
     // Also resolve with None when the window closes without an
     // emit — the user cancelled.
     let tx_close = Arc::clone(&tx);
-    let _ = window.on_window_event(move |event| {
-        if matches!(event, tauri::WindowEvent::CloseRequested { .. }) {
-            if let Ok(mut slot) = tx_close.lock() {
-                if let Some(sender) = slot.take() {
-                    let _ = sender.send(None);
-                }
-            }
+    window.on_window_event(move |event| {
+        if matches!(event, tauri::WindowEvent::CloseRequested { .. })
+            && let Ok(mut slot) = tx_close.lock()
+            && let Some(sender) = slot.take()
+        {
+            let _ = sender.send(None);
         }
     });
 

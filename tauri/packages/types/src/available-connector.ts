@@ -5,7 +5,7 @@
  * Includes config schema, trigger/action declarations — all available without
  * a live connector instance (n8n descriptor pattern).
  */
-import type { TriggerDecl, ActionDecl } from "./manifest";
+import type { ActionDecl, TriggerDecl } from "./manifest";
 
 /** JSON Schema property descriptor for a single config field. */
 export interface ConfigSchemaProperty {

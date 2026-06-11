@@ -25,11 +25,7 @@ pub async fn test_recipe_step(
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
     springtale_runtime::operations::test_step::test_recipe_step(
-        rt,
-        &recipe_id,
-        inputs,
-        rule_index,
-        step_index,
+        rt, &recipe_id, inputs, rule_index, step_index,
     )
     .await
     .map_err(|e| format!("test_recipe_step: {e}"))

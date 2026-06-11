@@ -6,8 +6,9 @@
  *
  * No external dependencies — only SolidJS core.
  */
-import { createSignal, createResource } from "solid-js";
+
 import type { ResourceReturn } from "solid-js";
+import { createResource, createSignal } from "solid-js";
 
 /**
  * Wrap a DataProvider read operation in createResource.
@@ -19,9 +20,7 @@ import type { ResourceReturn } from "solid-js";
  * Usage:
  *   const [data, { refetch }] = createProviderQuery(() => provider.listConnectors());
  */
-export function createProviderQuery<T>(
-  fetcher: () => Promise<T>,
-): ResourceReturn<T> {
+export function createProviderQuery<T>(fetcher: () => Promise<T>): ResourceReturn<T> {
   return createResource<T>(() => fetcher());
 }
 

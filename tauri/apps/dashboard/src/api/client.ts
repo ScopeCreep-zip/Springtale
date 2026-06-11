@@ -30,13 +30,28 @@ export function getToken(): string {
   return token;
 }
 
+/**
+ * Build an Error from a failed response, preferring the server's response
+ * BODY (the daemon returns the real message there, e.g. "I couldn't find a
+ * place called 'Sacramento, XYZ'") and falling back to the status line.
+ */
+async function errorFromResponse(response: Response): Promise<Error> {
+  let detail = "";
+  try {
+    detail = (await response.text()).trim();
+  } catch {
+    // body unreadable — fall back to the status line below
+  }
+  return new Error(detail || `API error: ${response.status} ${response.statusText}`);
+}
+
 /** Make an authenticated GET request. */
 export async function get<T>(path: string): Promise<T> {
   const response = await fetch(`${baseUrl}${path}`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
+    throw await errorFromResponse(response);
   }
   return response.json() as Promise<T>;
 }
@@ -52,7 +67,7 @@ export async function post<T>(path: string, body?: unknown): Promise<T> {
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
+    throw await errorFromResponse(response);
   }
   return response.json() as Promise<T>;
 }
@@ -68,7 +83,7 @@ export async function put<T>(path: string, body: unknown): Promise<T> {
     body: JSON.stringify(body),
   });
   if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
+    throw await errorFromResponse(response);
   }
   return response.json() as Promise<T>;
 }
@@ -80,7 +95,7 @@ export async function del<T = void>(path: string): Promise<T> {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) {
-    throw new Error(`API error: ${response.status} ${response.statusText}`);
+    throw await errorFromResponse(response);
   }
   const text = await response.text();
   if (!text) return undefined as T;

@@ -1,6 +1,6 @@
-import { For, Show, createSignal } from "solid-js";
-import type { Component } from "solid-js";
 import type { ConnectorSchema } from "@springtale/types";
+import type { Component } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import { useI18n } from "./i18n/context";
 
 export interface TriggerPickerProps {
@@ -19,8 +19,7 @@ export const TriggerPicker: Component<TriggerPickerProps> = (props) => {
   const [selectedConnector, setSelectedConnector] = createSignal("");
   const [selectedTrigger, setSelectedTrigger] = createSignal("");
 
-  const currentConnector = () =>
-    props.connectors.find((c) => c.name === selectedConnector());
+  const currentConnector = () => props.connectors.find((c) => c.name === selectedConnector());
 
   const currentTrigger = () =>
     currentConnector()?.triggers.find((tr) => tr.name === selectedTrigger());
@@ -48,9 +47,7 @@ export const TriggerPicker: Component<TriggerPickerProps> = (props) => {
           onChange={(e) => handleConnectorChange(e.currentTarget.value)}
         >
           <option value="">{t("picker.selectConnector")}</option>
-          <For each={props.connectors}>
-            {(c) => <option value={c.name}>{c.name}</option>}
-          </For>
+          <For each={props.connectors}>{(c) => <option value={c.name}>{c.name}</option>}</For>
         </select>
       </div>
 

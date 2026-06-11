@@ -5,7 +5,7 @@
  * Desktop uses Tauri events instead.
  */
 import type { CanvasState, CanvasUpdate } from "@springtale/types";
-import { get, getBaseUrl, getToken } from "./client";
+import { get } from "./client";
 
 export async function getCanvasState(): Promise<CanvasState> {
   return get<CanvasState>("/canvas");

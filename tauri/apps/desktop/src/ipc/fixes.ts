@@ -1,8 +1,9 @@
 /**
  * Typed IPC wrappers for error-fix operations.
  */
-import { invoke } from "@tauri-apps/api/core";
+
 import type { FixGuide, FixOutcome } from "@springtale/types";
+import { invoke } from "@tauri-apps/api/core";
 
 export async function listFixes(): Promise<FixGuide[]> {
   return invoke<FixGuide[]>("list_fixes");

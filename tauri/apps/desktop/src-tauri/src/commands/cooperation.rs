@@ -10,8 +10,8 @@
 //! 30Hz across 4 formations — well above the threshold where Channel<T>
 //! beats the broadcast emit path.
 
-use tauri::ipc::Channel;
 use tauri::State;
+use tauri::ipc::Channel;
 
 use springtale_cooperation::CooperationEventEnvelope;
 

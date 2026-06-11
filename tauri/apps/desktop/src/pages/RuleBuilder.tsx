@@ -1,13 +1,7 @@
-import { createSignal, onMount } from "solid-js";
-import {
-  TriggerPicker,
-  ActionPicker,
-  ConditionEditor,
-  RulePreview,
-  useI18n,
-} from "@springtale/ui";
 import type { ConnectorSchema } from "@springtale/types";
 import type { ConditionDef } from "@springtale/ui";
+import { ActionPicker, ConditionEditor, RulePreview, TriggerPicker, useI18n } from "@springtale/ui";
+import { createSignal, onMount } from "solid-js";
 import { getConnectorSchemas } from "../ipc/connectors";
 import { createConnectorRule, getRuleSchema } from "../ipc/rules";
 
@@ -33,7 +27,9 @@ export function RuleBuilderPage() {
     try {
       setConnectors(await getConnectorSchemas());
       const schema = await getRuleSchema();
-      const condObj = (schema as Record<string, unknown>).conditions as Record<string, unknown> | undefined;
+      const condObj = (schema as Record<string, unknown>).conditions as
+        | Record<string, unknown>
+        | undefined;
       if (condObj) {
         setConditionTypes(Object.keys(condObj));
       }
@@ -99,16 +95,24 @@ params = {}
   return (
     <div>
       <h1 class="text-2xl font-bold text-white">{t("builder.title")}</h1>
-      <p class="mt-1 text-sm text-gray-400">
-        {t("builder.description")}
-      </p>
+      <p class="mt-1 text-sm text-gray-400">{t("builder.description")}</p>
       {error() && (
-        <div role="alert" aria-live="assertive" class="mt-4 rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+        <div
+          role="alert"
+          aria-live="assertive"
+          class="mt-4 rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400"
+        >
           {error()}
         </div>
       )}
       <div class="mt-6 grid grid-cols-2 gap-6">
-        <form onSubmit={(e) => { e.preventDefault(); saveRule(); }} class="space-y-6">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            saveRule();
+          }}
+          class="space-y-6"
+        >
           <div class="space-y-3">
             <div>
               <label for="dt-rule-name" class="block text-sm font-medium text-gray-300">
@@ -142,17 +146,27 @@ params = {}
             <div class="mt-2">
               <TriggerPicker
                 connectors={connectors()}
-                onSelect={(c, tr) => { setTriggerConnector(c); setTriggerName(tr); }}
+                onSelect={(c, tr) => {
+                  setTriggerConnector(c);
+                  setTriggerName(tr);
+                }}
               />
             </div>
           </div>
-          <ConditionEditor conditions={conditions()} conditionTypes={conditionTypes()} onChange={setConditions} />
+          <ConditionEditor
+            conditions={conditions()}
+            conditionTypes={conditionTypes()}
+            onChange={setConditions}
+          />
           <div>
             <h3 class="text-sm font-semibold text-gray-200">{t("builder.thenAction")}</h3>
             <div class="mt-2">
               <ActionPicker
                 connectors={connectors()}
-                onSelect={(c, a) => { setActionConnector(c); setActionName(a); }}
+                onSelect={(c, a) => {
+                  setActionConnector(c);
+                  setActionName(a);
+                }}
               />
             </div>
           </div>

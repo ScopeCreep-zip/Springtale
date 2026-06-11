@@ -5,11 +5,9 @@
  * returns the targeted step's StepOutput, plus every upstream
  * step it ran along the way.
  */
+
+import type { RecipeInputs, TestStepReport } from "@springtale/ui/dashboard/types";
 import { invoke } from "@tauri-apps/api/core";
-import type {
-  RecipeInputs,
-  TestStepReport,
-} from "@springtale/ui/dashboard/types";
 
 export async function testRecipeStep(
   recipeId: string,

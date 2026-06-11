@@ -22,15 +22,16 @@
  * independently so cross-connector rules ("Telegram message → Slack
  * post") are first-class.
  */
-import { createMemo, createSignal, createResource, Show } from "solid-js";
+
 import type { Component } from "solid-js";
-import { TriggerPicker } from "../TriggerPicker";
+import { createMemo, createResource, createSignal, For, Show } from "solid-js";
 import { ActionPicker } from "../ActionPicker";
-import { ConditionEditor } from "../ConditionEditor";
-import { RulePreview } from "../RulePreview";
 import type { ConditionDef } from "../ConditionEditor";
+import { ConditionEditor } from "../ConditionEditor";
 import { useDashboard } from "../dashboard/context";
 import { useI18n } from "../i18n/context";
+import { RulePreview } from "../RulePreview";
+import { TriggerPicker } from "../TriggerPicker";
 
 export interface RuleBuilderOverlayProps {
   /** Close the overlay without saving. */
@@ -51,6 +52,8 @@ function generateToml(args: {
   actionConnector: string;
   actionName: string;
   conditions: ConditionDef[];
+  extraActions: { action_connector: string; action_name: string }[];
+  matchAny: boolean;
 }): string {
   if (!args.name || !args.triggerConnector || !args.triggerName) return "";
   const conditionsToml = args.conditions
@@ -67,6 +70,23 @@ function generateToml(args: {
       return `[[conditions.${c.type}]]\n${entries}`;
     })
     .join("\n\n");
+  // W6: when any-of is chosen with 2+ conditions, the backend wraps them in
+  // a single Or — note that here so the preview matches what gets saved.
+  const conditionsHeader =
+    args.matchAny && args.conditions.length > 1 ? "# matches ANY of the following:\n" : "";
+
+  // W6 chain: filled-in extra steps render as additional [[action]] blocks
+  // (the backend assembles these into one ordered Action::Chain).
+  const steps = [
+    { connector: args.actionConnector, name: args.actionName },
+    ...args.extraActions
+      .filter((s) => s.action_connector && s.action_name)
+      .map((s) => ({ connector: s.action_connector, name: s.action_name })),
+  ];
+  const actionsToml = steps
+    .map((s) => [`[[action]]`, `connector = "${s.connector}"`, `name = "${s.name}"`].join("\n"))
+    .join("\n\n");
+
   return [
     `[rule]`,
     `name = "${args.name}"`,
@@ -75,10 +95,8 @@ function generateToml(args: {
     `connector = "${args.triggerConnector}"`,
     `event = "${args.triggerName}"`,
     ``,
-    `[action]`,
-    `connector = "${args.actionConnector}"`,
-    `name = "${args.actionName}"`,
-    ...(conditionsToml ? ["", conditionsToml] : []),
+    actionsToml,
+    ...(conditionsToml ? ["", conditionsHeader + conditionsToml] : []),
   ].join("\n");
 }
 
@@ -92,6 +110,12 @@ export const RuleBuilderOverlay: Component<RuleBuilderOverlayProps> = (props) =>
   const [actionConnector, setActionConnector] = createSignal("");
   const [actionName, setActionName] = createSignal("");
   const [conditions, setConditions] = createSignal<ConditionDef[]>([]);
+  // W6 all-of / any-of toggle for the condition set.
+  const [matchAny, setMatchAny] = createSignal(false);
+  // W6 chain composer — extra action steps after the primary action.
+  const [extraActions, setExtraActions] = createSignal<
+    { action_connector: string; action_name: string }[]
+  >([]);
   const [saving, setSaving] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
@@ -116,22 +140,26 @@ export const RuleBuilderOverlay: Component<RuleBuilderOverlayProps> = (props) =>
   };
 
   const canSave = () =>
-    name().trim().length > 0
-    && triggerConnector().length > 0
-    && triggerName().length > 0
-    && actionConnector().length > 0
-    && actionName().length > 0;
+    name().trim().length > 0 &&
+    triggerConnector().length > 0 &&
+    triggerName().length > 0 &&
+    actionConnector().length > 0 &&
+    actionName().length > 0;
 
   // Reactive TOML preview — recomputes on any input change so the
   // survivor can see exactly what file the CLI would write.
-  const previewToml = createMemo(() => generateToml({
-    name: name(),
-    triggerConnector: triggerConnector(),
-    triggerName: triggerName(),
-    actionConnector: actionConnector(),
-    actionName: actionName(),
-    conditions: conditions(),
-  }));
+  const previewToml = createMemo(() =>
+    generateToml({
+      name: name(),
+      triggerConnector: triggerConnector(),
+      triggerName: triggerName(),
+      actionConnector: actionConnector(),
+      actionName: actionName(),
+      conditions: conditions(),
+      extraActions: extraActions(),
+      matchAny: matchAny(),
+    }),
+  );
 
   const save = async () => {
     setSaving(true);
@@ -144,6 +172,11 @@ export const RuleBuilderOverlay: Component<RuleBuilderOverlayProps> = (props) =>
         action_connector: actionConnector(),
         action_name: actionName(),
         conditions: conditions(),
+        // W6 — only send chain steps that are fully filled in.
+        extra_actions: extraActions().filter(
+          (s) => s.action_connector.length > 0 && s.action_name.length > 0,
+        ),
+        match_any: matchAny(),
       });
       props.onSaved?.(ruleId);
       props.onCancel();
@@ -157,15 +190,18 @@ export const RuleBuilderOverlay: Component<RuleBuilderOverlayProps> = (props) =>
   return (
     <div class="colony-modal mx-auto max-w-3xl overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6">
       <div class="mb-4 flex items-center justify-between">
-        <h2 class="colony-text-md font-bold text-text-primary">
-          {t("rules.builderTitle")}
-        </h2>
-        <button onClick={props.onCancel} class="colony-close-btn">✕</button>
+        <h2 class="colony-text-md font-bold text-text-primary">{t("rules.builderTitle")}</h2>
+        <button type="button" onClick={props.onCancel} class="colony-close-btn">
+          ✕
+        </button>
       </div>
 
       <Show when={error()}>
-        <div role="alert" aria-live="assertive"
-             class="colony-text-2xs mb-3 border border-status-error bg-status-error/10 p-2 text-status-error">
+        <div
+          role="alert"
+          aria-live="assertive"
+          class="colony-text-2xs mb-3 border border-status-error bg-status-error/10 p-2 text-status-error"
+        >
           {error()}
         </div>
       </Show>
@@ -197,7 +233,30 @@ export const RuleBuilderOverlay: Component<RuleBuilderOverlayProps> = (props) =>
 
         {/* Conditions */}
         <section>
-          <h3 class="colony-label mb-1">{t("rules.conditions")}</h3>
+          <div class="mb-1 flex items-center justify-between">
+            <h3 class="colony-label">{t("rules.conditions")}</h3>
+            {/* W6 all-of / any-of — only meaningful with 2+ conditions. */}
+            <Show when={conditions().length > 1}>
+              <div class="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => setMatchAny(false)}
+                  classList={{ "text-status-ok": !matchAny(), "text-text-dim": matchAny() }}
+                  class="colony-text-3xs border border-bark px-1.5 py-0.5"
+                >
+                  ALL OF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setMatchAny(true)}
+                  classList={{ "text-status-ok": matchAny(), "text-text-dim": !matchAny() }}
+                  class="colony-text-3xs border border-bark px-1.5 py-0.5"
+                >
+                  ANY OF
+                </button>
+              </div>
+            </Show>
+          </div>
           <ConditionEditor
             conditions={conditions()}
             conditionTypes={conditionTypes()}
@@ -215,6 +274,48 @@ export const RuleBuilderOverlay: Component<RuleBuilderOverlayProps> = (props) =>
               setActionName(action);
             }}
           />
+
+          {/* W6 chain composer — "And then…" extra steps, run in order. */}
+          <For each={extraActions()}>
+            {(_step, i) => (
+              <div class="mt-2 border-l-2 border-bark pl-2">
+                <div class="mb-1 flex items-center justify-between">
+                  <span class="colony-text-3xs text-text-dim">AND THEN</span>
+                  <button
+                    type="button"
+                    class="colony-text-3xs text-status-warn"
+                    onClick={() =>
+                      setExtraActions((prev) => prev.filter((_, idx) => idx !== i()))
+                    }
+                  >
+                    ✕ remove
+                  </button>
+                </div>
+                <ActionPicker
+                  connectors={db.schemas()}
+                  onSelect={(connector, action) => {
+                    setExtraActions((prev) => {
+                      const next = [...prev];
+                      next[i()] = { action_connector: connector, action_name: action };
+                      return next;
+                    });
+                  }}
+                />
+              </div>
+            )}
+          </For>
+
+          <Show when={actionName().length > 0}>
+            <button
+              type="button"
+              class="colony-text-3xs mt-2 border-2 border-bark bg-soil-light px-2 py-1 text-text-secondary hover:bg-soil-deep"
+              onClick={() =>
+                setExtraActions((prev) => [...prev, { action_connector: "", action_name: "" }])
+              }
+            >
+              + And then…
+            </button>
+          </Show>
         </section>
 
         {/* Preview — generates same TOML the CLI writes; surfaces
@@ -228,6 +329,7 @@ export const RuleBuilderOverlay: Component<RuleBuilderOverlayProps> = (props) =>
 
         <div class="flex gap-2 pt-2">
           <button
+            type="button"
             onClick={save}
             disabled={!canSave() || saving()}
             class="colony-text-2xs border-2 border-status-ok bg-soil-light px-3 py-1.5 text-status-ok hover:bg-soil-deep disabled:opacity-50"
@@ -235,6 +337,7 @@ export const RuleBuilderOverlay: Component<RuleBuilderOverlayProps> = (props) =>
             {saving() ? "Saving…" : t("common.save")}
           </button>
           <button
+            type="button"
             onClick={props.onCancel}
             class="colony-text-2xs border-2 border-bark bg-soil-light px-3 py-1.5 text-text-secondary hover:bg-soil-deep"
           >

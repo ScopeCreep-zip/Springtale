@@ -4,40 +4,57 @@
  * Thin adapter: delegates to existing api/ modules, unwraps HTTP
  * response envelopes ({ connectors: [...] } → [...]).
  */
-import type { DataProvider } from "@springtale/ui";
+
 import type {
-  ConnectorSchema, EventEntry, AvailableConnector,
-  Report, PlatformForm, ApplyReport, Template, WriteReport,
-  FixGuide, FixOutcome, SendRequest, SendOutcome,
+  ApplyReport,
+  AvailableConnector,
+  ConnectorSchema,
+  EventEntry,
+  FixGuide,
+  FixOutcome,
+  PlatformForm,
+  Report,
+  SendOutcome,
+  Template,
+  WriteReport,
 } from "@springtale/types";
-import type { RuleSummary, FormationInfo, FormationDetail } from "@springtale/ui";
-import { get, post, put, del, getBaseUrl, getToken } from "./api/client";
-import { subscribeToEvents } from "./api/events";
+import type {
+  ConnectorOutput,
+  DataProvider,
+  FormationDetail,
+  FormationInfo,
+  RuleSummary,
+} from "@springtale/ui";
 import { getCanvasState, subscribeToCanvasUpdates } from "./api/canvas";
+import { del, get, getBaseUrl, getToken, post, put } from "./api/client";
 import { subscribeToCooperationEvents } from "./api/cooperation";
+import { sendChatMessage, subscribeToChat } from "./api/chat";
+import { subscribeToEvents } from "./api/events";
 import {
-  listRecipes,
-  getRecipe,
-  listRecipeCategories,
-  toggleRecipeFavorite,
-  recordRecipeRecent,
   applyRecipe,
-  renderRecipeToml,
-  preflightRecipe,
-  previewRecipe,
-  listRecipePieces,
-  saveUserRecipe,
-  forkRecipe,
   deleteUserRecipe,
   exportRecipeToml,
+  forkRecipe,
+  getRecipe,
   importRecipeToml,
+  listRecipeCategories,
+  listRecipePieces,
+  listRecipes,
+  preflightRecipe,
+  previewRecipe,
+  recordRecipeRecent,
+  renderRecipeToml,
+  saveUserRecipe,
+  toggleRecipeFavorite,
 } from "./api/recipes";
 
 export function createWebProvider(): DataProvider {
   return {
     // Connectors
     async listConnectors() {
-      const data = await get<{ connectors: Array<{ name: string; enabled: boolean }> }>("/connectors");
+      const data = await get<{ connectors: Array<{ name: string; enabled: boolean }> }>(
+        "/connectors",
+      );
       return data.connectors;
     },
     async listAvailableConnectors() {
@@ -52,12 +69,22 @@ export function createWebProvider(): DataProvider {
       const data = await get<{ manifests: ConnectorSchema[] }>("/connectors/schemas");
       return data.manifests ?? [];
     },
-    async enableConnector(name) { await post(`/connectors/${name}/enable`); },
-    async disableConnector(name) { await post(`/connectors/${name}/disable`); },
-    async reloadConnector(name) { await post(`/connectors/${name}/reload`); },
-    async removeConnector(name) { await del(`/connectors/${name}`); },
+    async enableConnector(name) {
+      await post(`/connectors/${name}/enable`);
+    },
+    async disableConnector(name) {
+      await post(`/connectors/${name}/disable`);
+    },
+    async reloadConnector(name) {
+      await post(`/connectors/${name}/reload`);
+    },
+    async removeConnector(name) {
+      await del(`/connectors/${name}`);
+    },
     async removeConnectorCascade(name) {
-      const data = await del<{ removed: string; rules_deleted: string[] }>(`/connectors/${name}/cascade`);
+      const data = await del<{ removed: string; rules_deleted: string[] }>(
+        `/connectors/${name}/cascade`,
+      );
       return data.rules_deleted ?? [];
     },
     async getConnectorConfig(name) {
@@ -65,8 +92,10 @@ export function createWebProvider(): DataProvider {
       return data.config;
     },
     async listConnectorOutputs(name, limit = 20) {
-      const data = await get<{ outputs: unknown[] }>(`/connectors/${name}/outputs?limit=${limit}`);
-      return data.outputs as any;
+      const data = await get<{ outputs: ConnectorOutput[] }>(
+        `/connectors/${name}/outputs?limit=${limit}`,
+      );
+      return data.outputs;
     },
 
     // Rules
@@ -74,21 +103,35 @@ export function createWebProvider(): DataProvider {
       const data = await get<{ rules: RuleSummary[] }>("/rules");
       return data.rules;
     },
-    async createRule(rule) { return (await post<{ id: string }>("/rules", rule)).id; },
-    async toggleRule(id, enabled) { await post(`/rules/${id}/toggle`, { enabled }); },
-    async deleteRule(id) { await del(`/rules/${id}`); },
-    async updateRule(id, rule) { await put(`/rules/${id}`, rule); },
-    async runRule(id) { return post<{ matched: boolean }>(`/rules/${id}/run`); },
+    async createRule(rule) {
+      return (await post<{ id: string }>("/rules", rule)).id;
+    },
+    async toggleRule(id, enabled) {
+      await post(`/rules/${id}/toggle`, { enabled });
+    },
+    async deleteRule(id) {
+      await del(`/rules/${id}`);
+    },
+    async updateRule(id, rule) {
+      await put(`/rules/${id}`, rule);
+    },
+    async runRule(id) {
+      return post<{ matched: boolean }>(`/rules/${id}/run`);
+    },
     async parseRuleFromIntent(intent) {
       const data = await post<{ rule: Record<string, unknown> }>("/rules/parse", { intent });
       return data.rule;
     },
-    async getRuleSchema() { return get("/rules/schema"); },
+    async getRuleSchema() {
+      return get("/rules/schema");
+    },
     async createConnectorRule(rule) {
       return (await post<{ id: string }>("/rules/connector", rule)).id;
     },
     async listRulesForConnector(connectorName) {
-      const data = await get<{ rules: import("@springtale/ui").RuleSummary[] }>(`/rules/connector/${connectorName}`);
+      const data = await get<{ rules: import("@springtale/ui").RuleSummary[] }>(
+        `/rules/connector/${connectorName}`,
+      );
       return data.rules ?? [];
     },
     async testConnector(connectorName) {
@@ -179,13 +222,7 @@ export function createWebProvider(): DataProvider {
       // No-op on web — destinations live in the desktop's
       // local SQLite for now.
     },
-    async upsertWorkspaceManual(
-      _formationId,
-      _workspaceKey,
-      _displayName,
-      _connectorName,
-      _kind,
-    ) {
+    async upsertWorkspaceManual(_formationId, _workspaceKey, _displayName, _connectorName, _kind) {
       // No-op on web.
     },
     async previewOnboardUrl(_connectorName, _config, _payload) {
@@ -209,6 +246,17 @@ export function createWebProvider(): DataProvider {
       return subscribeToEvents(getBaseUrl(), token, callback);
     },
 
+    // In-app chat (W5)
+    async sendChatMessage(text, session) {
+      const token = getToken();
+      await sendChatMessage(getBaseUrl(), token ?? "", text, session);
+    },
+    subscribeToChat(callback) {
+      const token = getToken();
+      if (!token) return () => {};
+      return subscribeToChat(getBaseUrl(), token, callback);
+    },
+
     // Formations
     async getFormation(id: string) {
       return get<FormationDetail>(`/formations/${id}`);
@@ -220,13 +268,30 @@ export function createWebProvider(): DataProvider {
     async createFormation(name, intent, connectors) {
       return (await post<{ id: string }>("/formations", { name, intent, connectors })).id;
     },
-    async deployFormation(id) { await post(`/formations/${id}/deploy`); },
-    async pauseFormation(id) { await post(`/formations/${id}/pause`); },
-    async resumeFormation(id) { await post(`/formations/${id}/resume`); },
-    async dissolveFormation(id) { await post(`/formations/${id}/dissolve`); },
-    async rallyFormation(id) { await post(`/formations/${id}/rally`); },
-    async updateFormationIntent(id, intent) { await put(`/formations/${id}/intent`, { intent }); },
-    async addFormationMember(formationId, connectorName) { await post(`/formations/${formationId}/members`, { connector_name: connectorName }); },
+    async deployFormation(id) {
+      await post(`/formations/${id}/deploy`);
+    },
+    async pauseFormation(id) {
+      await post(`/formations/${id}/pause`);
+    },
+    async resumeFormation(id) {
+      await post(`/formations/${id}/resume`);
+    },
+    async dissolveFormation(id) {
+      await post(`/formations/${id}/dissolve`);
+    },
+    async rallyFormation(id) {
+      await post(`/formations/${id}/rally`);
+    },
+    async runFormationCommand(id, commandId, params) {
+      await post(`/formations/${id}/run-command`, { command_id: commandId, params });
+    },
+    async updateFormationIntent(id, intent) {
+      await put(`/formations/${id}/intent`, { intent });
+    },
+    async addFormationMember(formationId, connectorName) {
+      await post(`/formations/${formationId}/members`, { connector_name: connectorName });
+    },
     async removeFormationMember(formationId, connectorName) {
       // DELETE with JSON body — use fetch directly since del() helper doesn't support body
       const response = await fetch(`${getBaseUrl()}/formations/${formationId}/members`, {
@@ -239,57 +304,124 @@ export function createWebProvider(): DataProvider {
       });
       if (!response.ok) throw new Error(`API error: ${response.status}`);
     },
-    async listIntents() { return (await get<{ intents: Array<{ value: string; label: string }> }>("/formations/intents")).intents ?? []; },
-    async deployTeam(team) { return post("/formations/deploy-team", team); },
-    async cycleFormationIntent(id) { return (await post<{ intent: string }>(`/formations/${id}/cycle-intent`)).intent; },
-    async cycleFormationAutonomy(id) { return (await post<{ level: string }>(`/formations/${id}/cycle-autonomy`)).level; },
+    async listIntents() {
+      return (
+        (await get<{ intents: Array<{ value: string; label: string }> }>("/formations/intents"))
+          .intents ?? []
+      );
+    },
+    async deployTeam(team) {
+      return post("/formations/deploy-team", team);
+    },
+    async cycleFormationIntent(id) {
+      return (await post<{ intent: string }>(`/formations/${id}/cycle-intent`)).intent;
+    },
+    async cycleFormationAutonomy(id) {
+      return (await post<{ level: string }>(`/formations/${id}/cycle-autonomy`)).level;
+    },
     // B11 thin-frontend APIs.
     async formationAvailableCommands(id) {
-      return (await get<{ commands: Array<import("@springtale/ui").CommandDecl> }>(`/formations/${id}/commands`)).commands;
+      return (
+        await get<{ commands: Array<import("@springtale/ui").CommandDecl> }>(
+          `/formations/${id}/commands`,
+        )
+      ).commands;
     },
     async formationEligibleMembers(id) {
-      return (await get<{ members: Array<import("@springtale/ui").MemberRef> }>(`/formations/${id}/members/eligible`)).members;
+      return (
+        await get<{ members: Array<import("@springtale/ui").MemberRef> }>(
+          `/formations/${id}/members/eligible`,
+        )
+      ).members;
     },
 
     // Config
-    async getConfig(key) { return get(`/config/${key}`); },
-    async setConfig(key, value) { await put(`/config/${key}`, value); },
-    async listConfig() { return (await get<{ config: Array<[string, unknown]> }>("/config")).config; },
-    async setAiAdapter(config) { await post("/config/ai", config); },
-    async setConnectorConfig(name, config) { await post(`/config/connector/${name}`, config); },
-    async configureAiAdapter(target, config) { await post("/config/ai/configure", { target, config }); },
-    async upsertConnectorConfig(name, config) { return (await post<{ is_new: boolean }>(`/connectors/${name}/upsert-config`, config)).is_new; },
-    async toggleFormationGuard(formationId) { return (await post<{ enabled: boolean }>(`/formations/${formationId}/toggle-guard`)).enabled; },
+    async getConfig(key) {
+      return get(`/config/${key}`);
+    },
+    async setConfig(key, value) {
+      await put(`/config/${key}`, value);
+    },
+    async listConfig() {
+      return (await get<{ config: Array<[string, unknown]> }>("/config")).config;
+    },
+    async setAiAdapter(config) {
+      await post("/config/ai", config);
+    },
+    async setConnectorConfig(name, config) {
+      await post(`/config/connector/${name}`, config);
+    },
+    async configureAiAdapter(target, config) {
+      await post("/config/ai/configure", { target, config });
+    },
+    async upsertConnectorConfig(name, config) {
+      return (await post<{ is_new: boolean }>(`/connectors/${name}/upsert-config`, config)).is_new;
+    },
+    async toggleFormationGuard(formationId) {
+      return (await post<{ enabled: boolean }>(`/formations/${formationId}/toggle-guard`)).enabled;
+    },
 
     // Agent state + autonomy
     async listAgentStates() {
-      const data = await get<{ agents: import("@springtale/types").AgentState[] }>("/agents/states");
+      const data = await get<{ agents: import("@springtale/types").AgentState[] }>(
+        "/agents/states",
+      );
       return data.agents ?? [];
     },
-    async getAutonomy(name) { return (await get<{ level: string }>(`/agents/${name}/autonomy`)).level; },
-    async setAutonomy(name, level) { await put(`/agents/${name}/autonomy`, { level }); },
-    async stepAutonomy(name, direction) { return (await post<{ level: string }>(`/agents/${name}/autonomy/step`, { direction })).level; },
+    async getAutonomy(name) {
+      return (await get<{ level: string }>(`/agents/${name}/autonomy`)).level;
+    },
+    async setAutonomy(name, level) {
+      await put(`/agents/${name}/autonomy`, { level });
+    },
+    async stepAutonomy(name, direction) {
+      return (await post<{ level: string }>(`/agents/${name}/autonomy/step`, { direction })).level;
+    },
 
     // Trusted authors
     async listAuthors() {
       const data = await get<{ authors: Array<{ name: string; pubkey: string }> }>("/authors");
       return data.authors ?? [];
     },
-    async addAuthor(name, pubkey) { await post(`/authors/${name}`, { pubkey }); },
-    async removeAuthor(name) { await del(`/authors/${name}`); },
+    async addAuthor(name, pubkey) {
+      await post(`/authors/${name}`, { pubkey });
+    },
+    async removeAuthor(name) {
+      await del(`/authors/${name}`);
+    },
 
     // Data
-    async exportData() { return post("/data/export"); },
+    async exportData() {
+      return post("/data/export");
+    },
 
     // Canvas
-    async getConnections() { return (await get<{ connections: Array<{ a: string; b: string; pipes: Array<{ id: string; dir: 1 | -1; status: string }> }> }>("/canvas/connections")).connections ?? []; },
+    async getConnections() {
+      return (
+        (
+          await get<{
+            connections: Array<{
+              a: string;
+              b: string;
+              pipes: Array<{ id: string; dir: 1 | -1; status: string }>;
+            }>;
+          }>("/canvas/connections")
+        ).connections ?? []
+      );
+    },
 
     // Memory
-    async auditMemory() { return post("/memory/audit"); },
-    async compactMemory(maxEntries) { await post("/memory/compact", { max_entries: maxEntries }); },
+    async auditMemory() {
+      return post("/memory/audit");
+    },
+    async compactMemory(maxEntries) {
+      await post("/memory/compact", { max_entries: maxEntries });
+    },
 
     // Canvas
-    async getCanvasState() { return getCanvasState(); },
+    async getCanvasState() {
+      return getCanvasState();
+    },
     subscribeToCanvasUpdates(callback) {
       const token = getToken();
       if (!token) return () => {};

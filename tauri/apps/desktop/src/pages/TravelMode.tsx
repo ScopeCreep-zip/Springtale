@@ -1,5 +1,5 @@
-import { createSignal } from "solid-js";
 import { useI18n } from "@springtale/ui";
+import { createSignal } from "solid-js";
 import { travelPrepare, travelRestore } from "../ipc/travel";
 
 /**
@@ -93,17 +93,25 @@ export function TravelModePage() {
           <h2 id="prepare-heading" class="text-lg font-semibold text-gray-200">
             {t("travel.prepareTitle")}
           </h2>
-          <p class="mt-1 text-sm text-gray-400">
-            {t("travel.prepareDesc")}
-          </p>
+          <p class="mt-1 text-sm text-gray-400">{t("travel.prepareDesc")}</p>
 
           {prepError() && (
-            <div role="alert" aria-live="assertive" class="mt-3 rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+            <div
+              role="alert"
+              aria-live="assertive"
+              class="mt-3 rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400"
+            >
               {prepError()}
             </div>
           )}
 
-          <form onSubmit={(e) => { e.preventDefault(); handlePrepare(); }} class="mt-3 space-y-3">
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handlePrepare();
+            }}
+            class="mt-3 space-y-3"
+          >
             <div>
               <label for="prep-passphrase" class="block text-sm font-medium text-gray-300">
                 {t("travel.passphrase")}
@@ -136,9 +144,7 @@ export function TravelModePage() {
               >
                 {t("travel.chooseLocation")}
               </button>
-              {prepPath() && (
-                <span class="truncate text-sm text-gray-400">{prepPath()}</span>
-              )}
+              {prepPath() && <span class="truncate text-sm text-gray-400">{prepPath()}</span>}
             </div>
             <button
               type="submit"
@@ -154,12 +160,14 @@ export function TravelModePage() {
           <h2 id="restore-heading" class="text-lg font-semibold text-gray-200">
             {t("travel.restoreTitle")}
           </h2>
-          <p class="mt-1 text-sm text-gray-400">
-            {t("travel.restoreDesc")}
-          </p>
+          <p class="mt-1 text-sm text-gray-400">{t("travel.restoreDesc")}</p>
 
           {restoreError() && (
-            <div role="alert" aria-live="assertive" class="mt-3 rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400">
+            <div
+              role="alert"
+              aria-live="assertive"
+              class="mt-3 rounded border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-400"
+            >
               {restoreError()}
             </div>
           )}
@@ -169,7 +177,13 @@ export function TravelModePage() {
               <p class="font-medium text-green-400">{t("travel.restoreSuccess")}</p>
             </div>
           ) : (
-            <form onSubmit={(e) => { e.preventDefault(); handleRestore(); }} class="mt-3 space-y-3">
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleRestore();
+              }}
+              class="mt-3 space-y-3"
+            >
               <div class="flex items-center gap-3">
                 <button
                   type="button"

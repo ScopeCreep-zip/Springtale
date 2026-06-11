@@ -8,20 +8,14 @@
  */
 import { invoke } from "@tauri-apps/api/core";
 
-export async function travelPrepare(
-  passphrase: string,
-  backupPath: string,
-): Promise<void> {
+export async function travelPrepare(passphrase: string, backupPath: string): Promise<void> {
   return invoke("travel_prepare", {
     passphrase,
     backupPath,
   });
 }
 
-export async function travelRestore(
-  passphrase: string,
-  backupPath: string,
-): Promise<void> {
+export async function travelRestore(passphrase: string, backupPath: string): Promise<void> {
   return invoke("travel_restore", {
     passphrase,
     backupPath,
