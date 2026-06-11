@@ -7,6 +7,7 @@
 
 use serde_json::json;
 
+use springtale_connector::manifest::SignatureAlgorithm;
 use springtale_connector::manifest::types::{Capability, ConnectorManifest};
 use springtale_connector::manifest::verify::{verify_manifest, verify_manifest_signature};
 use springtale_core::router::dispatch::dispatch_event;
@@ -42,6 +43,7 @@ fn test_rule_matches_connector_event() {
         actions: vec![Action::SendMessage {
             text: "Stream is live!".into(),
         }],
+        owner: Default::default(),
     };
 
     let rule_id = rule.id;
@@ -127,6 +129,7 @@ fn test_manifest() -> ConnectorManifest {
         data_disclosure: vec![],
         roles: vec![],
         wasm_hash: None,
+        signature_alg: SignatureAlgorithm::default(),
         signature: None,
     }
 }
@@ -191,6 +194,7 @@ async fn test_full_rule_pipeline_with_store() {
         actions: vec![Action::SendMessage {
             text: "New push to repo".into(),
         }],
+        owner: Default::default(),
     };
 
     let rule_id = rule.id;

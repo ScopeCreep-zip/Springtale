@@ -41,8 +41,36 @@ pub async fn commands(
     ValidatedPath(id): ValidatedPath,
 ) -> Result<impl IntoResponse, StatusCode> {
     match operations::commands::formation_available_commands(&state.runtime, &id).await {
-        Ok(cmds) => Ok((StatusCode::OK, Json(serde_json::json!({ "commands": cmds })))),
+        Ok(cmds) => Ok((
+            StatusCode::OK,
+            Json(serde_json::json!({ "commands": cmds })),
+        )),
         Err(_) => Err(StatusCode::NOT_FOUND),
+    }
+}
+
+/// POST /formations/{id}/run-command — generic command dispatcher. Body:
+/// `{ "command_id": "formation:rally", "params": {…}? }`. ALL command→action
+/// mapping lives in the backend so the frontend just forwards the clicked id.
+pub async fn run_command(
+    State(state): State<AppState>,
+    ValidatedPath(id): ValidatedPath,
+    Json(body): Json<serde_json::Value>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let Some(command_id) = body.get("command_id").and_then(|v| v.as_str()) else {
+        return Err(StatusCode::BAD_REQUEST);
+    };
+    let params = body.get("params");
+    match operations::commands::run_formation_command(&state.runtime, &id, command_id, params).await
+    {
+        Ok(()) => Ok((
+            StatusCode::OK,
+            Json(serde_json::json!({ "ran": command_id })),
+        )),
+        Err(e) => {
+            tracing::warn!(command = command_id, error = %e, "run_command failed");
+            Err(StatusCode::BAD_REQUEST)
+        }
     }
 }
 
@@ -54,7 +82,10 @@ pub async fn eligible_members(
     ValidatedPath(id): ValidatedPath,
 ) -> Result<impl IntoResponse, StatusCode> {
     match operations::commands::formation_eligible_members(&state.runtime, &id).await {
-        Ok(members) => Ok((StatusCode::OK, Json(serde_json::json!({ "members": members })))),
+        Ok(members) => Ok((
+            StatusCode::OK,
+            Json(serde_json::json!({ "members": members })),
+        )),
         Err(_) => Err(StatusCode::NOT_FOUND),
     }
 }

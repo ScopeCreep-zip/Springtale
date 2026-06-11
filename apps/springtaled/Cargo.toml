@@ -46,6 +46,7 @@ connector-irc = { workspace = true }
 connector-discord = { workspace = true }
 connector-slack = { workspace = true }
 connector-signal = { workspace = true }
+connector-bluesky = { workspace = true }
 twilight-gateway = { workspace = true }
 twilight-http = { workspace = true }
 twilight-model = { workspace = true }
@@ -58,3 +59,7 @@ nostr-sdk = { workspace = true }
 tokio = { workspace = true, features = ["test-util"] }
 http-body-util = "0.1"
 arc-swap = { workspace = true }
+# event_recipe_e2e: exercises a real connector's normalize_event against
+# recorded provider payloads + the real recipe dispatch chain.
+connector-github = { workspace = true }
+toml = { workspace = true }

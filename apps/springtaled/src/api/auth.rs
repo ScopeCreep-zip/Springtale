@@ -70,7 +70,11 @@ pub async fn require_csrf_protection(
         return Ok(next.run(request).await);
     }
 
-    if let Some(origin) = request.headers().get("origin").and_then(|v| v.to_str().ok()) {
+    if let Some(origin) = request
+        .headers()
+        .get("origin")
+        .and_then(|v| v.to_str().ok())
+    {
         let allowed = origin == "null"
             || origin.starts_with("http://127.0.0.1:")
             || origin.starts_with("http://localhost:")

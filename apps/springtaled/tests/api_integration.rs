@@ -58,10 +58,9 @@ fn build_test_app(ready: bool) -> (Router, String) {
 
     let (event_tx, _) = tokio::sync::broadcast::channel(256);
     let (bot_msg_tx, _bot_msg_rx) = mpsc::channel(256);
-    let trigger_registry = springtaled::runtime::boot::connector_events::TriggerRegistry::new(
-        trigger_tx.clone(),
-        store.clone(),
-    );
+    let (chat_tx, _chat_rx) = tokio::sync::broadcast::channel(256);
+    let trigger_registry =
+        springtale_runtime::TriggerRegistry::new(trigger_tx.clone(), store.clone());
 
     let heartbeat_monitor = std::sync::Arc::new(tokio::sync::Mutex::new(
         springtale_scheduler::HeartbeatMonitor::new(0, trigger_tx.clone()),
@@ -71,13 +70,12 @@ fn build_test_app(ready: bool) -> (Router, String) {
         springtale_core::canvas::CanvasState::default(),
     ));
     let (canvas_tx, _rx) = tokio::sync::broadcast::channel(64);
+    let (notification_tx, _notif_rx) = tokio::sync::broadcast::channel(256);
     let (cooperation_tx, _coop_rx) = tokio::sync::broadcast::channel(512);
-    let formation_gossip: std::sync::Arc<
-        dyn springtale_cooperation::gossip::FormationGossipBus,
-    > = springtale_cooperation::gossip::InMemoryFormationGossipBus::new();
-    let knowledge_store: std::sync::Arc<
-        dyn springtale_cooperation::memory::GlobalKnowledgeStore,
-    > = springtale_cooperation::memory::InMemoryKnowledgeStore::new();
+    let formation_gossip: std::sync::Arc<dyn springtale_cooperation::gossip::FormationGossipBus> =
+        springtale_cooperation::gossip::InMemoryFormationGossipBus::new();
+    let knowledge_store: std::sync::Arc<dyn springtale_cooperation::memory::GlobalKnowledgeStore> =
+        springtale_cooperation::memory::InMemoryKnowledgeStore::new();
 
     let wasm_engine = std::sync::Arc::new(
         springtale_connector::wasm::WasmEngine::new(
@@ -93,16 +91,11 @@ fn build_test_app(ready: bool) -> (Router, String) {
     let (formation_cmd_tx, _formation_cmd_rx) =
         mpsc::channel::<springtale_cooperation::command::FormationCommand>(32);
 
-    let gossip_store: std::sync::Arc<
-        dyn springtale_cooperation::awareness::GossipStore,
-    > = std::sync::Arc::new(
-        springtale_cooperation::awareness::InMemoryGossipStore::new(),
-    );
-    let capability_bridge =
-        springtale_runtime::CapabilityBridge::new(registry.clone());
-    let role_registry = std::sync::Arc::new(
-        springtale_cooperation::role::RoleRegistry::with_builtins(),
-    );
+    let gossip_store: std::sync::Arc<dyn springtale_cooperation::awareness::GossipStore> =
+        std::sync::Arc::new(springtale_cooperation::awareness::InMemoryGossipStore::new());
+    let capability_bridge = springtale_runtime::CapabilityBridge::new(registry.clone());
+    let role_registry =
+        std::sync::Arc::new(springtale_cooperation::role::RoleRegistry::with_builtins());
     let runtime = springtale_runtime::RuntimeState {
         store,
         registry,
@@ -115,6 +108,8 @@ fn build_test_app(ready: bool) -> (Router, String) {
         role_registry,
         canvas,
         canvas_tx,
+        notification_tx,
+        trigger_registry: std::sync::Arc::new(std::sync::OnceLock::new()),
         cooperation_tx,
         formation_cmd_tx,
         live_formations: None,
@@ -125,17 +120,31 @@ fn build_test_app(ready: bool) -> (Router, String) {
         swim_node: None,
     };
 
+    // EmbeddedScheduler replaced the old `springtaled::scheduler::AppScheduler`
+    // when scheduling moved into the runtime crate so the desktop app could
+    // share it. The producer is a stub — integration tests don't drive the
+    // job consumer end-to-end, only the API surface.
+    let (job_tx, _job_rx) = mpsc::channel::<springtale_scheduler::Job>(16);
+    let producer = Arc::new(springtale_scheduler::JobProducer::new(job_tx));
+    let scheduler = springtale_runtime::EmbeddedScheduler {
+        cron,
+        fs_watcher,
+        trigger_tx: trigger_tx.clone(),
+        producer,
+    };
+
     let state = AppState {
         runtime,
         api_token_hash,
         ready: ready_flag,
         trigger_tx,
-        scheduler: springtaled::scheduler::AppScheduler { cron, fs_watcher },
+        scheduler,
         rate_limit_per_sec: 1000,
         event_tx,
         heartbeat_monitor,
         bot_msg_tx,
         trigger_registry,
+        chat_tx,
     };
 
     let router = build_router(state);
@@ -384,6 +393,92 @@ async fn test_deploy_team_creates_rules_and_formation() {
     assert_eq!(formations.len(), 1);
     assert_eq!(formations[0]["name"], "Alpha Squad");
     assert_eq!(formations[0]["status"], "active");
+}
+
+/// End-to-end: a NO-AI formation's intent compiles into formation-scoped
+/// rules, and cycling the intent regenerates them non-lossily (AUDIT-NOTES §4).
+/// Rule names are stamped with the intent (`… (Reconnoiter)`), so we can verify
+/// the transformation through the public `/rules` API alone.
+#[tokio::test]
+async fn test_formation_intent_synthesizes_and_regenerates_rules() {
+    let (router, token) = build_test_app(true);
+
+    let body = serde_json::json!({
+        "name": "Recon Squad",
+        "intent": "Reconnoiter",
+        "guard_mode": false,
+        "agents": [{
+            "connector_name": "connector-test",
+            "trigger_name": "event_received",
+            "action_connector": "connector-test",
+            "action_name": "send_message"
+        }]
+    });
+    let req = Request::post("/formations/deploy-team")
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(serde_json::to_vec(&body).unwrap()))
+        .unwrap();
+    let (status, json) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let formation_id = json["formation_id"].as_str().unwrap().to_owned();
+
+    async fn squad_rule_names(router: &Router, token: &str) -> Vec<String> {
+        let req = Request::get("/rules")
+            .header("Authorization", format!("Bearer {token}"))
+            .body(Body::empty())
+            .unwrap();
+        let (_, body) = send(router.clone(), req).await;
+        body["rules"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|r| r["name"].as_str().map(str::to_owned))
+            .filter(|n| n.contains("Recon Squad"))
+            .collect()
+    }
+
+    // Reconnoiter → exactly one formation-scoped, read-only-intent rule.
+    let names = squad_rule_names(&router, &token).await;
+    assert_eq!(names.len(), 1, "one synthesized rule, got {names:?}");
+    assert!(
+        names[0].contains("(Reconnoiter)"),
+        "rule reflects Reconnoiter intent: {names:?}"
+    );
+
+    // Cycle Reconnoiter → Execute: rules regenerate for the new intent.
+    let req = Request::post(format!("/formations/{formation_id}/cycle-intent"))
+        .header("Authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, json) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["intent"], "Execute");
+
+    // Still exactly one rule (regenerated, not accumulated) — now Execute.
+    let names = squad_rule_names(&router, &token).await;
+    assert_eq!(
+        names.len(),
+        1,
+        "intent change regenerates, never accumulates: {names:?}"
+    );
+    assert!(
+        names[0].contains("(Execute)"),
+        "rule now reflects Execute intent: {names:?}"
+    );
+
+    // Dissolve tears the synthesised rules down.
+    let req = Request::post(format!("/formations/{formation_id}/dissolve"))
+        .header("Authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, _) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::OK);
+    let names = squad_rule_names(&router, &token).await;
+    assert!(
+        names.is_empty(),
+        "dissolve removed formation rules: {names:?}"
+    );
 }
 
 #[tokio::test]

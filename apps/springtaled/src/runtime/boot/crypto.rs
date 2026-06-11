@@ -17,7 +17,7 @@ pub(super) fn init_crypto(
             .context("failed to generate ephemeral keypair")?;
         // SECURITY: expose needed to persist identity in ephemeral vault
         vault
-            .set("identity", keypair.expose_secret_bytes().to_vec())
+            .set("identity", keypair.with_secret_bytes(|b| b.to_vec()))
             .context("failed to store ephemeral identity")?;
         (vault, keypair)
     } else {
@@ -121,7 +121,7 @@ fn open_or_create_vault(path: &std::path::Path, passphrase: &[u8]) -> Result<(Va
         let mut vault = Vault::create(path, passphrase).context("failed to create vault")?;
         // SECURITY: expose needed to persist identity key material
         vault
-            .set("identity", keypair.expose_secret_bytes().to_vec())
+            .set("identity", keypair.with_secret_bytes(|b| b.to_vec()))
             .context("failed to store identity in vault")?;
         vault.save().context("failed to save vault")?;
         Ok((vault, keypair))

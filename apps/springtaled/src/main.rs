@@ -6,11 +6,19 @@ use tracing_subscriber::EnvFilter;
 #[tokio::main]
 async fn main() {
     // Install rustls CryptoProvider before any TLS usage.
+    //
     // Our dep tree has both `ring` and `aws-lc-rs` active (ring from our
     // workspace Cargo.toml, aws-lc-rs from axum-server's tls-rustls feature).
-    // Without this, rustls's auto-resolution panics when it finds both.
-    // We explicitly choose ring as the provider.
-    let _ = rustls::crypto::ring::default_provider().install_default();
+    // Without an explicit install, rustls's auto-resolution panics when it
+    // finds both.
+    //
+    // We install the post-quantum-preferring provider from `rustls-post-
+    // quantum`, which is the same `ring` backend with `X25519MLKEM768` added
+    // to `kx_groups` ahead of pure X25519. Hybrid handshake is negotiated
+    // with peers that support it; classical X25519 is the fallback. Required
+    // for NIST IR 8547 alignment (X25519 disallowed 2035) and our
+    // `docs/security/CRYPTO-INVENTORY.md` 2026 Q4 milestone.
+    springtale_transport::crypto_provider::install_default_pq();
 
     // Initialize tracing (structured logging)
     tracing_subscriber::fmt()

@@ -114,20 +114,20 @@ pub async fn receive(
     if trigger_name == "callback_query_received"
         && let Some(callback_id) = payload.get("id").and_then(|v| v.as_str())
     {
-            let ack_input = serde_json::json!({
-                "callback_query_id": callback_id,
-            });
-            let reg = state.runtime.registry.read().await;
-            if let Err(e) = reg
-                .execute(&connector_name, "answer_callback_query", ack_input)
-                .await
-            {
-                tracing::warn!(
-                    error = %e,
-                    connector = %connector_name,
-                    "webhook: failed to answerCallbackQuery"
-                );
-            }
+        let ack_input = serde_json::json!({
+            "callback_query_id": callback_id,
+        });
+        let reg = state.runtime.registry.read().await;
+        if let Err(e) = reg
+            .execute(&connector_name, "answer_callback_query", ack_input)
+            .await
+        {
+            tracing::warn!(
+                error = %e,
+                connector = %connector_name,
+                "webhook: failed to answerCallbackQuery"
+            );
+        }
     }
 
     // Dispatch trigger event to the rule engine via the trigger channel.
@@ -137,6 +137,10 @@ pub async fn receive(
     //   event.trigger_type == "ConnectorEvent"
     //   event.connector == Some(connector_name)
     //   event.event == Some(event_name)
+    // The raw payload is normalized to the connector's declared flat
+    // trigger schema centrally, in the embedded trigger event loop (the
+    // single chokepoint every ConnectorEvent passes through), so it's
+    // forwarded raw here.
     let trigger_event = TriggerEvent {
         trigger_type: "ConnectorEvent".to_owned(),
         connector: Some(connector_name.clone()),

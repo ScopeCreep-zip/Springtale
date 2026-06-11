@@ -81,6 +81,11 @@ pub struct SpringtaleConfig {
     #[serde(default)]
     #[garde(skip)]
     pub signal: Option<connector_signal::SignalConfig>,
+    /// Bluesky connector configuration. If absent, connector not loaded.
+    /// Subscribes to the Jetstream firehose for own-post / mention triggers.
+    #[serde(default)]
+    #[garde(skip)]
+    pub bluesky: Option<connector_bluesky::BlueskyConfig>,
     // connector-matrix: DEFERRED — matrix-sdk 0.16 requires rusqlite 0.37
     // which has CVE-2025-70873. Waiting for matrix-sdk to update.
 }

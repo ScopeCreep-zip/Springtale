@@ -1,6 +1,6 @@
 mod bot;
-pub mod connector_events;
 mod crypto;
+mod sentinel;
 mod transport;
 
 use std::sync::Arc;
@@ -50,6 +50,7 @@ pub async fn boot(
         discord: discord_config,
         slack: slack_config,
         signal: signal_config,
+        bluesky: bluesky_config,
     } = config;
 
     // ── Step 2: Initialize crypto vault (before runtime, no dependencies) ──
@@ -85,8 +86,9 @@ pub async fn boot(
     // Create the shared formations handle BEFORE runtime init.
     // The BotBuilder will use this same Arc, and BotFormationReader reads from it.
     let formations_handle = Arc::new(tokio::sync::RwLock::new(Vec::new()));
-    let live_reader: Option<Arc<dyn springtale_runtime::LiveFormationReader>> =
-        Some(Arc::new(bot::BotFormationReader::new(formations_handle.clone())));
+    let live_reader: Option<Arc<dyn springtale_runtime::LiveFormationReader>> = Some(Arc::new(
+        bot::BotFormationReader::new(formations_handle.clone()),
+    ));
 
     // springtaled is the headless daemon — no UI gate to prompt the
     // user, so leave `approval_gate: None`. The sentinel falls back
@@ -95,6 +97,16 @@ pub async fn boot(
     let runtime = springtale_runtime::init(&runtime_config, formation_cmd_tx, live_reader, None)
         .await
         .context("failed to initialize runtime")?;
+
+    // ── Step 3b: Verify audit-log row-hash chain ──
+    // Tamper-evident audit trail (Phase-7 Finding B): walk every row
+    // in `audit_trail`, recompute the SHA-256 chain, and fail closed
+    // on any mismatch. The chain's genesis is bound to the vault
+    // identity — a different vault on the same SQLite or a tampered
+    // row both refuse to start.
+    sentinel::verify_audit_chain(&runtime.store, &keypair)
+        .await
+        .context("audit chain verification failed at startup")?;
 
     // ── Step 4: Initialize transport ──
     let _transport = transport::init_transport(&transport_config, &keypair).await?;
@@ -117,7 +129,12 @@ pub async fn boot(
     // Clone for AppState so webhook handlers can route chat messages to the bot
     // in webhook mode (polling gateways use the original sender directly).
     let api_bot_msg_tx = bot_msg_tx.clone();
+    // W5 in-app chat broadcast — created here so both the bot response
+    // dispatcher (producer) and AppState's `GET /chat/stream` (consumers)
+    // share the same channel.
+    let (chat_tx, _chat_rx) = tokio::sync::broadcast::channel::<api::chat::ChatStreamMessage>(256);
     let connector_wiring = bot::ConnectorWiring {
+        bluesky: bluesky_config,
         telegram: telegram_config,
         nostr: nostr_config,
         irc: irc_config,
@@ -127,23 +144,26 @@ pub async fn boot(
     };
     let (bot_handle, connector_shutdowns) = bot::init_bot(
         &runtime,
+        embedded_scheduler.clone(),
         bot_config,
         &connector_wiring,
-        bot_msg_tx,
-        bot_msg_rx,
+        bot::BotChannels {
+            bot_msg_tx,
+            bot_msg_rx,
+            chat_tx: chat_tx.clone(),
+        },
         formation_cmd_rx,
         formations_handle,
     )
     .await?;
 
-    // ── Step 7b: Wire connector event handlers for ConnectorEvent rules ──
-    let trigger_registry = connector_events::wire_connector_events(
-        &runtime.registry,
-        &runtime.engine,
-        trigger_tx.clone(),
-        runtime.store.clone(),
-    )
-    .await;
+    // ── Step 7b: ConnectorEvent handlers are wired inside
+    // `bootstrap_embedded` (shared with desktop), which publishes the
+    // registry on `RuntimeState`. Clone it for AppState so the rule CRUD
+    // handlers attach/detach through the same instance.
+    let trigger_registry = runtime.trigger_registry.get().cloned().unwrap_or_else(|| {
+        springtale_runtime::TriggerRegistry::new(trigger_tx.clone(), runtime.store.clone())
+    });
 
     // ── Step 7c: Start data retention purge (if configured) ──
     if let Some(days) = store_config.retention_days {
@@ -184,6 +204,7 @@ pub async fn boot(
         heartbeat_monitor,
         trigger_registry,
         bot_msg_tx: api_bot_msg_tx,
+        chat_tx,
     };
 
     let router = api::build_router(state);

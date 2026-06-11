@@ -19,9 +19,7 @@ pub async fn list() -> Json<Vec<&'static FixGuide>> {
 }
 
 /// GET /fixes/{id} — single guide lookup.
-pub async fn get(
-    Path(id): Path<String>,
-) -> Result<Json<&'static FixGuide>, (StatusCode, String)> {
+pub async fn get(Path(id): Path<String>) -> Result<Json<&'static FixGuide>, (StatusCode, String)> {
     error_fixes::lookup(&id)
         .map(Json)
         .ok_or_else(|| (StatusCode::NOT_FOUND, format!("unknown error id: {id}")))

@@ -14,8 +14,8 @@ use serde::{Deserialize, Serialize};
 use springtale_runtime::operations::preflight::{self, PreflightReport};
 use springtale_runtime::operations::preview::{self, PreviewReport};
 use springtale_runtime::operations::recipes::{
-    self, ApplyReport, Recipe, RecipeCategory, RecipeFilter, RecipeInputs,
-    RecipePieceSummary, RecipeSort, RecipeSourceFilter,
+    self, ApplyReport, Recipe, RecipeCategory, RecipeFilter, RecipeInputs, RecipePieceSummary,
+    RecipeSort, RecipeSourceFilter,
 };
 
 use super::state::AppState;
@@ -148,6 +148,29 @@ pub async fn apply(
     let report = recipes::apply_recipe(&state.runtime, &id, inputs)
         .await
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+
+    // Activate every freshly-created rule's triggers — schedule
+    // cron/filewatch AND attach ConnectorEvent handlers (the shared
+    // `activate_rule`). `apply_recipe` only persists to the store +
+    // engine; without this a deployed recipe never fires.
+    let rules = state
+        .runtime
+        .store
+        .list_rules()
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    for rule_id in &report.rules_created {
+        if let Some(rule) = rules.iter().find(|r| r.id.0.to_string() == *rule_id) {
+            springtale_runtime::activate_rule(
+                rule,
+                &state.scheduler,
+                &state.trigger_registry,
+                &state.runtime.registry,
+            )
+            .await;
+        }
+    }
+
     let _ = recipes::record_recent(&*state.runtime.store, &id).await;
     Ok(Json(report))
 }
@@ -255,7 +278,10 @@ pub async fn delete_user(
     if removed {
         Ok(StatusCode::NO_CONTENT)
     } else {
-        Err((StatusCode::NOT_FOUND, format!("user recipe '{id}' not found")))
+        Err((
+            StatusCode::NOT_FOUND,
+            format!("user recipe '{id}' not found"),
+        ))
     }
 }
 

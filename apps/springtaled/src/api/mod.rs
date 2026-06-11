@@ -1,9 +1,11 @@
 pub mod agents;
+pub mod approvals;
 pub mod auth;
 pub mod authors;
 pub mod bot;
 pub mod canvas;
 pub mod canvas_stream;
+pub mod chat;
 pub mod config_api;
 pub mod connectors;
 pub mod cooperation_stream;
@@ -131,6 +133,10 @@ pub fn build_router(state: AppState) -> Router {
         .route("/formations/{id}", get(formations::get))
         .route("/formations/{id}/commands", get(formations::commands))
         .route(
+            "/formations/{id}/run-command",
+            post(formations::run_command),
+        )
+        .route(
             "/formations/{id}/members/eligible",
             get(formations::eligible_members),
         )
@@ -162,7 +168,10 @@ pub fn build_router(state: AppState) -> Router {
         // G5d — focused endpoints for the IPV duress surface so a
         // single tab flip doesn't have to round-trip the whole config.
         .route("/safety/disguise/active", post(safety::set_disguise_active))
-        .route("/safety/disguise/profile", post(safety::set_disguise_profile))
+        .route(
+            "/safety/disguise/profile",
+            post(safety::set_disguise_profile),
+        )
         .route("/safety/panic_tap_count", post(safety::set_panic_tap_count))
         // W1.B — Recipes (click-and-play library)
         .route("/recipes", get(recipes::list))
@@ -178,7 +187,10 @@ pub fn build_router(state: AppState) -> Router {
         // W2.B Recipe authoring
         .route("/recipes/user", post(recipes::save_user))
         .route("/recipes/{id}/fork", post(recipes::fork))
-        .route("/recipes/user/{id}", axum::routing::delete(recipes::delete_user))
+        .route(
+            "/recipes/user/{id}",
+            axum::routing::delete(recipes::delete_user),
+        )
         .route("/recipes/{id}/export", get(recipes::export_toml))
         .route("/recipes/import", post(recipes::import_toml))
         // Config management
@@ -218,6 +230,14 @@ pub fn build_router(state: AppState) -> Router {
         // Memory management
         .route("/memory/audit", post(memory::audit_memory))
         .route("/memory/compact", post(memory::compact_memory))
+        // Approval queue — blocking gate for dangerous capabilities
+        // (currently `Capability::ShellExec`; OpenClaw 1-click-RCE
+        // class). See `springtale-runtime::approval` + Phase-7 audit
+        // Finding A.
+        .route("/approvals", get(approvals::list_pending))
+        .route("/approvals/{id}", post(approvals::resolve))
+        .route("/chat", post(chat::send))
+        .route("/chat/stream", get(chat::stream))
         .layer(middleware::from_fn(auth::require_csrf_protection))
         .layer(middleware::from_fn_with_state(
             state.clone(),
