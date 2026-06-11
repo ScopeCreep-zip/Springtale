@@ -31,6 +31,8 @@
 
 pub mod builder;
 pub mod loop_;
+pub mod resume;
 
 pub use builder::{TOOL_NAME_SEPARATOR, collect_tools, split_tool_name};
-pub use loop_::{run_with_tools, ToolRunnerCall, ToolRunnerDeps, ToolRunnerError};
+pub use loop_::{CheckpointCtx, ToolRunnerCall, ToolRunnerDeps, ToolRunnerError, run_with_tools};
+pub use resume::{ResumerDeps, resume_orphaned_loops};

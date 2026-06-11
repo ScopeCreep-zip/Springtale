@@ -35,9 +35,10 @@ use thiserror::Error;
 use tokio::sync::RwLock;
 
 use springtale_ai::{AiAdapter, NoopAdapter};
+use springtale_connector::ActionResult;
+use springtale_connector::manifest::types::Capability;
 use springtale_connector::registry::store::ConnectorRegistry;
 use springtale_connector::tier::WasmTier;
-use springtale_connector::ActionResult;
 use springtale_cooperation::cadence::AgentId;
 use springtale_cooperation::momentum::MomentumTier;
 use springtale_store::StorageBackend;
@@ -63,9 +64,7 @@ pub fn momentum_to_wasm_tier(tier: MomentumTier) -> WasmTier {
 /// graph (sentinel = core + store + connector; cooperation = core +
 /// store) so neither side can own the `From`. The runtime is the
 /// single boundary where both types are nameable.
-pub fn momentum_to_throttle_tier(
-    tier: MomentumTier,
-) -> springtale_sentinel::ThrottleTier {
+pub fn momentum_to_throttle_tier(tier: MomentumTier) -> springtale_sentinel::ThrottleTier {
     use springtale_sentinel::ThrottleTier;
     match tier {
         MomentumTier::Cold => ThrottleTier::Cold,
@@ -81,6 +80,20 @@ pub fn momentum_to_throttle_tier(
 pub enum BridgeError {
     #[error("connector error: {0}")]
     Connector(#[from] springtale_connector::ConnectorError),
+    /// User denied an approval request for a dangerous capability
+    /// (currently only `Capability::ShellExec` is gated this way).
+    #[error("approval denied: {0}")]
+    ApprovalDenied(String),
+    /// Approval gate timed out — no decision arrived within the
+    /// configured window. Treated as a denial for the dispatch
+    /// outcome but distinguished in the error variant so the audit
+    /// trail can record the difference.
+    #[error("approval timed out for {connector}.{action}")]
+    ApprovalTimedOut { connector: String, action: String },
+    /// Approval gate machinery itself failed (resolve on unknown id,
+    /// shutdown, etc.). Treated as a denial for the dispatch outcome.
+    #[error("approval gate error: {0}")]
+    ApprovalGate(String),
 }
 
 /// Bridge between formation momentum and connector execution.
@@ -114,11 +127,52 @@ pub struct CapabilityBridge {
     /// [`Self::with_store`] with the same `Arc<dyn StorageBackend>`
     /// `RuntimeState.store` holds.
     store: Option<Arc<dyn StorageBackend>>,
+    /// Per-agent AI adapter cache — the **unit layer** of the AI command
+    /// hierarchy. Keyed by the agent's STABLE `AgentId` (= formation-member id).
+    /// Resolved lazily from config key `ai:{agent_id}` by [`Self::ai_adapter_for`]
+    /// and cached so the Ollama model-pin check runs at most once per agent.
+    /// Empty / unset key ⇒ that agent falls through to the global adapter.
+    agent_adapters:
+        Arc<tokio::sync::RwLock<std::collections::HashMap<AgentId, Arc<dyn AiAdapter>>>>,
     /// Executions log recorder (Phase B). `None` for test builds
     /// without persistence — the dispatcher falls back to a
     /// `NoopRecorder` so chain dispatch keeps working unobserved.
     /// Production paths build a [`StoreRecorder`] in `init.rs`.
     recorder: Option<Arc<dyn crate::operations::executions::ExecutionRecorder>>,
+    /// AI guardrail handles (OWASP LLM10 — Unbounded Consumption).
+    /// When set, `ai_adapter_for` wraps every returned adapter in a
+    /// [`springtale_ai::GuardrailAdapter`] with the per-bot quota +
+    /// shared refusal counter + output cap. `None` = no wrapping
+    /// (used in tests that exercise the raw adapter).
+    ai_guardrails: Option<AiGuardrailHandles>,
+    /// Blocking-approval gate for capabilities the policy layer
+    /// cannot auto-grant — currently only `Capability::ShellExec`
+    /// (the OpenClaw CVE-2026-25253 1-click-RCE class; see
+    /// `~/.claude/plans/mighty-honking-pinwheel.md` Finding A).
+    /// `None` for test builds without an approval flow; production
+    /// paths in `init.rs` wire a
+    /// [`crate::approval::DefaultDenyApprovalGate`].
+    approval_gate: Option<Arc<dyn crate::approval::ApprovalGate>>,
+}
+
+/// Bundle of guardrail dependencies the bridge weaves into every
+/// per-bot adapter handle. Kept as a `Clone` struct so the bridge
+/// itself stays `Clone` (Arcs all the way down). The
+/// [`TokenQuota`](springtale_ai::TokenQuota) handle is shared across
+/// all bots: the bot id becomes the partition key inside the
+/// backend, so a single backend handle serves the whole runtime.
+#[derive(Clone)]
+pub struct AiGuardrailHandles {
+    /// Shared per-bot token quota backend. The bridge keys lookups
+    /// by `AgentId::to_string()`.
+    pub quota: Arc<dyn springtale_ai::TokenQuota>,
+    /// Shared refusal counter — surfaced via the admin API for
+    /// OWASP LLM07 visibility.
+    pub refusal_counter: springtale_ai::RefusalCounter,
+    /// Maximum bytes the wrapper will return as `AiResponse::content`
+    /// before truncating. Use [`springtale_ai::DEFAULT_OUTPUT_CAP_BYTES`]
+    /// for the workspace default (64 KiB).
+    pub output_cap_bytes: usize,
 }
 
 impl CapabilityBridge {
@@ -130,18 +184,55 @@ impl CapabilityBridge {
             registry,
             ai_adapter: None,
             store: None,
+            agent_adapters: Arc::new(tokio::sync::RwLock::new(std::collections::HashMap::new())),
             recorder: None,
+            ai_guardrails: None,
+            approval_gate: None,
         }
+    }
+
+    /// Builder — wire the blocking approval gate. Production
+    /// (`init.rs`) wires a [`crate::approval::DefaultDenyApprovalGate`]
+    /// that the management API resolves into via
+    /// `POST /approvals/:id`. Tests typically leave this `None` (the
+    /// dispatch path treats missing gate as deny, matching the
+    /// default-deny posture).
+    #[must_use]
+    pub fn with_approval_gate(mut self, gate: Arc<dyn crate::approval::ApprovalGate>) -> Self {
+        self.approval_gate = Some(gate);
+        self
+    }
+
+    /// Snapshot of the approval gate handle for the management API
+    /// to call `resolve` / `pending` against. `None` when no gate is
+    /// wired.
+    pub fn approval_gate(&self) -> Option<&Arc<dyn crate::approval::ApprovalGate>> {
+        self.approval_gate.as_ref()
+    }
+
+    /// Builder — wire the AI guardrail middleware. When set,
+    /// [`Self::ai_adapter_for`] wraps every returned adapter in a
+    /// [`springtale_ai::GuardrailAdapter`] keyed by the calling
+    /// `AgentId`. Apps (`init.rs`) construct the handles once at
+    /// startup, then pass the same bundle through the bridge so every
+    /// firing bot shares one quota + counter.
+    #[must_use]
+    pub fn with_ai_guardrails(mut self, handles: AiGuardrailHandles) -> Self {
+        self.ai_guardrails = Some(handles);
+        self
+    }
+
+    /// Snapshot of the guardrail metric handles for the admin API.
+    /// `None` when no guardrails are wired.
+    pub fn ai_guardrails(&self) -> Option<&AiGuardrailHandles> {
+        self.ai_guardrails.as_ref()
     }
 
     /// Builder — bind the shared AI-adapter handle. Wired by
     /// `init.rs` so the bridge sees the same `Arc<ArcSwap<...>>`
     /// `RuntimeState.ai_adapter` does.
     #[must_use]
-    pub fn with_ai_adapter(
-        mut self,
-        adapter: Arc<ArcSwap<Arc<dyn AiAdapter>>>,
-    ) -> Self {
+    pub fn with_ai_adapter(mut self, adapter: Arc<ArcSwap<Arc<dyn AiAdapter>>>) -> Self {
         self.ai_adapter = Some(adapter);
         self
     }
@@ -202,30 +293,79 @@ impl CapabilityBridge {
     ///   1. (future) per-agent override resolved from `agent_id` —
     ///      not yet implemented; per-agent adapter storage lands
     ///      alongside the bot-config UI.
-    ///   2. (future) named adapter resolved from `explicit_adapter`
-    ///      (e.g. recipe author requests `"ollama"`) — same.
-    ///   3. Global adapter from the handle wired by
+    ///   2. Global adapter from the handle wired by
     ///      [`Self::with_ai_adapter`] (the
     ///      `RuntimeState.ai_adapter` snapshot at this instant).
-    ///   4. [`NoopAdapter`] — the safe default when no adapter is
+    ///   3. [`NoopAdapter`] — the safe default when no adapter is
     ///      configured (`feedback_no_adapter_dependency`).
     ///
-    /// The current implementation collapses 1+2 to "ignore both
-    /// hints, return the global" but keeps the signature so callers
-    /// (the dispatcher) can be written against the final shape today.
-    pub fn ai_adapter_for(
+    /// Step 1 is the **unit layer** of the AI command hierarchy: the agent's own
+    /// adapter from `ai:{agent_id}`, resolved from the store and cached. The
+    /// result is wrapped in the guardrail middleware (OWASP LLM Top-10) when
+    /// guardrails + a calling agent id are present.
+    pub async fn ai_adapter_for(
         &self,
-        _agent_id: Option<&AgentId>,
+        agent_id: Option<&AgentId>,
         _explicit_adapter: Option<&str>,
     ) -> Arc<dyn AiAdapter> {
-        if let Some(handle) = &self.ai_adapter {
-            // ArcSwap<Arc<dyn AiAdapter>> ⇒ load() returns
-            // Guard<Arc<dyn AiAdapter>>. Single deref through the
-            // guard yields the inner Arc we hand back.
-            let guard = handle.load();
-            return Arc::clone(&*guard);
+        let inner = match agent_id {
+            Some(id) => self.resolve_agent_adapter(id).await,
+            None => self.global_adapter(),
+        };
+
+        // Wrap in the guardrail middleware when both guardrail dependencies AND
+        // a calling agent id are present. No agent id ⇒ chat-command / one-shot
+        // CLI path ⇒ per-bot quota doesn't apply.
+        match (&self.ai_guardrails, agent_id) {
+            (Some(handles), Some(agent_id)) => {
+                let guard = springtale_ai::GuardrailAdapter::new(inner)
+                    .with_output_cap(handles.output_cap_bytes)
+                    .with_refusal_counter(handles.refusal_counter.clone())
+                    .with_quota(Arc::clone(&handles.quota), agent_id.to_string());
+                Arc::new(guard)
+            }
+            _ => inner,
         }
-        Arc::new(NoopAdapter)
+    }
+
+    /// The global (canvas-default) adapter snapshot, or [`NoopAdapter`] when
+    /// none is wired.
+    fn global_adapter(&self) -> Arc<dyn AiAdapter> {
+        match &self.ai_adapter {
+            Some(handle) => Arc::clone(&handle.load()),
+            None => Arc::new(NoopAdapter),
+        }
+    }
+
+    /// Resolve (and cache) an agent's own adapter from `ai:{agent_id}`. Falls
+    /// through to the global adapter when the agent has no key set, no store is
+    /// wired, or the build fails — so the unit layer is AI-optional per agent.
+    async fn resolve_agent_adapter(&self, id: &AgentId) -> Arc<dyn AiAdapter> {
+        if let Some(found) = self.agent_adapters.read().await.get(id) {
+            return Arc::clone(found);
+        }
+        let Some(store) = &self.store else {
+            return self.global_adapter();
+        };
+        let cfg = match crate::operations::config::get_config(store.as_ref(), &format!("ai:{id}"))
+            .await
+        {
+            Ok(v) if !v.is_null() => v,
+            _ => return self.global_adapter(),
+        };
+        match crate::operations::config::build_adapter(&cfg).await {
+            Ok(adapter) => {
+                self.agent_adapters
+                    .write()
+                    .await
+                    .insert(*id, Arc::clone(&adapter));
+                adapter
+            }
+            Err(e) => {
+                tracing::warn!(agent = %id, error = %e, "per-agent AI adapter build failed; using global");
+                self.global_adapter()
+            }
+        }
     }
 
     /// Execute a connector action at the formation's current momentum
@@ -244,10 +384,66 @@ impl CapabilityBridge {
         input: Value,
         tier: WasmTier,
     ) -> Result<ActionResult, BridgeError> {
-        let (host, checker) = {
+        let (host, mut checker) = {
             let registry = self.registry.read().await;
             registry.get_for_execute(connector_name)?
         };
+
+        // OpenClaw CVE-2026-25253 1-click-RCE class: connectors that
+        // declare `Capability::ShellExec` route every invocation
+        // through the blocking [`ApprovalGate`]. The grant table
+        // routes ShellExec into `pending_approval` regardless of
+        // `CapabilityPolicy` (see Phase-7 audit Finding A) — the
+        // gate is the ONLY path from pending → momentarily-approved
+        // for a single call.
+        //
+        // The momentary approval is applied to a CLONE of the
+        // checker (`Clone` is a snapshot of the grants HashMap), so
+        // the underlying registry's grant table stays in pending and
+        // the next invocation also requires a fresh approval. No
+        // ambient-authority drift.
+        let manifest = host.manifest();
+        let action_needs_shell_exec = manifest
+            .capabilities
+            .iter()
+            .any(|c| matches!(c, Capability::ShellExec))
+            && manifest.actions.iter().any(|a| a.name == action);
+
+        if action_needs_shell_exec {
+            let gate = self.approval_gate.as_ref().ok_or_else(|| {
+                BridgeError::ApprovalGate(
+                    "ShellExec requires an approval gate but none is wired".to_owned(),
+                )
+            })?;
+            let request = crate::approval::ApprovalRequest {
+                id: crate::approval::ApprovalRequestId::new(),
+                connector_name: connector_name.to_owned(),
+                capability: Capability::ShellExec,
+                agent_id: None,
+                summary: format!("{connector_name}.{action}"),
+                requested_at: chrono::Utc::now(),
+            };
+            let decision = gate
+                .request(request)
+                .await
+                .map_err(|e| BridgeError::ApprovalGate(e.to_string()))?;
+            match decision {
+                crate::approval::ApprovalDecision::Approved { .. } => {
+                    // Single-shot grant on the CLONE only.
+                    checker.approve(connector_name, &Capability::ShellExec);
+                }
+                crate::approval::ApprovalDecision::Denied { reason, .. } => {
+                    return Err(BridgeError::ApprovalDenied(reason));
+                }
+                crate::approval::ApprovalDecision::TimedOut { .. } => {
+                    return Err(BridgeError::ApprovalTimedOut {
+                        connector: connector_name.to_owned(),
+                        action: action.to_owned(),
+                    });
+                }
+            }
+        }
+
         let checker = checker.with_tier(tier);
         Ok(host.execute_checked(action, input, &checker).await?)
     }
@@ -263,8 +459,13 @@ impl CapabilityBridge {
         input: Value,
         momentum: MomentumTier,
     ) -> Result<ActionResult, BridgeError> {
-        self.execute(connector_name, action, input, momentum_to_wasm_tier(momentum))
-            .await
+        self.execute(
+            connector_name,
+            action,
+            input,
+            momentum_to_wasm_tier(momentum),
+        )
+        .await
     }
 }
 
@@ -273,13 +474,14 @@ impl CapabilityBridge {
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use springtale_connector::ConnectorError;
     use springtale_connector::capability::grant::CapabilityPolicy;
     use springtale_connector::connector::subscription::{Subscription, SubscriptionId};
     use springtale_connector::connector::trait_::{ActionResult, Connector, EventHandler};
+    use springtale_connector::manifest::SignatureAlgorithm;
     use springtale_connector::manifest::types::{
         ActionDecl, Capability, ConnectorManifest, TriggerDecl,
     };
-    use springtale_connector::ConnectorError;
 
     /// Minimal native connector that echoes its input and reports
     /// success. Used by bridge tests — it doesn't declare any
@@ -307,6 +509,7 @@ mod tests {
                         schema: None,
                     }],
                     actions: vec![ActionDecl {
+                        read_only: false,
                         name: "echo".into(),
                         description: "echo".into(),
                         input_schema: None,
@@ -315,6 +518,7 @@ mod tests {
                     data_disclosure: vec![],
                     roles: vec![],
                     wasm_hash: None,
+                    signature_alg: SignatureAlgorithm::default(),
                     signature: None,
                 },
             }
@@ -386,7 +590,12 @@ mod tests {
         )));
         let bridge = CapabilityBridge::new(registry);
         let err = bridge
-            .execute("does-not-exist", "noop", serde_json::json!({}), WasmTier::Cold)
+            .execute(
+                "does-not-exist",
+                "noop",
+                serde_json::json!({}),
+                WasmTier::Cold,
+            )
             .await
             .unwrap_err();
         assert!(matches!(err, BridgeError::Connector(_)));
@@ -435,14 +644,14 @@ mod tests {
         }
     }
 
-    #[test]
-    fn ai_adapter_for_returns_noop_when_unwired() {
+    #[tokio::test]
+    async fn ai_adapter_for_returns_noop_when_unwired() {
         let registry = Arc::new(RwLock::new(ConnectorRegistry::new(
             CapabilityPolicy::AllowAll,
         )));
         let bridge = CapabilityBridge::new(registry);
         // No `.with_ai_adapter` → fallback is NoopAdapter.
-        let adapter = bridge.ai_adapter_for(None, None);
+        let adapter = bridge.ai_adapter_for(None, None).await;
         // We can't downcast `dyn AiAdapter` to NoopAdapter directly,
         // but the type-erased fallback path is the only one that
         // returns without a wired handle, so the call succeeding is
@@ -450,28 +659,97 @@ mod tests {
         let _: Arc<dyn AiAdapter> = adapter;
     }
 
-    #[test]
-    fn ai_adapter_for_returns_wired_handle() {
+    #[tokio::test]
+    async fn ai_adapter_for_returns_wired_handle() {
         use arc_swap::ArcSwap;
 
         let registry = Arc::new(RwLock::new(ConnectorRegistry::new(
             CapabilityPolicy::AllowAll,
         )));
-        let handle: Arc<ArcSwap<Arc<dyn AiAdapter>>> = Arc::new(ArcSwap::from(Arc::new(
-            Arc::new(NoopAdapter) as Arc<dyn AiAdapter>,
-        )));
+        let handle: Arc<ArcSwap<Arc<dyn AiAdapter>>> = Arc::new(ArcSwap::from(Arc::new(Arc::new(
+            NoopAdapter,
+        )
+            as Arc<dyn AiAdapter>)));
         let bridge = CapabilityBridge::new(registry).with_ai_adapter(handle.clone());
 
         // First call resolves to the wired adapter.
-        let first = bridge.ai_adapter_for(None, None);
+        let first = bridge.ai_adapter_for(None, None).await;
         // Hot-swap a different adapter and confirm the bridge sees
         // the swap (the same handle is shared with `RuntimeState`).
         handle.store(Arc::new(Arc::new(NoopAdapter) as Arc<dyn AiAdapter>));
-        let second = bridge.ai_adapter_for(None, None);
+        let second = bridge.ai_adapter_for(None, None).await;
         // Pointer-equality check would require concrete typing; just
         // confirm both calls succeed and produce a usable Arc.
         let _: Arc<dyn AiAdapter> = first;
         let _: Arc<dyn AiAdapter> = second;
+    }
+
+    #[tokio::test]
+    async fn guardrails_wrap_per_bot_adapter_keyed_by_agent_id() {
+        // End-to-end proof that the cooperation `AgentId(uuid::Uuid)`
+        // is the canonical bot identity for the AI quota:
+        //   1. Bridge wires a real AiAdapter + a per-bot quota
+        //   2. ai_adapter_for(Some(agent_id)) returns a GuardrailAdapter
+        //   3. Calling that adapter charges THE BOT'S row in the quota
+        //   4. ai_adapter_for(None) returns the raw adapter (no
+        //      wrapping when there's no bot id — chat-command path).
+        use arc_swap::ArcSwap;
+        use springtale_ai::{AiOptions, AiRequest, InMemoryTokenQuota, RefusalCounter};
+        use springtale_cooperation::cadence::AgentId;
+
+        let registry = Arc::new(RwLock::new(ConnectorRegistry::new(
+            CapabilityPolicy::AllowAll,
+        )));
+        let handle: Arc<ArcSwap<Arc<dyn AiAdapter>>> = Arc::new(ArcSwap::from(Arc::new(Arc::new(
+            NoopAdapter,
+        )
+            as Arc<dyn AiAdapter>)));
+
+        let quota: Arc<dyn springtale_ai::TokenQuota> =
+            Arc::new(InMemoryTokenQuota::new(Some(10_000)));
+        let counter = RefusalCounter::new();
+        let bridge = CapabilityBridge::new(registry)
+            .with_ai_adapter(handle.clone())
+            .with_ai_guardrails(AiGuardrailHandles {
+                quota: Arc::clone(&quota),
+                refusal_counter: counter.clone(),
+                output_cap_bytes: springtale_ai::DEFAULT_OUTPUT_CAP_BYTES,
+            });
+
+        let bot = AgentId::new();
+
+        // Without a bot id, the adapter is unwrapped (chat-command
+        // path doesn't burden the cooperation per-bot quota).
+        let unbot = bridge.ai_adapter_for(None, None).await;
+        let _ = unbot
+            .complete(
+                AiRequest::Complete {
+                    prompt: "hi".into(),
+                },
+                AiOptions::default(),
+            )
+            .await;
+        let used_without_id = quota.usage(&bot.to_string()).await.unwrap();
+        assert_eq!(used_without_id, 0, "no agent id ⇒ no quota write");
+
+        // WITH a bot id, the guardrail wraps the adapter; the call
+        // routes through the quota — the NoopAdapter returns
+        // AiError::Disabled, so commit rolls back to 0, but the
+        // refusal counter records the attempt.
+        let bot_adapter = bridge.ai_adapter_for(Some(&bot), None).await;
+        let _ = bot_adapter
+            .complete(
+                AiRequest::Complete {
+                    prompt: "hi".into(),
+                },
+                AiOptions::default(),
+            )
+            .await;
+        let snap = counter.snapshot();
+        assert_eq!(snap.total_calls, 1, "guardrail must record one call");
+        // NoopAdapter errors → reservation rolls back → usage stays 0.
+        let used_with_id = quota.usage(&bot.to_string()).await.unwrap();
+        assert_eq!(used_with_id, 0, "failed Noop call rolls back reservation");
     }
 
     #[tokio::test]

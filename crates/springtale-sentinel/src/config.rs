@@ -23,6 +23,14 @@ pub struct SentinelConfig {
     /// Audit trail retention in days. Default: 90.
     #[serde(default = "default_retention")]
     pub audit_retention_days: u32,
+
+    /// Per-bot daily token cap (OWASP LLM10). `None` records usage
+    /// without enforcement (observability mode); `Some(n)` denies
+    /// once a single bot crosses `n` tokens in a UTC day. Phase-7
+    /// audit Finding D landed the SQLite-backed quota; this field
+    /// controls the cap that backend enforces.
+    #[serde(default)]
+    pub daily_token_limit: Option<u64>,
 }
 
 fn default_rate_limit() -> u32 {
@@ -49,6 +57,7 @@ impl Default for SentinelConfig {
             circuit_breaker_cooldown_secs: default_cooldown(),
             dead_man_threshold: default_dead_man(),
             audit_retention_days: default_retention(),
+            daily_token_limit: None,
         }
     }
 }

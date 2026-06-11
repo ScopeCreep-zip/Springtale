@@ -32,9 +32,10 @@ use std::time::Duration;
 /// `Warming` is the pre-Phase-0 default — when callers don't supply a
 /// tier, the runtime passes `Warming` and the budget collapses to a
 /// reasonable baseline (12 actions per minute per connector).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum ThrottleTier {
     Cold,
+    #[default]
     Warming,
     Hot,
     Fever,
@@ -51,12 +52,6 @@ impl ThrottleTier {
             ThrottleTier::Hot => (60, Duration::from_secs(60)),
             ThrottleTier::Fever => (600, Duration::from_secs(60)),
         }
-    }
-}
-
-impl Default for ThrottleTier {
-    fn default() -> Self {
-        Self::Warming
     }
 }
 

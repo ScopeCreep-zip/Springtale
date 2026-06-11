@@ -199,6 +199,7 @@ mod tests {
                 circuit_breaker_cooldown_secs: 1,
                 dead_man_threshold: 10,
                 audit_retention_days: 90,
+                daily_token_limit: None,
             },
             store,
             Arc::new(crate::approval::AutoAllowApprovalGate),
@@ -211,7 +212,9 @@ mod tests {
         let action = Action::SendMessage {
             text: "hello".into(),
         };
-        let verdict = sentinel.evaluate(&action, "test-connector", crate::ThrottleTier::Warming).await;
+        let verdict = sentinel
+            .evaluate(&action, "test-connector", crate::ThrottleTier::Warming)
+            .await;
         assert_eq!(verdict, Verdict::Go);
     }
 
@@ -219,8 +222,7 @@ mod tests {
     async fn test_evaluate_rate_limited_at_warming_tier() {
         // Fresh sentinel with a high dead-man threshold so the 12-call
         // burst tests the rate limiter, not the dead-man switch.
-        let store: Arc<dyn StorageBackend> =
-            Arc::new(SqliteBackend::open_in_memory().unwrap());
+        let store: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open_in_memory().unwrap());
         let sentinel = Sentinel::with_approval_gate(
             SentinelConfig {
                 rate_limit_per_minute: 5,
@@ -228,6 +230,7 @@ mod tests {
                 circuit_breaker_cooldown_secs: 1,
                 dead_man_threshold: 1000,
                 audit_retention_days: 90,
+                daily_token_limit: None,
             },
             store,
             Arc::new(crate::approval::AutoAllowApprovalGate),
@@ -273,8 +276,7 @@ mod tests {
     async fn test_evaluate_fever_tier_has_higher_budget_than_warming() {
         // Spawn a fresh sentinel with a higher dead_man threshold so
         // the 100-call burst doesn't trip the dead-man switch.
-        let store: Arc<dyn StorageBackend> =
-            Arc::new(SqliteBackend::open_in_memory().unwrap());
+        let store: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open_in_memory().unwrap());
         let sentinel = Sentinel::with_approval_gate(
             SentinelConfig {
                 rate_limit_per_minute: 5,
@@ -282,6 +284,7 @@ mod tests {
                 circuit_breaker_cooldown_secs: 1,
                 dead_man_threshold: 1000,
                 audit_retention_days: 90,
+                daily_token_limit: None,
             },
             store,
             Arc::new(crate::approval::AutoAllowApprovalGate),
@@ -307,7 +310,9 @@ mod tests {
         sentinel.report_failure("test");
         sentinel.report_failure("test");
 
-        let v = sentinel.evaluate(&action, "test", crate::ThrottleTier::Warming).await;
+        let v = sentinel
+            .evaluate(&action, "test", crate::ThrottleTier::Warming)
+            .await;
         assert!(matches!(v, Verdict::Quarantine(_)));
     }
 
@@ -321,6 +326,7 @@ mod tests {
                 circuit_breaker_cooldown_secs: 1,
                 dead_man_threshold: 3,
                 audit_retention_days: 90,
+                daily_token_limit: None,
             },
             store,
             Arc::new(crate::approval::AutoAllowApprovalGate),
@@ -330,11 +336,18 @@ mod tests {
 
         // 3 actions allowed
         for _ in 0..3 {
-            assert_eq!(sentinel.evaluate(&action, "test", crate::ThrottleTier::Warming).await, Verdict::Go);
+            assert_eq!(
+                sentinel
+                    .evaluate(&action, "test", crate::ThrottleTier::Warming)
+                    .await,
+                Verdict::Go
+            );
         }
 
         // 4th triggers dead-man
-        let v = sentinel.evaluate(&action, "test", crate::ThrottleTier::Warming).await;
+        let v = sentinel
+            .evaluate(&action, "test", crate::ThrottleTier::Warming)
+            .await;
         assert!(matches!(v, Verdict::Pause(_)));
     }
 
@@ -348,19 +361,29 @@ mod tests {
                 circuit_breaker_cooldown_secs: 1,
                 dead_man_threshold: 2,
                 audit_retention_days: 90,
+                daily_token_limit: None,
             },
             store,
             Arc::new(crate::approval::AutoAllowApprovalGate),
         );
 
         let action = Action::Delay { seconds: 0 };
-        sentinel.evaluate(&action, "t", crate::ThrottleTier::Warming).await;
-        sentinel.evaluate(&action, "t", crate::ThrottleTier::Warming).await;
+        sentinel
+            .evaluate(&action, "t", crate::ThrottleTier::Warming)
+            .await;
+        sentinel
+            .evaluate(&action, "t", crate::ThrottleTier::Warming)
+            .await;
 
         sentinel.record_user_interaction().await;
 
         // After interaction, counter reset — should be Go again
-        assert_eq!(sentinel.evaluate(&action, "t", crate::ThrottleTier::Warming).await, Verdict::Go);
+        assert_eq!(
+            sentinel
+                .evaluate(&action, "t", crate::ThrottleTier::Warming)
+                .await,
+            Verdict::Go
+        );
     }
 
     #[test]

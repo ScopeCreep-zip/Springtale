@@ -116,9 +116,7 @@ impl ChannelApprovalGate {
     /// approval — typically by emitting a Tauri event and storing
     /// the `respond` channel keyed by an id the frontend can refer
     /// back to when the user clicks the dialog button.
-    pub fn new(
-        timeout: Duration,
-    ) -> (Self, tokio::sync::mpsc::UnboundedReceiver<PendingApproval>) {
+    pub fn new(timeout: Duration) -> (Self, tokio::sync::mpsc::UnboundedReceiver<PendingApproval>) {
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         (Self { tx, timeout }, rx)
     }

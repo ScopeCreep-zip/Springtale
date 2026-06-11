@@ -62,6 +62,22 @@ pub struct ToolRunnerCall<'a> {
     pub options: AiOptions,
     pub policy: &'a ToolPolicy,
     pub formation_tier: Option<WasmTier>,
+    /// W2 durable-resume context (2026 thread-id pattern). When set, the
+    /// loop persists a session-keyed checkpoint (transcript + the exact
+    /// pending tool calls) before each tool round and deletes it on
+    /// completion — a chat task paused behind an approval survives a
+    /// daemon restart and resumes against the BOUND action (OWASP
+    /// Agentic 2026: bind approval to the exact persisted call).
+    pub checkpoint: Option<CheckpointCtx>,
+}
+
+/// Where a chat-originated tool loop came from — the thread id and the
+/// channel its eventual result (or restart notice) is delivered to.
+#[derive(Clone)]
+pub struct CheckpointCtx {
+    pub session_key: String,
+    pub origin_connector: String,
+    pub origin_channel: String,
 }
 
 pub async fn run_with_tools(
@@ -85,6 +101,10 @@ pub async fn run_with_tools(
             .await?;
 
         if response.tool_calls.is_empty() {
+            // Loop finished cleanly — the thread has no pending interrupt.
+            if let (Some(ctx), Some(store)) = (&call.checkpoint, deps.bridge.store()) {
+                let _ = store.delete_tool_loop_checkpoint(&ctx.session_key).await;
+            }
             return Ok(response);
         }
 
@@ -104,19 +124,39 @@ pub async fn run_with_tools(
             tool_name: None,
         });
 
+        // W2 durable resume: persist the paused-thread state (transcript
+        // INCLUDING the assistant turn, plus the exact bound calls) before
+        // the tool round. If an approval inside `execute_tool_call` outlives
+        // the process, the boot resumer replays exactly these bound calls
+        // and continues from this transcript.
+        if let (Some(ctx), Some(store)) = (&call.checkpoint, deps.bridge.store()) {
+            let row = springtale_store::ToolLoopCheckpointRow {
+                session_key: ctx.session_key.clone(),
+                approval_id: None,
+                origin_connector: ctx.origin_connector.clone(),
+                origin_channel: ctx.origin_channel.clone(),
+                messages_json: serde_json::to_string(&messages).unwrap_or_else(|_| "[]".into()),
+                pending_tool_json: serde_json::to_string(&response.tool_calls)
+                    .unwrap_or_else(|_| "[]".into()),
+                created_at: chrono::Utc::now().timestamp_millis(),
+            };
+            if let Err(e) = store.upsert_tool_loop_checkpoint(row).await {
+                tracing::warn!(error = %e, "tool-loop checkpoint write failed");
+            }
+        }
+
         // Execute each call and push a `tool` result message.
         for tool_call in &response.tool_calls {
-            let result = execute_tool_call(
-                deps.bridge,
-                deps.sentinel,
-                tool_call,
-                call.formation_tier,
-            )
-            .await;
+            let result =
+                execute_tool_call(deps.bridge, deps.sentinel, tool_call, call.formation_tier).await;
             messages.push(result_message(tool_call, result));
         }
     }
 
+    // Iteration cap: the thread is over (failed), not paused — clear it.
+    if let (Some(ctx), Some(store)) = (&call.checkpoint, deps.bridge.store()) {
+        let _ = store.delete_tool_loop_checkpoint(&ctx.session_key).await;
+    }
     Err(ToolRunnerError::IterationLimit(max_iterations))
 }
 
@@ -198,7 +238,10 @@ async fn execute_tool_call(
             }
         }
         Err(e) => ExecutedResult {
-            body: format!("{{\"error\": {}}}", serde_json::Value::String(e.to_string())),
+            body: format!(
+                "{{\"error\": {}}}",
+                serde_json::Value::String(e.to_string())
+            ),
             is_error: true,
         },
     }
@@ -228,8 +271,8 @@ fn result_message(call: &ToolCall, result: ExecutedResult) -> ChatMessage {
         role: "tool".into(),
         content,
         tool_calls: Vec::new(),
-        tool_call_id: Some(call.id.clone()),   // OpenAI / Anthropic
-        tool_name: Some(call.name.clone()),    // Ollama
+        tool_call_id: Some(call.id.clone()), // OpenAI / Anthropic
+        tool_name: Some(call.name.clone()),  // Ollama
     }
 }
 

@@ -34,6 +34,10 @@ impl AuditTrail {
             Verdict::Quarantine(r) => ("quarantine".to_owned(), r.clone()),
         };
 
+        // Chain columns (prev_hash / row_hash / chain_seq) are populated
+        // by the store's repository layer at INSERT time per the audit
+        // row-hash chain (Phase-7 audit Finding B). Callers leave them
+        // empty so the chain is constructed in exactly one place.
         let entry = springtale_store::AuditEntry {
             id: uuid::Uuid::new_v4(),
             timestamp: chrono::Utc::now(),
@@ -43,6 +47,9 @@ impl AuditTrail {
             verdict: verdict_str,
             verdict_reason: reason,
             result: result.to_owned(),
+            prev_hash: String::new(),
+            row_hash: String::new(),
+            chain_seq: 0,
         };
 
         self.store.insert_audit_entry(&entry).await?;
