@@ -24,7 +24,6 @@ arc-swap         = { workspace = true }
 dashmap          = { workspace = true }
 petgraph         = { workspace = true }
 governor         = { workspace = true }
-rusqlite         = { workspace = true }
 dyn-clone        = { workspace = true }
 chitchat         = { workspace = true }
 foca             = { workspace = true }

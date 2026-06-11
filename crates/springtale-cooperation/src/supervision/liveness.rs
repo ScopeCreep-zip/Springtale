@@ -93,14 +93,22 @@ mod tests {
     #[test]
     fn recent_report_is_alive() {
         let thresholds = LivenessThresholds::default();
-        let liveness = Liveness::check(crate::tick::TickId(98), crate::tick::TickId(100), &thresholds);
+        let liveness = Liveness::check(
+            crate::tick::TickId(98),
+            crate::tick::TickId(100),
+            &thresholds,
+        );
         assert!(liveness.is_alive());
     }
 
     #[test]
     fn missed_ticks_become_suspect() {
         let thresholds = LivenessThresholds::default();
-        let liveness = Liveness::check(crate::tick::TickId(90), crate::tick::TickId(100), &thresholds);
+        let liveness = Liveness::check(
+            crate::tick::TickId(90),
+            crate::tick::TickId(100),
+            &thresholds,
+        );
         assert!(liveness.is_suspect());
         if let Liveness::Suspect { missed_ticks } = liveness {
             assert_eq!(missed_ticks, 10);
@@ -110,7 +118,11 @@ mod tests {
     #[test]
     fn many_missed_ticks_become_down() {
         let thresholds = LivenessThresholds::default();
-        let liveness = Liveness::check(crate::tick::TickId(80), crate::tick::TickId(100), &thresholds);
+        let liveness = Liveness::check(
+            crate::tick::TickId(80),
+            crate::tick::TickId(100),
+            &thresholds,
+        );
         assert!(liveness.is_down());
         if let Liveness::Down { since_tick } = liveness {
             assert_eq!(since_tick, crate::tick::TickId(80));
@@ -123,8 +135,22 @@ mod tests {
             suspect_after: 5,
             down_after: 15,
         };
-        assert!(Liveness::check(crate::tick::TickId(95), crate::tick::TickId(100), &thresholds).is_suspect());
-        assert!(Liveness::check(crate::tick::TickId(96), crate::tick::TickId(100), &thresholds).is_alive());
+        assert!(
+            Liveness::check(
+                crate::tick::TickId(95),
+                crate::tick::TickId(100),
+                &thresholds
+            )
+            .is_suspect()
+        );
+        assert!(
+            Liveness::check(
+                crate::tick::TickId(96),
+                crate::tick::TickId(100),
+                &thresholds
+            )
+            .is_alive()
+        );
     }
 
     #[test]
@@ -133,13 +159,34 @@ mod tests {
             suspect_after: 5,
             down_after: 15,
         };
-        assert!(Liveness::check(crate::tick::TickId(85), crate::tick::TickId(100), &thresholds).is_down());
-        assert!(Liveness::check(crate::tick::TickId(86), crate::tick::TickId(100), &thresholds).is_suspect());
+        assert!(
+            Liveness::check(
+                crate::tick::TickId(85),
+                crate::tick::TickId(100),
+                &thresholds
+            )
+            .is_down()
+        );
+        assert!(
+            Liveness::check(
+                crate::tick::TickId(86),
+                crate::tick::TickId(100),
+                &thresholds
+            )
+            .is_suspect()
+        );
     }
 
     #[test]
     fn zero_gap_is_alive() {
         let thresholds = LivenessThresholds::default();
-        assert!(Liveness::check(crate::tick::TickId(100), crate::tick::TickId(100), &thresholds).is_alive());
+        assert!(
+            Liveness::check(
+                crate::tick::TickId(100),
+                crate::tick::TickId(100),
+                &thresholds
+            )
+            .is_alive()
+        );
     }
 }

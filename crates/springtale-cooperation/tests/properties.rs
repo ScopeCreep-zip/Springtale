@@ -117,7 +117,7 @@ fn make_vote(term: u64, required: u32) -> ConsensusVote {
             description: "prop".into(),
             options: vec!["a".into(), "b".into()],
             required_participants: required,
-                subject: springtale_cooperation::consensus::DecisionSubject::IntentChange {
+            subject: springtale_cooperation::consensus::DecisionSubject::IntentChange {
                 proposed: springtale_cooperation::IntentPattern::Execute { plan_id: None },
             },
         },

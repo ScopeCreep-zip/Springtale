@@ -20,18 +20,7 @@ use specta::Type;
 /// ratio; the cadence bus owns the interval and pacing dividers change
 /// the effective per-formation rate (§22).
 #[derive(
-    Debug,
-    Clone,
-    Copy,
-    Default,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    Type,
+    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Type,
 )]
 #[repr(transparent)]
 pub struct TickId(pub u64);

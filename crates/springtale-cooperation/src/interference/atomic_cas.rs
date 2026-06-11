@@ -33,7 +33,13 @@ pub async fn cas_apply(
     proposed: &[u8],
 ) -> Result<Option<InterferenceEvent>, CooperationError> {
     let outcome = store
-        .coop_cas_write(tick.0 as i64, &writer.0.to_string(), key, expected, proposed)
+        .coop_cas_write(
+            tick.0 as i64,
+            &writer.0.to_string(),
+            key,
+            expected,
+            proposed,
+        )
         .await?;
     match outcome {
         CoopCasOutcome::Applied => Ok(None),
@@ -138,7 +144,9 @@ mod tests {
     async fn cas_expected_match_applies() {
         let backend: Arc<dyn StorageBackend> = Arc::new(InMemoryBackend::new());
         let a = AgentId::new();
-        cas_apply(&backend, crate::tick::TickId(1), a, "k", None, b"v1").await.unwrap();
+        cas_apply(&backend, crate::tick::TickId(1), a, "k", None, b"v1")
+            .await
+            .unwrap();
         let outcome = cas_apply(&backend, crate::tick::TickId(2), a, "k", Some(b"v1"), b"v2")
             .await
             .unwrap();

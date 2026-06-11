@@ -279,7 +279,10 @@ mod tests {
         let b = ActionRecord::new(AgentId::new())
             .with_read("zone:beta")
             .with_side_effect("zone:alpha", 0.6);
-        assert_eq!(detect_from_records(crate::tick::TickId(1), &[a, b]).len(), 2);
+        assert_eq!(
+            detect_from_records(crate::tick::TickId(1), &[a, b]).len(),
+            2
+        );
     }
 
     #[test]

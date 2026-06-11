@@ -29,7 +29,10 @@ pub enum SupervisionAction {
     TriggerReplan,
     /// Mark agent Down, broadcast PeerMsg::AgentDown.
     /// Per Kubernetes: liveness probe failed → restart container.
-    MarkDown { agent: AgentId, since_tick: crate::tick::TickId },
+    MarkDown {
+        agent: AgentId,
+        since_tick: crate::tick::TickId,
+    },
     /// Escalate to L6 intervention — restart budget exhausted.
     /// Per Erlang: supervisor exceeded MaxR/MaxT → terminate.
     Escalate { reason: String },
@@ -139,14 +142,19 @@ mod tests {
         let rally = RallyTokens::new(3);
         let action = sup.check_member(
             AgentId::new(),
-            Liveness::Down { since_tick: crate::tick::TickId(80) },
+            Liveness::Down {
+                since_tick: crate::tick::TickId(80),
+            },
             0,
             0,
             &rally,
         );
         assert!(matches!(
             action,
-            Some(SupervisionAction::MarkDown { since_tick: crate::tick::TickId(80), .. })
+            Some(SupervisionAction::MarkDown {
+                since_tick: crate::tick::TickId(80),
+                ..
+            })
         ));
     }
 

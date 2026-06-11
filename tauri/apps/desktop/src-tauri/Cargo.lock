@@ -6973,7 +6973,6 @@ dependencies = [
  "governor",
  "petgraph 0.8.3",
  "rand 0.9.2",
- "rusqlite",
  "serde",
  "serde_json",
  "specta",

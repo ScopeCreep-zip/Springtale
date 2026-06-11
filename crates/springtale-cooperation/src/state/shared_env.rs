@@ -217,7 +217,14 @@ mod tests {
         let env = SharedEnvironment::new();
         let agent = AgentId::new();
         let conflict = env
-            .cas_write(&store, crate::tick::TickId(1), agent, "k", None, serde_json::json!("v1"))
+            .cas_write(
+                &store,
+                crate::tick::TickId(1),
+                agent,
+                "k",
+                None,
+                serde_json::json!("v1"),
+            )
             .await
             .unwrap();
         assert!(conflict.is_none());
@@ -235,12 +242,26 @@ mod tests {
         let env = SharedEnvironment::new();
         let a = AgentId::new();
         let b = AgentId::new();
-        env.cas_write(&store, crate::tick::TickId(1), a, "k", None, serde_json::json!("v1"))
-            .await
-            .unwrap();
+        env.cas_write(
+            &store,
+            crate::tick::TickId(1),
+            a,
+            "k",
+            None,
+            serde_json::json!("v1"),
+        )
+        .await
+        .unwrap();
         // b expects the key absent but a already wrote — mismatch.
         let conflict = env
-            .cas_write(&store, crate::tick::TickId(2), b, "k", None, serde_json::json!("v2"))
+            .cas_write(
+                &store,
+                crate::tick::TickId(2),
+                b,
+                "k",
+                None,
+                serde_json::json!("v2"),
+            )
             .await
             .unwrap()
             .expect("should detect conflict");
