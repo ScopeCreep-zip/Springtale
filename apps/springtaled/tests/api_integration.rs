@@ -646,3 +646,80 @@ async fn test_cycle_autonomy() {
     assert_eq!(status, StatusCode::OK);
     assert!(json["level"].is_string());
 }
+
+/// §5.5 formation self-governance routes — propose-intent enqueues the
+/// Fever-gated consensus command; cast_vote validates ids before
+/// enqueueing a ballot.
+#[tokio::test]
+async fn test_propose_intent_and_cast_vote_routes() {
+    let (router, token) = build_test_app(true);
+
+    // Create a formation to address.
+    let body = serde_json::json!({
+        "name": "Governance Squad",
+        "intent": "Reconnoiter",
+        "guard_mode": false,
+        "agents": [{
+            "connector_name": "connector-test",
+            "trigger_name": "event_received",
+            "action_connector": "connector-test",
+            "action_name": "send_message"
+        }]
+    });
+    let req = Request::post("/formations/deploy-team")
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(serde_json::to_vec(&body).unwrap()))
+        .unwrap();
+    let (status, json) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let fid = json["formation_id"].as_str().unwrap().to_owned();
+
+    // Propose an intent change — the route enqueues the consensus
+    // command (the Fever gate is enforced by the bot event loop).
+    let req = Request::post(format!("/formations/{fid}/propose-intent"))
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({ "intent": "Execute" })).unwrap(),
+        ))
+        .unwrap();
+    let (status, json) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["proposed"], fid);
+
+    // Missing intent body → 400.
+    let req = Request::post(format!("/formations/{fid}/propose-intent"))
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(b"{}".to_vec()))
+        .unwrap();
+    let (status, _) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    // Cast a ballot with well-formed ids → enqueued (200).
+    let vote_id = uuid::Uuid::new_v4();
+    let voter = uuid::Uuid::new_v4();
+    let req = Request::post(format!("/formations/{fid}/votes/{vote_id}"))
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({ "voter": voter, "approve": true })).unwrap(),
+        ))
+        .unwrap();
+    let (status, json) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(json["voted"], vote_id.to_string());
+
+    // Malformed voter uuid → 400 from the runtime op's validation.
+    let req = Request::post(format!("/formations/{fid}/votes/{vote_id}"))
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&serde_json::json!({ "voter": "not-a-uuid", "approve": true }))
+                .unwrap(),
+        ))
+        .unwrap();
+    let (status, _) = send(router, req).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+}

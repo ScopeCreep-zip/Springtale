@@ -423,3 +423,355 @@ fn continue_active_task(ctx: &ExecuteCtx<'_>) -> Option<ExecuteOutcome> {
         consensus_task: None,
     })
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    //! End-to-end §11 consensus round-trip through the REAL executor +
+    //! resolution path (plan verification: "confirm a RequireConsensus
+    //! action round-trips propose → approve → execute"):
+    //!
+    //! 1. Formation earns Fever momentum and Peak pacing (capabilities
+    //!    are earned, not granted — §7/§22).
+    //! 2. Executor call #1 on a destructive task → opens a consensus
+    //!    proposal instead of executing (B7 gate).
+    //! 3. Executor call #2 → pending-vote guard: no duplicate proposal.
+    //! 4. All members approve → `resolve_consensus` mints the one-shot
+    //!    permit.
+    //! 5. Executor call #3 → permit consumed, the connector actually
+    //!    runs EXACTLY once, result posted to the blackboard.
+
+    use std::sync::Arc;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::time::{Duration, Instant};
+
+    use async_trait::async_trait;
+    use serde_json::json;
+    use tokio::sync::RwLock;
+
+    use springtale_connector::ConnectorError;
+    use springtale_connector::capability::grant::CapabilityPolicy;
+    use springtale_connector::connector::subscription::{Subscription, SubscriptionId};
+    use springtale_connector::connector::trait_::{ActionResult, Connector, EventHandler};
+    use springtale_connector::manifest::SignatureAlgorithm;
+    use springtale_connector::manifest::types::{ActionDecl, ConnectorManifest, TriggerDecl};
+    use springtale_connector::registry::store::ConnectorRegistry;
+    use springtale_cooperation::TickId;
+    use springtale_cooperation::action::SubTask;
+    use springtale_cooperation::cadence::{AgentId, IntentPattern, Tick, TickReport};
+    use springtale_cooperation::consensus::{DecisionDescriptor, DecisionSubject, VoteChoice};
+    use springtale_cooperation::momentum::MomentumTier;
+    use springtale_cooperation::pacing::{PacingManager, PacingPhase};
+    use springtale_cooperation::tick_processor::FormationTickResult;
+    use springtale_cooperation::types::{ApprovalPolicy, FormationConstraints};
+    use springtale_runtime::CapabilityBridge;
+    use springtale_sentinel::{Sentinel, SentinelConfig};
+    use springtale_store::backend::InMemoryBackend;
+
+    use crate::cooperation::blackboard::trait_::Blackboard;
+    use crate::cooperation::formation::{Formation, FormationMember};
+    use crate::runtime::tick_steps::resolve_consensus;
+
+    use super::{ExecuteCtx, execute};
+
+    /// Mock destructive-capable connector that counts real executions.
+    struct CountingConnector {
+        manifest: ConnectorManifest,
+        executions: Arc<AtomicUsize>,
+    }
+
+    impl CountingConnector {
+        fn new(executions: Arc<AtomicUsize>) -> Self {
+            Self {
+                manifest: ConnectorManifest {
+                    name: "consensus-target".into(),
+                    version: "0.1.0".into(),
+                    author: "test".into(),
+                    description: "counts executions for the consensus round-trip".into(),
+                    capabilities: vec![],
+                    triggers: vec![TriggerDecl {
+                        name: "ping".into(),
+                        description: "ping".into(),
+                        schema: None,
+                    }],
+                    actions: vec![ActionDecl {
+                        name: "wipe".into(),
+                        description: "destructive action gated by consensus".into(),
+                        input_schema: None,
+                        output_schema: None,
+                        read_only: false,
+                    }],
+                    data_disclosure: vec![],
+                    roles: vec![],
+                    wasm_hash: None,
+                    signature_alg: SignatureAlgorithm::default(),
+                    signature: None,
+                },
+                executions,
+            }
+        }
+    }
+
+    #[async_trait]
+    impl Connector for CountingConnector {
+        fn triggers(&self) -> &[TriggerDecl] {
+            &self.manifest.triggers
+        }
+        fn actions(&self) -> &[ActionDecl] {
+            &self.manifest.actions
+        }
+        async fn execute(
+            &self,
+            action: &str,
+            _input: serde_json::Value,
+        ) -> Result<ActionResult, ConnectorError> {
+            self.executions.fetch_add(1, Ordering::SeqCst);
+            Ok(ActionResult {
+                success: true,
+                output: json!({ "executed": action }),
+                message: "consensus-approved execution".into(),
+            })
+        }
+        async fn on_event(
+            &self,
+            trigger: &str,
+            _handler: EventHandler,
+        ) -> Result<Subscription, ConnectorError> {
+            Ok(Subscription {
+                id: SubscriptionId(0),
+                trigger: trigger.to_owned(),
+            })
+        }
+        async fn remove_event(&self, _sub: &Subscription) -> Result<(), ConnectorError> {
+            Ok(())
+        }
+        fn manifest(&self) -> &ConnectorManifest {
+            &self.manifest
+        }
+    }
+
+    fn successful_tick_result(agent: AgentId) -> FormationTickResult {
+        FormationTickResult {
+            reports: vec![TickReport {
+                agent_id: agent,
+                tick_sequence: TickId(1),
+                action_taken: Some(springtale_cooperation::cadence::ActionDescriptor {
+                    kind: "work".into(),
+                    target: None,
+                    payload_hash: 0,
+                }),
+                latency: Duration::from_millis(1),
+                intent_alignment: 1.0,
+                interference_with: vec![],
+            }],
+            interferences: vec![],
+            all_succeeded: true,
+        }
+    }
+
+    fn make_tick() -> Tick {
+        Tick {
+            sequence: TickId(1),
+            timestamp: Instant::now(),
+            window: Duration::from_millis(33),
+        }
+    }
+
+    fn destructive_task() -> SubTask {
+        SubTask {
+            id: uuid::Uuid::new_v4(),
+            target_connector: "consensus-target".into(),
+            action_name: "wipe".into(),
+            params: json!({}),
+            priority: 1,
+            assigned_to: None,
+            description: "destructive action".into(),
+            depends_on: vec![],
+        }
+    }
+
+    #[tokio::test]
+    async fn consensus_round_trip_propose_guard_approve_execute_once() {
+        // ── Arrange: real bridge + sentinel + formation ──
+        let executions = Arc::new(AtomicUsize::new(0));
+        let mut registry = ConnectorRegistry::new(CapabilityPolicy::AllowAll);
+        registry
+            .install_native(Box::new(CountingConnector::new(executions.clone())))
+            .unwrap();
+        let bridge = CapabilityBridge::new(Arc::new(RwLock::new(registry)));
+        let store: Arc<dyn springtale_store::StorageBackend> = Arc::new(InMemoryBackend::new());
+        let sentinel = Arc::new(Sentinel::new(SentinelConfig::default(), store));
+
+        let members: Vec<FormationMember> = (0..3)
+            .map(|_| FormationMember::from_strings(AgentId::new(), vec!["consensus-target".into()]))
+            .collect();
+        let voters: Vec<AgentId> = members.iter().map(|m| m.agent_id).collect();
+        let constraints = FormationConstraints {
+            destructive_action_policy: ApprovalPolicy::RequireConsensus,
+            ..FormationConstraints::default()
+        };
+        let mut formation = Formation::new_disconnected(
+            members,
+            IntentPattern::Execute { plan_id: None },
+            constraints,
+        );
+
+        // ── Earn the capabilities (§7 Fever + §22 Peak — not granted) ──
+        for _ in 0..15 {
+            formation.momentum.record_success();
+        }
+        assert_eq!(formation.momentum.tier, MomentumTier::Fever);
+
+        let mut pacing = PacingManager::default();
+        let driver = voters[0];
+        for _ in 0..16 {
+            pacing.evaluate_transition(
+                &successful_tick_result(driver),
+                &formation.momentum,
+                Duration::from_millis(33),
+            );
+        }
+        assert!(
+            matches!(pacing.current_phase, PacingPhase::Peak { .. }),
+            "formation earned Peak pacing (full tick rate + 30 actions/min)"
+        );
+
+        let task = destructive_task();
+        let tick = make_tick();
+        let blackboard = formation.blackboard.clone();
+        let shared_env = formation.shared_env.clone();
+        let surfaces = formation.surfaces.clone();
+        let fuel = formation.fuel.clone();
+        let direct_inbox = formation.direct_inbox.clone();
+        let mut member = formation.members[0].clone();
+
+        // ── Call #1: destructive task opens a proposal, doesn't execute ──
+        let outcome = execute(ExecuteCtx {
+            formation_id: formation.id.0,
+            formation_momentum: MomentumTier::Fever,
+            destructive_policy: ApprovalPolicy::RequireConsensus,
+            blackboard: blackboard.as_ref(),
+            shared_env: shared_env.as_ref(),
+            surfaces: surfaces.as_ref(),
+            fuel: fuel.as_ref(),
+            pacing: &mut pacing,
+            member: &mut member,
+            tick: &tick,
+            chosen_task: Some(task.clone()),
+            tick_action: None,
+            autonomy: springtale_cooperation::AutonomyLevel::ActAutonomously,
+            bridge: &bridge,
+            sentinel: &sentinel,
+            direct_inbox: direct_inbox.as_ref(),
+            sacrifice: None,
+            awaiting_consensus: &formation.awaiting_consensus,
+            consensus_approved: &mut formation.consensus_approved,
+            cooperation_tx: None,
+        })
+        .await;
+        let proposal = outcome.consensus_task.expect("call #1 opens a proposal");
+        assert_eq!(executions.load(Ordering::SeqCst), 0, "nothing executed yet");
+
+        // agent_pipeline's post-loop block: propose + register the guard.
+        let vote_id = formation.consensus.propose(
+            DecisionDescriptor {
+                description: "execute consensus-target::wipe".into(),
+                options: vec!["approve".into(), "deny".into()],
+                required_participants: voters.len() as u32,
+                subject: DecisionSubject::DestructiveAction {
+                    task: proposal.clone(),
+                },
+            },
+            Duration::from_secs(60),
+            &voters,
+            1,
+        );
+        formation.awaiting_consensus.insert(proposal.id, vote_id);
+
+        // ── Call #2: pending-vote guard blocks a duplicate proposal ──
+        let outcome = execute(ExecuteCtx {
+            formation_id: formation.id.0,
+            formation_momentum: MomentumTier::Fever,
+            destructive_policy: ApprovalPolicy::RequireConsensus,
+            blackboard: blackboard.as_ref(),
+            shared_env: shared_env.as_ref(),
+            surfaces: surfaces.as_ref(),
+            fuel: fuel.as_ref(),
+            pacing: &mut pacing,
+            member: &mut member,
+            tick: &tick,
+            chosen_task: Some(task.clone()),
+            tick_action: None,
+            autonomy: springtale_cooperation::AutonomyLevel::ActAutonomously,
+            bridge: &bridge,
+            sentinel: &sentinel,
+            direct_inbox: direct_inbox.as_ref(),
+            sacrifice: None,
+            awaiting_consensus: &formation.awaiting_consensus,
+            consensus_approved: &mut formation.consensus_approved,
+            cooperation_tx: None,
+        })
+        .await;
+        assert!(
+            outcome.consensus_task.is_none(),
+            "guard prevents a second proposal for the same task"
+        );
+        assert_eq!(executions.load(Ordering::SeqCst), 0);
+
+        // ── Approve: every member casts a ballot, resolution applies ──
+        for voter in &voters {
+            formation
+                .consensus
+                .vote(&vote_id, *voter, VoteChoice::Option(0))
+                .unwrap();
+        }
+        resolve_consensus::run(&mut formation, None);
+        assert!(
+            formation.consensus_approved.contains(&task.id),
+            "approval minted the one-shot permit"
+        );
+        assert!(!formation.awaiting_consensus.contains_key(&task.id));
+
+        // ── Call #3: permit consumed, connector runs exactly once ──
+        let outcome = execute(ExecuteCtx {
+            formation_id: formation.id.0,
+            formation_momentum: MomentumTier::Fever,
+            destructive_policy: ApprovalPolicy::RequireConsensus,
+            blackboard: blackboard.as_ref(),
+            shared_env: shared_env.as_ref(),
+            surfaces: surfaces.as_ref(),
+            fuel: fuel.as_ref(),
+            pacing: &mut pacing,
+            member: &mut member,
+            tick: &tick,
+            chosen_task: Some(task.clone()),
+            tick_action: None,
+            autonomy: springtale_cooperation::AutonomyLevel::ActAutonomously,
+            bridge: &bridge,
+            sentinel: &sentinel,
+            direct_inbox: direct_inbox.as_ref(),
+            sacrifice: None,
+            awaiting_consensus: &formation.awaiting_consensus,
+            consensus_approved: &mut formation.consensus_approved,
+            cooperation_tx: None,
+        })
+        .await;
+        assert!(
+            outcome.consensus_task.is_none(),
+            "no re-vote after approval"
+        );
+        assert_eq!(
+            executions.load(Ordering::SeqCst),
+            1,
+            "the destructive action executed EXACTLY once"
+        );
+        assert!(
+            formation.consensus_approved.is_empty(),
+            "the permit was one-shot — consumed on execution"
+        );
+        assert!(
+            blackboard.read_result(task.id).is_some(),
+            "result posted to the blackboard"
+        );
+    }
+}

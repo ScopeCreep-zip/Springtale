@@ -62,7 +62,11 @@ pub async fn run_tick(formation: &mut Formation, tick: &Tick, deps: &mut TickDep
     // ÷6). Skipping is safe: momentum decay, commit deadlines, and vote
     // deadlines are all wall-clock based and settle on the next processed
     // tick.
-    if !tick.sequence.0.is_multiple_of(formation.pacing.tick_divider()) {
+    if !tick
+        .sequence
+        .0
+        .is_multiple_of(formation.pacing.tick_divider())
+    {
         return;
     }
     // True per-formation elapsed time since the last PROCESSED tick —
