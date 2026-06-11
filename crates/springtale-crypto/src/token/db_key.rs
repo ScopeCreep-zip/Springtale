@@ -23,8 +23,7 @@ const DB_KEY_CONTEXT: &[u8] = b"springtale-db-encryption-v1";
 /// Infallible: HMAC-SHA256 accepts any key size.
 pub fn derive_db_encryption_key(passphrase: &[u8]) -> [u8; 32] {
     #[allow(clippy::expect_used)]
-    let mut mac =
-        HmacSha256::new_from_slice(passphrase).expect("HMAC-SHA256 accepts any key size");
+    let mut mac = HmacSha256::new_from_slice(passphrase).expect("HMAC-SHA256 accepts any key size");
     mac.update(DB_KEY_CONTEXT);
     let bytes = mac.finalize().into_bytes();
     let mut key = [0u8; 32];

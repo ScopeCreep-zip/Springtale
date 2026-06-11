@@ -18,10 +18,19 @@ rand = { workspace = true }
 sha2 = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+# Crypto-agile algorithm identifiers (manifest `signature_alg`, future
+# vault/token alg tags) ship a stable JsonSchema + Specta type so
+# tooling (rule-schema generator, frontend type bindings) can render
+# them at the IPC boundary.
+schemars = { workspace = true }
+specta = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
 hex = { workspace = true }
+base64 = { workspace = true }
 hmac = { workspace = true }
+# constant-time byte comparison for secret_use::secret_eq_*
+subtle = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 

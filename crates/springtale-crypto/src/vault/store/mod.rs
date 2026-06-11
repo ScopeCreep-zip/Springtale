@@ -183,7 +183,7 @@ mod tests {
         // Generate a keypair and store it in the vault
         let keypair = Keypair::generate().unwrap();
         let node_id = keypair.node_id();
-        let secret_bytes = *keypair.expose_secret_bytes();
+        let secret_bytes = keypair.with_secret_bytes(|b| *b);
         vault.set("identity", secret_bytes.to_vec()).unwrap();
         vault.save().unwrap();
 

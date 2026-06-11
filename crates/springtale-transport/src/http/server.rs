@@ -111,10 +111,12 @@ impl HttpTransport {
         let ca_cert_reqwest = reqwest::Certificate::from_pem(&ca_pem)
             .map_err(|e| TransportError::Tls(format!("CA cert error: {e}")))?;
 
-        let client = reqwest::Client::builder()
+        // Internal site: this is the only outbound-mTLS client in the
+        // workspace that needs an attached client identity + custom root
+        // certificate, so we layer those onto the safe_http defaults.
+        let client = crate::safe_http::builder()
             .identity(client_identity)
             .add_root_certificate(ca_cert_reqwest)
-            .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| TransportError::Http(format!("client build error: {e}")))?;
 

@@ -5,7 +5,6 @@ use chacha20poly1305::{
     XChaCha20Poly1305, XNonce,
     aead::{Aead, KeyInit},
 };
-use secrecy::ExposeSecret;
 
 use super::Vault;
 use crate::error::CryptoError;
@@ -85,16 +84,21 @@ fn open_single_vault(path: PathBuf, data: &[u8], passphrase: &[u8]) -> Result<Va
     let key = kdf::derive_key(passphrase, &salt)?;
     let nonce = XNonce::from_slice(&nonce_bytes);
 
-    // SECURITY: expose needed for AEAD decryption
-    let cipher = XChaCha20Poly1305::new_from_slice(key.expose_secret())
+    let cipher = crate::secret_use::with_key32(&key, |k| XChaCha20Poly1305::new_from_slice(k))
         .map_err(|_| CryptoError::VaultDecryptionFailed)?;
 
     let plaintext = cipher
         .decrypt(nonce, ciphertext)
         .map_err(|_| CryptoError::VaultDecryptionFailed)?;
 
-    let entries: HashMap<String, Vec<u8>> = serde_json::from_slice(&plaintext)
-        .map_err(|e| CryptoError::Serialization(e.to_string()))?;
+    // Decode the entry map. Accepts both the crypto-agile `VaultPlaintext`
+    // envelope (validating AEAD/KDF tags — fail closed on downgrade/forward
+    // version) and pre-envelope legacy vaults (bare entry map). The AEAD tag
+    // above already authenticated the plaintext, so the legacy fallback is a
+    // genuine old vault, not tampering; it re-saves in the new format on the
+    // next `save()`.
+    let entries: HashMap<String, Vec<u8>> =
+        crate::vault::plaintext::decode_region_entries(&plaintext)?;
 
     Ok(Vault {
         path,
@@ -105,6 +109,53 @@ fn open_single_vault(path: PathBuf, data: &[u8], passphrase: &[u8]) -> Result<Va
         inactive_region_bytes: None,
         active_region_index: 0,
     })
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    /// Build a genuine pre-envelope (legacy) single-region vault —
+    /// `[salt][nonce][XChaCha20Poly1305(serde_json(flat entry map))]`, the
+    /// exact shape vaults had before the crypto-agile format change (the
+    /// "unknown field `identity`" vault) — and confirm the current
+    /// `Vault::open` reads it via the back-compat path.
+    #[test]
+    fn opens_legacy_flat_single_vault() {
+        let passphrase = b"correct horse battery staple";
+        let mut entries: HashMap<String, Vec<u8>> = HashMap::new();
+        entries.insert("identity".to_string(), b"keypair".to_vec());
+        entries.insert("openai.api_key".to_string(), b"sk-test".to_vec());
+
+        // Reproduce the OLD save path: plaintext = the bare entry map.
+        let salt: [u8; 16] = [7; 16];
+        let key = kdf::derive_key(passphrase, &salt).unwrap();
+        let nonce_bytes: [u8; 24] = [9; 24];
+        let nonce = XNonce::from_slice(&nonce_bytes);
+        let cipher = crate::secret_use::with_key32(&key, |k| XChaCha20Poly1305::new_from_slice(k))
+            .unwrap();
+        let legacy_plaintext = serde_json::to_vec(&entries).unwrap();
+        let ciphertext = cipher.encrypt(nonce, legacy_plaintext.as_ref()).unwrap();
+
+        let mut file_data = Vec::new();
+        file_data.extend_from_slice(&salt);
+        file_data.extend_from_slice(&nonce_bytes);
+        file_data.extend_from_slice(&ciphertext);
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("legacy.vault");
+        std::fs::write(&path, &file_data).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600)).unwrap();
+        }
+
+        let vault = Vault::open(&path, passphrase).expect("legacy flat vault must open");
+        assert_eq!(vault.get("identity").unwrap(), Some(&b"keypair".to_vec()));
+        assert_eq!(vault.get("openai.api_key").unwrap(), Some(&b"sk-test".to_vec()));
+    }
 }
 
 /// Check that an open vault file has secure permissions (0o600).

@@ -4,7 +4,6 @@ use chacha20poly1305::{
     XChaCha20Poly1305,
     aead::{Aead, AeadCore, KeyInit},
 };
-use secrecy::ExposeSecret;
 
 use super::kdf;
 use crate::error::CryptoError;
@@ -49,8 +48,7 @@ pub fn export_backup(
 
     // Encrypt payload
     let nonce = XChaCha20Poly1305::generate_nonce(&mut rand::rngs::OsRng);
-    // SECURITY: expose needed for AEAD encryption of backup
-    let cipher = XChaCha20Poly1305::new_from_slice(key.expose_secret())
+    let cipher = crate::secret_use::with_key32(&key, |k| XChaCha20Poly1305::new_from_slice(k))
         .map_err(|_| CryptoError::KeyGeneration("invalid key length".into()))?;
 
     let ciphertext = cipher
@@ -105,8 +103,7 @@ pub fn import_backup(
     let key = kdf::derive_key(travel_passphrase, &salt)?;
 
     let nonce = chacha20poly1305::XNonce::from_slice(&nonce_bytes);
-    // SECURITY: expose needed for AEAD decryption of backup
-    let cipher = XChaCha20Poly1305::new_from_slice(key.expose_secret())
+    let cipher = crate::secret_use::with_key32(&key, |k| XChaCha20Poly1305::new_from_slice(k))
         .map_err(|_| CryptoError::VaultDecryptionFailed)?;
 
     let plaintext = cipher

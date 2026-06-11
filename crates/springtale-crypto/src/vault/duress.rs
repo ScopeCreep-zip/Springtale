@@ -6,7 +6,6 @@ use chacha20poly1305::{
     aead::{Aead, AeadCore, KeyInit},
 };
 use rand::RngCore;
-use secrecy::ExposeSecret;
 
 use super::kdf;
 use crate::error::CryptoError;
@@ -130,8 +129,12 @@ fn encrypt_region(
     let salt = kdf::generate_salt();
     let key = kdf::derive_key(passphrase, &salt)?;
 
+    // Wrap entries in the crypto-agile plaintext envelope (AEAD +
+    // KDF algorithm tags). Authenticated by the AEAD tag, so a
+    // downgrade attack on either alg invalidates the ciphertext.
+    let envelope = super::plaintext::VaultPlaintext::with_defaults(entries.clone());
     let plaintext =
-        serde_json::to_vec(entries).map_err(|e| CryptoError::Serialization(e.to_string()))?;
+        serde_json::to_vec(&envelope).map_err(|e| CryptoError::Serialization(e.to_string()))?;
 
     // AEAD tag is 16 bytes for Poly1305
     const TAG_SIZE: usize = 16;
@@ -154,8 +157,7 @@ fn encrypt_region(
     padded_plaintext[len_offset..].copy_from_slice(&(plaintext.len() as u64).to_le_bytes());
 
     let nonce = XChaCha20Poly1305::generate_nonce(&mut rand::rngs::OsRng);
-    // SECURITY: expose needed for AEAD encryption of vault region
-    let cipher = XChaCha20Poly1305::new_from_slice(key.expose_secret())
+    let cipher = crate::secret_use::with_key32(&key, |k| XChaCha20Poly1305::new_from_slice(k))
         .map_err(|_| CryptoError::KeyGeneration("invalid key length".into()))?;
 
     let ciphertext = cipher
@@ -181,8 +183,9 @@ pub fn encrypt_region_with_key(
     salt: &[u8; 16],
     entries: &HashMap<String, Vec<u8>>,
 ) -> Result<Vec<u8>, CryptoError> {
+    let envelope = super::plaintext::VaultPlaintext::with_defaults(entries.clone());
     let plaintext =
-        serde_json::to_vec(entries).map_err(|e| CryptoError::Serialization(e.to_string()))?;
+        serde_json::to_vec(&envelope).map_err(|e| CryptoError::Serialization(e.to_string()))?;
 
     const TAG_SIZE: usize = 16;
     let max_plaintext_size = REGION_SIZE - TAG_SIZE;
@@ -237,8 +240,7 @@ fn decrypt_region(region: &[u8], passphrase: &[u8]) -> Result<RegionDecryptResul
     let key = kdf::derive_key(passphrase, &salt)?;
     let nonce = chacha20poly1305::XNonce::from_slice(&nonce_bytes);
 
-    // SECURITY: expose needed for AEAD decryption of vault region
-    let cipher = XChaCha20Poly1305::new_from_slice(key.expose_secret())
+    let cipher = crate::secret_use::with_key32(&key, |k| XChaCha20Poly1305::new_from_slice(k))
         .map_err(|_| CryptoError::VaultDecryptionFailed)?;
 
     let padded_plaintext = cipher
@@ -258,8 +260,12 @@ fn decrypt_region(region: &[u8], passphrase: &[u8]) -> Result<RegionDecryptResul
         return Err(CryptoError::VaultDecryptionFailed);
     }
 
-    let entries: HashMap<String, Vec<u8>> = serde_json::from_slice(&padded_plaintext[..actual_len])
-        .map_err(|e| CryptoError::Serialization(e.to_string()))?;
+    // Decode the entry map — current `VaultPlaintext` envelope (validates
+    // AEAD/KDF tags) or pre-envelope legacy bare map. The AEAD tag above
+    // already authenticated the plaintext, so the legacy fallback is a
+    // genuine old vault. See `plaintext::decode_region_entries`.
+    let entries: HashMap<String, Vec<u8>> =
+        super::plaintext::decode_region_entries(&padded_plaintext[..actual_len])?;
 
     Ok((entries, salt, key))
 }

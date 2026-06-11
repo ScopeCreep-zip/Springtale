@@ -1,5 +1,5 @@
 use ed25519_dalek::{SigningKey, VerifyingKey};
-use secrecy::{ExposeSecret, SecretBox};
+use secrecy::SecretBox;
 use zeroize::Zeroize;
 
 use super::node_id::NodeId;
@@ -64,18 +64,17 @@ impl Keypair {
 
     /// Sign a message. The signing key is exposed only for this call.
     pub fn sign(&self, message: &[u8]) -> ed25519_dalek::Signature {
-        // SECURITY: expose needed for Ed25519 signing operation
-        let secret = self.secret_bytes.expose_secret();
-        let signing_key = SigningKey::from_bytes(secret);
         use ed25519_dalek::Signer;
-        signing_key.sign(message)
+        crate::secret_use::with_key32(&self.secret_bytes, |bytes| {
+            SigningKey::from_bytes(bytes).sign(message)
+        })
     }
 
-    /// Export the secret bytes for vault persistence.
-    /// The caller MUST zeroize the returned bytes after use.
-    pub fn expose_secret_bytes(&self) -> &[u8; 32] {
-        // SECURITY: expose needed for vault persistence
-        self.secret_bytes.expose_secret()
+    /// Pass the 32-byte secret to a closure. Used by vault persistence
+    /// to serialize the key into the vault file (the closure copies
+    /// into the encryption buffer and lets the buffer drop).
+    pub fn with_secret_bytes<R>(&self, f: impl FnOnce(&[u8; 32]) -> R) -> R {
+        crate::secret_use::with_key32(&self.secret_bytes, f)
     }
 }
 
@@ -110,7 +109,7 @@ mod tests {
         assert!(original.is_ok());
         let original = original.ok();
 
-        let bytes = original.as_ref().map(|kp| *kp.expose_secret_bytes());
+        let bytes = original.as_ref().map(|kp| kp.with_secret_bytes(|b| *b));
         let restored = bytes.and_then(|b| Keypair::from_secret_bytes(b).ok());
 
         assert_eq!(

@@ -25,6 +25,7 @@ axum-server = { workspace = true }
 reqwest = { workspace = true }
 rustls = { workspace = true }
 rustls-pemfile = { workspace = true }
+rustls-post-quantum = { workspace = true }
 hex = { workspace = true }
 
 [dev-dependencies]

@@ -15,6 +15,17 @@ const ARGON2_ITERATIONS: u32 = 3;
 const ARGON2_PARALLELISM: u32 = 4;
 const ARGON2_OUTPUT_LEN: usize = 32; // 256-bit key for XChaCha20-Poly1305
 
+/// Argon2id parameters used to derive vault keys, in machine-readable
+/// form. Stamped into every vault plaintext envelope so a future
+/// cost-factor migration can roll without ambiguity.
+pub fn workspace_argon2_params() -> super::algorithm::Argon2Params {
+    super::algorithm::Argon2Params {
+        memory_kib: ARGON2_MEMORY_KIB,
+        iterations: ARGON2_ITERATIONS,
+        parallelism: ARGON2_PARALLELISM,
+    }
+}
+
 /// Derive an encryption key from a passphrase using Argon2id.
 ///
 /// Returns a 32-byte key wrapped in `SecretBox` for automatic
@@ -61,31 +72,29 @@ pub fn generate_salt() -> [u8; 16] {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
+    use crate::secret_use::secret_eq_key32;
 
     #[test]
     fn test_derive_key_deterministic() {
-        use secrecy::ExposeSecret;
         let salt = [1u8; 16];
         let key1 = derive_key(b"password", &salt).unwrap();
         let key2 = derive_key(b"password", &salt).unwrap();
-        assert_eq!(key1.expose_secret(), key2.expose_secret());
+        assert!(secret_eq_key32(&key1, &key2));
     }
 
     #[test]
     fn test_derive_key_different_passphrase() {
-        use secrecy::ExposeSecret;
         let salt = [1u8; 16];
         let key1 = derive_key(b"password1", &salt).unwrap();
         let key2 = derive_key(b"password2", &salt).unwrap();
-        assert_ne!(key1.expose_secret(), key2.expose_secret());
+        assert!(!secret_eq_key32(&key1, &key2));
     }
 
     #[test]
     fn test_derive_key_different_salt() {
-        use secrecy::ExposeSecret;
         let key1 = derive_key(b"password", &[1u8; 16]).unwrap();
         let key2 = derive_key(b"password", &[2u8; 16]).unwrap();
-        assert_ne!(key1.expose_secret(), key2.expose_secret());
+        assert!(!secret_eq_key32(&key1, &key2));
     }
 
     #[test]
