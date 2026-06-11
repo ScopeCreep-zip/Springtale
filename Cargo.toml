@@ -100,7 +100,7 @@ specta           = { version = "=2.0.0-rc.25", features = ["derive", "serde_json
 garde            = { version = "0.22", features = ["derive", "full"] }
 
 # ── Filesystem Sandbox ─────────────────────────────────────────────────────────
-cap-std          = "3"
+cap-std          = "4"
 
 # ── Security / Secrets ─────────────────────────────────────────────────────────
 secrecy          = { version = "0.10", features = ["serde"] }
