@@ -77,8 +77,9 @@ pub enum CommitPhase {
     Prepare,
     /// All agents have signaled readiness.
     Ready,
-    /// Countdown to synchronized execution (currently unused — reserved
-    /// for future Splinter-Cell-style audible breach countdown UI).
+    /// Countdown to synchronized execution (Splinter Cell breach timer).
+    /// Entered from Ready when the barrier was built `with_countdown`;
+    /// `tick()` decrements `remaining` and advances to Execute at zero.
     Countdown { remaining: Duration },
     /// Executing simultaneously.
     Execute,
@@ -157,6 +158,11 @@ pub struct CommitBarrier {
     /// transitions to Execute via `tick()`). Held separately so the
     /// prepare timeout is independent of the execute timeout.
     execute_deadline: Duration,
+    /// Splinter-Cell breach countdown: time the barrier holds in
+    /// `Countdown` between Ready and Execute. `Duration::ZERO` (the
+    /// default) skips the phase entirely — Ready advances straight to
+    /// Execute, preserving pre-countdown behavior.
+    countdown: Duration,
     /// Who initiated the barrier.
     pub initiated_by: AgentId,
 }
@@ -194,8 +200,19 @@ impl CommitBarrier {
             participants: participant_map,
             deadline: Instant::now() + prepare_deadline,
             execute_deadline,
+            countdown: Duration::ZERO,
             initiated_by,
         }
+    }
+
+    /// Set a Splinter-Cell-style breach countdown (§12.1): once every
+    /// participant is Ready, the barrier holds in `Countdown` for `d`
+    /// before Execute. All peers observe the `ready → countdown →
+    /// execute` transitions, so UI / audit surfaces can render the
+    /// synchronized "3…2…1" window.
+    pub fn with_countdown(mut self, d: Duration) -> Self {
+        self.countdown = d;
+        self
     }
 
     /// Signal that an agent is ready.
@@ -349,15 +366,47 @@ impl CommitBarrier {
             }
             CommitPhase::Ready => {
                 let from = self.phase.as_event_str();
-                self.phase = CommitPhase::Execute;
-                self.deadline = now + self.execute_deadline;
-                for state in self.participants.values_mut() {
-                    *state = ParticipantState::Executing;
+                if self.countdown > Duration::ZERO {
+                    // §12.1 breach countdown — hold before simultaneous
+                    // execution so every peer sees the window coming. The
+                    // shared `deadline` field carries the countdown expiry;
+                    // `remaining` is the display value updated each tick.
+                    self.deadline = now + self.countdown;
+                    self.phase = CommitPhase::Countdown {
+                        remaining: self.countdown,
+                    };
+                } else {
+                    self.phase = CommitPhase::Execute;
+                    self.deadline = now + self.execute_deadline;
+                    for state in self.participants.values_mut() {
+                        *state = ParticipantState::Executing;
+                    }
                 }
                 Some(CommitTransition {
                     from,
                     to: self.phase.as_event_str(),
                 })
+            }
+            CommitPhase::Countdown { .. } => {
+                if now >= self.deadline {
+                    // Countdown elapsed — simultaneous execution begins.
+                    let from = self.phase.as_event_str();
+                    self.phase = CommitPhase::Execute;
+                    self.deadline = now + self.execute_deadline;
+                    for state in self.participants.values_mut() {
+                        *state = ParticipantState::Executing;
+                    }
+                    Some(CommitTransition {
+                        from,
+                        to: self.phase.as_event_str(),
+                    })
+                } else {
+                    // Refresh the display value; not a phase transition.
+                    self.phase = CommitPhase::Countdown {
+                        remaining: self.deadline - now,
+                    };
+                    None
+                }
             }
             CommitPhase::Execute => {
                 if now >= self.deadline {
@@ -386,9 +435,7 @@ impl CommitBarrier {
                     None
                 }
             }
-            CommitPhase::Countdown { .. } | CommitPhase::Collect | CommitPhase::Aborted { .. } => {
-                None
-            }
+            CommitPhase::Collect | CommitPhase::Aborted { .. } => None,
         }
     }
 
@@ -627,9 +674,60 @@ mod tests {
     }
 
     #[test]
+    fn zero_countdown_goes_straight_to_execute() {
+        let a = AgentId::new();
+        let mut barrier = CommitBarrier::new(&[a], Duration::from_secs(30), a);
+        barrier.signal_ready(a).unwrap();
+        let t = barrier.tick(Instant::now()).unwrap();
+        assert_eq!(t.from, "ready");
+        assert_eq!(t.to, "execute", "ZERO countdown preserves old behavior");
+    }
+
+    #[test]
+    fn countdown_holds_then_executes() {
+        let a = AgentId::new();
+        let mut barrier = CommitBarrier::new(&[a], Duration::from_secs(30), a)
+            .with_countdown(Duration::from_millis(50));
+        barrier.signal_ready(a).unwrap();
+
+        // Ready → Countdown
+        let now = Instant::now();
+        let t = barrier.tick(now).unwrap();
+        assert_eq!(t.to, "countdown");
+
+        // Mid-countdown: no transition, remaining shrinks.
+        let t = barrier.tick(now + Duration::from_millis(20));
+        assert!(t.is_none());
+        match &barrier.phase {
+            CommitPhase::Countdown { remaining } => {
+                assert!(*remaining <= Duration::from_millis(30));
+            }
+            other => panic!("expected Countdown, got {other:?}"),
+        }
+
+        // Past the countdown: → Execute, all participants Executing.
+        let t = barrier.tick(now + Duration::from_millis(60)).unwrap();
+        assert_eq!(t.from, "countdown");
+        assert_eq!(t.to, "execute");
+        assert!(
+            barrier
+                .participants
+                .values()
+                .all(|s| matches!(s, ParticipantState::Executing))
+        );
+    }
+
+    #[test]
     fn phase_event_strs_are_stable() {
         assert_eq!(CommitPhase::Prepare.as_event_str(), "prepare");
         assert_eq!(CommitPhase::Ready.as_event_str(), "ready");
+        assert_eq!(
+            CommitPhase::Countdown {
+                remaining: Duration::from_secs(1)
+            }
+            .as_event_str(),
+            "countdown"
+        );
         assert_eq!(CommitPhase::Execute.as_event_str(), "execute");
         assert_eq!(CommitPhase::Collect.as_event_str(), "collect");
         assert_eq!(
