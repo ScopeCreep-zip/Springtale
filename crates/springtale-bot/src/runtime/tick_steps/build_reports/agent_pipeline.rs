@@ -176,6 +176,8 @@ pub async fn run(
             sentinel,
             direct_inbox: formation.direct_inbox.as_ref(),
             sacrifice: sacrifice_action,
+            awaiting_consensus: &formation.awaiting_consensus,
+            consensus_approved: &mut formation.consensus_approved,
             cooperation_tx,
         })
         .await;
@@ -211,6 +213,7 @@ pub async fn run(
             .collect();
         let voter_count = voters.len() as u32;
         for task in consensus_proposals {
+            let task_id = task.id;
             let id = formation.consensus.propose(
                 DecisionDescriptor {
                     description: format!(
@@ -219,15 +222,21 @@ pub async fn run(
                     ),
                     options: vec!["approve".into(), "deny".into()],
                     required_participants: voter_count,
+                    subject: springtale_cooperation::consensus::DecisionSubject::DestructiveAction {
+                        task,
+                    },
                 },
                 std::time::Duration::from_secs(5),
                 &voters,
                 1,
             );
+            // B7 guard — while this entry exists, the executor won't
+            // re-propose for the same task on subsequent ticks.
+            formation.awaiting_consensus.insert(task_id, id);
             tracing::info!(
                 formation = %formation.id.0,
                 vote_id = %id,
-                task = %task.id,
+                task = %task_id,
                 voters = voter_count,
                 "consensus vote opened for destructive action"
             );
