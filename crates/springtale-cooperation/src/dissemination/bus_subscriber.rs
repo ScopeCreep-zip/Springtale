@@ -13,8 +13,8 @@
 use tokio::sync::broadcast;
 
 use crate::comms::{BroadcastTrigger, StateBroadcastMsg};
-use crate::dissemination::trait_::StateSubscriber;
 use crate::dissemination::StateMessage;
+use crate::dissemination::trait_::StateSubscriber;
 use crate::types::AgentHealth;
 
 pub struct StateBusSubscriber {
@@ -75,9 +75,7 @@ pub struct BufferedStateSubscriber {
 
 impl BufferedStateSubscriber {
     pub fn new(msgs: Vec<StateMessage>) -> Self {
-        Self {
-            msgs: msgs.into(),
-        }
+        Self { msgs: msgs.into() }
     }
 }
 

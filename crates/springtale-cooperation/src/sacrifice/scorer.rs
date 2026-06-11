@@ -79,7 +79,10 @@ pub fn evaluate_sacrifice(
     // Sigmoid centered at 0.5 with steep transition — creates clear distinction
     // between net-negative (score < 0.3) and net-positive (score > 0.7).
     let normalized_benefit = ((raw_benefit + 0.5) / 1.0).clamp(0.0, 1.0);
-    let benefit_curve = Sigmoid { midpoint: 0.5, steepness: 10.0 };
+    let benefit_curve = Sigmoid {
+        midpoint: 0.5,
+        steepness: 10.0,
+    };
     let net_benefit_score = benefit_curve.evaluate(normalized_benefit);
 
     // 2. Recovery path: rally tokens + member count.
@@ -111,11 +114,23 @@ pub fn evaluate_sacrifice(
             MomentumTier::Hot => 0.7,
             MomentumTier::Fever => 1.0,
         };
-        let scarcity_factor: f32 = if formation.operational_count <= 2 { 0.9 } else { 0.3 };
-        let distress_factor: f32 = if awareness.distressed_neighbor_count() > 0 { 0.3 } else { 0.0 };
+        let scarcity_factor: f32 = if formation.operational_count <= 2 {
+            0.9
+        } else {
+            0.3
+        };
+        let distress_factor: f32 = if awareness.distressed_neighbor_count() > 0 {
+            0.3
+        } else {
+            0.0
+        };
         (tier_factor * scarcity_factor + distress_factor).min(1.0)
     };
-    let momentum_curve = Power { min: 0.0, max: 1.0, exponent: 2.0 };
+    let momentum_curve = Power {
+        min: 0.0,
+        max: 1.0,
+        exponent: 2.0,
+    };
     let momentum_score = 1.0 - momentum_curve.evaluate(raw_momentum_risk); // invert: high risk = low score
 
     // Compose via ProductOfScorers with compensation.
@@ -210,7 +225,10 @@ mod tests {
             operational_count: operational,
             momentum_tier: tier,
             rally_tokens,
-            capabilities: vec![CapabilityDecl::new("slack_send"), CapabilityDecl::new("github_read")],
+            capabilities: vec![
+                CapabilityDecl::new("slack_send"),
+                CapabilityDecl::new("github_read"),
+            ],
             unique_capabilities: unique_caps,
         }
     }
@@ -227,7 +245,11 @@ mod tests {
         let awareness = LocalAwareness::default();
 
         let eval = evaluate_sacrifice(sacrificer, beneficiary, &snapshot, &awareness, &attention);
-        assert!(eval.recommended, "utility={} should be > 0.4", eval.utility_score);
+        assert!(
+            eval.recommended,
+            "utility={} should be > 0.4",
+            eval.utility_score
+        );
         assert!(eval.utility_score > 0.4);
         assert!(eval.recovery_score > 0.5);
         assert!(eval.capability_score > 0.9);
@@ -250,7 +272,11 @@ mod tests {
         let awareness = LocalAwareness::default();
 
         let eval = evaluate_sacrifice(sacrificer, beneficiary, &snapshot, &awareness, &attention);
-        assert!(!eval.recommended, "unique cap should block: utility={}", eval.utility_score);
+        assert!(
+            !eval.recommended,
+            "unique cap should block: utility={}",
+            eval.utility_score
+        );
         assert!(eval.capability_score < 0.1);
     }
 
@@ -269,7 +295,11 @@ mod tests {
         // Sacrificer has higher load — net benefit is negative/low.
         // With utility scoring, the overall score should be low enough
         // to not recommend sacrifice.
-        assert!(!eval.recommended, "net negative should not recommend: utility={}", eval.utility_score);
+        assert!(
+            !eval.recommended,
+            "net negative should not recommend: utility={}",
+            eval.utility_score
+        );
     }
 
     #[test]
@@ -287,7 +317,11 @@ mod tests {
         // Hot tier + only 2 members = risky. The momentum_score reflects
         // this via the power curve, but with compensation the overall
         // utility should still be low enough to not recommend.
-        assert!(!eval.recommended, "hot+2members should not recommend: utility={}", eval.utility_score);
+        assert!(
+            !eval.recommended,
+            "hot+2members should not recommend: utility={}",
+            eval.utility_score
+        );
     }
 
     #[test]
@@ -302,7 +336,11 @@ mod tests {
         let awareness = LocalAwareness::default();
 
         let eval = evaluate_sacrifice(sacrificer, beneficiary, &snapshot, &awareness, &attention);
-        assert!(eval.recovery_score < 0.4, "0 tokens + 2 members should have low recovery: {}", eval.recovery_score);
+        assert!(
+            eval.recovery_score < 0.4,
+            "0 tokens + 2 members should have low recovery: {}",
+            eval.recovery_score
+        );
     }
 
     #[test]
@@ -319,7 +357,10 @@ mod tests {
 
         let eval = evaluate_sacrifice(sacrificer, beneficiary, &snapshot, &awareness, &attention);
         // Should be in the middle — not clearly yes or no
-        assert!(eval.utility_score > 0.1 && eval.utility_score < 0.9,
-            "marginal case should be in middle range: {}", eval.utility_score);
+        assert!(
+            eval.utility_score > 0.1 && eval.utility_score < 0.9,
+            "marginal case should be in middle range: {}",
+            eval.utility_score
+        );
     }
 }

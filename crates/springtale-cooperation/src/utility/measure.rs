@@ -41,7 +41,9 @@ impl Measure for WeightedProduct {
             return 0.0;
         }
 
-        let product: f32 = scores.iter().fold(1.0, |acc, (s, w)| acc * (s * w).max(0.0));
+        let product: f32 = scores
+            .iter()
+            .fold(1.0, |acc, (s, w)| acc * (s * w).max(0.0));
 
         if self.compensated && scores.len() > 1 {
             let mod_factor = 1.0 - (1.0 / scores.len() as f32);
@@ -60,9 +62,7 @@ pub struct ChebyshevDistance;
 
 impl Measure for ChebyshevDistance {
     fn calculate(&self, scores: &[(f32, f32)]) -> f32 {
-        scores
-            .iter()
-            .fold(0.0f32, |best, (s, w)| (s * w).max(best))
+        scores.iter().fold(0.0f32, |best, (s, w)| (s * w).max(best))
     }
 }
 
@@ -118,10 +118,13 @@ mod tests {
 
         let scores = &[(0.8, 1.0), (0.8, 1.0), (0.8, 1.0), (0.8, 1.0), (0.8, 1.0)];
 
-        let plain = m_plain.calculate(scores);   // 0.8^5 = 0.328
-        let comp = m_comp.calculate(scores);      // compensated, should be higher
+        let plain = m_plain.calculate(scores); // 0.8^5 = 0.328
+        let comp = m_comp.calculate(scores); // compensated, should be higher
 
-        assert!(comp > plain, "compensated ({comp}) should be > plain ({plain})");
+        assert!(
+            comp > plain,
+            "compensated ({comp}) should be > plain ({plain})"
+        );
     }
 
     #[test]

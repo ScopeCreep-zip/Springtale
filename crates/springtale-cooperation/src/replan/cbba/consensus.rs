@@ -68,9 +68,7 @@ pub fn round(
                 local_state.winning_agents.insert(task_id, no);
                 changed = true;
             }
-            (Some(lb), Some(nb), Some(no))
-                if higher_bid(nb, no, lb, local_owner.unwrap_or(no)) =>
-            {
+            (Some(lb), Some(nb), Some(no)) if higher_bid(nb, no, lb, local_owner.unwrap_or(no)) => {
                 // Neighbor's bid wins; update local tables.
                 local_state.winning_bids.insert(task_id, nb);
                 local_state.winning_agents.insert(task_id, no);

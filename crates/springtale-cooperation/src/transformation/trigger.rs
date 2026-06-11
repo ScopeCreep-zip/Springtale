@@ -71,7 +71,10 @@ mod tests {
             &make_caps(vec!["slack_send"]),
             0,
         );
-        assert!(matches!(result, Some(RoleTransformation::ToInformationAgent)));
+        assert!(matches!(
+            result,
+            Some(RoleTransformation::ToInformationAgent)
+        ));
     }
 
     #[test]
@@ -81,36 +84,29 @@ mod tests {
             &make_caps(vec!["slack_send"]),
             0,
         );
-        assert!(matches!(result, Some(RoleTransformation::ToInformationAgent)));
+        assert!(matches!(
+            result,
+            Some(RoleTransformation::ToInformationAgent)
+        ));
     }
 
     #[test]
     fn test_no_capabilities_becomes_support() {
-        let result = evaluate_transformation(
-            &AgentHealth::Operational,
-            &make_caps(vec![]),
-            0,
-        );
+        let result = evaluate_transformation(&AgentHealth::Operational, &make_caps(vec![]), 0);
         assert!(matches!(result, Some(RoleTransformation::ToSupportAgent)));
     }
 
     #[test]
     fn test_repeated_failure_becomes_support() {
-        let result = evaluate_transformation(
-            &AgentHealth::Operational,
-            &make_caps(vec!["slack_send"]),
-            5,
-        );
+        let result =
+            evaluate_transformation(&AgentHealth::Operational, &make_caps(vec!["slack_send"]), 5);
         assert!(matches!(result, Some(RoleTransformation::ToSupportAgent)));
     }
 
     #[test]
     fn test_healthy_agent_no_transformation() {
-        let result = evaluate_transformation(
-            &AgentHealth::Operational,
-            &make_caps(vec!["slack_send"]),
-            2,
-        );
+        let result =
+            evaluate_transformation(&AgentHealth::Operational, &make_caps(vec!["slack_send"]), 2);
         assert!(result.is_none());
     }
 

@@ -54,9 +54,15 @@ mod tests {
     struct TestRole;
 
     impl DynamicRoleTrait for TestRole {
-        fn name(&self) -> &str { "Test" }
-        fn can_execute(&self, _action: &ActionDescriptor) -> bool { true }
-        fn capabilities(&self) -> &[CapabilityDecl] { &[] }
+        fn name(&self) -> &str {
+            "Test"
+        }
+        fn can_execute(&self, _action: &ActionDescriptor) -> bool {
+            true
+        }
+        fn capabilities(&self) -> &[CapabilityDecl] {
+            &[]
+        }
     }
 
     #[test]

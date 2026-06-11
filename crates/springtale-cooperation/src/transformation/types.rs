@@ -52,6 +52,8 @@ mod tests {
 
         let reassign =
             RoleTransformation::ReassignCapabilities(vec!["monitoring".into(), "logging".into()]);
-        assert!(matches!(reassign, RoleTransformation::ReassignCapabilities(ref caps) if caps.len() == 2));
+        assert!(
+            matches!(reassign, RoleTransformation::ReassignCapabilities(ref caps) if caps.len() == 2)
+        );
     }
 }

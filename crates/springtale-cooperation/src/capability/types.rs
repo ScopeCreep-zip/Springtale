@@ -70,8 +70,7 @@ mod tests {
 
     #[test]
     fn rebind_warming_unlocks_neighbors_and_chain() {
-        let set =
-            DynamicCapabilitySet::new_for_tier(vec!["slack".into()], MomentumTier::Warming);
+        let set = DynamicCapabilitySet::new_for_tier(vec!["slack".into()], MomentumTier::Warming);
         assert!(set.has("read_env"));
         assert!(set.has("read_neighbors"));
         assert!(set.has("chain"));

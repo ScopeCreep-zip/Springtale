@@ -62,8 +62,7 @@ impl FormationGossipBus for InMemoryFormationGossipBus {
     }
 
     async fn publish_outcome(&self, outcome: FormationOutcome) {
-        self.outcomes
-            .insert(outcome.formation_id, outcome.clone());
+        self.outcomes.insert(outcome.formation_id, outcome.clone());
         let _ = self.tx.send(FormationDelta::Outcome(outcome));
     }
 

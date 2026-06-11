@@ -74,11 +74,7 @@ impl GlobalKnowledgeStore for PersistentKnowledgeStore {
         }
     }
 
-    async fn retrieve_relevant(
-        &self,
-        query: &RetrievalQuery,
-        k: usize,
-    ) -> Vec<PriorOutcome> {
+    async fn retrieve_relevant(&self, query: &RetrievalQuery, k: usize) -> Vec<PriorOutcome> {
         if k == 0 {
             return Vec::new();
         }
@@ -105,6 +101,9 @@ impl GlobalKnowledgeStore for PersistentKnowledgeStore {
         let Ok(entries) = self.store.list_config().await else {
             return 0;
         };
-        entries.into_iter().filter(|(k, _)| k.starts_with(KEY_PREFIX)).count()
+        entries
+            .into_iter()
+            .filter(|(k, _)| k.starts_with(KEY_PREFIX))
+            .count()
     }
 }

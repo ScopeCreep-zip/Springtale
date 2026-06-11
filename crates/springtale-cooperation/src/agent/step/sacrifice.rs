@@ -19,7 +19,7 @@ use crate::agent::context::AgentContext;
 use crate::layer::LayerId;
 use crate::momentum::MomentumTier;
 use crate::sacrifice::action::SacrificeAction;
-use crate::sacrifice::scorer::{evaluate_action, FormationSnapshot};
+use crate::sacrifice::scorer::{FormationSnapshot, evaluate_action};
 use crate::{authority, capability::CapabilityDecl};
 
 /// Returns `Some(SacrificeAction)` when the agent's voluntary
@@ -86,7 +86,7 @@ mod tests {
     fn cold_tier_skips_evaluation() {
         let me = AgentId::new();
         let tick = Tick {
-            sequence: 1,
+            sequence: crate::tick::TickId(1),
             timestamp: Instant::now(),
             intent: IntentPattern::Execute { plan_id: None },
             window: Duration::from_millis(33),
@@ -129,7 +129,7 @@ mod tests {
             last_updated: Instant::now(),
         });
         let tick = Tick {
-            sequence: 1,
+            sequence: crate::tick::TickId(1),
             timestamp: Instant::now(),
             intent: IntentPattern::Execute { plan_id: None },
             window: Duration::from_millis(33),

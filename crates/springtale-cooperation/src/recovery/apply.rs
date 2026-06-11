@@ -47,8 +47,9 @@ impl RecoveryAction {
             RecoveryAction::PeerRevive { .. }
             | RecoveryAction::ByproductRecovery { .. }
             | RecoveryAction::FormationPulse { .. } => RecoveryKind::QuickFix,
-            RecoveryAction::EnvironmentalRecovery { .. }
-            | RecoveryAction::Redeployment { .. } => RecoveryKind::Proper,
+            RecoveryAction::EnvironmentalRecovery { .. } | RecoveryAction::Redeployment { .. } => {
+                RecoveryKind::Proper
+            }
             RecoveryAction::ProactiveProtection { .. } => RecoveryKind::Protective,
         }
     }
@@ -94,18 +95,16 @@ fn apply_proper(action: &RecoveryAction, current: AgentHealth) -> AgentHealth {
         // Redeployment replaces the agent wholesale: full operational
         // state even from Dead{recoverable:true}. Unrecoverable Dead
         // stays dead — redeployment still can't revive what's lost.
-        (
-            RecoveryAction::Redeployment { .. },
-            AgentHealth::Dead { recoverable: false },
-        ) => AgentHealth::Dead { recoverable: false },
+        (RecoveryAction::Redeployment { .. }, AgentHealth::Dead { recoverable: false }) => {
+            AgentHealth::Dead { recoverable: false }
+        }
         (RecoveryAction::Redeployment { .. }, _) => AgentHealth::Operational,
 
         // Environmental recovery restores Degraded/Incapacitated but
         // can't reach a Dead agent (they need Redeployment).
-        (
-            RecoveryAction::EnvironmentalRecovery { .. },
-            AgentHealth::Dead { recoverable },
-        ) => AgentHealth::Dead { recoverable },
+        (RecoveryAction::EnvironmentalRecovery { .. }, AgentHealth::Dead { recoverable }) => {
+            AgentHealth::Dead { recoverable }
+        }
         (RecoveryAction::EnvironmentalRecovery { .. }, _) => AgentHealth::Operational,
 
         // Kind() narrowed to Proper — the remaining arms are unreachable
@@ -175,19 +174,13 @@ mod tests {
     #[test]
     fn quickfix_from_operational_goes_to_degraded_1() {
         let next = peer_revive().apply(AgentHealth::Operational);
-        assert!(matches!(
-            next,
-            AgentHealth::Degraded { recovery_count: 1 }
-        ));
+        assert!(matches!(next, AgentHealth::Degraded { recovery_count: 1 }));
     }
 
     #[test]
     fn quickfix_increments_counter() {
         let next = byproduct().apply(AgentHealth::Degraded { recovery_count: 1 });
-        assert!(matches!(
-            next,
-            AgentHealth::Degraded { recovery_count: 2 }
-        ));
+        assert!(matches!(next, AgentHealth::Degraded { recovery_count: 2 }));
     }
 
     #[test]
@@ -201,10 +194,7 @@ mod tests {
     #[test]
     fn quickfix_lifts_incapacitated_to_degraded_1() {
         let next = peer_revive().apply(AgentHealth::Incapacitated);
-        assert!(matches!(
-            next,
-            AgentHealth::Degraded { recovery_count: 1 }
-        ));
+        assert!(matches!(next, AgentHealth::Degraded { recovery_count: 1 }));
     }
 
     #[test]
@@ -234,10 +224,7 @@ mod tests {
     #[test]
     fn protective_leaves_health_unchanged() {
         let next = protective().apply(AgentHealth::Degraded { recovery_count: 1 });
-        assert!(matches!(
-            next,
-            AgentHealth::Degraded { recovery_count: 1 }
-        ));
+        assert!(matches!(next, AgentHealth::Degraded { recovery_count: 1 }));
     }
 
     #[test]

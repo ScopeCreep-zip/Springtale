@@ -48,11 +48,7 @@ const MAX_SWEEPS: u32 = 32;
 ///   own capabilities.
 /// - Phase 2: sweeps of pairwise consensus. A sweep exchanges state between
 ///   every pair. Converges when no pair reports `Running` during a sweep.
-pub fn run(
-    agents: &[AgentSpec],
-    tasks: &[SubTask],
-    tier: MomentumTier,
-) -> ReplanOutcome {
+pub fn run(agents: &[AgentSpec], tasks: &[SubTask], tier: MomentumTier) -> ReplanOutcome {
     if let Err(e) = authority::require(tier, LayerId::L5Replan) {
         return ReplanOutcome::Unauthorized(e);
     }
@@ -108,7 +104,7 @@ pub fn run(
                 return ReplanOutcome::Stalled {
                     assignment: finalize(&states),
                     sweeps,
-                }
+                };
             }
             ConvergenceStatus::Running => continue,
         }
@@ -129,11 +125,7 @@ fn one_sweep(
             if let (Some(local_bundle), Some(local_state)) =
                 (bundles.get_mut(local), states.get_mut(local))
             {
-                statuses.push(consensus::round(
-                    local_bundle,
-                    local_state,
-                    &neighbor_state,
-                ));
+                statuses.push(consensus::round(local_bundle, local_state, &neighbor_state));
             }
 
             // And vice versa — information flows both ways.
@@ -177,6 +169,7 @@ mod tests {
             priority,
             assigned_to: None,
             description: String::new(),
+            depends_on: Vec::new(),
         }
     }
 

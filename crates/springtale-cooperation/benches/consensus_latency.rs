@@ -12,14 +12,10 @@
 use std::collections::HashMap;
 
 use chrono::Utc;
-use criterion::{
-    BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main,
-};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 
 use springtale_cooperation::cadence::AgentId;
-use springtale_cooperation::consensus::{
-    ConsensusVote, DecisionDescriptor, VoteChoice,
-};
+use springtale_cooperation::consensus::{ConsensusVote, DecisionDescriptor, VoteChoice};
 
 fn build_vote(n: usize) -> ConsensusVote {
     let mut vote = ConsensusVote {
@@ -27,6 +23,9 @@ fn build_vote(n: usize) -> ConsensusVote {
             description: "bench".into(),
             options: vec!["yes".into(), "no".into()],
             required_participants: n as u32,
+                subject: springtale_cooperation::consensus::DecisionSubject::IntentChange {
+                proposed: springtale_cooperation::IntentPattern::Execute { plan_id: None },
+            },
         },
         term: 1,
         ballots: HashMap::new(),

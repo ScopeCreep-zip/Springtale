@@ -92,7 +92,7 @@ mod tests {
         );
         let aw = LocalAwareness::default();
         let tick = Tick {
-            sequence: 0,
+            sequence: crate::tick::TickId(0),
             timestamp: Instant::now(),
             intent: IntentPattern::Execute { plan_id: None },
             window: Duration::from_millis(33),
@@ -102,8 +102,7 @@ mod tests {
             tier: MomentumTier::Hot,
             ..Default::default()
         };
-        let attn =
-            crate::attention::AttentionEconomy::new(&[]);
+        let attn = crate::attention::AttentionEconomy::new(&[]);
         assert!(run(&store, &aw, &ctx(&tick, &fc, &m, &attn, &aw)).is_some());
     }
 }

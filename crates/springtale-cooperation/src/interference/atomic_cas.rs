@@ -26,14 +26,14 @@ use super::{InterferenceEvent, InterferenceType};
 /// itself failed.
 pub async fn cas_apply(
     store: &Arc<dyn StorageBackend>,
-    tick: u64,
+    tick: crate::tick::TickId,
     writer: AgentId,
     key: &str,
     expected: Option<&[u8]>,
     proposed: &[u8],
 ) -> Result<Option<InterferenceEvent>, CooperationError> {
     let outcome = store
-        .coop_cas_write(tick as i64, &writer.0.to_string(), key, expected, proposed)
+        .coop_cas_write(tick.0 as i64, &writer.0.to_string(), key, expected, proposed)
         .await?;
     match outcome {
         CoopCasOutcome::Applied => Ok(None),
@@ -58,7 +58,11 @@ pub async fn cas_apply(
                 // Severity mirrors detect_from_records — 0.2 for idempotent
                 // overlap, 0.8 for diverging writes. `current_tick` is
                 // available for tracing to pinpoint when the conflict started.
-                severity: if redundant { 0.2 } else { 0.8 + current_tick_noise(current_tick) },
+                severity: if redundant {
+                    0.2
+                } else {
+                    0.8 + current_tick_noise(current_tick)
+                },
             }))
         }
     }
@@ -84,7 +88,7 @@ mod tests {
     async fn cas_first_write_applied() {
         let backend: Arc<dyn StorageBackend> = Arc::new(InMemoryBackend::new());
         let agent = AgentId::new();
-        let outcome = cas_apply(&backend, 1, agent, "k", None, b"hello")
+        let outcome = cas_apply(&backend, crate::tick::TickId(1), agent, "k", None, b"hello")
             .await
             .unwrap();
         assert!(outcome.is_none());
@@ -96,9 +100,11 @@ mod tests {
         let a = AgentId::new();
         let b = AgentId::new();
         // Agent a writes "hello" first.
-        cas_apply(&backend, 1, a, "k", None, b"hello").await.unwrap();
+        cas_apply(&backend, crate::tick::TickId(1), a, "k", None, b"hello")
+            .await
+            .unwrap();
         // Agent b attempts write expecting None (key absent) — conflict.
-        let outcome = cas_apply(&backend, 2, b, "k", None, b"world")
+        let outcome = cas_apply(&backend, crate::tick::TickId(2), b, "k", None, b"world")
             .await
             .unwrap()
             .expect("should detect conflict");
@@ -115,8 +121,10 @@ mod tests {
         let backend: Arc<dyn StorageBackend> = Arc::new(InMemoryBackend::new());
         let a = AgentId::new();
         let b = AgentId::new();
-        cas_apply(&backend, 1, a, "k", None, b"hello").await.unwrap();
-        let outcome = cas_apply(&backend, 2, b, "k", None, b"hello")
+        cas_apply(&backend, crate::tick::TickId(1), a, "k", None, b"hello")
+            .await
+            .unwrap();
+        let outcome = cas_apply(&backend, crate::tick::TickId(2), b, "k", None, b"hello")
             .await
             .unwrap()
             .expect("should detect redundancy");
@@ -130,8 +138,8 @@ mod tests {
     async fn cas_expected_match_applies() {
         let backend: Arc<dyn StorageBackend> = Arc::new(InMemoryBackend::new());
         let a = AgentId::new();
-        cas_apply(&backend, 1, a, "k", None, b"v1").await.unwrap();
-        let outcome = cas_apply(&backend, 2, a, "k", Some(b"v1"), b"v2")
+        cas_apply(&backend, crate::tick::TickId(1), a, "k", None, b"v1").await.unwrap();
+        let outcome = cas_apply(&backend, crate::tick::TickId(2), a, "k", Some(b"v1"), b"v2")
             .await
             .unwrap();
         assert!(outcome.is_none());

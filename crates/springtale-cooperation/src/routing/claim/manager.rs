@@ -61,7 +61,10 @@ mod tests {
         let a = AgentId::new();
         let b = AgentId::new();
         mgr.try_claim(tid, a).unwrap();
-        assert!(matches!(mgr.try_claim(tid, b), Err(RoutingError::LostRace(_))));
+        assert!(matches!(
+            mgr.try_claim(tid, b),
+            Err(RoutingError::LostRace(_))
+        ));
     }
 
     #[test]

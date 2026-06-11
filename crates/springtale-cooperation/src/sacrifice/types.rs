@@ -102,15 +102,27 @@ mod tests {
             },
             benefit_to_beneficiary: "safe recovery window".into(),
         };
-        assert!(matches!(covering, SacrificeType::Covering { sacrificer, beneficiary, ref cost_to_sacrificer, .. } if sacrificer == a && beneficiary == b && cost_to_sacrificer.fuel_cost == FuelAmount(100)));
+        assert!(
+            matches!(covering, SacrificeType::Covering { sacrificer, beneficiary, ref cost_to_sacrificer, .. } if sacrificer == a && beneficiary == b && cost_to_sacrificer.fuel_cost == FuelAmount(100))
+        );
 
         let diversion = SacrificeType::TaskDiversion {
             sacrificer: a,
-            abandoned_task: ActionDescriptor { kind: "process_queue".into(), target: None, payload_hash: 0 },
-            assumed_task: ActionDescriptor { kind: "cover_failing_agent".into(), target: None, payload_hash: 0 },
+            abandoned_task: ActionDescriptor {
+                kind: "process_queue".into(),
+                target: None,
+                payload_hash: 0,
+            },
+            assumed_task: ActionDescriptor {
+                kind: "cover_failing_agent".into(),
+                target: None,
+                payload_hash: 0,
+            },
             formation_net_benefit: 0.3,
         };
-        assert!(matches!(diversion, SacrificeType::TaskDiversion { formation_net_benefit, ref abandoned_task, .. } if formation_net_benefit == 0.3 && abandoned_task.kind == "process_queue"));
+        assert!(
+            matches!(diversion, SacrificeType::TaskDiversion { formation_net_benefit, ref abandoned_task, .. } if formation_net_benefit == 0.3 && abandoned_task.kind == "process_queue")
+        );
 
         let expendable = SacrificeType::Expendable {
             sacrificer: a,
@@ -122,7 +134,9 @@ mod tests {
             }),
             formation_benefit: "cleared bottleneck".into(),
         };
-        assert!(matches!(expendable, SacrificeType::Expendable { expected_recovery: Some(_), ref formation_benefit, .. } if formation_benefit == "cleared bottleneck"));
+        assert!(
+            matches!(expendable, SacrificeType::Expendable { expected_recovery: Some(_), ref formation_benefit, .. } if formation_benefit == "cleared bottleneck")
+        );
 
         let investment = SacrificeType::ResourceInvestment {
             investor: a,
@@ -130,6 +144,8 @@ mod tests {
             infrastructure_created: "safe_zone".into(),
             beneficiaries: vec![b],
         };
-        assert!(matches!(investment, SacrificeType::ResourceInvestment { investor, ref beneficiaries, .. } if investor == a && beneficiaries.len() == 1));
+        assert!(
+            matches!(investment, SacrificeType::ResourceInvestment { investor, ref beneficiaries, .. } if investor == a && beneficiaries.len() == 1)
+        );
     }
 }

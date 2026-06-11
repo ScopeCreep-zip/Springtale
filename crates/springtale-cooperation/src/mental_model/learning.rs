@@ -131,7 +131,7 @@ mod tests {
     fn make_report(agent: AgentId, action: Option<&str>) -> TickReport {
         TickReport {
             agent_id: agent,
-            tick_sequence: 1,
+            tick_sequence: crate::tick::TickId(1),
             action_taken: action.map(|s| crate::cadence::ActionDescriptor {
                 kind: s.to_owned(),
                 target: None,
@@ -215,7 +215,7 @@ mod tests {
         let b = AgentId::new();
 
         let interferences = vec![InterferenceEvent {
-            tick_sequence: 1,
+            tick_sequence: crate::tick::TickId(1),
             agent_a: a,
             agent_b: b,
             interference_type: InterferenceType::Redundancy,

@@ -98,8 +98,18 @@ mod tests {
         ];
         let agent = InformationAgent::from_original(&original);
         assert_eq!(agent.capabilities().len(), 2);
-        assert!(agent.capabilities().iter().any(|c| c.name == "github.read_issues"));
-        assert!(agent.capabilities().iter().any(|c| c.name == "slack.list_channels"));
+        assert!(
+            agent
+                .capabilities()
+                .iter()
+                .any(|c| c.name == "github.read_issues")
+        );
+        assert!(
+            agent
+                .capabilities()
+                .iter()
+                .any(|c| c.name == "slack.list_channels")
+        );
     }
 
     #[test]

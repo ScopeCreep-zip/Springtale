@@ -114,22 +114,14 @@ mod tests {
 
     #[test]
     fn exact_match_allows() {
-        let role = CommunityRole::new(
-            "R".into(),
-            vec![],
-            vec!["observe".into()],
-        );
+        let role = CommunityRole::new("R".into(), vec![], vec!["observe".into()]);
         assert!(role.can_execute(&action("observe")));
         assert!(!role.can_execute(&action("write")));
     }
 
     #[test]
     fn prefix_wildcard_allows() {
-        let role = CommunityRole::new(
-            "R".into(),
-            vec![],
-            vec!["read_*".into()],
-        );
+        let role = CommunityRole::new("R".into(), vec![], vec!["read_*".into()]);
         assert!(role.can_execute(&action("read_file")));
         assert!(role.can_execute(&action("read_")));
         assert!(!role.can_execute(&action("write_file")));
@@ -159,11 +151,7 @@ mod tests {
         // The spec-intentional restriction: only trailing `*`. A leading
         // `*` falls back to exact-match semantics and simply won't match
         // anything starting with a non-`*` character.
-        let role = CommunityRole::new(
-            "R".into(),
-            vec![],
-            vec!["*_read".into()],
-        );
+        let role = CommunityRole::new("R".into(), vec![], vec!["*_read".into()]);
         assert!(!role.can_execute(&action("file_read")));
         assert!(!role.can_execute(&action("anything_read")));
     }

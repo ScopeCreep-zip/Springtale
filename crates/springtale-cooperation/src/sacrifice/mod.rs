@@ -8,5 +8,5 @@ pub mod scorer;
 mod types;
 
 pub use action::SacrificeAction;
-pub use scorer::{evaluate_action, evaluate_sacrifice, FormationSnapshot, SacrificeEvaluation};
+pub use scorer::{FormationSnapshot, SacrificeEvaluation, evaluate_action, evaluate_sacrifice};
 pub use types::{SacrificeCost, SacrificeType};

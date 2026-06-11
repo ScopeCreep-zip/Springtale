@@ -84,11 +84,11 @@ impl KnowledgeGraph {
 
         // Add pattern nodes + participant edges
         for pattern in &model.cooperation_patterns {
-            let pattern_node =
-                self.get_or_create_node(Concept::Pattern(pattern.trigger.clone()));
+            let pattern_node = self.get_or_create_node(Concept::Pattern(pattern.trigger.clone()));
             for agent_id in &pattern.participants {
                 let agent_node = self.get_or_create_node(Concept::Agent(*agent_id));
-                self.graph.add_edge(agent_node, pattern_node, Relation::ParticipatesIn);
+                self.graph
+                    .add_edge(agent_node, pattern_node, Relation::ParticipatesIn);
             }
         }
 
@@ -195,7 +195,9 @@ mod tests {
         let a = AgentId::new();
         let b = AgentId::new();
 
-        model.capability_awareness.insert(a, vec!["github".into(), "slack".into()]);
+        model
+            .capability_awareness
+            .insert(a, vec!["github".into(), "slack".into()]);
         model.capability_awareness.insert(b, vec!["slack".into()]);
 
         let mut graph = KnowledgeGraph::default();
@@ -214,7 +216,9 @@ mod tests {
         let b = AgentId::new();
 
         model.capability_awareness.insert(a, vec!["slack".into()]);
-        model.capability_awareness.insert(b, vec!["slack".into(), "github".into()]);
+        model
+            .capability_awareness
+            .insert(b, vec!["slack".into(), "github".into()]);
 
         let mut graph = KnowledgeGraph::default();
         graph.rebuild(&model);

@@ -29,12 +29,13 @@ fn make_subtask(connector: &str) -> SubTask {
         priority: 2,
         assigned_to: None,
         description: "contested task".to_owned(),
+        depends_on: Vec::new(),
     }
 }
 
 fn make_tick() -> Tick {
     Tick {
-        sequence: 1,
+        sequence: springtale_cooperation::TickId(1),
         timestamp: std::time::Instant::now(),
         intent: IntentPattern::Execute { plan_id: None },
         window: Duration::from_millis(33),
@@ -105,7 +106,9 @@ async fn three_bidders_one_winner() {
         initiator,
         make_subtask("github"),
         Duration::from_millis(120),
-        Some(springtale_cooperation::capability::CapabilityDecl::new("github")),
+        Some(springtale_cooperation::capability::CapabilityDecl::new(
+            "github",
+        )),
     );
 
     let mut base_attention = AttentionEconomy::new(&[bidder_a, bidder_b, bidder_c]);
@@ -160,7 +163,9 @@ async fn cold_formation_blocks_cfp() {
         initiator,
         make_subtask("github"),
         Duration::from_millis(20),
-        Some(springtale_cooperation::capability::CapabilityDecl::new("github")),
+        Some(springtale_cooperation::capability::CapabilityDecl::new(
+            "github",
+        )),
     );
     let outcome =
         springtale_cooperation::contract_net::run_round(&mut handle, cfp, MomentumTier::Cold).await;
@@ -181,7 +186,9 @@ async fn no_bids_returns_no_bids() {
         initiator,
         make_subtask("github"),
         Duration::from_millis(20),
-        Some(springtale_cooperation::capability::CapabilityDecl::new("github")),
+        Some(springtale_cooperation::capability::CapabilityDecl::new(
+            "github",
+        )),
     );
     let outcome =
         springtale_cooperation::contract_net::run_round(&mut handle, cfp, MomentumTier::Hot).await;

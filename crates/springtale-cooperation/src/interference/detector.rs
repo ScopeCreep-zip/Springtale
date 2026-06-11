@@ -18,7 +18,10 @@ use super::{ActionRecord, InterferenceEvent, InterferenceType};
 /// - Write-set intersection with different values → ResourceConflict (0.8)
 /// - Write-set intersection with same values → Redundancy (0.2)
 /// - Side-effect key in other's read-set → CollateralDamage (side_effect.magnitude)
-pub fn detect_from_records(tick: u64, records: &[ActionRecord]) -> Vec<InterferenceEvent> {
+pub fn detect_from_records(
+    tick: crate::tick::TickId,
+    records: &[ActionRecord],
+) -> Vec<InterferenceEvent> {
     let mut events = Vec::new();
 
     for (i, a) in records.iter().enumerate() {
@@ -93,7 +96,7 @@ pub fn detect_from_records(tick: u64, records: &[ActionRecord]) -> Vec<Interfere
 ///
 /// [`WorkspaceSnapshot`]: crate::state::WorkspaceSnapshot
 pub fn detect_from_records_with_history(
-    tick: u64,
+    tick: crate::tick::TickId,
     records: &[ActionRecord],
     history: &[EnvironmentWrite],
 ) -> Vec<InterferenceEvent> {
@@ -185,8 +188,7 @@ pub fn detect(reports: &[TickReport]) -> Vec<InterferenceEvent> {
 
             if let (Some(action_a), Some(action_b)) = (&a.action_taken, &b.action_taken) {
                 let same_kind = action_a.kind == action_b.kind;
-                let same_target =
-                    action_a.target.is_some() && action_a.target == action_b.target;
+                let same_target = action_a.target.is_some() && action_a.target == action_b.target;
 
                 let same_payload = action_a.payload_hash == action_b.payload_hash;
                 if same_kind && (same_target || same_payload) {
@@ -213,39 +215,43 @@ mod tests {
 
     #[test]
     fn no_records_no_interference() {
-        assert!(detect_from_records(1, &[]).is_empty());
+        assert!(detect_from_records(crate::tick::TickId(1), &[]).is_empty());
     }
 
     #[test]
     fn disjoint_writes_no_conflict() {
-        let a = ActionRecord::new(AgentId::new())
-            .with_write("issues:1", serde_json::json!("closed"));
-        let b = ActionRecord::new(AgentId::new())
-            .with_write("issues:2", serde_json::json!("open"));
-        assert!(detect_from_records(1, &[a, b]).is_empty());
+        let a =
+            ActionRecord::new(AgentId::new()).with_write("issues:1", serde_json::json!("closed"));
+        let b = ActionRecord::new(AgentId::new()).with_write("issues:2", serde_json::json!("open"));
+        assert!(detect_from_records(crate::tick::TickId(1), &[a, b]).is_empty());
     }
 
     #[test]
     fn same_key_different_value_is_resource_conflict() {
-        let a = ActionRecord::new(AgentId::new())
-            .with_write("issues:1", serde_json::json!("closed"));
-        let b = ActionRecord::new(AgentId::new())
-            .with_write("issues:1", serde_json::json!("open"));
-        let events = detect_from_records(1, &[a, b]);
+        let a =
+            ActionRecord::new(AgentId::new()).with_write("issues:1", serde_json::json!("closed"));
+        let b = ActionRecord::new(AgentId::new()).with_write("issues:1", serde_json::json!("open"));
+        let events = detect_from_records(crate::tick::TickId(1), &[a, b]);
         assert_eq!(events.len(), 1);
-        assert!(matches!(events[0].interference_type, InterferenceType::ResourceConflict));
+        assert!(matches!(
+            events[0].interference_type,
+            InterferenceType::ResourceConflict
+        ));
         assert!((events[0].severity - 0.8).abs() < f32::EPSILON);
     }
 
     #[test]
     fn same_key_same_value_is_redundancy() {
-        let a = ActionRecord::new(AgentId::new())
-            .with_write("issues:1", serde_json::json!("closed"));
-        let b = ActionRecord::new(AgentId::new())
-            .with_write("issues:1", serde_json::json!("closed"));
-        let events = detect_from_records(1, &[a, b]);
+        let a =
+            ActionRecord::new(AgentId::new()).with_write("issues:1", serde_json::json!("closed"));
+        let b =
+            ActionRecord::new(AgentId::new()).with_write("issues:1", serde_json::json!("closed"));
+        let events = detect_from_records(crate::tick::TickId(1), &[a, b]);
         assert_eq!(events.len(), 1);
-        assert!(matches!(events[0].interference_type, InterferenceType::Redundancy));
+        assert!(matches!(
+            events[0].interference_type,
+            InterferenceType::Redundancy
+        ));
     }
 
     #[test]
@@ -254,9 +260,12 @@ mod tests {
         let agent_b = AgentId::new();
         let a = ActionRecord::new(agent_a).with_side_effect("rate_limit:github", 0.7);
         let b = ActionRecord::new(agent_b).with_read("rate_limit:github");
-        let events = detect_from_records(1, &[a, b]);
+        let events = detect_from_records(crate::tick::TickId(1), &[a, b]);
         assert_eq!(events.len(), 1);
-        assert!(matches!(events[0].interference_type, InterferenceType::CollateralDamage));
+        assert!(matches!(
+            events[0].interference_type,
+            InterferenceType::CollateralDamage
+        ));
         assert_eq!(events[0].agent_a, agent_a);
         assert_eq!(events[0].agent_b, agent_b);
         assert!((events[0].severity - 0.7).abs() < f32::EPSILON);
@@ -270,18 +279,15 @@ mod tests {
         let b = ActionRecord::new(AgentId::new())
             .with_read("zone:beta")
             .with_side_effect("zone:alpha", 0.6);
-        assert_eq!(detect_from_records(1, &[a, b]).len(), 2);
+        assert_eq!(detect_from_records(crate::tick::TickId(1), &[a, b]).len(), 2);
     }
 
     #[test]
     fn three_agents_pairwise_conflicts() {
-        let a = ActionRecord::new(AgentId::new())
-            .with_write("shared:key", serde_json::json!(1));
-        let b = ActionRecord::new(AgentId::new())
-            .with_write("shared:key", serde_json::json!(2));
-        let c = ActionRecord::new(AgentId::new())
-            .with_write("shared:key", serde_json::json!(3));
-        let events = detect_from_records(1, &[a, b, c]);
+        let a = ActionRecord::new(AgentId::new()).with_write("shared:key", serde_json::json!(1));
+        let b = ActionRecord::new(AgentId::new()).with_write("shared:key", serde_json::json!(2));
+        let c = ActionRecord::new(AgentId::new()).with_write("shared:key", serde_json::json!(3));
+        let events = detect_from_records(crate::tick::TickId(1), &[a, b, c]);
         assert_eq!(events.len(), 3); // a-b, a-c, b-c
     }
 
@@ -311,12 +317,12 @@ mod tests {
         ];
         // Current tick: a clears k to null.
         let rec = ActionRecord::new(a).with_write("k", serde_json::json!(null));
-        let events = detect_from_records_with_history(5, &[rec], &history);
-        assert!(events
-            .iter()
-            .any(|e| matches!(e.interference_type, InterferenceType::ActionNegation)
-                && e.agent_a == a
-                && e.agent_b == b));
+        let events = detect_from_records_with_history(crate::tick::TickId(5), &[rec], &history);
+        assert!(events.iter().any(|e| matches!(
+            e.interference_type,
+            InterferenceType::ActionNegation
+        ) && e.agent_a == a
+            && e.agent_b == b));
     }
 
     #[test]
@@ -330,12 +336,12 @@ mod tests {
         ];
         // Current tick: a reverts K back to 1 — this negates b's K=2.
         let rec = ActionRecord::new(a).with_write("k", serde_json::json!(1));
-        let events = detect_from_records_with_history(5, &[rec], &history);
-        assert!(events
-            .iter()
-            .any(|e| matches!(e.interference_type, InterferenceType::ActionNegation)
-                && e.agent_a == a
-                && e.agent_b == b));
+        let events = detect_from_records_with_history(crate::tick::TickId(5), &[rec], &history);
+        assert!(events.iter().any(|e| matches!(
+            e.interference_type,
+            InterferenceType::ActionNegation
+        ) && e.agent_a == a
+            && e.agent_b == b));
     }
 
     #[test]
@@ -346,10 +352,12 @@ mod tests {
         let history = vec![hist_write("k", b, serde_json::json!(2), 200)];
         // Current tick: a writes K=2 — same as b, redundant but not negation.
         let rec = ActionRecord::new(a).with_write("k", serde_json::json!(2));
-        let events = detect_from_records_with_history(5, &[rec], &history);
-        assert!(!events
-            .iter()
-            .any(|e| matches!(e.interference_type, InterferenceType::ActionNegation)));
+        let events = detect_from_records_with_history(crate::tick::TickId(5), &[rec], &history);
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e.interference_type, InterferenceType::ActionNegation))
+        );
     }
 
     #[test]
@@ -359,10 +367,12 @@ mod tests {
         let history = vec![hist_write("k", a, serde_json::json!(1), 200)];
         // Current tick: a writes K=null — no other writer to negate.
         let rec = ActionRecord::new(a).with_write("k", serde_json::json!(null));
-        let events = detect_from_records_with_history(5, &[rec], &history);
-        assert!(!events
-            .iter()
-            .any(|e| matches!(e.interference_type, InterferenceType::ActionNegation)));
+        let events = detect_from_records_with_history(crate::tick::TickId(5), &[rec], &history);
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e.interference_type, InterferenceType::ActionNegation))
+        );
     }
 
     #[test]
@@ -372,18 +382,27 @@ mod tests {
         let b = AgentId::new();
         let reports = vec![
             TickReport {
-                agent_id: a, tick_sequence: 1, action_taken: None,
-                latency: Duration::from_millis(0), intent_alignment: 1.0,
+                agent_id: a,
+                tick_sequence: crate::tick::TickId(1),
+                action_taken: None,
+                latency: Duration::from_millis(0),
+                intent_alignment: 1.0,
                 interference_with: vec![b],
             },
             TickReport {
-                agent_id: b, tick_sequence: 1, action_taken: None,
-                latency: Duration::from_millis(0), intent_alignment: 1.0,
+                agent_id: b,
+                tick_sequence: crate::tick::TickId(1),
+                action_taken: None,
+                latency: Duration::from_millis(0),
+                intent_alignment: 1.0,
                 interference_with: vec![a],
             },
         ];
         let events = detect(&reports);
         assert_eq!(events.len(), 1);
-        assert!(matches!(events[0].interference_type, InterferenceType::ResourceConflict));
+        assert!(matches!(
+            events[0].interference_type,
+            InterferenceType::ResourceConflict
+        ));
     }
 }

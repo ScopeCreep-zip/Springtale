@@ -165,11 +165,7 @@ impl CommitBarrier {
     /// Create a new commit barrier in Prepare phase with default per-phase
     /// deadlines. `deadline` becomes the *prepare* deadline; the execute
     /// phase uses `DEFAULT_EXECUTE_DEADLINE` once advanced.
-    pub fn new(
-        participants: &[AgentId],
-        deadline: Duration,
-        initiated_by: AgentId,
-    ) -> Self {
+    pub fn new(participants: &[AgentId], deadline: Duration, initiated_by: AgentId) -> Self {
         Self::with_phase_deadlines(
             participants,
             deadline,
@@ -369,9 +365,8 @@ impl CommitBarrier {
                     let mut timed_out = Vec::new();
                     for (agent, state) in self.participants.iter_mut() {
                         if matches!(state, ParticipantState::Executing) {
-                            *state = ParticipantState::Failed(
-                                "execute deadline expired".to_owned(),
-                            );
+                            *state =
+                                ParticipantState::Failed("execute deadline expired".to_owned());
                             timed_out.push(*agent);
                         }
                     }
@@ -391,9 +386,9 @@ impl CommitBarrier {
                     None
                 }
             }
-            CommitPhase::Countdown { .. }
-            | CommitPhase::Collect
-            | CommitPhase::Aborted { .. } => None,
+            CommitPhase::Countdown { .. } | CommitPhase::Collect | CommitPhase::Aborted { .. } => {
+                None
+            }
         }
     }
 
@@ -556,7 +551,13 @@ mod tests {
         let a = AgentId::new();
         let mut barrier = CommitBarrier::new(&[a], Duration::from_millis(0), a);
         let t = barrier.tick(Instant::now() + Duration::from_millis(1));
-        assert_eq!(t, Some(CommitTransition { from: "prepare", to: "aborted" }));
+        assert_eq!(
+            t,
+            Some(CommitTransition {
+                from: "prepare",
+                to: "aborted"
+            })
+        );
         assert!(barrier.was_aborted());
         assert!(barrier.is_complete());
     }
@@ -568,7 +569,13 @@ mod tests {
         barrier.signal_ready(a).unwrap();
         assert_eq!(barrier.phase, CommitPhase::Ready);
         let t = barrier.tick(Instant::now());
-        assert_eq!(t, Some(CommitTransition { from: "ready", to: "execute" }));
+        assert_eq!(
+            t,
+            Some(CommitTransition {
+                from: "ready",
+                to: "execute"
+            })
+        );
         assert_eq!(barrier.phase, CommitPhase::Execute);
         // Subsequent tick within execute deadline is a no-op
         assert!(barrier.tick(Instant::now()).is_none());

@@ -15,8 +15,8 @@
 
 use async_trait::async_trait;
 
-use crate::cadence::AgentId;
 use crate::awareness::NeighborSnapshot;
+use crate::cadence::AgentId;
 
 use super::super::bridge::GossipEntry;
 

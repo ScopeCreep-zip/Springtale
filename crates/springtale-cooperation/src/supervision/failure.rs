@@ -82,7 +82,7 @@ mod tests {
 
     #[test]
     fn down_agent_is_silent_failure() {
-        let result = classify(Liveness::Down { since_tick: 80 }, 0, 0);
+        let result = classify(Liveness::Down { since_tick: crate::tick::TickId(80) }, 0, 0);
         assert_eq!(result, Some(FailureCategory::SilentFailure));
     }
 
@@ -111,7 +111,7 @@ mod tests {
 
     #[test]
     fn down_takes_priority_over_failures() {
-        let result = classify(Liveness::Down { since_tick: 50 }, 10, 5);
+        let result = classify(Liveness::Down { since_tick: crate::tick::TickId(50) }, 10, 5);
         assert_eq!(result, Some(FailureCategory::SilentFailure));
     }
 }

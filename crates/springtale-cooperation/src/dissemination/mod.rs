@@ -11,9 +11,7 @@ pub mod publisher;
 pub mod state_msg;
 pub mod trait_;
 
-pub use bus_subscriber::{
-    BorrowedStateBusSubscriber, BufferedStateSubscriber, StateBusSubscriber,
-};
+pub use bus_subscriber::{BorrowedStateBusSubscriber, BufferedStateSubscriber, StateBusSubscriber};
 pub use publisher::BusContextPublisher;
 pub use state_msg::StateMessage;
 pub use trait_::{ContextPublisher, StateSubscriber};

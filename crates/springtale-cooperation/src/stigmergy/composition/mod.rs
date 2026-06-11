@@ -8,6 +8,6 @@ pub mod compose;
 pub mod reaction;
 pub mod table;
 
-pub use compose::{compose_surfaces, CompositionResult};
+pub use compose::{CompositionResult, compose_surfaces};
 pub use reaction::{ReactionOutput, SurfaceReaction};
 pub use table::ReactionTable;

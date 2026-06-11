@@ -28,9 +28,7 @@ use std::time::Duration;
 use proptest::prelude::*;
 
 use springtale_cooperation::cadence::{ActionDescriptor, AgentId, TickReport};
-use springtale_cooperation::consensus::{
-    ConsensusVote, DecisionDescriptor, VoteChoice,
-};
+use springtale_cooperation::consensus::{ConsensusVote, DecisionDescriptor, VoteChoice};
 use springtale_cooperation::interference::detector;
 use springtale_cooperation::momentum::{MomentumState, MomentumTier};
 use springtale_cooperation::rally::{FormationRally, RallyTokens};
@@ -119,6 +117,9 @@ fn make_vote(term: u64, required: u32) -> ConsensusVote {
             description: "prop".into(),
             options: vec!["a".into(), "b".into()],
             required_participants: required,
+                subject: springtale_cooperation::consensus::DecisionSubject::IntentChange {
+                proposed: springtale_cooperation::IntentPattern::Execute { plan_id: None },
+            },
         },
         term,
         ballots: HashMap::new(),
@@ -172,7 +173,7 @@ proptest! {
 fn make_report(agent: AgentId, kind: &str, target: Option<&str>, tick: u64) -> TickReport {
     TickReport {
         agent_id: agent,
-        tick_sequence: tick,
+        tick_sequence: springtale_cooperation::TickId(tick),
         action_taken: Some(ActionDescriptor {
             kind: kind.to_owned(),
             target: target.map(str::to_owned),

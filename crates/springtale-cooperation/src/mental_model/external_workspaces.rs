@@ -102,9 +102,10 @@ impl WorkspaceProvenance {
     /// times. The picker UI caps display depth at ~3 (cosmetic).
     pub fn gossip_depth(&self) -> usize {
         match self {
-            Self::Gossiped { original_provenance, .. } => {
-                1 + original_provenance.gossip_depth()
-            }
+            Self::Gossiped {
+                original_provenance,
+                ..
+            } => 1 + original_provenance.gossip_depth(),
             _ => 0,
         }
     }
@@ -114,9 +115,10 @@ impl WorkspaceProvenance {
     /// from" audit queries.
     pub fn root(&self) -> &WorkspaceProvenance {
         match self {
-            Self::Gossiped { original_provenance, .. } => {
-                original_provenance.root()
-            }
+            Self::Gossiped {
+                original_provenance,
+                ..
+            } => original_provenance.root(),
             other => other,
         }
     }
@@ -207,7 +209,9 @@ mod tests {
     #[test]
     fn provenance_round_trips_through_json() {
         let agent_a = agent();
-        let prov = WorkspaceProvenance::ManualEntry { entered_by: agent_a };
+        let prov = WorkspaceProvenance::ManualEntry {
+            entered_by: agent_a,
+        };
         let s = serde_json::to_string(&prov).unwrap();
         let back: WorkspaceProvenance = serde_json::from_str(&s).unwrap();
         assert_eq!(back, prov);
@@ -217,7 +221,9 @@ mod tests {
     fn provenance_gossip_depth_counts_nesting() {
         let agent_a = agent();
         let agent_b = agent();
-        let original = WorkspaceProvenance::ManualEntry { entered_by: agent_a };
+        let original = WorkspaceProvenance::ManualEntry {
+            entered_by: agent_a,
+        };
         let once = WorkspaceProvenance::Gossiped {
             from_agent: agent_b,
             original_provenance: Box::new(original.clone()),
@@ -234,7 +240,9 @@ mod tests {
     #[test]
     fn provenance_root_unwraps_chain() {
         let agent_a = agent();
-        let original = WorkspaceProvenance::ManualEntry { entered_by: agent_a };
+        let original = WorkspaceProvenance::ManualEntry {
+            entered_by: agent_a,
+        };
         let once = WorkspaceProvenance::Gossiped {
             from_agent: agent(),
             original_provenance: Box::new(original.clone()),
@@ -252,11 +260,15 @@ mod tests {
         let agent_a = agent();
         let existing = entry(
             now,
-            WorkspaceProvenance::ManualEntry { entered_by: agent_a },
+            WorkspaceProvenance::ManualEntry {
+                entered_by: agent_a,
+            },
         );
         let older = entry(
             now - chrono::Duration::seconds(10),
-            WorkspaceProvenance::ManualEntry { entered_by: agent_a },
+            WorkspaceProvenance::ManualEntry {
+                entered_by: agent_a,
+            },
         );
         assert!(merge_gossip_delta(&existing, &older, agent()).is_none());
     }
@@ -267,11 +279,15 @@ mod tests {
         let agent_a = agent();
         let existing = entry(
             now,
-            WorkspaceProvenance::ManualEntry { entered_by: agent_a },
+            WorkspaceProvenance::ManualEntry {
+                entered_by: agent_a,
+            },
         );
         let same = entry(
             now,
-            WorkspaceProvenance::ManualEntry { entered_by: agent_a },
+            WorkspaceProvenance::ManualEntry {
+                entered_by: agent_a,
+            },
         );
         assert!(merge_gossip_delta(&existing, &same, agent()).is_none());
     }
@@ -283,7 +299,9 @@ mod tests {
         let agent_b = agent();
         let existing = entry(
             now - chrono::Duration::seconds(10),
-            WorkspaceProvenance::ManualEntry { entered_by: agent_a },
+            WorkspaceProvenance::ManualEntry {
+                entered_by: agent_a,
+            },
         );
         let incoming = entry(
             now,
@@ -295,7 +313,10 @@ mod tests {
         let merged = merge_gossip_delta(&existing, &incoming, agent_b).unwrap();
         assert_eq!(merged.last_seen_at, incoming.last_seen_at);
         match merged.provenance {
-            WorkspaceProvenance::Gossiped { from_agent, original_provenance } => {
+            WorkspaceProvenance::Gossiped {
+                from_agent,
+                original_provenance,
+            } => {
                 assert_eq!(from_agent, agent_b);
                 assert!(matches!(
                     *original_provenance,
@@ -311,9 +332,15 @@ mod tests {
         let earliest = Utc::now() - chrono::Duration::hours(24);
         let later = Utc::now() - chrono::Duration::hours(1);
         let now = Utc::now();
-        let mut existing = entry(later, WorkspaceProvenance::ActiveDiscovery { scanned_at: later });
+        let mut existing = entry(
+            later,
+            WorkspaceProvenance::ActiveDiscovery { scanned_at: later },
+        );
         existing.first_seen_at = later;
-        let mut incoming = entry(now, WorkspaceProvenance::ActiveDiscovery { scanned_at: now });
+        let mut incoming = entry(
+            now,
+            WorkspaceProvenance::ActiveDiscovery { scanned_at: now },
+        );
         incoming.first_seen_at = earliest;
         let merged = merge_gossip_delta(&existing, &incoming, agent()).unwrap();
         assert_eq!(merged.first_seen_at, earliest);

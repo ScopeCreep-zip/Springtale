@@ -34,7 +34,9 @@ impl BackendStore {
 impl Store for BackendStore {
     async fn save(&self, formation_id: &str, model: &SharedMentalModel) -> Result<(), StoreError> {
         let bundle = to_bundle(model)?;
-        self.backend.mental_model_save(formation_id, &bundle).await?;
+        self.backend
+            .mental_model_save(formation_id, &bundle)
+            .await?;
         Ok(())
     }
 

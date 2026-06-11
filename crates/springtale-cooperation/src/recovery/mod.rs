@@ -15,7 +15,5 @@ pub mod apply;
 pub mod executor;
 mod types;
 
-pub use apply::{RecoveryKind, MAX_QUICK_FIX_COUNT};
-pub use types::{
-    DistressSignal, FailureMode, ProtectionType, RecoveryAction, RecoveryCost,
-};
+pub use apply::{MAX_QUICK_FIX_COUNT, RecoveryKind};
+pub use types::{DistressSignal, FailureMode, ProtectionType, RecoveryAction, RecoveryCost};

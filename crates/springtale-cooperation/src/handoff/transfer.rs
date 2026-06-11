@@ -26,18 +26,27 @@ use crate::routing::index::CapabilityIndex;
 use crate::routing::types::{PriorityTask, TaskId};
 use crate::state::Workspace;
 
+use super::HandoffType;
 use super::deposit;
 use super::flex_chain::FlexibleChainPool;
-use super::HandoffType;
 
 #[derive(Debug)]
 pub enum HandoffResult {
     /// L3 direct handoff delivered to receiver's inbox.
-    Delivered { from: AgentId, to: AgentId, task_id: TaskId },
+    Delivered {
+        from: AgentId,
+        to: AgentId,
+        task_id: TaskId,
+    },
     /// L0/workspace deposit — receiver collects when ready.
     Deposited { location: String },
     /// L1 chain step posted to the capability-indexed queue.
-    Queued { capability: String, step: usize, total_steps: usize, task_id: TaskId },
+    Queued {
+        capability: String,
+        step: usize,
+        total_steps: usize,
+        task_id: TaskId,
+    },
     /// Logical obligation registered (caller tracks fulfilment).
     ObligationRegistered {
         enabler: AgentId,
@@ -71,9 +80,7 @@ pub fn dispatch_handoff(
             payload,
         } => {
             let Some(inbox) = inbox else {
-                return HandoffResult::Failed(
-                    "direct handoff needs DirectInbox substrate".into(),
-                );
+                return HandoffResult::Failed("direct handoff needs DirectInbox substrate".into());
             };
             let task = subtask_from_payload(*sender, *receiver, &payload.schema, &payload.data);
             let task_id = task.id;
@@ -307,6 +314,7 @@ fn subtask_from_payload(
         priority: 1,
         assigned_to: Some(receiver),
         description: format!("direct handoff from {}", sender.0),
+        depends_on: Vec::new(),
     }
 }
 
@@ -324,6 +332,7 @@ fn subtask_for_chain(
         priority: 3,
         assigned_to: None,
         description: format!("chain step {step} from {}", originator.0),
+        depends_on: Vec::new(),
     }
 }
 

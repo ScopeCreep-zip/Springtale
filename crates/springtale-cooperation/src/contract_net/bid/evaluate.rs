@@ -91,10 +91,7 @@ pub fn score(
         if !capabilities.iter().any(|c| c == required) {
             return None;
         }
-    } else if !capabilities
-        .iter()
-        .any(|c| c == &cfp.task.target_connector)
-    {
+    } else if !capabilities.iter().any(|c| c == &cfp.task.target_connector) {
         return None;
     }
 

@@ -158,25 +158,33 @@ mod tests {
             agent_id: agent,
             health_pct: 0.2,
         };
-        assert!(matches!(low, DistressSignal::HealthLow { agent_id, health_pct } if agent_id == agent && health_pct == 0.2));
+        assert!(
+            matches!(low, DistressSignal::HealthLow { agent_id, health_pct } if agent_id == agent && health_pct == 0.2)
+        );
 
         let incap = DistressSignal::Incapacitated {
             agent_id: agent,
             bleedout_remaining: Duration::from_secs(30),
         };
-        assert!(matches!(incap, DistressSignal::Incapacitated { agent_id, bleedout_remaining } if agent_id == agent && bleedout_remaining == Duration::from_secs(30)));
+        assert!(
+            matches!(incap, DistressSignal::Incapacitated { agent_id, bleedout_remaining } if agent_id == agent && bleedout_remaining == Duration::from_secs(30))
+        );
 
         let dead = DistressSignal::Dead {
             agent_id: agent,
             recoverable: true,
         };
-        assert!(matches!(dead, DistressSignal::Dead { agent_id, recoverable } if agent_id == agent && recoverable));
+        assert!(
+            matches!(dead, DistressSignal::Dead { agent_id, recoverable } if agent_id == agent && recoverable)
+        );
 
         let degraded = DistressSignal::Degraded {
             agent_id: agent,
             remaining_capabilities: vec!["monitoring".into()],
         };
-        assert!(matches!(degraded, DistressSignal::Degraded { agent_id, ref remaining_capabilities } if agent_id == agent && remaining_capabilities.len() == 1));
+        assert!(
+            matches!(degraded, DistressSignal::Degraded { agent_id, ref remaining_capabilities } if agent_id == agent && remaining_capabilities.len() == 1)
+        );
     }
 
     #[test]
@@ -190,7 +198,9 @@ mod tests {
             duration: Duration::from_secs(5),
             healer_vulnerability: 0.8,
         };
-        assert!(matches!(revive, RecoveryAction::PeerRevive { healer_vulnerability, duration, .. } if healer_vulnerability == 0.8 && duration == Duration::from_secs(5)));
+        assert!(
+            matches!(revive, RecoveryAction::PeerRevive { healer_vulnerability, duration, .. } if healer_vulnerability == 0.8 && duration == Duration::from_secs(5))
+        );
 
         let byproduct = RecoveryAction::ByproductRecovery {
             source: healer,
@@ -202,7 +212,9 @@ mod tests {
                 payload_hash: 0,
             },
         };
-        assert!(matches!(byproduct, RecoveryAction::ByproductRecovery { recovery_amount, ref beneficiaries, .. } if recovery_amount == 0.3 && beneficiaries.len() == 1));
+        assert!(
+            matches!(byproduct, RecoveryAction::ByproductRecovery { recovery_amount, ref beneficiaries, .. } if recovery_amount == 0.3 && beneficiaries.len() == 1)
+        );
 
         let redeploy = RecoveryAction::Redeployment {
             dead_agent: target,
@@ -210,7 +222,9 @@ mod tests {
             cost: RecoveryCost::SharedFuel(FuelAmount(500)),
             degraded: true,
         };
-        assert!(matches!(redeploy, RecoveryAction::Redeployment { degraded, ref replacement_capabilities, .. } if degraded && replacement_capabilities.len() == 1));
+        assert!(
+            matches!(redeploy, RecoveryAction::Redeployment { degraded, ref replacement_capabilities, .. } if degraded && replacement_capabilities.len() == 1)
+        );
     }
 
     #[test]
@@ -221,7 +235,9 @@ mod tests {
         let degraded = FailureMode::Degraded {
             recovery_window: Duration::from_secs(30),
         };
-        assert!(matches!(degraded, FailureMode::Degraded { recovery_window } if recovery_window == Duration::from_secs(30)));
+        assert!(
+            matches!(degraded, FailureMode::Degraded { recovery_window } if recovery_window == Duration::from_secs(30))
+        );
 
         let transform = FailureMode::RoleTransformation;
         assert!(matches!(transform, FailureMode::RoleTransformation));

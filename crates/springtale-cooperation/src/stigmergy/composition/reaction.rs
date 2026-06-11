@@ -76,9 +76,13 @@ mod tests {
 
     #[test]
     fn reaction_matches_both_orders() {
-        let r = SurfaceReaction::new("water", "fire", ReactionOutput::Transform {
-            new_surface: "steam".to_owned(),
-        });
+        let r = SurfaceReaction::new(
+            "water",
+            "fire",
+            ReactionOutput::Transform {
+                new_surface: "steam".to_owned(),
+            },
+        );
         assert!(r.matches("water", "fire"));
         assert!(r.matches("fire", "water"));
         assert!(!r.matches("water", "oil"));
@@ -86,12 +90,10 @@ mod tests {
 
     #[test]
     fn probability_clamps() {
-        let r = SurfaceReaction::new("a", "b", ReactionOutput::Inert)
-            .with_probability(1.5);
+        let r = SurfaceReaction::new("a", "b", ReactionOutput::Inert).with_probability(1.5);
         assert!((r.probability - 1.0).abs() < f32::EPSILON);
 
-        let r2 = SurfaceReaction::new("a", "b", ReactionOutput::Inert)
-            .with_probability(-0.5);
+        let r2 = SurfaceReaction::new("a", "b", ReactionOutput::Inert).with_probability(-0.5);
         assert!(r2.probability.abs() < f32::EPSILON);
     }
 
@@ -99,11 +101,13 @@ mod tests {
     fn surface_tag_extracts_trigger() {
         assert_eq!(surface_tag(&SurfaceType::Substrate), "substrate");
         assert_eq!(
-            surface_tag(&SurfaceType::Primed { trigger: crate::cadence::ActionDescriptor {
-                kind: "electricity".to_owned(),
-                target: None,
-                payload_hash: 0,
-            } }),
+            surface_tag(&SurfaceType::Primed {
+                trigger: crate::cadence::ActionDescriptor {
+                    kind: "electricity".to_owned(),
+                    target: None,
+                    payload_hash: 0,
+                }
+            }),
             "electricity"
         );
     }

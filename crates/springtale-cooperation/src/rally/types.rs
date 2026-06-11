@@ -29,7 +29,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use thiserror::Error;
-use tokio::sync::{broadcast, Semaphore, TryAcquireError};
+use tokio::sync::{Semaphore, TryAcquireError, broadcast};
 use tokio::task::{AbortHandle, JoinSet};
 
 use crate::cadence::AgentId;
@@ -70,7 +70,10 @@ pub enum AgentOutcome {
     /// The formation does NOT consume a rally token on a clean exit.
     CleanExit { agent: AgentId },
     /// Task exited with an error; the formation should attempt self-rally.
-    Failed { agent: AgentId, reason: FailureReason },
+    Failed {
+        agent: AgentId,
+        reason: FailureReason,
+    },
 }
 
 impl AgentOutcome {
@@ -277,10 +280,7 @@ mod tests {
         assert_eq!(tokens.remaining(), 2);
         tokens.consume().unwrap();
         tokens.consume().unwrap();
-        assert!(matches!(
-            tokens.consume(),
-            Err(RallyFailure::NoTokensLeft)
-        ));
+        assert!(matches!(tokens.consume(), Err(RallyFailure::NoTokensLeft)));
     }
 
     #[test]

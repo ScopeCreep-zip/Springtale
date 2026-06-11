@@ -55,7 +55,9 @@ impl Consideration for FreeCapacity {
     fn score(&self, ctx: &ConsiderationContext<'_>) -> f32 {
         1.0 - ctx.attention_load
     }
-    fn name(&self) -> &'static str { "FreeCapacity" }
+    fn name(&self) -> &'static str {
+        "FreeCapacity"
+    }
 }
 
 /// Consideration: how healthy are my neighbors? (Total War morale signal)
@@ -67,7 +69,9 @@ impl Consideration for NeighborMorale {
     fn score(&self, ctx: &ConsiderationContext<'_>) -> f32 {
         ctx.awareness.local_morale()
     }
-    fn name(&self) -> &'static str { "NeighborMorale" }
+    fn name(&self) -> &'static str {
+        "NeighborMorale"
+    }
 }
 
 /// Consideration: how stable is the formation?
@@ -86,7 +90,9 @@ impl Consideration for FormationStability {
         let member_factor = (ctx.operational_count as f32 / 4.0).min(1.0);
         (momentum_factor * 0.6 + member_factor * 0.4).clamp(0.0, 1.0)
     }
-    fn name(&self) -> &'static str { "FormationStability" }
+    fn name(&self) -> &'static str {
+        "FormationStability"
+    }
 }
 
 /// Consideration: is this agent in danger of failing?
@@ -99,7 +105,9 @@ impl Consideration for FailureDanger {
         // 5 failures = transformation trigger threshold
         (ctx.consecutive_failures as f32 / 5.0).min(1.0)
     }
-    fn name(&self) -> &'static str { "FailureDanger" }
+    fn name(&self) -> &'static str {
+        "FailureDanger"
+    }
 }
 
 /// Consideration: can the formation afford a loss?
@@ -111,7 +119,9 @@ impl Consideration for RecoveryBudget {
     fn score(&self, ctx: &ConsiderationContext<'_>) -> f32 {
         ctx.rally_tokens as f32 / 3.0
     }
-    fn name(&self) -> &'static str { "RecoveryBudget" }
+    fn name(&self) -> &'static str {
+        "RecoveryBudget"
+    }
 }
 
 #[cfg(test)]
@@ -121,7 +131,11 @@ mod tests {
     use crate::awareness::LocalAwareness;
     use crate::types::AgentHealth;
 
-    fn make_ctx(load: f32, failures: usize, momentum: crate::momentum::MomentumTier) -> ConsiderationContext<'static> {
+    fn make_ctx(
+        load: f32,
+        failures: usize,
+        momentum: crate::momentum::MomentumTier,
+    ) -> ConsiderationContext<'static> {
         // Leak awareness to get 'static — only in tests
         let awareness = Box::leak(Box::new(LocalAwareness::default()));
         let health = Box::leak(Box::new(AgentHealth::Operational));

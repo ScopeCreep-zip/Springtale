@@ -86,7 +86,7 @@ impl SharedEnvironment {
     pub async fn cas_write(
         &self,
         store: &Arc<dyn springtale_store::StorageBackend>,
-        tick: u64,
+        tick: crate::tick::TickId,
         writer: AgentId,
         key: &str,
         expected: Option<&[u8]>,
@@ -94,15 +94,8 @@ impl SharedEnvironment {
     ) -> Result<Option<InterferenceEvent>, CooperationError> {
         let proposed_bytes = serde_json::to_vec(&value)
             .map_err(|e| CooperationError::Invariant(format!("serialize cas value: {e}")))?;
-        let event = interference::cas_apply(
-            store,
-            tick,
-            writer,
-            key,
-            expected,
-            &proposed_bytes,
-        )
-        .await?;
+        let event =
+            interference::cas_apply(store, tick, writer, key, expected, &proposed_bytes).await?;
         if event.is_none() {
             // CAS succeeded — mirror the write into the in-process
             // workspace so readers see the new value and the local
@@ -218,14 +211,13 @@ mod tests {
 
     #[tokio::test]
     async fn cas_write_applies_on_first_write() {
-        use springtale_store::backend::InMemoryBackend;
         use springtale_store::StorageBackend;
-        let store: std::sync::Arc<dyn StorageBackend> =
-            std::sync::Arc::new(InMemoryBackend::new());
+        use springtale_store::backend::InMemoryBackend;
+        let store: std::sync::Arc<dyn StorageBackend> = std::sync::Arc::new(InMemoryBackend::new());
         let env = SharedEnvironment::new();
         let agent = AgentId::new();
         let conflict = env
-            .cas_write(&store, 1, agent, "k", None, serde_json::json!("v1"))
+            .cas_write(&store, crate::tick::TickId(1), agent, "k", None, serde_json::json!("v1"))
             .await
             .unwrap();
         assert!(conflict.is_none());
@@ -237,19 +229,18 @@ mod tests {
     #[tokio::test]
     async fn cas_write_detects_resource_conflict() {
         use crate::interference::InterferenceType;
-        use springtale_store::backend::InMemoryBackend;
         use springtale_store::StorageBackend;
-        let store: std::sync::Arc<dyn StorageBackend> =
-            std::sync::Arc::new(InMemoryBackend::new());
+        use springtale_store::backend::InMemoryBackend;
+        let store: std::sync::Arc<dyn StorageBackend> = std::sync::Arc::new(InMemoryBackend::new());
         let env = SharedEnvironment::new();
         let a = AgentId::new();
         let b = AgentId::new();
-        env.cas_write(&store, 1, a, "k", None, serde_json::json!("v1"))
+        env.cas_write(&store, crate::tick::TickId(1), a, "k", None, serde_json::json!("v1"))
             .await
             .unwrap();
         // b expects the key absent but a already wrote — mismatch.
         let conflict = env
-            .cas_write(&store, 2, b, "k", None, serde_json::json!("v2"))
+            .cas_write(&store, crate::tick::TickId(2), b, "k", None, serde_json::json!("v2"))
             .await
             .unwrap()
             .expect("should detect conflict");
@@ -258,7 +249,10 @@ mod tests {
             InterferenceType::ResourceConflict
         ));
         // b's write was NOT applied (local mirror still shows v1).
-        assert_eq!(env.snapshot().last_value("k"), Some(&serde_json::json!("v1")));
+        assert_eq!(
+            env.snapshot().last_value("k"),
+            Some(&serde_json::json!("v1"))
+        );
     }
 
     #[test]

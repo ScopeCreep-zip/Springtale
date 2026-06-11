@@ -101,6 +101,7 @@ mod tests {
             priority,
             assigned_to: None,
             description: String::new(),
+            depends_on: Vec::new(),
         }
     }
 

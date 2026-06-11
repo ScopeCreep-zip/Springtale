@@ -12,10 +12,8 @@ use std::collections::HashSet;
 use springtale_cooperation::action::SubTask;
 use springtale_cooperation::cadence::AgentId;
 use springtale_cooperation::momentum::MomentumTier;
-use springtale_cooperation::replan::cbba::{self, dmg, AgentSpec, ReplanOutcome};
-use springtale_cooperation::replan::trigger::cascade::{
-    self, CascadeSignals, CascadeThresholds,
-};
+use springtale_cooperation::replan::cbba::{self, AgentSpec, ReplanOutcome, dmg};
+use springtale_cooperation::replan::trigger::cascade::{self, CascadeSignals, CascadeThresholds};
 
 fn task(connector: &str, priority: u8) -> SubTask {
     SubTask {
@@ -26,6 +24,7 @@ fn task(connector: &str, priority: u8) -> SubTask {
         priority,
         assigned_to: None,
         description: String::new(),
+        depends_on: Vec::new(),
     }
 }
 
@@ -37,7 +36,10 @@ fn cascade_triggers_replan_and_converges() {
         unique_interference_targets: 2,
         rally_tokens_remaining: 0,
     };
-    assert!(cascade::should_replan(signals, CascadeThresholds::default()));
+    assert!(cascade::should_replan(
+        signals,
+        CascadeThresholds::default()
+    ));
 
     // 2. Three agents, overlapping capabilities so consensus actually has
     //    something to resolve.
@@ -128,7 +130,12 @@ fn dmg_holds_across_all_bundles() {
     let tasks = (0..10)
         .map(|i| task("github", (i % 10).max(1) as u8))
         .collect::<Vec<_>>();
-    let bundle =
-        cbba::bundle::build(a, &tasks, &[springtale_cooperation::capability::CapabilityDecl::new("github")]);
+    let bundle = cbba::bundle::build(
+        a,
+        &tasks,
+        &[springtale_cooperation::capability::CapabilityDecl::new(
+            "github",
+        )],
+    );
     assert!(dmg::holds(&bundle));
 }

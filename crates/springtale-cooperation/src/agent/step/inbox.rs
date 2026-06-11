@@ -25,10 +25,7 @@ use crate::cadence::ActionDescriptor;
 use crate::layer::LayerId;
 use crate::routing::trait_::TaskRouter;
 
-pub async fn run(
-    router: &dyn TaskRouter,
-    ctx: &AgentContext<'_>,
-) -> Option<AgentTickResult> {
+pub async fn run(router: &dyn TaskRouter, ctx: &AgentContext<'_>) -> Option<AgentTickResult> {
     if !authority::allows(ctx.momentum.tier, LayerId::L3Direct) {
         return None;
     }

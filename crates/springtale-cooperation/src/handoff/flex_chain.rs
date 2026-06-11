@@ -59,10 +59,7 @@ impl FlexibleChainPool {
         }
         let worker: Worker<HandoffPayload> = Worker::new_fifo();
         let stealer = worker.stealer();
-        g.stealers
-            .entry(cap.clone())
-            .or_default()
-            .push(stealer);
+        g.stealers.entry(cap.clone()).or_default().push(stealer);
         g.workers.insert((cap, agent), worker);
     }
 
@@ -119,10 +116,7 @@ impl FlexibleChainPool {
     /// Number of agents registered under any capability — useful for
     /// observability.
     pub fn registered_count(&self) -> usize {
-        self.inner
-            .lock()
-            .map(|g| g.workers.len())
-            .unwrap_or(0)
+        self.inner.lock().map(|g| g.workers.len()).unwrap_or(0)
     }
 }
 

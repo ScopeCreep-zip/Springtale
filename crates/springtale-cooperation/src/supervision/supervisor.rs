@@ -29,7 +29,7 @@ pub enum SupervisionAction {
     TriggerReplan,
     /// Mark agent Down, broadcast PeerMsg::AgentDown.
     /// Per Kubernetes: liveness probe failed → restart container.
-    MarkDown { agent: AgentId, since_tick: u64 },
+    MarkDown { agent: AgentId, since_tick: crate::tick::TickId },
     /// Escalate to L6 intervention — restart budget exhausted.
     /// Per Erlang: supervisor exceeded MaxR/MaxT → terminate.
     Escalate { reason: String },
@@ -40,7 +40,7 @@ pub enum SupervisionAction {
 /// Per AutoGen: checkpointing — track last successful tick per member.
 pub struct FormationSupervisor {
     pub policy: RestartPolicy,
-    restart_history: Vec<u64>,
+    restart_history: Vec<crate::tick::TickId>,
 }
 
 impl FormationSupervisor {
@@ -92,11 +92,11 @@ impl FormationSupervisor {
     /// Per Erlang OTP: track restart, check intensity (MaxR in MaxT).
     /// Returns `true` if restart is within budget, `false` if intensity
     /// exceeded (caller should escalate).
-    pub fn record_restart(&mut self, current_tick: u64) -> bool {
+    pub fn record_restart(&mut self, current_tick: crate::tick::TickId) -> bool {
         self.restart_history.push(current_tick);
 
         // Prune restarts outside the window
-        let cutoff = current_tick.saturating_sub(self.policy.within_ticks);
+        let cutoff = crate::tick::TickId(current_tick.0.saturating_sub(self.policy.within_ticks));
         self.restart_history.retain(|t| *t >= cutoff);
 
         // Check intensity
@@ -129,13 +129,7 @@ mod tests {
     fn healthy_member_no_action() {
         let sup = FormationSupervisor::default();
         let rally = RallyTokens::new(3);
-        let action = sup.check_member(
-            AgentId::new(),
-            Liveness::Alive,
-            0,
-            0,
-            &rally,
-        );
+        let action = sup.check_member(AgentId::new(), Liveness::Alive, 0, 0, &rally);
         assert!(action.is_none());
     }
 
@@ -145,12 +139,15 @@ mod tests {
         let rally = RallyTokens::new(3);
         let action = sup.check_member(
             AgentId::new(),
-            Liveness::Down { since_tick: 80 },
+            Liveness::Down { since_tick: crate::tick::TickId(80) },
             0,
             0,
             &rally,
         );
-        assert!(matches!(action, Some(SupervisionAction::MarkDown { since_tick: 80, .. })));
+        assert!(matches!(
+            action,
+            Some(SupervisionAction::MarkDown { since_tick: crate::tick::TickId(80), .. })
+        ));
     }
 
     #[test]
@@ -171,28 +168,22 @@ mod tests {
     fn five_failures_transforms_role() {
         let sup = FormationSupervisor::default();
         let rally = RallyTokens::new(3);
-        let action = sup.check_member(
-            AgentId::new(),
-            Liveness::Alive,
-            5,
-            0,
-            &rally,
-        );
-        assert!(matches!(action, Some(SupervisionAction::TransformRole { .. })));
+        let action = sup.check_member(AgentId::new(), Liveness::Alive, 5, 0, &rally);
+        assert!(matches!(
+            action,
+            Some(SupervisionAction::TransformRole { .. })
+        ));
     }
 
     #[test]
     fn partial_failure_with_rally_retries() {
         let sup = FormationSupervisor::default();
         let rally = RallyTokens::new(3);
-        let action = sup.check_member(
-            AgentId::new(),
-            Liveness::Alive,
-            3,
-            0,
-            &rally,
-        );
-        assert!(matches!(action, Some(SupervisionAction::RetryWithRally { .. })));
+        let action = sup.check_member(AgentId::new(), Liveness::Alive, 3, 0, &rally);
+        assert!(matches!(
+            action,
+            Some(SupervisionAction::RetryWithRally { .. })
+        ));
     }
 
     #[test]
@@ -203,13 +194,7 @@ mod tests {
         rally.consume().unwrap();
         rally.consume().unwrap(); // exhausted
 
-        let action = sup.check_member(
-            AgentId::new(),
-            Liveness::Alive,
-            3,
-            0,
-            &rally,
-        );
+        let action = sup.check_member(AgentId::new(), Liveness::Alive, 3, 0, &rally);
         assert!(matches!(action, Some(SupervisionAction::Escalate { .. })));
     }
 
@@ -220,9 +205,9 @@ mod tests {
             within_ticks: 100,
             strategy: super::super::restart::RestartStrategy::OneForOne,
         });
-        assert!(sup.record_restart(10));
-        assert!(sup.record_restart(20));
-        assert!(sup.record_restart(30));
+        assert!(sup.record_restart(crate::tick::TickId(10)));
+        assert!(sup.record_restart(crate::tick::TickId(20)));
+        assert!(sup.record_restart(crate::tick::TickId(30)));
         assert_eq!(sup.restarts_in_window(), 3);
     }
 
@@ -233,9 +218,9 @@ mod tests {
             within_ticks: 100,
             strategy: super::super::restart::RestartStrategy::OneForOne,
         });
-        assert!(sup.record_restart(10));
-        assert!(sup.record_restart(20));
-        assert!(!sup.record_restart(30)); // 3rd restart exceeds budget of 2
+        assert!(sup.record_restart(crate::tick::TickId(10)));
+        assert!(sup.record_restart(crate::tick::TickId(20)));
+        assert!(!sup.record_restart(crate::tick::TickId(30))); // 3rd restart exceeds budget of 2
     }
 
     #[test]
@@ -245,10 +230,10 @@ mod tests {
             within_ticks: 50,
             strategy: super::super::restart::RestartStrategy::OneForOne,
         });
-        assert!(sup.record_restart(10));
-        assert!(sup.record_restart(20));
+        assert!(sup.record_restart(crate::tick::TickId(10)));
+        assert!(sup.record_restart(crate::tick::TickId(20)));
         // Tick 70: restart at 10 is outside window (70-50=20), so only restart at 20 counts
-        assert!(sup.record_restart(70));
+        assert!(sup.record_restart(crate::tick::TickId(70)));
         assert_eq!(sup.restarts_in_window(), 2); // 20 and 70
     }
 }

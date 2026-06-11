@@ -57,6 +57,7 @@ mod tests {
             priority: 1,
             assigned_to: None,
             description: name.into(),
+            depends_on: Vec::new(),
         }
     }
 

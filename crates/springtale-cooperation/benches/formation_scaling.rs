@@ -18,9 +18,7 @@
 
 use std::time::Duration;
 
-use criterion::{
-    black_box, criterion_group, criterion_main, BenchmarkId, Criterion, Throughput,
-};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 
 use springtale_cooperation::cadence::{ActionDescriptor, AgentId, TickReport};
 use springtale_cooperation::tick_processor;
@@ -28,7 +26,7 @@ use springtale_cooperation::tick_processor;
 fn synthetic_report(i: usize, tick: u64) -> TickReport {
     TickReport {
         agent_id: AgentId::new(),
-        tick_sequence: tick,
+        tick_sequence: springtale_cooperation::TickId(tick),
         action_taken: Some(ActionDescriptor {
             // Targeting a small set of keys so the detector finds some
             // interference pairs — otherwise the O(N²) loop runs but
@@ -47,13 +45,11 @@ fn synthetic_report(i: usize, tick: u64) -> TickReport {
 fn bench_process_tick(c: &mut Criterion) {
     let mut group = c.benchmark_group("process_tick");
     for &n in &[10usize, 100, 1000] {
-        let reports: Vec<TickReport> =
-            (0..n).map(|i| synthetic_report(i, 1)).collect();
+        let reports: Vec<TickReport> = (0..n).map(|i| synthetic_report(i, 1)).collect();
         group.throughput(Throughput::Elements(n as u64));
         group.bench_with_input(BenchmarkId::from_parameter(n), &reports, |b, input| {
             b.iter(|| {
-                let result =
-                    tick_processor::process_tick(black_box(input.clone()));
+                let result = tick_processor::process_tick(black_box(input.clone()));
                 black_box(result);
             });
         });

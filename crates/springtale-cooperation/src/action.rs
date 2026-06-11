@@ -33,6 +33,13 @@ pub struct SubTask {
     pub assigned_to: Option<AgentId>,
     /// Human-readable description for the UI.
     pub description: String,
+    /// W3 cross-agent data pipe: ids of tasks whose results this task
+    /// consumes. A task with unmet dependencies stays unclaimed; on claim,
+    /// `${result:<uuid>...}` placeholders in `params` resolve from the
+    /// dependencies' `result:*` blackboard entries. Empty = independent
+    /// (the pre-W3 behavior, and the serde default for stored tasks).
+    #[serde(default)]
+    pub depends_on: Vec<Uuid>,
 }
 
 /// Result of a member executing a subtask.

@@ -5,12 +5,12 @@
 
 pub mod bus;
 pub mod dispatcher;
+pub mod lfcg;
 mod types;
 
 pub use bus::{
     AckDispatch, ChannelSendError, CohesionSignalMsg, DirectionalSignalMsg, FormationBus,
     FormationBusSubscription, IntentAckMsg, ProtocolDispatch, ProtocolMsg, StateBroadcastMsg,
 };
-pub use types::{
-    BroadcastTrigger, CommChannel, MessageTarget, ProtocolPayload, StateMessage,
-};
+pub use lfcg::{CommunicationByDesign, MeansOfComms};
+pub use types::{BroadcastTrigger, CommChannel, MessageTarget, ProtocolPayload, StateMessage};

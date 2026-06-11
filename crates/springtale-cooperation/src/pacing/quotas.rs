@@ -56,7 +56,12 @@ mod tests {
             started: Instant::now(),
         });
         assert!(q.is_some());
-        assert_eq!(actions_per_minute(&PacingPhase::Preparation { started: Instant::now() }), Some(2));
+        assert_eq!(
+            actions_per_minute(&PacingPhase::Preparation {
+                started: Instant::now()
+            }),
+            Some(2)
+        );
     }
 
     #[test]

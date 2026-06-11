@@ -26,8 +26,8 @@ pub async fn deposit(
     depositor: AgentId,
     ttl: Option<Duration>,
 ) -> Result<(), CooperationError> {
-    let bytes = serde_json::to_vec(payload)
-        .map_err(|e| HandoffError::SerializeDeposit(e.to_string()))?;
+    let bytes =
+        serde_json::to_vec(payload).map_err(|e| HandoffError::SerializeDeposit(e.to_string()))?;
     let ttl_secs = ttl.map(|d| d.as_secs() as i64);
     store
         .coop_deposit(location, &bytes, &depositor.0.to_string(), ttl_secs)
@@ -73,7 +73,9 @@ mod tests {
         let collector = AgentId::new();
         let value = serde_json::json!({"result": 42});
 
-        deposit(&store, "loc", &value, depositor, None).await.unwrap();
+        deposit(&store, "loc", &value, depositor, None)
+            .await
+            .unwrap();
         let got = collect(&store, "loc", collector).await.unwrap();
         assert_eq!(got, Some(value));
     }

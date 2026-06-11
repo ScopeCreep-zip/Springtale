@@ -79,6 +79,28 @@ pub struct ConsensusVote {
     pub committed: Option<(Ballot, VoteChoice)>,
 }
 
+/// What a vote decides — typed so the resolution can be *applied* by the
+/// tick pipeline, not just logged.
+///
+/// Joint Intention Theory (Cohen & Levesque; STEAM): a team's joint
+/// persistent goal changes only by attaining *mutual belief* — i.e. a
+/// vote — never by one member's private belief. `IntentChange` is that
+/// mutual-belief protocol for §5.5's "formation self-governance at
+/// Fever"; `DestructiveAction` is the §3.3 `RequireConsensus` gate.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+pub enum DecisionSubject {
+    /// B7: a destructive action classified `ApprovalPolicy::RequireConsensus`.
+    /// On approval the task is re-posted with a one-shot execution permit;
+    /// on deny **or timeout** it is dropped (default-safe — a destructive
+    /// action never executes off a no-quorum timeout).
+    DestructiveAction { task: crate::action::SubTask },
+    /// §5.5 source 2: the formation votes to change its own intent.
+    /// Only proposable at Fever (`MomentumState::can_consensus`).
+    IntentChange {
+        proposed: crate::cadence::IntentPattern,
+    },
+}
+
 /// What's being decided.
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct DecisionDescriptor {
@@ -86,6 +108,8 @@ pub struct DecisionDescriptor {
     pub options: Vec<String>,
     /// Minimum votes needed for a valid decision.
     pub required_participants: u32,
+    /// Typed subject the resolution is applied to.
+    pub subject: DecisionSubject,
 }
 
 /// An agent's vote.
@@ -286,8 +310,11 @@ impl ConsensusEngine {
         Ok(())
     }
 
-    /// Attempt an override on an active proposal. On success the vote is
-    /// resolved and removed from the active set.
+    /// Attempt an override on an active proposal. The committed ballot is
+    /// recorded but the vote stays in the active set — `resolve_ready`
+    /// (called once per tick) is the single application chokepoint, so an
+    /// override resolves on the next sweep with the same audit/event path
+    /// as quorum and timeout resolutions.
     pub fn try_override(
         &mut self,
         vote_id: &uuid::Uuid,
@@ -298,22 +325,29 @@ impl ConsensusEngine {
             .active_votes
             .get_mut(vote_id)
             .ok_or(crate::error::ConsensusError::VoteNotFound(*vote_id))?;
-        let resolution = vote.try_override(agent_id, choice)?;
-        self.active_votes.remove(vote_id);
-        Ok(resolution)
+        vote.try_override(agent_id, choice)
     }
 
-    /// Poll all active votes. Resolved votes are removed and returned.
-    pub fn check_deadlines(&mut self) -> Vec<(uuid::Uuid, VoteResolution)> {
-        let resolved_ids: Vec<(uuid::Uuid, VoteResolution)> = self
+    /// Resolve every vote that is ready — quorum met, override committed,
+    /// or deadline passed. Resolved votes are removed from the active set
+    /// and returned **with their descriptor** so the tick pipeline can
+    /// apply the resolution to the typed `DecisionSubject` (execute the
+    /// approved task, change the formation intent, drop the denied task).
+    pub fn resolve_ready(&mut self) -> Vec<(uuid::Uuid, DecisionDescriptor, VoteResolution)> {
+        let ready: Vec<uuid::Uuid> = self
             .active_votes
             .iter()
-            .filter_map(|(id, v)| v.resolve().map(|r| (*id, r)))
+            .filter(|(_, v)| v.resolve().is_some())
+            .map(|(id, _)| *id)
             .collect();
-        for (id, _) in &resolved_ids {
-            self.active_votes.remove(id);
-        }
-        resolved_ids
+        ready
+            .into_iter()
+            .filter_map(|id| {
+                let vote = self.active_votes.remove(&id)?;
+                let resolution = vote.resolve()?;
+                Some((id, vote.question, resolution))
+            })
+            .collect()
     }
 
     /// Get count of active votes.
@@ -337,6 +371,9 @@ mod tests {
         ConsensusVote {
             question: DecisionDescriptor {
                 required_participants: required,
+                subject: DecisionSubject::IntentChange {
+                    proposed: crate::cadence::IntentPattern::Execute { plan_id: None },
+                },
                 description: "test".into(),
                 options: vec!["a".into(), "b".into()],
             },
@@ -467,6 +504,9 @@ mod tests {
         let a = AgentId::new();
         let q = || DecisionDescriptor {
             required_participants: 1,
+                subject: DecisionSubject::IntentChange {
+                    proposed: crate::cadence::IntentPattern::Execute { plan_id: None },
+                },
             description: "x".into(),
             options: vec!["y".into()],
         };
@@ -485,6 +525,9 @@ mod tests {
         engine.propose(
             DecisionDescriptor {
                 required_participants: 1,
+                subject: DecisionSubject::IntentChange {
+                    proposed: crate::cadence::IntentPattern::Execute { plan_id: None },
+                },
                 description: "action".into(),
                 options: vec!["go".into()],
             },
@@ -497,7 +540,7 @@ mod tests {
         let id = *engine.active_votes.keys().next().unwrap();
         engine.vote(&id, a, VoteChoice::Option(0)).unwrap();
 
-        let resolved = engine.check_deadlines();
+        let resolved = engine.resolve_ready();
         assert_eq!(resolved.len(), 1);
         assert_eq!(engine.active_count(), 0);
     }
@@ -509,6 +552,9 @@ mod tests {
         let id = engine.propose(
             DecisionDescriptor {
                 required_participants: 5,
+                subject: DecisionSubject::IntentChange {
+                    proposed: crate::cadence::IntentPattern::Execute { plan_id: None },
+                },
                 description: "decision".into(),
                 options: vec!["yes".into(), "no".into()],
             },

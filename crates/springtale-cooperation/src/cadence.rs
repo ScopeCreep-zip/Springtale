@@ -169,7 +169,7 @@ pub enum IntentPattern {
 #[derive(Debug, Clone)]
 pub struct Tick {
     /// Monotonically increasing tick number.
-    pub sequence: u64,
+    pub sequence: crate::tick::TickId,
     /// When this tick was emitted.
     pub timestamp: Instant,
     /// Current intent pattern for the formation.
@@ -201,7 +201,7 @@ pub struct TickReport {
     /// Which agent produced this report.
     pub agent_id: AgentId,
     /// Which tick this report covers.
-    pub tick_sequence: u64,
+    pub tick_sequence: crate::tick::TickId,
     /// What action the agent took (None = idle/skipped).
     pub action_taken: Option<ActionDescriptor>,
     /// How long the agent took to respond.
@@ -287,7 +287,7 @@ impl CadenceBus {
             let intent = self.current_intent.read().await.clone();
             let seq = self.tick_counter.fetch_add(1, Ordering::Relaxed);
             let tick = Tick {
-                sequence: seq,
+                sequence: crate::tick::TickId(seq),
                 timestamp: Instant::now(),
                 intent,
                 window: self.tick_interval.saturating_mul(4),
@@ -323,7 +323,7 @@ mod tests {
             .await
             .expect("timeout waiting for tick")
             .expect("channel closed");
-        assert_eq!(tick.sequence, 0);
+        assert_eq!(tick.sequence, crate::tick::TickId(0));
 
         // Send a report back through the reports channel
         sender
@@ -354,7 +354,8 @@ mod tests {
     async fn test_set_intent() {
         let (bus, mut reports_rx) = CadenceBus::new(Duration::from_millis(100), 16);
 
-        bus.set_intent(IntentPattern::Execute { plan_id: None }).await;
+        bus.set_intent(IntentPattern::Execute { plan_id: None })
+            .await;
 
         let intent = bus.current_intent.read().await;
         assert!(matches!(&*intent, IntentPattern::Execute { .. }));
@@ -364,7 +365,7 @@ mod tests {
         sender
             .send(TickReport {
                 agent_id: AgentId::new(),
-                tick_sequence: 0,
+                tick_sequence: crate::tick::TickId(0),
                 action_taken: None,
                 latency: Duration::from_millis(0),
                 intent_alignment: 1.0,
@@ -386,7 +387,7 @@ mod tests {
         sender
             .send(TickReport {
                 agent_id: AgentId::new(),
-                tick_sequence: 0,
+                tick_sequence: crate::tick::TickId(0),
                 action_taken: None,
                 latency: Duration::from_millis(0),
                 intent_alignment: 0.5,

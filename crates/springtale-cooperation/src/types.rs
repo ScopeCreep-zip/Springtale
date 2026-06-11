@@ -18,7 +18,9 @@ use crate::capability::CapabilityDecl;
 /// `FuelBudget` in the bot crate is the runtime tracker; this newtype is
 /// the cooperation-layer representation that travels in `RecoveryCost` and
 /// `FormationConstraints` without pulling in bot dependencies.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Type,
+)]
 pub struct FuelAmount(pub u64);
 
 impl From<u64> for FuelAmount {
@@ -42,10 +44,14 @@ impl std::fmt::Display for FuelAmount {
 pub struct WorkspaceKey(pub String);
 
 impl From<&str> for WorkspaceKey {
-    fn from(s: &str) -> Self { Self(s.to_owned()) }
+    fn from(s: &str) -> Self {
+        Self(s.to_owned())
+    }
 }
 impl From<String> for WorkspaceKey {
-    fn from(s: String) -> Self { Self(s) }
+    fn from(s: String) -> Self {
+        Self(s)
+    }
 }
 impl std::fmt::Display for WorkspaceKey {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -53,14 +59,20 @@ impl std::fmt::Display for WorkspaceKey {
     }
 }
 impl AsRef<str> for WorkspaceKey {
-    fn as_ref(&self) -> &str { &self.0 }
+    fn as_ref(&self) -> &str {
+        &self.0
+    }
 }
 impl std::ops::Deref for WorkspaceKey {
     type Target = str;
-    fn deref(&self) -> &str { &self.0 }
+    fn deref(&self) -> &str {
+        &self.0
+    }
 }
 impl PartialEq<str> for WorkspaceKey {
-    fn eq(&self, other: &str) -> bool { self.0 == other }
+    fn eq(&self, other: &str) -> bool {
+        self.0 == other
+    }
 }
 
 /// Shared resource identifier — DRG Red Sugar, Helldivers resupply pod.
@@ -72,10 +84,14 @@ impl PartialEq<str> for WorkspaceKey {
 pub struct ResourceId(pub String);
 
 impl From<&str> for ResourceId {
-    fn from(s: &str) -> Self { Self(s.to_owned()) }
+    fn from(s: &str) -> Self {
+        Self(s.to_owned())
+    }
 }
 impl From<String> for ResourceId {
-    fn from(s: String) -> Self { Self(s) }
+    fn from(s: String) -> Self {
+        Self(s)
+    }
 }
 impl std::fmt::Display for ResourceId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -83,7 +99,9 @@ impl std::fmt::Display for ResourceId {
     }
 }
 impl PartialEq<str> for ResourceId {
-    fn eq(&self, other: &str) -> bool { self.0 == other }
+    fn eq(&self, other: &str) -> bool {
+        self.0 == other
+    }
 }
 
 /// Cooperation pattern trigger — identifies what triggers a learned pattern.
@@ -94,10 +112,14 @@ impl PartialEq<str> for ResourceId {
 pub struct PatternId(pub String);
 
 impl From<&str> for PatternId {
-    fn from(s: &str) -> Self { Self(s.to_owned()) }
+    fn from(s: &str) -> Self {
+        Self(s.to_owned())
+    }
 }
 impl From<String> for PatternId {
-    fn from(s: String) -> Self { Self(s) }
+    fn from(s: String) -> Self {
+        Self(s)
+    }
 }
 impl std::fmt::Display for PatternId {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -105,7 +127,9 @@ impl std::fmt::Display for PatternId {
     }
 }
 impl PartialEq<str> for PatternId {
-    fn eq(&self, other: &str) -> bool { self.0 == other }
+    fn eq(&self, other: &str) -> bool {
+        self.0 == other
+    }
 }
 
 /// Unique identifier for a formation.
@@ -209,7 +233,9 @@ pub enum ApprovalPolicy {
 ///   Suggest = Ring 2 (standard tool access)
 ///   ActWithApproval = Ring 1 (elevated, cross-agent)
 ///   ActAutonomously = Ring 0 (full system access)
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Type,
+)]
 pub enum AutonomyLevel {
     /// Holdfire + holdpos. Watch and report only.
     Observe,

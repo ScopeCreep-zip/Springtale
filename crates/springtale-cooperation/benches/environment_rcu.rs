@@ -21,9 +21,7 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
-use criterion::{
-    BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main,
-};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 use serde_json::Value;
 
 use springtale_cooperation::cadence::AgentId;
@@ -58,11 +56,7 @@ fn bench_concurrent_writes(c: &mut Criterion) {
                                 if i >= total_writes {
                                     break;
                                 }
-                                env.write(
-                                    &format!("writer-{i}"),
-                                    Value::from(i as u64),
-                                    agent,
-                                );
+                                env.write(&format!("writer-{i}"), Value::from(i as u64), agent);
                             }
                         });
                     }

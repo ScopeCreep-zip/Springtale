@@ -10,8 +10,8 @@
 use crate::cadence::AgentId;
 use crate::capability::CapabilityDecl;
 
-use super::super::bus::{ProtocolDispatch, ProtocolMsg};
 use super::super::MessageTarget;
+use super::super::bus::{ProtocolDispatch, ProtocolMsg};
 
 // Compile-time witness that the dispatcher always operates on
 // `ProtocolMsg`. The loop below binds `msg` via type inference from

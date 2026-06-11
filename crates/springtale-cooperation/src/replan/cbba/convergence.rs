@@ -43,28 +43,19 @@ mod tests {
 
     #[test]
     fn all_converged_reports_converged() {
-        let s = fold_sweep(&[
-            ConvergenceStatus::Converged,
-            ConvergenceStatus::Converged,
-        ]);
+        let s = fold_sweep(&[ConvergenceStatus::Converged, ConvergenceStatus::Converged]);
         assert_eq!(s, ConvergenceStatus::Converged);
     }
 
     #[test]
     fn any_running_reports_running() {
-        let s = fold_sweep(&[
-            ConvergenceStatus::Converged,
-            ConvergenceStatus::Running,
-        ]);
+        let s = fold_sweep(&[ConvergenceStatus::Converged, ConvergenceStatus::Running]);
         assert_eq!(s, ConvergenceStatus::Running);
     }
 
     #[test]
     fn any_stalled_reports_stalled() {
-        let s = fold_sweep(&[
-            ConvergenceStatus::Converged,
-            ConvergenceStatus::Stalled,
-        ]);
+        let s = fold_sweep(&[ConvergenceStatus::Converged, ConvergenceStatus::Stalled]);
         assert_eq!(s, ConvergenceStatus::Stalled);
     }
 

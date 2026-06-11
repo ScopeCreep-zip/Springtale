@@ -8,6 +8,5 @@ pub mod supervise;
 mod types;
 
 pub use types::{
-    AgentOutcome, FailureReason, FormationRally, RallyEvent, RallyFailure, RallyResult,
-    RallyTokens,
+    AgentOutcome, FailureReason, FormationRally, RallyEvent, RallyFailure, RallyResult, RallyTokens,
 };

@@ -67,7 +67,8 @@ impl GossipEntry {
         // `Dead{recoverable:true}` round-trip without data loss — the
         // old Debug-string format collapsed both to their variant name
         // and the parser had to guess the fields.
-        let health_json = serde_json::to_string(health).unwrap_or_else(|_| "\"Operational\"".to_owned());
+        let health_json =
+            serde_json::to_string(health).unwrap_or_else(|_| "\"Operational\"".to_owned());
         kv.insert(KEY_HEALTH.to_owned(), health_json);
         kv.insert(KEY_ROLE.to_owned(), role_name.to_owned());
         kv.insert(KEY_FUEL_PCT.to_owned(), format!("{fuel_pct:.2}"));
@@ -223,9 +224,7 @@ impl GossipStore for InMemoryGossipStore {
     }
 
     async fn get(&self, agent_id: &AgentId) -> Option<NeighborSnapshot> {
-        self.entries
-            .get(agent_id)
-            .map(|r| r.value().to_snapshot())
+        self.entries.get(agent_id).map(|r| r.value().to_snapshot())
     }
 
     async fn remove(&self, agent_id: &AgentId) {
@@ -247,7 +246,7 @@ pub fn foca_state_to_liveness(alive: bool, suspect: bool) -> Liveness {
     } else if alive {
         Liveness::Alive
     } else {
-        Liveness::Down { since_tick: 0 }
+        Liveness::Down { since_tick: crate::tick::TickId::ZERO }
     }
 }
 
@@ -288,12 +287,22 @@ mod tests {
 
         store
             .publish(GossipEntry::from_state(
-                a, &AgentHealth::Operational, "General", 1.0, true, 0.5,
+                a,
+                &AgentHealth::Operational,
+                "General",
+                1.0,
+                true,
+                0.5,
             ))
             .await;
         store
             .publish(GossipEntry::from_state(
-                b, &AgentHealth::Degraded { recovery_count: 1 }, "Support", 0.3, false, 0.1,
+                b,
+                &AgentHealth::Degraded { recovery_count: 1 },
+                "Support",
+                0.3,
+                false,
+                0.1,
             ))
             .await;
 
@@ -308,7 +317,12 @@ mod tests {
         let agent = AgentId::new();
         store
             .publish(GossipEntry::from_state(
-                agent, &AgentHealth::Operational, "General", 1.0, true, 0.0,
+                agent,
+                &AgentHealth::Operational,
+                "General",
+                1.0,
+                true,
+                0.0,
             ))
             .await;
         assert_eq!(store.len().await, 1);
@@ -318,16 +332,30 @@ mod tests {
 
     #[test]
     fn foca_mapping() {
-        assert!(matches!(foca_state_to_liveness(true, false), Liveness::Alive));
-        assert!(matches!(foca_state_to_liveness(false, true), Liveness::Suspect { .. }));
-        assert!(matches!(foca_state_to_liveness(false, false), Liveness::Down { .. }));
+        assert!(matches!(
+            foca_state_to_liveness(true, false),
+            Liveness::Alive
+        ));
+        assert!(matches!(
+            foca_state_to_liveness(false, true),
+            Liveness::Suspect { .. }
+        ));
+        assert!(matches!(
+            foca_state_to_liveness(false, false),
+            Liveness::Down { .. }
+        ));
     }
 
     #[test]
     fn health_roundtrip() {
         let agent = AgentId::new();
         let entry = GossipEntry::from_state(
-            agent, &AgentHealth::Incapacitated, "Information", 0.0, false, 0.0,
+            agent,
+            &AgentHealth::Incapacitated,
+            "Information",
+            0.0,
+            false,
+            0.0,
         );
         let snap = entry.to_snapshot();
         assert!(matches!(snap.health, AgentHealth::Incapacitated));

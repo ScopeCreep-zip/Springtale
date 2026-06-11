@@ -16,13 +16,12 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use chitchat::transport::UdpTransport;
 use chitchat::{
-    spawn_chitchat, Chitchat, ChitchatConfig, ChitchatHandle, ChitchatId,
-    FailureDetectorConfig,
+    Chitchat, ChitchatConfig, ChitchatHandle, ChitchatId, FailureDetectorConfig, spawn_chitchat,
 };
 use tokio::sync::Mutex;
 
-use crate::awareness::bridge::GossipEntry;
 use crate::awareness::NeighborSnapshot;
+use crate::awareness::bridge::GossipEntry;
 use crate::cadence::AgentId;
 use crate::error::CooperationError;
 
@@ -112,10 +111,7 @@ impl GossipStore for ChitchatGossipStore {
             state.set(Self::agent_key(&entry.agent_id, FIELD_SUCCESS), v.clone());
         }
         if let Some(v) = entry.kv.get(FIELD_ATTENTION) {
-            state.set(
-                Self::agent_key(&entry.agent_id, FIELD_ATTENTION),
-                v.clone(),
-            );
+            state.set(Self::agent_key(&entry.agent_id, FIELD_ATTENTION), v.clone());
         }
     }
 
@@ -126,8 +122,7 @@ impl GossipStore for ChitchatGossipStore {
         // the chitchat node's gossip_advertise_addr as a string — same
         // format SWIM's MemberDown event carries, which is what
         // `remove_by_peer` filters against.
-        let mut per: HashMap<(String, String), HashMap<String, String>> =
-            HashMap::new();
+        let mut per: HashMap<(String, String), HashMap<String, String>> = HashMap::new();
         let self_peer = {
             let self_id = cc.self_chitchat_id();
             self_id.gossip_advertise_addr.to_string()

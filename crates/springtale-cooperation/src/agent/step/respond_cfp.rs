@@ -40,7 +40,7 @@ mod tests {
     async fn capable_agent_at_hot_produces_bid() {
         let agent = AgentId::new();
         let tick = Tick {
-            sequence: 1,
+            sequence: crate::tick::TickId(1),
             timestamp: std::time::Instant::now(),
             intent: IntentPattern::Execute { plan_id: None },
             window: Duration::from_millis(33),
@@ -75,6 +75,7 @@ mod tests {
                 priority: 1,
                 assigned_to: None,
                 description: String::new(),
+                depends_on: Vec::new(),
             },
             Duration::from_millis(100),
             Some("github".into()),
@@ -89,7 +90,7 @@ mod tests {
     async fn cold_tier_blocks_bid() {
         let agent = AgentId::new();
         let tick = Tick {
-            sequence: 1,
+            sequence: crate::tick::TickId(1),
             timestamp: std::time::Instant::now(),
             intent: IntentPattern::Execute { plan_id: None },
             window: Duration::from_millis(33),
@@ -118,6 +119,7 @@ mod tests {
                 priority: 1,
                 assigned_to: None,
                 description: String::new(),
+                depends_on: Vec::new(),
             },
             Duration::from_millis(100),
             Some("github".into()),

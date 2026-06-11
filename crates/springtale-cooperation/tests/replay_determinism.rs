@@ -73,7 +73,7 @@ impl From<&TickReport> for ReportRecord {
             .expect("test reports always carry an action");
         Self {
             agent_id_bytes: *r.agent_id.0.as_bytes(),
-            tick_sequence: r.tick_sequence,
+            tick_sequence: r.tick_sequence.0,
             action_kind: action.kind.clone(),
             action_target: action.target.clone(),
             action_payload_hash: action.payload_hash,
@@ -88,7 +88,7 @@ impl From<&ReportRecord> for TickReport {
         let agent_id = AgentId(uuid::Uuid::from_bytes(r.agent_id_bytes));
         Self {
             agent_id,
-            tick_sequence: r.tick_sequence,
+            tick_sequence: springtale_cooperation::TickId(r.tick_sequence),
             action_taken: Some(ActionDescriptor {
                 kind: r.action_kind.clone(),
                 target: r.action_target.clone(),
@@ -105,7 +105,7 @@ fn synth_reports(tick: u64, n: usize) -> Vec<TickReport> {
     (0..n)
         .map(|i| TickReport {
             agent_id: AgentId::new(),
-            tick_sequence: tick,
+            tick_sequence: springtale_cooperation::TickId(tick),
             action_taken: Some(ActionDescriptor {
                 kind: "send".to_owned(),
                 // Pair some agents on the same target so the processor

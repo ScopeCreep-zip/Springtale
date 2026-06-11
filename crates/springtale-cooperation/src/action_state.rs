@@ -62,15 +62,15 @@ pub struct ActiveTask {
     pub state: ActionState,
     /// When this task was claimed from the blackboard.
     pub claimed_at: Instant,
-    /// Tick number when claimed (for timeout checking).
-    pub claimed_tick: u64,
+    /// Tick when claimed (for timeout checking).
+    pub claimed_tick: crate::tick::TickId,
     /// Which agent claimed this task.
     pub claimed_by: AgentId,
 }
 
 impl ActiveTask {
     /// Create a new active task in Init state.
-    pub fn new(task: SubTask, agent_id: AgentId, tick: u64) -> Self {
+    pub fn new(task: SubTask, agent_id: AgentId, tick: crate::tick::TickId) -> Self {
         Self {
             task,
             state: ActionState::Init,
@@ -112,8 +112,8 @@ impl ActiveTask {
     }
 
     /// Check if this task has been active longer than the given tick count.
-    pub fn ticks_elapsed(&self, current_tick: u64) -> u64 {
-        current_tick.saturating_sub(self.claimed_tick)
+    pub fn ticks_elapsed(&self, current_tick: crate::tick::TickId) -> u64 {
+        current_tick.delta(self.claimed_tick)
     }
 }
 
@@ -132,13 +132,14 @@ mod tests {
             priority: 1,
             assigned_to: None,
             description: "test task".to_owned(),
+            depends_on: Vec::new(),
         }
     }
 
     #[test]
     fn test_full_lifecycle_success() {
         let agent = AgentId::new();
-        let mut active = ActiveTask::new(make_task(), agent, 0);
+        let mut active = ActiveTask::new(make_task(), agent, crate::tick::TickId(0));
         assert_eq!(active.state, ActionState::Init);
 
         active.request();
@@ -155,7 +156,7 @@ mod tests {
     #[test]
     fn test_full_lifecycle_failure() {
         let agent = AgentId::new();
-        let mut active = ActiveTask::new(make_task(), agent, 0);
+        let mut active = ActiveTask::new(make_task(), agent, crate::tick::TickId(0));
         active.request();
         active.begin_execution();
         active.fail("connector timeout".to_owned());
@@ -166,7 +167,7 @@ mod tests {
     #[test]
     fn test_cancellation() {
         let agent = AgentId::new();
-        let mut active = ActiveTask::new(make_task(), agent, 0);
+        let mut active = ActiveTask::new(make_task(), agent, crate::tick::TickId(0));
         active.request();
         active.begin_execution();
         active.cancel();
@@ -182,15 +183,15 @@ mod tests {
     #[test]
     fn test_ticks_elapsed() {
         let agent = AgentId::new();
-        let active = ActiveTask::new(make_task(), agent, 10);
-        assert_eq!(active.ticks_elapsed(15), 5);
-        assert_eq!(active.ticks_elapsed(10), 0);
+        let active = ActiveTask::new(make_task(), agent, crate::tick::TickId(10));
+        assert_eq!(active.ticks_elapsed(crate::tick::TickId(15)), 5);
+        assert_eq!(active.ticks_elapsed(crate::tick::TickId(10)), 0);
     }
 
     #[test]
     fn test_cannot_cancel_terminal() {
         let agent = AgentId::new();
-        let mut active = ActiveTask::new(make_task(), agent, 0);
+        let mut active = ActiveTask::new(make_task(), agent, crate::tick::TickId(0));
         active.succeed();
         active.cancel(); // should have no effect
         assert_eq!(active.state, ActionState::Success);

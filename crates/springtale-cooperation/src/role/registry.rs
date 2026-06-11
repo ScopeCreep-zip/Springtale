@@ -34,8 +34,7 @@ use super::trait_::DynamicRoleTrait;
 /// Closure that builds a role instance given the member's current
 /// capabilities at reconstruction time. Passed capabilities let built-in
 /// roles like `General` carry the exact capability list the member had.
-pub type RoleFactory =
-    Arc<dyn Fn(&[CapabilityDecl]) -> Box<dyn DynamicRoleTrait> + Send + Sync>;
+pub type RoleFactory = Arc<dyn Fn(&[CapabilityDecl]) -> Box<dyn DynamicRoleTrait> + Send + Sync>;
 
 /// Process-wide role registry. Held inside an `Arc` by `RuntimeState`
 /// so all callers see the same set of registered roles.
@@ -60,8 +59,7 @@ impl RoleRegistry {
         registry.register(
             "Information",
             Arc::new(|caps: &[CapabilityDecl]| {
-                Box::new(InformationAgent::from_original(caps))
-                    as Box<dyn DynamicRoleTrait>
+                Box::new(InformationAgent::from_original(caps)) as Box<dyn DynamicRoleTrait>
             }),
         );
         registry.register(
@@ -116,11 +114,7 @@ impl RoleRegistry {
     /// Build a role by name. Missing names fall back to `General` with
     /// the caller-supplied capabilities — same policy as the legacy
     /// `apply::from_name` helper, so the registry is a drop-in upgrade.
-    pub fn build(
-        &self,
-        name: &str,
-        capabilities: &[CapabilityDecl],
-    ) -> Box<dyn DynamicRoleTrait> {
+    pub fn build(&self, name: &str, capabilities: &[CapabilityDecl]) -> Box<dyn DynamicRoleTrait> {
         if let Some(factory) = self.factories.get(name) {
             factory(capabilities)
         } else {
@@ -243,11 +237,7 @@ mod tests {
         // connectors ship action-filter-only roles without enumerating
         // their full capability surface.
         let registry = RoleRegistry::with_builtins();
-        registry.register_community(
-            "Watcher",
-            vec![],
-            vec!["observe".into()],
-        );
+        registry.register_community("Watcher", vec![], vec!["observe".into()]);
         let member_caps = vec![
             CapabilityDecl::new("slack.post"),
             CapabilityDecl::new("slack.read"),

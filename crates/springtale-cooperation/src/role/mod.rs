@@ -38,8 +38,7 @@ pub mod support;
 pub mod trait_;
 
 pub use apply::{
-    apply_transformation, apply_transformation_via_registry, from_name,
-    from_name_via_registry,
+    apply_transformation, apply_transformation_via_registry, from_name, from_name_via_registry,
 };
 pub use community::CommunityRole;
 pub use general::GeneralAgent;

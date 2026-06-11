@@ -16,7 +16,7 @@ pub mod trait_;
 pub mod types;
 
 pub use channel::{CfpChannels, InitiatorHandle, ParticipantHandle};
-pub use coordinator::{run_round, RoundOutcome};
+pub use coordinator::{RoundOutcome, run_round};
 pub use lifecycle::CfpState;
 pub use trait_::{Bidder, Initiator};
 pub use types::{Award, Bid, CallForProposals, CnError};

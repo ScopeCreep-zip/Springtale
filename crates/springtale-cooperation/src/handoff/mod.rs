@@ -9,5 +9,5 @@ pub mod transfer;
 mod types;
 
 pub use flex_chain::FlexibleChainPool;
-pub use transfer::{dispatch_handoff, dispatch_handoff_durable, HandoffResult};
+pub use transfer::{HandoffResult, dispatch_handoff, dispatch_handoff_durable};
 pub use types::{HandoffPayload, HandoffType};

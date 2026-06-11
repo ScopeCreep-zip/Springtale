@@ -94,18 +94,18 @@ pub fn attempt_self_rally(
 ) -> RallyResult {
     if !rally.tokens.can_rally() {
         let reason = "rally tokens exhausted".to_owned();
-        let _ = rally
-            .events
-            .send(RallyEvent::Escalated { reason: reason.clone() });
+        let _ = rally.events.send(RallyEvent::Escalated {
+            reason: reason.clone(),
+        });
         return RallyResult::EscalateToOrchestrator { reason };
     }
 
     // 1. Redistribute attention away from failing agent
     //    Other agents absorb the load (Army of Two aggro shift)
     attention.release(failing_agent, 0.2);
-    let _ = rally
-        .events
-        .send(RallyEvent::AttentionRedistributed { from: failing_agent });
+    let _ = rally.events.send(RallyEvent::AttentionRedistributed {
+        from: failing_agent,
+    });
 
     // 2. Reduce momentum — the formation lost coherence
     momentum.record_failure();
@@ -128,9 +128,9 @@ pub fn attempt_self_rally(
         }
         Err(RallyFailure::NoTokensLeft | RallyFailure::Closed) => {
             let reason = "rally tokens exhausted".to_owned();
-            let _ = rally
-                .events
-                .send(RallyEvent::Escalated { reason: reason.clone() });
+            let _ = rally.events.send(RallyEvent::Escalated {
+                reason: reason.clone(),
+            });
             RallyResult::EscalateToOrchestrator { reason }
         }
     }
@@ -146,7 +146,7 @@ mod tests {
     fn make_report(agent: AgentId, alignment: f32) -> TickReport {
         TickReport {
             agent_id: agent,
-            tick_sequence: 1,
+            tick_sequence: crate::tick::TickId(1),
             action_taken: Some(crate::cadence::ActionDescriptor {
                 kind: "work".to_owned(),
                 target: None,
@@ -172,6 +172,9 @@ mod tests {
             liveness: crate::supervision::Liveness::Alive,
             last_updated: std::time::Instant::now(),
         });
+        // Morale is now stateful/lerped; snap it to the (low) target so
+        // `local_morale()` reflects the distressed neighbor for this unit test.
+        aw.morale = aw.morale_target();
         aw
     }
 
@@ -254,7 +257,9 @@ mod tests {
         let result = attempt_self_rally(&rally, &attention, &mut momentum, a);
         assert!(matches!(
             result,
-            RallyResult::StabilizedWithCost { tokens_remaining: 2 }
+            RallyResult::StabilizedWithCost {
+                tokens_remaining: 2
+            }
         ));
         assert_eq!(rally.tokens.remaining(), 2);
     }

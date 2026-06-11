@@ -69,11 +69,7 @@ where
     /// Reactive CFP path — runner calls this when a CFP arrives on the
     /// L4 channel. Decoupled from `tick` so per-tick latency isn't
     /// gated by CFP processing.
-    pub async fn on_cfp(
-        &self,
-        cfp: &CallForProposals,
-        ctx: &AgentContext<'_>,
-    ) -> Option<Bid> {
+    pub async fn on_cfp(&self, cfp: &CallForProposals, ctx: &AgentContext<'_>) -> Option<Bid> {
         step::respond_cfp::run(&*self.bidder, cfp, ctx).await
     }
 }

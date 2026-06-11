@@ -25,11 +25,24 @@ use std::time::{Duration, Instant};
 /// added interrupt phase that has no L4D analogue — it's the
 /// "abort-and-cool" path triggered by sentinel-detected anomalies.
 pub enum PacingPhase {
-    Preparation { started: Instant },
-    Active { intensity: f32, started: Instant },
-    Peak { intensity: f32, fuel_rate: f32, started: Instant },
-    Recovery { remaining: Duration },
-    Disruption { event: String },
+    Preparation {
+        started: Instant,
+    },
+    Active {
+        intensity: f32,
+        started: Instant,
+    },
+    Peak {
+        intensity: f32,
+        fuel_rate: f32,
+        started: Instant,
+    },
+    Recovery {
+        remaining: Duration,
+    },
+    Disruption {
+        event: String,
+    },
 }
 
 pub struct PacingTransition {

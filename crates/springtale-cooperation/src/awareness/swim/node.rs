@@ -26,8 +26,8 @@ use bytes::BytesMut;
 use foca::{
     AccumulatingRuntime, BincodeCodec, Config, Foca, NoCustomBroadcast, OwnedNotification, Timer,
 };
-use rand::rngs::StdRng;
 use rand::SeedableRng;
+use rand::rngs::StdRng;
 use tokio::net::UdpSocket;
 use tokio::sync::{broadcast, mpsc};
 use tokio::task::JoinHandle;
@@ -88,20 +88,18 @@ impl SwimNode {
         let socket = UdpSocket::bind(cfg.listen)
             .await
             .map_err(|e| CooperationError::Liveness(format!("bind {}: {}", cfg.listen, e)))?;
-        let local_addr = socket.local_addr().map_err(|e| {
-            CooperationError::Liveness(format!("local_addr: {e}"))
-        })?;
+        let local_addr = socket
+            .local_addr()
+            .map_err(|e| CooperationError::Liveness(format!("local_addr: {e}")))?;
         let socket = Arc::new(socket);
 
         let me = ProcId::new(local_addr);
         let config = Config::new_lan(cfg.cluster_size);
         // bincode 2.x `standard()` — matches foca 1.0's internal dep.
-        let codec: BincodeCodec<Configuration> =
-            BincodeCodec(bincode::config::standard());
+        let codec: BincodeCodec<Configuration> = BincodeCodec(bincode::config::standard());
         // rand 0.9: `from_entropy` was renamed `from_os_rng`.
         let rng = StdRng::from_os_rng();
-        let mut foca: Foca<ProcId, _, _, NoCustomBroadcast> =
-            Foca::new(me, config, rng, codec);
+        let mut foca: Foca<ProcId, _, _, NoCustomBroadcast> = Foca::new(me, config, rng, codec);
 
         let mut rt = AccumulatingRuntime::new();
 
@@ -116,12 +114,7 @@ impl SwimNode {
 
         let (events_tx, _) = broadcast::channel(EVENT_CHANNEL_CAP);
 
-        let task = tokio::spawn(run_driver(
-            foca,
-            rt,
-            socket,
-            events_tx.clone(),
-        ));
+        let task = tokio::spawn(run_driver(foca, rt, socket, events_tx.clone()));
 
         Ok(Self {
             events: events_tx,
@@ -153,12 +146,7 @@ impl Drop for SwimNode {
 /// Main driver loop: reads UDP datagrams, fires foca timers,
 /// drains `AccumulatingRuntime`, emits `SwimEvent`s.
 async fn run_driver(
-    mut foca: Foca<
-        ProcId,
-        BincodeCodec<Configuration>,
-        StdRng,
-        NoCustomBroadcast,
-    >,
+    mut foca: Foca<ProcId, BincodeCodec<Configuration>, StdRng, NoCustomBroadcast>,
     mut rt: AccumulatingRuntime<ProcId>,
     socket: Arc<UdpSocket>,
     events: broadcast::Sender<SwimEvent>,
@@ -166,8 +154,7 @@ async fn run_driver(
     // Channel: scheduler → main loop. `to_schedule()` yields
     // `(duration, timer)`; we spawn a task that sleeps and forwards
     // the timer back here for `handle_timer`.
-    let (sched_tx, mut sched_rx) =
-        mpsc::channel::<(Duration, Timer<ProcId>)>(SPAWN_CHANNEL_CAP);
+    let (sched_tx, mut sched_rx) = mpsc::channel::<(Duration, Timer<ProcId>)>(SPAWN_CHANNEL_CAP);
     let (timer_tx, mut timer_rx) = mpsc::channel::<Timer<ProcId>>(TIMER_CHANNEL_CAP);
 
     // Scheduler task: takes (Duration, Timer) pairs, sleeps, then

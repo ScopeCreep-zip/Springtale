@@ -10,10 +10,7 @@ use crate::agent::result::AgentTickResult;
 use crate::cadence::ActionDescriptor;
 use crate::routing::trait_::TaskRouter;
 
-pub async fn run(
-    router: &dyn TaskRouter,
-    ctx: &AgentContext<'_>,
-) -> Option<AgentTickResult> {
+pub async fn run(router: &dyn TaskRouter, ctx: &AgentContext<'_>) -> Option<AgentTickResult> {
     // Tier authority enforced inside `TaskRouter::scan` — Cold-tier
     // routers return None per §7 capability table.
     //

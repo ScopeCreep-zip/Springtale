@@ -59,9 +59,7 @@ pub fn apply_transformation_via_registry(
             registry.build("Information", current_capabilities)
         }
         RoleTransformation::ToSupportAgent => registry.build("Support", &[]),
-        RoleTransformation::ReassignCapabilities(new_caps) => {
-            registry.build("General", new_caps)
-        }
+        RoleTransformation::ReassignCapabilities(new_caps) => registry.build("General", new_caps),
     }
 }
 
@@ -99,10 +97,8 @@ mod tests {
 
     #[test]
     fn apply_to_information_filters_capabilities() {
-        let caps: Vec<CapabilityDecl> = vec![
-            "github.read_issues".into(),
-            "github.create_issue".into(),
-        ];
+        let caps: Vec<CapabilityDecl> =
+            vec!["github.read_issues".into(), "github.create_issue".into()];
         let role = apply_transformation(&caps, &RoleTransformation::ToInformationAgent);
         assert_eq!(role.name(), "Information");
         assert_eq!(role.capabilities().len(), 1);
@@ -118,10 +114,7 @@ mod tests {
     fn apply_reassign_creates_general_with_new_caps() {
         let role = apply_transformation(
             &[],
-            &RoleTransformation::ReassignCapabilities(vec![
-                "monitoring".into(),
-                "logging".into(),
-            ]),
+            &RoleTransformation::ReassignCapabilities(vec!["monitoring".into(), "logging".into()]),
         );
         assert_eq!(role.name(), "General");
         assert_eq!(role.capabilities().len(), 2);

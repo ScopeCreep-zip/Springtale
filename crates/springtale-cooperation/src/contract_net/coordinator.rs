@@ -89,7 +89,7 @@ async fn collect_bids(
     cfp_id: uuid::Uuid,
     deadline: Duration,
 ) -> Vec<Bid> {
-    use tokio::time::{timeout_at, Instant};
+    use tokio::time::{Instant, timeout_at};
     let stop_at = Instant::now() + deadline;
     let mut bids = Vec::new();
     loop {

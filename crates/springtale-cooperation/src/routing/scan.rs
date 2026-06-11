@@ -45,6 +45,7 @@ mod tests {
             priority,
             assigned_to: None,
             description: String::new(),
+            depends_on: Vec::new(),
         })
     }
 
@@ -65,8 +66,7 @@ mod tests {
     fn scan_returns_none_on_empty_index() {
         let index = CapabilityIndex::new();
         let claims = ClaimManager::new();
-        let result =
-            scan_and_claim(&index, &claims, AgentId::new(), &["github".into()]).unwrap();
+        let result = scan_and_claim(&index, &claims, AgentId::new(), &["github".into()]).unwrap();
         assert!(result.is_none());
     }
 

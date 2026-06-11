@@ -19,9 +19,21 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 use crate::cadence::{AgentId, TickReport};
+use crate::momentum::MomentumTier;
 use crate::supervision::Liveness;
 use crate::types::AgentHealth;
-use crate::momentum::MomentumTier;
+
+/// §A.4 `percent_update_per_tick` — morale lerps this fraction toward its target
+/// each tick (Total War WH3 default 0.15). Gradual routing, not snap changes.
+pub const MORALE_LERP: f32 = 0.15;
+/// §A.4 `minimium_increment_update_per_tick` (normalized to the 0–1 morale
+/// scale) — the smallest non-zero step so morale always converges to its target.
+pub const MORALE_MIN_STEP: f32 = 0.01;
+/// §A.4 `max_routing_friends_to_consider` — at most this many distressed
+/// neighbors contribute to the morale-drop contagion, bounding panic spread
+/// (decisions §11 #7). The WH3 `max_routing_enemies_to_consider = 5` cap has no
+/// analog in a cooperative (non-adversarial) formation, so only this cap applies.
+pub const MAX_CONTAGION_DISTRESSED: usize = 4;
 
 /// Role identity as surfaced across gossip and the canvas UI.
 ///
@@ -117,6 +129,11 @@ pub struct LocalAwareness {
     pub formation_momentum: MomentumTier,
     /// Recent tick reports from neighbors (Warming+ only).
     pub last_tick_reports: Vec<TickReport>,
+    /// Lerped Total War morale (0.0–1.0), §A.4. Advanced each tick by
+    /// [`Self::tick_morale`] toward [`Self::morale_target`] at [`MORALE_LERP`];
+    /// read via [`Self::local_morale`]. Stateful (not instantaneous) so routing
+    /// is gradual and bounded, per decisions §11 #8.
+    pub morale: f32,
 }
 
 impl Default for LocalAwareness {
@@ -125,6 +142,7 @@ impl Default for LocalAwareness {
             neighbor_states: HashMap::new(),
             formation_momentum: MomentumTier::Cold,
             last_tick_reports: Vec::new(),
+            morale: 0.5, // neutral
         }
     }
 }
@@ -166,27 +184,31 @@ impl LocalAwareness {
             .count()
     }
 
-    /// Compute a local "morale" score (0.0-1.0) from neighbor states.
+    /// Target morale (0.0–1.0) computed from the CURRENT neighbor states — the
+    /// value [`Self::local_morale`] gradually lerps toward.
     ///
-    /// Per Total War: morale drops when nearby allies are routing,
-    /// flanked, or taking heavy casualties. It rises when the general
-    /// is nearby and allies are winning.
-    pub fn local_morale(&self) -> f32 {
+    /// Per Total War: morale drops when nearby allies are routing, flanked, or
+    /// taking heavy casualties; it rises with momentum. The distress contagion
+    /// is bounded to [`MAX_CONTAGION_DISTRESSED`] neighbors so panic cannot
+    /// spread unboundedly (decisions §11 #7).
+    pub fn morale_target(&self) -> f32 {
         if self.neighbor_states.is_empty() {
             return 0.5; // neutral when alone
         }
 
         let total = self.neighbor_states.len() as f32;
         let healthy = self.healthy_neighbor_count() as f32;
-        let distressed = self.distressed_neighbor_count() as f32;
+        // Bounded contagion: only the first MAX_CONTAGION_DISTRESSED distressed
+        // neighbors pull morale down (WH3 friends cap).
+        let distressed = self
+            .distressed_neighbor_count()
+            .min(MAX_CONTAGION_DISTRESSED) as f32;
 
-        // Base morale from neighbor health ratio
+        // Base morale from neighbor health ratio.
         let health_factor = healthy / total;
-
-        // Penalty for distressed neighbors (cascade risk)
+        // Penalty for distressed neighbors (cascade risk).
         let distress_penalty = distressed / total * 0.3;
-
-        // Momentum bonus
+        // Momentum bonus.
         let momentum_bonus = match self.formation_momentum {
             MomentumTier::Cold => 0.0,
             MomentumTier::Warming => 0.05,
@@ -195,6 +217,30 @@ impl LocalAwareness {
         };
 
         (health_factor - distress_penalty + momentum_bonus).clamp(0.0, 1.0)
+    }
+
+    /// Advance the lerped morale one tick toward [`Self::morale_target`] at
+    /// [`MORALE_LERP`], with a [`MORALE_MIN_STEP`] floor so it always converges
+    /// (never overshooting). Total War WH3 morale FSM (§A.4) — gradual routing.
+    pub fn tick_morale(&mut self) {
+        let diff = self.morale_target() - self.morale;
+        if diff.abs() <= f32::EPSILON {
+            return;
+        }
+        let mut step = diff * MORALE_LERP;
+        if step.abs() < MORALE_MIN_STEP {
+            step = MORALE_MIN_STEP.copysign(diff);
+        }
+        if step.abs() > diff.abs() {
+            step = diff; // don't overshoot
+        }
+        self.morale = (self.morale + step).clamp(0.0, 1.0);
+    }
+
+    /// The current (lerped) local morale (0.0–1.0). Stateful — advanced by
+    /// [`Self::tick_morale`] each tick rather than recomputed instantaneously.
+    pub fn local_morale(&self) -> f32 {
+        self.morale
     }
 
     /// Record tick reports from neighbors (for Warming+ awareness).
@@ -234,7 +280,7 @@ mod tests {
         let awareness = LocalAwareness::default();
         assert_eq!(awareness.healthy_neighbor_count(), 0);
         assert_eq!(awareness.distressed_neighbor_count(), 0);
-        assert!((awareness.local_morale() - 0.5).abs() < f32::EPSILON);
+        assert!((awareness.morale_target() - 0.5).abs() < f32::EPSILON);
     }
 
     #[test]
@@ -245,7 +291,7 @@ mod tests {
         awareness.update_neighbor(make_snapshot(id1, AgentHealth::Operational));
         awareness.update_neighbor(make_snapshot(id2, AgentHealth::Operational));
         assert_eq!(awareness.healthy_neighbor_count(), 2);
-        assert!(awareness.local_morale() > 0.9);
+        assert!(awareness.morale_target() > 0.9);
     }
 
     #[test]
@@ -255,7 +301,7 @@ mod tests {
         let id2 = AgentId::new();
         awareness.update_neighbor(make_snapshot(id1, AgentHealth::Operational));
         awareness.update_neighbor(make_snapshot(id2, AgentHealth::Incapacitated));
-        assert!(awareness.local_morale() < 0.7);
+        assert!(awareness.morale_target() < 0.7);
         assert_eq!(awareness.distressed_neighbor_count(), 1);
     }
 
@@ -267,12 +313,59 @@ mod tests {
         awareness.update_neighbor(make_snapshot(AgentId::new(), AgentHealth::Incapacitated));
 
         awareness.formation_momentum = MomentumTier::Cold;
-        let cold_morale = awareness.local_morale();
+        let cold_morale = awareness.morale_target();
 
         awareness.formation_momentum = MomentumTier::Fever;
-        let fever_morale = awareness.local_morale();
+        let fever_morale = awareness.morale_target();
 
         assert!(fever_morale > cold_morale);
+    }
+
+    #[test]
+    fn morale_lerps_toward_target_gradually() {
+        let mut awareness = LocalAwareness::default();
+        // All-distressed neighbors ⇒ a low target; morale starts neutral (0.5).
+        for _ in 0..3 {
+            awareness.update_neighbor(make_snapshot(AgentId::new(), AgentHealth::Incapacitated));
+        }
+        let target = awareness.morale_target();
+        assert!(target < 0.5, "distressed neighbors lower the target");
+
+        // One tick moves PART of the way (lerp), not all the way (no snap).
+        let before = awareness.local_morale();
+        awareness.tick_morale();
+        let after = awareness.local_morale();
+        assert!(after < before, "morale moved toward the lower target");
+        assert!(after > target, "but did not snap to target in one tick");
+
+        // Many ticks converge to the target.
+        for _ in 0..100 {
+            awareness.tick_morale();
+        }
+        assert!(
+            (awareness.local_morale() - target).abs() < 0.02,
+            "converges to target"
+        );
+    }
+
+    #[test]
+    fn morale_contagion_is_bounded() {
+        // More than MAX_CONTAGION_DISTRESSED distressed neighbors must not pull
+        // the target below what exactly MAX_CONTAGION_DISTRESSED would — panic
+        // spread is capped (WH3 friends cap).
+        let mut capped = LocalAwareness::default();
+        for _ in 0..super::MAX_CONTAGION_DISTRESSED {
+            capped.update_neighbor(make_snapshot(AgentId::new(), AgentHealth::Incapacitated));
+        }
+        let cap_target = capped.morale_target();
+
+        let mut over = LocalAwareness::default();
+        for _ in 0..(super::MAX_CONTAGION_DISTRESSED + 4) {
+            over.update_neighbor(make_snapshot(AgentId::new(), AgentHealth::Incapacitated));
+        }
+        // The penalty numerator is capped, so more distressed neighbors only
+        // raise the denominator — the target never drops below the capped case.
+        assert!(over.morale_target() >= cap_target);
     }
 
     #[test]
@@ -294,7 +387,7 @@ mod tests {
 
         let report = TickReport {
             agent_id: other_id,
-            tick_sequence: 1,
+            tick_sequence: crate::tick::TickId(1),
             action_taken: Some(crate::cadence::ActionDescriptor {
                 kind: "write".to_owned(),
                 target: None,

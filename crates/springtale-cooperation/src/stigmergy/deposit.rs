@@ -117,7 +117,9 @@ mod tests {
         let store = SurfaceStore::new();
         let s = store.deposit(
             AgentId::new(),
-            SurfaceType::Active { remaining: Duration::from_secs(10) },
+            SurfaceType::Active {
+                remaining: Duration::from_secs(10),
+            },
             serde_json::json!({}),
             Some(Duration::from_secs(5)),
             None,
@@ -153,11 +155,20 @@ mod tests {
         let store = SurfaceStore::new();
         let s = store.deposit(
             AgentId::new(),
-            SurfaceType::Primed { trigger: ActionDescriptor { kind: "fire".into(), target: None, payload_hash: 0 } },
+            SurfaceType::Primed {
+                trigger: ActionDescriptor {
+                    kind: "fire".into(),
+                    target: None,
+                    payload_hash: 0,
+                },
+            },
             serde_json::json!({}),
             None,
             Some(CapabilityDecl::new("github")),
         );
-        assert_eq!(s.capability.as_ref().map(|c| c.name.as_str()), Some("github"));
+        assert_eq!(
+            s.capability.as_ref().map(|c| c.name.as_str()),
+            Some("github")
+        );
     }
 }

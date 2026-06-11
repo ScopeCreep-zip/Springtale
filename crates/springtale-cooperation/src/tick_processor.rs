@@ -63,15 +63,14 @@ pub fn process_tick_with_context(
     // (detect_from_records is called first internally), so combining
     // both sources is the complete view. Dedup is the caller's job if
     // they care about counting unique events rather than events-per-source.
-    let record_events =
-        interference::detector::detect_from_records_with_history(
-            member_reports
-                .first()
-                .map(|r| r.tick_sequence)
-                .unwrap_or(0),
-            &action_records,
-            history,
-        );
+    let record_events = interference::detector::detect_from_records_with_history(
+        member_reports
+            .first()
+            .map(|r| r.tick_sequence)
+            .unwrap_or(crate::tick::TickId::ZERO),
+        &action_records,
+        history,
+    );
     interferences.extend(record_events);
 
     let all_succeeded = !member_reports.is_empty()
@@ -112,7 +111,7 @@ mod tests {
         use crate::cadence::ActionDescriptor;
         TickReport {
             agent_id: agent,
-            tick_sequence: 1,
+            tick_sequence: crate::tick::TickId(1),
             action_taken: Some(ActionDescriptor {
                 kind: "work".to_owned(),
                 target: None,

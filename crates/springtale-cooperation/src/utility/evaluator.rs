@@ -96,7 +96,10 @@ mod tests {
 
     #[test]
     fn test_linear_boundaries() {
-        let curve = Linear { min: 0.0, max: 100.0 };
+        let curve = Linear {
+            min: 0.0,
+            max: 100.0,
+        };
         assert!((curve.evaluate(0.0) - 0.0).abs() < f32::EPSILON);
         assert!((curve.evaluate(50.0) - 0.5).abs() < f32::EPSILON);
         assert!((curve.evaluate(100.0) - 1.0).abs() < f32::EPSILON);
@@ -104,22 +107,36 @@ mod tests {
 
     #[test]
     fn test_linear_clamps() {
-        let curve = Linear { min: 0.0, max: 100.0 };
+        let curve = Linear {
+            min: 0.0,
+            max: 100.0,
+        };
         assert!((curve.evaluate(-10.0) - 0.0).abs() < f32::EPSILON);
         assert!((curve.evaluate(200.0) - 1.0).abs() < f32::EPSILON);
     }
 
     #[test]
     fn test_power_diminishing_returns() {
-        let curve = Power { min: 0.0, max: 1.0, exponent: 0.5 };
+        let curve = Power {
+            min: 0.0,
+            max: 1.0,
+            exponent: 0.5,
+        };
         // sqrt(0.5) ≈ 0.707 — already high at midpoint
         let mid = curve.evaluate(0.5);
-        assert!(mid > 0.6, "diminishing returns: mid ({mid}) should be > 0.6");
+        assert!(
+            mid > 0.6,
+            "diminishing returns: mid ({mid}) should be > 0.6"
+        );
     }
 
     #[test]
     fn test_power_accelerating() {
-        let curve = Power { min: 0.0, max: 1.0, exponent: 2.0 };
+        let curve = Power {
+            min: 0.0,
+            max: 1.0,
+            exponent: 2.0,
+        };
         // 0.5^2 = 0.25 — still low at midpoint
         let mid = curve.evaluate(0.5);
         assert!(mid < 0.3, "accelerating: mid ({mid}) should be < 0.3");
@@ -127,14 +144,23 @@ mod tests {
 
     #[test]
     fn test_sigmoid_midpoint() {
-        let curve = Sigmoid { midpoint: 0.5, steepness: 10.0 };
+        let curve = Sigmoid {
+            midpoint: 0.5,
+            steepness: 10.0,
+        };
         let mid = curve.evaluate(0.5);
-        assert!((mid - 0.5).abs() < 0.01, "sigmoid midpoint should be ~0.5, got {mid}");
+        assert!(
+            (mid - 0.5).abs() < 0.01,
+            "sigmoid midpoint should be ~0.5, got {mid}"
+        );
     }
 
     #[test]
     fn test_sigmoid_dead_zones() {
-        let curve = Sigmoid { midpoint: 0.5, steepness: 10.0 };
+        let curve = Sigmoid {
+            midpoint: 0.5,
+            steepness: 10.0,
+        };
         let low = curve.evaluate(0.1);
         let high = curve.evaluate(0.9);
         assert!(low < 0.05, "sigmoid low end should be near 0, got {low}");

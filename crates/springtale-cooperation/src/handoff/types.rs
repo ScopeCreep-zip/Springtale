@@ -110,7 +110,9 @@ mod tests {
             receiver: b,
             payload,
         };
-        assert!(matches!(direct, HandoffType::Direct { sender, receiver, .. } if sender == a && receiver == b));
+        assert!(
+            matches!(direct, HandoffType::Direct { sender, receiver, .. } if sender == a && receiver == b)
+        );
 
         let info = HandoffType::InformationTransfer {
             source: a,
@@ -118,7 +120,9 @@ mod tests {
             intelligence: "PR #42 needs review".into(),
             perishable: true,
         };
-        assert!(matches!(info, HandoffType::InformationTransfer { perishable, ref recipients, .. } if perishable && recipients.len() == 1));
+        assert!(
+            matches!(info, HandoffType::InformationTransfer { perishable, ref recipients, .. } if perishable && recipients.len() == 1)
+        );
 
         let dep = HandoffType::SequentialDependency {
             enabler: a,
@@ -129,6 +133,8 @@ mod tests {
                 payload_hash: 0,
             },
         };
-        assert!(matches!(dep, HandoffType::SequentialDependency { enabler, enabled, .. } if enabler == a && enabled == b));
+        assert!(
+            matches!(dep, HandoffType::SequentialDependency { enabler, enabled, .. } if enabler == a && enabled == b)
+        );
     }
 }

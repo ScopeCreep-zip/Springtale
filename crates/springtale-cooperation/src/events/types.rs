@@ -153,7 +153,7 @@ pub enum CooperationEvent {
     MemberMarkedDown {
         formation_id: FormationId,
         agent: AgentId,
-        since_tick: u64,
+        since_tick: crate::tick::TickId,
     },
     /// Supervisor flagged escalation_pending (read by L6 next tick).
     SupervisorEscalated {
@@ -256,7 +256,10 @@ mod tests {
         };
         let json = serde_json::to_value(&env).unwrap();
         assert_eq!(json["event"]["kind"], "intervention_fired");
-        assert_eq!(json["event"]["intervention"]["intervention"], "escalate_to_user");
+        assert_eq!(
+            json["event"]["intervention"]["intervention"],
+            "escalate_to_user"
+        );
     }
 
     #[test]

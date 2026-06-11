@@ -9,7 +9,7 @@ use std::time::Duration;
 use crate::cadence::AgentId;
 use crate::stigmergy::types::{Surface, SurfaceId, SurfaceType};
 
-use super::reaction::{surface_tag, ReactionOutput};
+use super::reaction::{ReactionOutput, surface_tag};
 use super::table::ReactionTable;
 
 /// Result of composing a new surface with existing surfaces.
@@ -195,10 +195,12 @@ mod tests {
         let incoming = make_surface(COOLDOWN, agent);
 
         let result = compose_surfaces(&existing, &incoming, &table, agent);
-        assert!(result
-            .surviving
-            .iter()
-            .any(|s| surface_tag(&s.surface_type) == URGENT_RESPONSE));
+        assert!(
+            result
+                .surviving
+                .iter()
+                .any(|s| surface_tag(&s.surface_type) == URGENT_RESPONSE)
+        );
         assert!(result.consumed.is_empty()); // existing survives under ConsumeB
     }
 
@@ -216,10 +218,12 @@ mod tests {
         let result = compose_surfaces(&existing, &incoming, &table, agent);
         // other_signal has no reaction with high_attention → survives
         // fresh_input + high_attention → urgent_response (transform, both consumed)
-        assert!(result
-            .surviving
-            .iter()
-            .any(|s| surface_tag(&s.surface_type) == "other_signal"));
+        assert!(
+            result
+                .surviving
+                .iter()
+                .any(|s| surface_tag(&s.surface_type) == "other_signal")
+        );
         assert_eq!(result.consumed.len(), 1); // fresh_input consumed
     }
 }

@@ -49,11 +49,7 @@ impl GlobalKnowledgeStore for InMemoryKnowledgeStore {
         self.notes.insert(note.formation_id, note);
     }
 
-    async fn retrieve_relevant(
-        &self,
-        query: &RetrievalQuery,
-        k: usize,
-    ) -> Vec<PriorOutcome> {
+    async fn retrieve_relevant(&self, query: &RetrievalQuery, k: usize) -> Vec<PriorOutcome> {
         if k == 0 {
             return Vec::new();
         }
@@ -104,10 +100,7 @@ pub(super) fn score_against(query: &RetrievalQuery, note: &OutcomeNote) -> f32 {
 /// `reason`) that differ between formations even when the intent
 /// category is the same. Ranking should treat `Execute { plan_id: A }`
 /// and `Execute { plan_id: B }` as same-intent for retrieval purposes.
-fn intent_variant_eq(
-    a: &crate::cadence::IntentPattern,
-    b: &crate::cadence::IntentPattern,
-) -> bool {
+fn intent_variant_eq(a: &crate::cadence::IntentPattern, b: &crate::cadence::IntentPattern) -> bool {
     use crate::cadence::IntentPattern as I;
     matches!(
         (a, b),
@@ -154,7 +147,10 @@ mod tests {
     async fn ranks_by_intent_then_connector_overlap() {
         let store = InMemoryKnowledgeStore::new();
         store
-            .record_outcome(note(&["slack", "github"], IntentPattern::Execute { plan_id: None }))
+            .record_outcome(note(
+                &["slack", "github"],
+                IntentPattern::Execute { plan_id: None },
+            ))
             .await;
         store
             .record_outcome(note(

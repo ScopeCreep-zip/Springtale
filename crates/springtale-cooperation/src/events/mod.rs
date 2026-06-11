@@ -26,10 +26,7 @@ static EVENT_SEQ: AtomicU64 = AtomicU64::new(0);
 ///
 /// Optional sender — `None` means headless / test mode (matches the
 /// `canvas_tx: Option<...>` precedent in `TickDeps`).
-pub fn emit(
-    sender: Option<&broadcast::Sender<CooperationEventEnvelope>>,
-    event: CooperationEvent,
-) {
+pub fn emit(sender: Option<&broadcast::Sender<CooperationEventEnvelope>>, event: CooperationEvent) {
     let Some(tx) = sender else {
         return;
     };

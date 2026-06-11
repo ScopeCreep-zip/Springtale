@@ -12,9 +12,7 @@
 use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
-use criterion::{
-    BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main,
-};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 
 use springtale_cooperation::awareness::{LocalAwareness, NeighborSnapshot, RoleSignature};
 use springtale_cooperation::cadence::{ActionDescriptor, AgentId, TickReport};
@@ -26,7 +24,7 @@ use springtale_cooperation::types::AgentHealth;
 fn synth_report(agent: AgentId, alignment: f32) -> TickReport {
     TickReport {
         agent_id: agent,
-        tick_sequence: 1,
+        tick_sequence: springtale_cooperation::TickId(1),
         action_taken: Some(ActionDescriptor {
             kind: "work".to_owned(),
             target: None,
@@ -51,6 +49,9 @@ fn synth_low_morale_awareness() -> LocalAwareness {
         liveness: Liveness::Alive,
         last_updated: Instant::now(),
     });
+    // Morale is stateful/lerped; snap to the low target so the benchmark
+    // exercises the cascade-detected path (not the no-cascade path).
+    aw.morale = aw.morale_target();
     aw
 }
 

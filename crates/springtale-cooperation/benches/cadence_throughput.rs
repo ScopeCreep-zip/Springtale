@@ -19,9 +19,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use criterion::{
-    BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main,
-};
+use criterion::{BenchmarkId, Criterion, Throughput, black_box, criterion_group, criterion_main};
 
 use springtale_cooperation::cadence::CadenceBus;
 

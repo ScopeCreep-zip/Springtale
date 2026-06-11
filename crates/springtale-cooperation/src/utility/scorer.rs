@@ -94,8 +94,8 @@ impl<M: Measure> MeasuredScorer<M> {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
-    use super::*;
     use super::super::measure::WeightedSum;
+    use super::*;
 
     #[test]
     fn test_all_or_nothing_pass() {
@@ -148,7 +148,9 @@ mod tests {
 
     #[test]
     fn test_measured_scorer() {
-        let scorer = MeasuredScorer { measure: WeightedSum };
+        let scorer = MeasuredScorer {
+            measure: WeightedSum,
+        };
         let result = scorer.evaluate(&[(0.8, 0.5), (0.6, 0.5)]);
         assert!((result - 0.7).abs() < 0.01);
     }

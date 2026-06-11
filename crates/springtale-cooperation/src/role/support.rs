@@ -66,7 +66,13 @@ mod tests {
     #[test]
     fn allows_support_actions() {
         let agent = SupportAgent::new();
-        for kind in ["notify_team", "alert_channel", "read_status", "monitor_ci", "assist_deploy"] {
+        for kind in [
+            "notify_team",
+            "alert_channel",
+            "read_status",
+            "monitor_ci",
+            "assist_deploy",
+        ] {
             let action = ActionDescriptor {
                 kind: kind.to_owned(),
                 target: None,

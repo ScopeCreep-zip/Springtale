@@ -8,11 +8,12 @@
 use std::collections::{HashMap, HashSet};
 
 use crate::cadence::AgentId;
+use crate::tick::TickId;
 use crate::types::WorkspaceKey;
 
 /// A detected interference event between two agents.
 pub struct InterferenceEvent {
-    pub tick_sequence: u64,
+    pub tick_sequence: TickId,
     pub agent_a: AgentId,
     pub agent_b: AgentId,
     pub interference_type: InterferenceType,
@@ -115,7 +116,11 @@ mod tests {
             .with_side_effect("rate_limit:github", 0.3);
 
         assert_eq!(record.read_set.len(), 1);
-        assert!(record.read_set.contains(&WorkspaceKey::from("config:api_key")));
+        assert!(
+            record
+                .read_set
+                .contains(&WorkspaceKey::from("config:api_key"))
+        );
         assert_eq!(record.write_set.len(), 1);
         assert_eq!(
             record.write_set.get(&WorkspaceKey::from("issues:42")),
@@ -131,13 +136,13 @@ mod tests {
         let a = AgentId::new();
         let b = AgentId::new();
         let event = InterferenceEvent {
-            tick_sequence: 42,
+            tick_sequence: TickId(42),
             agent_a: a,
             agent_b: b,
             interference_type: InterferenceType::ResourceConflict,
             severity: 0.8,
         };
-        assert_eq!(event.tick_sequence, 42);
+        assert_eq!(event.tick_sequence, TickId(42));
         assert_eq!(event.agent_a, a);
         assert_eq!(event.agent_b, b);
         assert!((event.severity - 0.8).abs() < f32::EPSILON);

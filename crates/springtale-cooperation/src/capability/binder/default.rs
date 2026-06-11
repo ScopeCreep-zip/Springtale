@@ -29,8 +29,7 @@ mod tests {
 
     #[test]
     fn cold_returns_base_plus_read_env_only() {
-        let out =
-            DefaultBinder.effective(&["github".into()], MomentumTier::Cold);
+        let out = DefaultBinder.effective(&["github".into()], MomentumTier::Cold);
         assert!(out.contains(&"github".into()));
         assert!(out.contains(&"read_env".into()));
         assert!(!out.contains(&"consensus".into()));
@@ -40,7 +39,10 @@ mod tests {
     fn fever_returns_full_unlocked_set() {
         let out = DefaultBinder.effective(&[], MomentumTier::Fever);
         for expected in ["read_env", "consensus", "ai_call", "recruit"] {
-            assert!(out.contains(&CapabilityDecl::new(expected)), "missing {expected}");
+            assert!(
+                out.contains(&CapabilityDecl::new(expected)),
+                "missing {expected}"
+            );
         }
     }
 

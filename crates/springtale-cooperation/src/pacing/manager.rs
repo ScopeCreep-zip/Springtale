@@ -54,10 +54,7 @@ impl PacingManager {
 
         match &self.current_phase {
             PacingPhase::Preparation { started } => {
-                let has_action = tick_result
-                    .reports
-                    .iter()
-                    .any(|r| r.action_taken.is_some());
+                let has_action = tick_result.reports.iter().any(|r| r.action_taken.is_some());
                 if has_action && tick_result.all_succeeded {
                     let from = self.phase_name();
                     let new_intensity = 0.3;
@@ -232,7 +229,7 @@ mod tests {
         FormationTickResult {
             reports: vec![TickReport {
                 agent_id: AgentId::new(),
-                tick_sequence: 1,
+                tick_sequence: crate::tick::TickId(1),
                 action_taken: Some(ActionDescriptor {
                     kind: "send_message".to_owned(),
                     target: None,
@@ -291,9 +288,14 @@ mod tests {
         pm.set_phase(PacingPhase::Recovery {
             remaining: Duration::from_secs(1),
         });
-        assert!(pm
-            .evaluate_transition(&empty_tick(), &MomentumState::default(), Duration::from_millis(500))
-            .is_none());
+        assert!(
+            pm.evaluate_transition(
+                &empty_tick(),
+                &MomentumState::default(),
+                Duration::from_millis(500)
+            )
+            .is_none()
+        );
         let t = pm.evaluate_transition(
             &empty_tick(),
             &MomentumState::default(),
@@ -315,7 +317,10 @@ mod tests {
             &MomentumState::default(),
             Duration::from_millis(100),
         );
-        assert!(pm.allow_action(), "after transition to Active, budget resets");
+        assert!(
+            pm.allow_action(),
+            "after transition to Active, budget resets"
+        );
     }
 
     #[test]

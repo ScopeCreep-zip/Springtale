@@ -14,7 +14,7 @@
 use std::sync::Arc;
 
 use arc_swap::ArcSwapOption;
-use governor::{clock::DefaultClock, state::InMemoryState, RateLimiter};
+use governor::{RateLimiter, clock::DefaultClock, state::InMemoryState};
 
 use super::quotas::quota_for_phase;
 use super::types::PacingPhase;
@@ -55,9 +55,8 @@ impl GovernorRateLimiter {
     /// `PacingManager::set_phase` on every phase transition; readers see
     /// the new quota on their next `check()` without locking.
     pub fn rebuild(&self, phase: &PacingPhase) {
-        self.limiter.store(
-            quota_for_phase(phase).map(|q| Arc::new(RateLimiter::direct(q))),
-        );
+        self.limiter
+            .store(quota_for_phase(phase).map(|q| Arc::new(RateLimiter::direct(q))));
     }
 }
 
@@ -138,11 +137,9 @@ mod tests {
     /// its next check.
     #[tokio::test]
     async fn arcswap_concurrent_reader_sees_new_phase() {
-        let lim = Arc::new(GovernorRateLimiter::for_phase(
-            &PacingPhase::Recovery {
-                remaining: Duration::from_secs(30),
-            },
-        ));
+        let lim = Arc::new(GovernorRateLimiter::for_phase(&PacingPhase::Recovery {
+            remaining: Duration::from_secs(30),
+        }));
         // Reader exhausts the 1/min Recovery budget.
         assert!(lim.check());
         assert!(!lim.check(), "Recovery 1/min exhausted");

@@ -10,10 +10,8 @@ pub mod store;
 pub mod types;
 
 pub use external_workspaces::{
-    merge_gossip_delta, DiscoveredWorkspace, ExternalWorkspaceDirectory,
-    ExternalWorkspaceEntry, WorkspaceProvenance,
+    DiscoveredWorkspace, ExternalWorkspaceDirectory, ExternalWorkspaceEntry, WorkspaceProvenance,
+    merge_gossip_delta,
 };
 pub use store::{BackendStore, Store, StoreError};
-pub use types::{
-    Convention, CooperationPattern, DomainEntry, SharedMentalModel, VocabularyEntry,
-};
+pub use types::{Convention, CooperationPattern, DomainEntry, SharedMentalModel, VocabularyEntry};

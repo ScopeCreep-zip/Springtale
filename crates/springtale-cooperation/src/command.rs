@@ -30,12 +30,42 @@ pub enum FormationCommand {
         formation_id: FormationId,
         connector_name: String,
     },
+    /// Recruit a new member at Fever tier (§7 momentum unlock). Like
+    /// `AddMember`, but the bot only honors it when the formation has earned
+    /// Fever momentum (`MomentumState::can_recruit`) and guard mode is off — the
+    /// recruit is the formation's own earned capability, not an operator add.
+    Recruit {
+        formation_id: FormationId,
+        connector_name: String,
+    },
     /// Manually trigger self-rally (from RALLY button in UI).
     Rally { formation_id: FormationId },
     /// Remove a member (connector) from a live formation.
     RemoveMember {
         formation_id: FormationId,
         connector_name: String,
+    },
+    /// §5.5 source 2 — formation self-governance: open a consensus vote
+    /// to change the formation's intent. Joint Intention Theory: the
+    /// joint goal changes only via mutual belief (a vote), never by one
+    /// member's private belief. Honored only at Fever
+    /// (`MomentumState::can_consensus`); below that the command is
+    /// rejected with a log line. Contrast `ChangeIntent`, which is the
+    /// §3.2 orchestrator/user path and applies immediately — the user
+    /// outranks the formation.
+    ProposeIntentChange {
+        formation_id: FormationId,
+        intent: IntentPattern,
+    },
+    /// Cast a ballot on an open consensus vote (§11). The vote resolves
+    /// in the `resolve_consensus` tick step once quorum, override, or
+    /// deadline is reached. `approve = false` votes for the "deny"
+    /// option on two-option votes.
+    CastVote {
+        formation_id: FormationId,
+        vote_id: uuid::Uuid,
+        voter: crate::cadence::AgentId,
+        approve: bool,
     },
 }
 
@@ -47,17 +77,23 @@ pub fn parse_intent(intent_str: &str) -> IntentPattern {
     match intent_str {
         "Reconnoiter" => {
             tracing::debug!("parse_intent: Reconnoiter without target metadata");
-            IntentPattern::Reconnoiter { target: "unspecified".into() }
-        },
+            IntentPattern::Reconnoiter {
+                target: "unspecified".into(),
+            }
+        }
         "Execute" => IntentPattern::Execute { plan_id: None },
         "Stabilize" => {
             tracing::debug!("parse_intent: Stabilize without reason metadata");
-            IntentPattern::Stabilize { reason: "unspecified".into() }
-        },
+            IntentPattern::Stabilize {
+                reason: "unspecified".into(),
+            }
+        }
         "Surge" => {
             tracing::debug!("parse_intent: Surge without objective metadata");
-            IntentPattern::Surge { objective: "unspecified".into() }
-        },
+            IntentPattern::Surge {
+                objective: "unspecified".into(),
+            }
+        }
         _ => IntentPattern::Stabilize {
             reason: format!("unknown intent: {intent_str}").into(),
         },
@@ -95,21 +131,22 @@ mod tests {
 
     #[test]
     fn test_parse_surge() {
-        assert!(matches!(
-            parse_intent("Surge"),
-            IntentPattern::Surge { .. }
-        ));
+        assert!(matches!(parse_intent("Surge"), IntentPattern::Surge { .. }));
     }
 
     #[test]
     fn test_parse_unknown_defaults_to_stabilize() {
         let result = parse_intent("FooBar");
-        assert!(matches!(result, IntentPattern::Stabilize { reason } if reason.contains("unknown")));
+        assert!(
+            matches!(result, IntentPattern::Stabilize { reason } if reason.contains("unknown"))
+        );
     }
 
     #[test]
     fn test_parse_empty_defaults_to_stabilize() {
         let result = parse_intent("");
-        assert!(matches!(result, IntentPattern::Stabilize { reason } if reason.contains("unknown")));
+        assert!(
+            matches!(result, IntentPattern::Stabilize { reason } if reason.contains("unknown"))
+        );
     }
 }

@@ -41,8 +41,7 @@ impl CapabilityIndex {
         if let Some(bucket) = self.buckets.get(capability)
             && let Ok(mut heap) = bucket.lock()
         {
-            let remaining: BinaryHeap<_> =
-                heap.drain().filter(|t| t.id() != task_id).collect();
+            let remaining: BinaryHeap<_> = heap.drain().filter(|t| t.id() != task_id).collect();
             *heap = remaining;
         }
     }
@@ -74,6 +73,7 @@ mod tests {
             priority,
             assigned_to: None,
             description: String::new(),
+            depends_on: Vec::new(),
         })
     }
 

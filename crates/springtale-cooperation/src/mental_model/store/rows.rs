@@ -10,8 +10,8 @@
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use springtale_store::{
-    MentalModelBundle, MentalModelCapabilityRow, MentalModelConventionRow,
-    MentalModelDomainRow, MentalModelPatternRow, MentalModelVocabularyRow,
+    MentalModelBundle, MentalModelCapabilityRow, MentalModelConventionRow, MentalModelDomainRow,
+    MentalModelPatternRow, MentalModelVocabularyRow,
 };
 
 use crate::cadence::AgentId;

@@ -127,7 +127,9 @@ mod tests {
         assert!(matches!(down, BroadcastTrigger::AgentDown(id) if id == agent));
 
         let exhausted = BroadcastTrigger::CapabilityExhausted("network".into());
-        assert!(matches!(exhausted, BroadcastTrigger::CapabilityExhausted(ref s) if *s == *"network"));
+        assert!(
+            matches!(exhausted, BroadcastTrigger::CapabilityExhausted(ref s) if *s == *"network")
+        );
     }
 
     #[test]
@@ -142,7 +144,9 @@ mod tests {
                 severity: 0.8,
             },
         };
-        assert!(matches!(broadcast, CommChannel::StateBroadcast { source: s, ref message, .. } if s == source && message.severity == 0.8));
+        assert!(
+            matches!(broadcast, CommChannel::StateBroadcast { source: s, ref message, .. } if s == source && message.severity == 0.8)
+        );
 
         let cohesion = CommChannel::CohesionSignal { source };
         assert!(matches!(cohesion, CommChannel::CohesionSignal { source: s } if s == source));
@@ -152,6 +156,8 @@ mod tests {
             intent_confirmed: IntentPattern::Execute { plan_id: None },
             interpretation: "will process queue".into(),
         };
-        assert!(matches!(intent, CommChannel::IntentAcknowledgment { source: s, ref interpretation, .. } if s == source && interpretation == "will process queue"));
+        assert!(
+            matches!(intent, CommChannel::IntentAcknowledgment { source: s, ref interpretation, .. } if s == source && interpretation == "will process queue")
+        );
     }
 }

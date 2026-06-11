@@ -12,7 +12,9 @@ pub mod deposit;
 pub mod trait_;
 pub mod types;
 
-pub use composition::{compose_surfaces, CompositionResult, ReactionOutput, ReactionTable, SurfaceReaction};
+pub use composition::{
+    CompositionResult, ReactionOutput, ReactionTable, SurfaceReaction, compose_surfaces,
+};
 pub use deposit::SurfaceStore;
 pub use trait_::{SurfaceDeposit, SurfaceSensor, SurfaceSubstrate};
 pub use types::{Surface, SurfaceId, SurfaceType};

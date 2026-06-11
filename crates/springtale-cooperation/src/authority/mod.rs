@@ -7,4 +7,4 @@
 pub mod check;
 pub mod matrix;
 
-pub use check::{allows, require, Unauthorized};
+pub use check::{Unauthorized, allows, require};

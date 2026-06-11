@@ -13,11 +13,7 @@ use crate::dissemination::trait_::StateSubscriber;
 use crate::layer::LayerId;
 use crate::momentum::MomentumTier;
 
-pub fn run(
-    bus: &mut dyn StateSubscriber,
-    awareness: &mut LocalAwareness,
-    tier: MomentumTier,
-) {
+pub fn run(bus: &mut dyn StateSubscriber, awareness: &mut LocalAwareness, tier: MomentumTier) {
     if !authority::allows(tier, LayerId::L2State) {
         return;
     }
