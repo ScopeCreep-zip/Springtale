@@ -148,18 +148,47 @@ curl -X POST http://127.0.0.1:8080/data/export \
 For encrypted exports, set `"encrypt": true` and the response is
 binary AEAD-encrypted bytes.
 
-## Common patterns
-
-### Polling for a webhook delivery
+## Chat with your bot in-app
 
 ```bash
-WEBHOOK_ID="..."
+# Send a message (fire-and-forget, 202 Accepted):
+curl -X POST http://127.0.0.1:8080/chat \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"text": "send me the weather in Tucson every morning"}'
 
+# Stream the bot's replies (SSE):
+curl -N "http://127.0.0.1:8080/chat/stream?token=$TOKEN"
+```
+
+Each stream event's data is `{"session": "in-app", "text": "..."}`.
+
+## Approve or deny a pending ShellExec request
+
+```bash
+# See what's waiting:
+curl -s http://127.0.0.1:8080/approvals \
+  -H "Authorization: Bearer $TOKEN" | jq .pending
+
+# Land a decision:
+curl -X POST "http://127.0.0.1:8080/approvals/$REQUEST_ID" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"decision": "approve"}'
+```
+
+The requesting connector blocks until your decision lands; after the
+gate's timeout (default 60s) it falls back to **deny**.
+
+## Common patterns
+
+### Watching the approval queue
+
+```bash
 while true; do
-  STATUS=$(curl -s "http://127.0.0.1:8080/webhooks/$WEBHOOK_ID" \
-    -H "Authorization: Bearer $TOKEN" | jq -r .status)
-  echo "$(date) — $STATUS"
-  [ "$STATUS" = "delivered" ] && break
+  COUNT=$(curl -s http://127.0.0.1:8080/approvals \
+    -H "Authorization: Bearer $TOKEN" | jq '.pending | length')
+  echo "$(date) — $COUNT pending"
   sleep 2
 done
 ```

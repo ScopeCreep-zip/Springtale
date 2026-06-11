@@ -71,6 +71,7 @@ Bot token authentication via twilight's HTTP client and gateway WebSocket. PAT-s
 | `edit_message` | `channel_id`, `message_id`, `content` |
 | `delete_message` | `channel_id`, `message_id` |
 | `add_reaction` | `channel_id`, `message_id`, `emoji` |
+| `discover_destinations` | — (read-only; returns a `workspaces` array of `{workspace_key, display_name, kind, metadata}` — feeds the D1 external-workspaces directory, the 🔍 Scan affordance) |
 
 ## 5. Capabilities Required
 

@@ -46,8 +46,11 @@ Springtale/
 │   ├── springtale-mcp/             #   rmcp 1.x bridge (stdio), split handler modules
 │   ├── springtale-sentinel/        #   behavioural monitor, toxic-pair detection
 │   ├── springtale-cooperation/     #   cooperation framework (40 pub modules, zero internal deps)
-│   ├── springtale-runtime/         #   shared init, dispatch, operations, LiveFormationReader
-│   ├── springtale-bot/             #   runtime, router, cooperation glue, orchestrator,
+│   ├── springtale-runtime/         #   shared init, dispatch, operations, approval gate,
+│   │                              #   token quota, trigger lifecycle, extraction, embedded
+│   │                              #   runtime, LiveFormationReader
+│   ├── springtale-bot/             #   runtime, router, conversation engine, colony commander,
+│   │                              #   cooperation glue, orchestrator, handler, identity,
 │   │                              #   memory, tool_runner, 14-step formation tick
 │   ├── springtale-wit/             #   WIT world for WASM Component Model embedding (G3)
 │   ├── springtale-py/              #   pyo3 Python bindings — cdylib + rlib (G3)
@@ -57,8 +60,9 @@ Springtale/
 │   ├── connector-bluesky   connector-browser   connector-discord
 │   ├── connector-filesystem connector-github   connector-http
 │   ├── connector-irc       connector-kick      connector-matrix (deferred)
-│   ├── connector-nostr     connector-presearch connector-shell
-│   ├── connector-signal    connector-slack     connector-telegram
+│   ├── connector-nostr     connector-opencode  connector-presearch
+│   ├── connector-shell     connector-signal    connector-slack
+│   ├── connector-telegram
 │
 ├── apps/
 │   ├── springtaled/               # Daemon — axum HTTP API, boot, scheduler wiring
@@ -267,6 +271,8 @@ transport/src/
 ├── transport/trait_.rs     # Transport trait (send/recv/node_id/name)
 ├── local/unix_socket.rs    # LocalTransport — present, Unix socket
 ├── http/server.rs          # HttpTransport — present, rustls mTLS
+├── crypto_provider.rs      # installs rustls-post-quantum as process default
+├── safe_http.rs            # typed reqwest wrapper (rustls-only, no raw Client::new)
 └── veilid/stub.rs          # VeilidTransport — stub, returns NotConnected
 ```
 
@@ -364,7 +370,7 @@ Engine config (`wasm/runtime.rs:23-56`):
 | table cap | 10 |
 | memory cap | 2 |
 
-**No WASM connector exists today.** All 14 first-party connectors ride
+**No WASM connector exists today.** All 15 first-party connectors ride
 the native path. The Wasmtime host, capability gate, SHA-256 integrity
 check, SDK, and per-invocation limits are all built and tested — but
 no first-party or community connector actually rides the sandbox. The
@@ -389,11 +395,12 @@ All 15 are native Rust. Matrix is workspace-excluded (deferred).
 | browser | Chromium (WASM) | dom_element_found, nav_complete | click, fill, navigate, screenshot |
 | discord | twilight gateway | interaction_received | send_message, send_embed |
 | filesystem | inotify | file_{created,modified,deleted} | read_file, write_file, list_dir |
-| github | REST v3 + webhooks | push, pr_opened, issue_opened | create_issue, post_comment |
+| github | REST v3 + webhooks | push, pr_opened, issue_opened | create_issue, post_comment, create_branch, commit_file, create_pr |
 | http | reqwest | — | GET, POST |
 | irc | native IRC | channel_message, user_joined | send_message, join, part |
 | kick | OAuth 2.1 + REST | stream_live, chat_message | send_message, start_raid, ban |
 | nostr | NIP-44 relays | note_received, dm_received | send_note, send_dm |
+| opencode | HTTP to local `opencode serve` | — (action-only) | run_task, continue_session |
 | presearch | REST | query_results_received | search, get_trending |
 | shell | OS exec | command_exit_received | execute_command/script |
 | signal | signal-cli bridge | message_received | send_message, group_invite |
@@ -716,15 +723,22 @@ User-facing: [`docs/guide/recipe-authoring-tools.md`](../guide/recipe-authoring-
 `crates/springtale-ai/src/`.
 
 ```
-AiAdapter trait (adapter/trait_.rs:172)
+AiAdapter trait (adapter/trait_.rs)
     │
-    ├── complete(AiRequest)          → Result<String, AiError>
-    ├── stream(AiRequest)             → Result<AiStream, AiError>  (SSE / NDJSON deltas)
-    ├── parse_rule(String)            → Result<Rule, AiError>
-    └── is_available() -> bool
+    ├── complete(AiRequest)            → Result<String, AiError>
+    ├── complete_with_tools(...)       → tool-calling loop entry (ToolCall / ToolResult)
+    ├── stream(AiRequest)              → Result<AiStream, AiError>  (SSE / NDJSON deltas)
+    ├── parse_rule(String)             → Result<Rule, AiError>
+    ├── is_available() -> bool
+    └── structured_extractor()         → Option<&dyn StructuredExtractor>  (schema-constrained JSON)
 
 AiStream = Pin<Box<dyn futures_core::Stream<Item = Result<StreamChunk, AiError>> + Send>>
 ```
+
+Adapters are wrapped in `GuardrailAdapter` (`src/guardrail/`) at boot:
+wall-clock timeout fence, output size cap, refusal-rate counters, and a
+per-bot daily token quota behind the `TokenQuota` trait (SQLite-backed
+impl in `springtale-runtime::quota`, persisted in `ai_token_usage`).
 
 | Adapter | Streaming | Status |
 |---|---|---|
@@ -910,9 +924,14 @@ auto-wiped and rebuilt.
 | `safety.sql` | `safety_config` (single row, disguise + panic_tap defaults) |
 | `formations.sql` | `formations`, `formation_members`, `formation_momentum`, `formation_rally` |
 | `runtime_config.sql` | `config_store` (KV, UI-driven runtime config, seeded defaults) |
-| `execution.sql` | `execution_results` (capped at 100/connector) |
+| `execution.sql` | `execution_results` (capped at 100/connector; legacy) |
+| `executions.sql` | `executions`, `execution_steps` (Phase B per-chain-fire observability) |
 | `wasm.sql` | `wasm_binaries` (content-addressed, SHA-256 + Ed25519 sig) |
 | `cooperation.sql` | `coop_writes`, `coop_deposits`, `mental_model_{domain, capability, pattern, vocabulary, convention}` |
+| `mental_model_workspaces.sql` | `mental_model_workspaces` (D1 discovered chat destinations) |
+| `dedupe.sql` | `dedupe_seen` (`Action::Dedupe` blake3 key digests) |
+| `approvals.sql` | `pending_approvals`, `tool_loop_checkpoints` (ShellExec approval gate + resumable tool loops) |
+| `ai_token_usage.sql` | `ai_token_usage` (per-bot daily token counters) |
 
 Schema-apply ordering and the `SCHEMA_VERSION` constant live in
 `schema/apply.rs`; bump the constant when DDL shape changes.

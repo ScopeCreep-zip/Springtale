@@ -144,6 +144,21 @@ Destructive actions (REMOVE formation, detach connector, dissolve, panic
 wipe, vault duress setup) show a confirm dialog. Panic wipe shows a
 countdown. No single misclick can destroy state.
 
+## 9.1. In-app chat dock
+
+You can talk to your bot without wiring up any external chat platform.
+The chat dock (`ChatDock` / `ChatPanel` in `tauri/packages/ui/src/colony/`)
+opens a conversation with the bot over the synthetic `in-app` connector —
+the same command router, session memory, and conversational task-setup
+engine that Telegram or Discord messages flow through, so "send me the
+weather in Tucson every morning" deploys a recipe from here too.
+
+Pending `ShellExec` approvals raised by in-app tasks render inline in the
+chat panel (backed by `GET /approvals` + `POST /approvals/{id}`), so you
+approve or deny without leaving the conversation. On the web dashboard
+the same panel runs over `POST /chat` + the `/chat/stream` SSE feed; the
+desktop app uses the `chat` Tauri command.
+
 ## 10. Data flow
 
 ```

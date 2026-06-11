@@ -1,6 +1,6 @@
 # Architecture
 
-Springtale is a Rust workspace of ~33 crates — 14 library crates (12 core + `springtale-py` for Python bindings + `springtale-wit` for WASM Component Model embedding), 14 first-party connectors, 2 applications, plus a Tauri frontend (excluded from the workspace, built separately). This guide explains how they fit together.
+Springtale is a Rust workspace of ~33 crates — 14 library crates (12 core + `springtale-py` for Python bindings + `springtale-wit` for WASM Component Model embedding), 15 first-party connectors, 2 applications, plus a Tauri frontend (excluded from the workspace, built separately). This guide explains how they fit together.
 
 For the as-built architecture with file:line refs, see [`docs/arch/ARCHITECTURE.md`](../arch/ARCHITECTURE.md). For the locked design intent, see [`docs/current-arch/ARCHITECTURE.md`](../current-arch/ARCHITECTURE.md).
 
@@ -26,7 +26,7 @@ Every crate has a single responsibility. Dependencies flow strictly downward —
                                │       ┌──────────────────┐   │
                                │       │springtale-       │   │
                                │       │cooperation       │   │
-                               │       │40 pub modules        │   │
+                               │       │ 40 pub modules   │   │
                                │       │(cadence, rally,  │   │
                                │       │ momentum, …)     │   │
                                │       │zero internal deps│   │
@@ -218,7 +218,7 @@ Three core traits define the extension points. Each has a working default and pl
   │  ┌──────────────────────────────────────────────────────────┐ │
   │  │ Connector trait                                          │ │
   │  │                                                          │ │
-  │  │   NativeConnector ── in-process (14 connectors present)  │ │
+  │  │   NativeConnector ── in-process (15 connectors present)  │ │
   │  │   WasmConnector   ── sandbox built; no connector uses it │ │
   │  │                                                          │ │
   │  │   connector-matrix not in workspace (upstream CVE).      │ │
@@ -369,7 +369,7 @@ The following areas diverge from the design intent in `docs/current-arch/`:
 | Area | State |
 |---|---|
 | `connector-matrix` | Not in the workspace. `matrix-sdk` pins `rusqlite` 0.37 with an open heap-leak CVE; Springtale uses the patched 0.39. |
-| WASM connectors | The Wasmtime host, capability gate, subscription lifecycle across the sandbox, and SDK all exist. All 14 first-party connectors are native Rust; no WASM connector rides the sandbox today. |
+| WASM connectors | The Wasmtime host, capability gate, subscription lifecycle across the sandbox, and SDK all exist. All 15 first-party connectors are native Rust; no WASM connector rides the sandbox today. |
 | Job queue | `JobProducer` is an in-memory mpsc sender. The `jobs` SQLite table and `StorageBackend` method signatures exist, but the persistent-queue backing is not wired. |
 | `VeilidTransport` | Stub. Every method returns `TransportError::NotConnected`. |
 | Formation → rules generation | Formations define intent; rules are still authored separately. Auto-derivation of rules from a formation's intent is not implemented. |

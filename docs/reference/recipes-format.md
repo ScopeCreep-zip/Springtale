@@ -129,6 +129,10 @@ Tagged union. The `kind` field is the discriminator.
 { "kind": "bool" }
 { "kind": "url" }
 { "kind": "select", "options": [{ "value": "a", "label": "A" }, ...] }
+{ "kind": "cron" }
+{ "kind": "css_selector", "sample_url": "watch_url" }
+{ "kind": "json_schema", "example": { ... } }
+{ "kind": "workspace_target", "connector": "connector-telegram", "kinds": ["channel"] }
 ```
 
 | Variant | Rendering | Storage |
@@ -139,6 +143,10 @@ Tagged union. The `kind` field is the discriminator.
 | `bool` | Toggle | Plain value |
 | `url` | Text input, validated against http/https scheme on submit | Plain value |
 | `select` | Dropdown of the `options` array | Plain value (the chosen `value`) |
+| `cron` | Cron input (5/6-field) with a `CronFrequencyChip`: 🔴 sub-minute (preflight blocking), 🟡 1–4 min (warning), 🟢 ≥5 min (verified), plus a next-5-fire-times preview. Classification comes from the backend's `check_schedule_frequency` — the frontend never invents thresholds. | Cron string |
+| `css_selector` | CSS selector input. `sample_url` names the recipe input whose URL the Tauri selector picker loads (Phase B activates the picker; today it renders as text with a "test against URL" probe). Optional — omitted means the picker prompts inline. | Selector string |
+| `json_schema` | JSON Schema for the AI extraction step. Monaco-style editor planned (Phase B); textarea today. Optional `example` is a sample payload shown alongside. | JSON Schema object |
+| `workspace_target` | Destination dropdown over the formation's discovered workspaces (`mental_model_workspaces`), filtered by `connector` and optional `kinds` (e.g. `["channel"]` excludes DMs). Includes 🔍 Scan (active discovery via `discover_destinations`), 🎯 Onboard (Telegram deep-link), and ✏️ Manual entry. Resolves at deploy time to the raw destination id, so `${chat_id}` / `${to}` substitution is unchanged. | Destination id string |
 
 `SelectOption` shape:
 
@@ -168,12 +176,19 @@ What `apply_recipe` runs against the running runtime.
   "connector_configs": [ ConnectorConfigStep, ... ],
   "rules":             [ RuleStep, ... ],
   "ai_config":         AiConfigStep | null,
-  "summary":           "Plain-language preview text" | null
+  "summary":           "Plain-language preview text" | null,
+  "derived_inputs":    [ DerivedInputResolver, ... ]
 }
 ```
 
 All fields are `#[serde(default)]` and may be omitted; an empty
 blueprint is valid (a no-op recipe).
+
+`derived_inputs` lists derived-input resolvers (e.g. geocoding) that run
+at deploy time, before placeholder substitution. Each resolver's
+`target_input_id` is treated as a declared placeholder, so the rule TOML
+can reference it — this is how a universal recipe accepts a free-text
+city and substitutes concrete latitude/longitude.
 
 ### `ConnectorConfigStep`
 
@@ -286,11 +301,13 @@ sources).
 ### `RecipeSort`
 
 ```
-"recommended" | "newest" | "alphabetical"
+"recommended" | "name" | "recent"
 ```
 
-`recommended` (default): built-ins first, sorted by Difficulty
-(`quick` → `power`).
+- `recommended` (default): built-ins first, sorted by Difficulty
+  (`quick` → `power`).
+- `name`: alphabetical by name.
+- `recent`: most recently used first (user-recent, then everything else).
 
 ## `ApplyReport`
 
@@ -298,10 +315,11 @@ Returned by `POST /recipes/{id}/apply`. Indicates what landed:
 
 ```json
 {
-  "connectors_upserted": ["connector-telegram"],
+  "recipe_id": "telegram-echo",
+  "connectors_configured": ["connector-telegram"],
   "rules_created": ["welcome-echo-rule"],
-  "ai_config_applied": true,
-  "warnings": []
+  "ai_configured": true,
+  "summary": "Plain-language post-deploy summary"
 }
 ```
 

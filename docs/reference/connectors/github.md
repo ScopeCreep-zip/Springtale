@@ -57,6 +57,13 @@ Payloads are transformed from GitHub's nested webhook JSON into flat fields by t
 | `create_issue` | `owner`, `repo`, `title`, `body` (optional, default: `""`) | `number: u64`, `url: String`, `response: Object` |
 | `post_comment` | `owner`, `repo`, `issue_number: u64`, `body` | `id: u64`, `url: String`, `response: Object` |
 | `get_diff` | `owner`, `repo`, `pull_number: u64` | `diff: String` |
+| `create_branch` | `owner`, `repo`, `branch`, `base` (optional, default: `"main"`) | `branch: String`, `sha: String`, `response: Object` |
+| `commit_file` | `owner`, `repo`, `branch`, `path`, `content` (plain UTF-8), `message`, `existing_sha` (optional — blob SHA when updating; omit to create) | `path: String`, `commit_sha: String`, `response: Object` |
+| `create_pr` | `owner`, `repo`, `title`, `head`, `base` (optional, default: `"main"`), `body` (optional Markdown, default: `""`) | `number: u64`, `url: String`, `response: Object` |
+
+The three write actions compose into a full PR flow — `create_branch` →
+`commit_file` → `create_pr` — enough for a bot to open a reviewable pull
+request end-to-end. All three are `read_only: false`.
 
 ## 5. Capabilities Required
 

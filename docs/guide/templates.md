@@ -36,10 +36,15 @@ blank-bot     cli-runner     cron-runner   research-assistant   …etc
 
 ```bash
 springtale new cli-runner
-cd cli-runner-bot/
+# Creating cli-runner project in ~/.local/share/springtale/projects/cli-runner-20260610-091500
+cd ~/.local/share/springtale/projects/cli-runner-*/
 springtale init                # create vault + DB + config
 springtale run                 # start the daemon
 ```
+
+The CLI picks the destination itself — a timestamped directory under
+the data dir's `projects/` — and prints the full path. You never pass
+a path, which keeps the scaffold free of path-traversal surprises.
 
 `springtale init` handles vault creation, passphrase setup, DB key
 derivation, and any platform-specific onboarding (Telegram bot token,
@@ -55,7 +60,7 @@ files under `rules/` — they're plain TOML, editable by hand.
 For example, `springtale new cron-runner` produces:
 
 ```
-cron-runner-bot/
+cron-runner-<timestamp>/
 ├── springtale.toml
 └── rules/
     └── heartbeat.toml

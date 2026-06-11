@@ -42,7 +42,8 @@ Run the one closest to what you want:
 springtale new telegram-bot
 ```
 
-This writes a project directory under `~/.springtale/projects/`.
+This writes a timestamped project directory under the data dir's
+`projects/` (XDG default: `~/.local/share/springtale/projects/`).
 Springtale picks the path itself — there's nothing to edit. The CLI
 prints the full path when it finishes.
 

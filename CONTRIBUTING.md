@@ -19,7 +19,14 @@ first-time contributors before they read anything else.
 ## Workflow
 
 1. **Fork + branch.** `main` is the integration branch. Branch off it; never push directly to `main` on the upstream repo.
-2. **Build and test before pushing.** At minimum:
+2. **Set up pre-commit hooks.** First-time only:
+   ```bash
+   pipx install pre-commit  # or pip install --user pre-commit
+   pre-commit install
+   ```
+   This installs hooks defined in [`.pre-commit-config.yaml`](.pre-commit-config.yaml):
+   gitleaks, cargo fmt, typos, actionlint, zizmor, hadolint, prettier.
+3. **Build and test before pushing.** At minimum:
    ```bash
    cargo fmt --check
    cargo clippy --workspace --all-targets -- -D warnings
@@ -27,15 +34,15 @@ first-time contributors before they read anything else.
    ```
    Frontend changes additionally:
    ```bash
-   cd tauri && pnpm build
+   cd tauri && pnpm install --frozen-lockfile && pnpm build
    ```
-3. **One concern per PR.** A formation refactor + a connector fix + a doc tweak should be three PRs. Reviewers can hold each on its own merits.
-4. **Write the commit message for someone reading the log a year from now.** Not "fix bug" — what bug, what symptom, what fix. Examples: `git log --oneline` on `main`.
-5. **No `--no-verify` on commits.** Pre-commit hooks are part of the security posture.
+4. **One concern per PR.** A formation refactor + a connector fix + a doc tweak should be three PRs. Reviewers can hold each on its own merits.
+5. **Write the commit message for someone reading the log a year from now.** Not "fix bug" — what bug, what symptom, what fix. Examples: `git log --oneline` on `main`.
+6. **No `--no-verify` on commits.** Pre-commit hooks are part of the security posture.
 
 ## Code review
 
-- Two-track review for security-sensitive paths (`springtale-crypto`, `springtale-connector`, `springtale-sentinel`, anything touching `Secret<T>`, anything writing to the audit trail): one functional reviewer + one security reviewer.
+- Two-track review for security-sensitive paths (`springtale-crypto`, `springtale-connector`, `springtale-sentinel`, the approval gate (`springtale-runtime/src/approval/`), the AI guardrails (`springtale-ai/src/guardrail/`), anything touching `Secret<T>`, anything writing to the audit trail): one functional reviewer + one security reviewer.
 - One-track for everything else.
 - "LGTM" is not a review. Either you read the diff and can describe what it does, or you didn't review it.
 
@@ -46,6 +53,20 @@ contributors who can't tie a real identity to a key. We do require:
 
 - Honest commit messages (no "Co-Authored-By" trailers for AI tooling unless you actually pair-programmed with that AI and want to claim it).
 - DCO sign-off (`git commit -s`) — that's all. No CLA.
+
+If you DO want to sign commits, two paths:
+
+- **Sigstore [`gitsign`](https://github.com/sigstore/gitsign)** — keyless OIDC, no long-lived key, signature bound to a one-time Sigstore certificate. Closest to "anonymous-friendly signing." Setup:
+  ```bash
+  brew install sigstore/tap/gitsign  # or download from GitHub Releases
+  git config --global gpg.x509.program gitsign
+  git config --global gpg.format x509
+  git config --global commit.gpgsign true
+  ```
+- **GPG** — classic. Use a hardware key (YubiKey, Nitrokey) so your signing material can't be exfiltrated even if your workstation is compromised.
+
+Maintainers signing release tags use Sigstore by default. Recipe in
+[`docs/operations/verifying-releases.md`](docs/operations/verifying-releases.md).
 
 ## Anonymous contribution
 

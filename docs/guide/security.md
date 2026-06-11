@@ -177,6 +177,38 @@ Some capability combinations are dangerous even if each is individually reasonab
 
 These are blocked at install time. If a manifest declares a toxic pair, the install is rejected — no override, no "are you sure?" prompt.
 
+### 5.1. ShellExec Always Requires a Human
+
+`ShellExec` is special-cased beyond the toxic-pair table: it can never be
+auto-granted under any capability policy. Every invocation parks in a
+pending-approval queue (`crates/springtale-runtime/src/approval/`) and the
+dispatching connector blocks until you approve or deny it — from the
+desktop approval card, the in-app chat panel, or
+`POST /approvals/{id}` on the management API. If nothing answers within
+the timeout (default 60s), the gate falls back to **deny**: a dropped
+connection never silently grants. Every decision lands in the audit
+trail. This is the OpenClaw CVE-2026-25253 1-click-RCE class Springtale
+exists to defeat.
+
+### 5.2. AI Guardrails (OWASP LLM Top-10)
+
+When a bot has an AI adapter plugged in, the adapter is wrapped in
+`GuardrailAdapter` (`crates/springtale-ai/src/guardrail/`), which adds
+safeguards orthogonal to the adapter itself:
+
+| Guardrail | OWASP | What it does |
+|---|---|---|
+| Wall-clock timeout | LLM10 | Every call gets a `tokio` timeout fence on top of the transport timeout — a provider that holds the connection open can't stall a chain forever |
+| Output size cap | LLM10 | Truncates oversized responses so a runaway provider can't pipe an unbounded body into the next chain step |
+| Refusal-rate metric | LLM07 | Process-local counters (total calls / sanitiser blocks) surfaceable for visibility |
+| Daily token quota | LLM10 | Per-bot daily cap via `[sentinel] daily_token_limit`. Unset = observability mode (usage recorded, nothing blocked); set = hard deny once a bot crosses the cap in a UTC day. Counters persist across restarts (`ai_token_usage` table) |
+| Tool policy | LLM06 | `[bot] tool_policy` — by default the AI can only call `read_only` actions (zero side effects); mutating actions stay invisible unless `writes_with_approval` is on, which fronts each call with the blocking approval gate. Explicit `allow`/`deny` globs override; `deny` always wins |
+
+The input/output `Sanitizer` (prompt-injection, credential, and PII
+patterns) is exercised in CI against a 50-case red-team corpus
+(`crates/springtale-ai/tests/redteam_corpus/`) that fails closed on any
+case the sanitizer misses.
+
 ---
 
 ## 6. What's Honestly Out of Scope

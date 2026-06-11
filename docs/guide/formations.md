@@ -243,22 +243,41 @@ The intent is to make accidental destruction harder: a formation that
 just hit Fever and is producing useful output is exactly the one you
 don't want to lose because a slash command mis-targeted it.
 
-### Known limitation: rules generation
+### Intent drives automation (rule synthesis)
 
-Formations coordinate at the cadence/momentum/orchestrator layer, but
-they do not yet **generate** persistent rules from intent. If you
-deploy a Reconnoiter formation against Telegram and Nostr, the
-formation's members operate against existing rules — auto-derivation of
-rules from a formation intent is not implemented. Tracked in
-[`docs/arch/AUDIT-NOTES.md §4`](../arch/AUDIT-NOTES.md).
+A formation **synthesises persistent rules from its intent** — with or
+without AI. When you deploy a team, each agent's `(connector, trigger,
+action)` is stored as the formation's *automation config*, and rules are
+derived from it and scoped to the formation (`RuleOwner::Formation`):
+
+- **Reconnoiter** (monitor, read-only) → each trigger fires a read-only
+  observation (`Notify`); the mutating action is never invoked.
+- **Execute** / **Surge** (take action) → each trigger fires its
+  configured `RunConnector` action. Under guard mode, an action the
+  sentinel classifies as destructive is downgraded to an observation.
+- **Stabilize** (maintain) → observation only.
+- **Dissolve** → no rules.
+
+Cycling the intent (`POST /formations/{id}/cycle-intent`) re-synthesises
+the rules for the new intent. This is **non-lossy**: the canonical action
+lives in the automation config, so flipping Reconnoiter → Execute → back
+restores the exact action. The work is deterministic — a formation with
+`NoopAdapter` (no AI) produces outward effect on its own; an attached AI
+adapter at Fever tier *additionally* proposes richer, parameterised
+subtasks on top.
 
 In practice this means:
 
-- A paused-and-resumed formation picks up its cadence and momentum
-  state, but no rules persist with it.
-- Members that were operating on rules before joining the formation
-  continue to operate on those rules.
-- Removing a member doesn't deactivate any rules.
+- A paused-and-resumed formation keeps both its cadence/momentum state
+  **and** its synthesised rules.
+- Dissolving a formation tears down its rules and automation config.
+- Formation-scoped rules fire only in their formation's context (a
+  formation A rule never fires for formation B), and they execute with
+  the formation's momentum tier so sentinel / autonomy gating applies
+  correctly.
 
-A formation is a coordination wrapper around existing automation, not
-yet a synthesiser of new automation.
+The live (per-tick) counterpart is the deterministic decomposer in
+`springtale-bot` `orchestrator::orchestrate::decompose_intent_deterministic`,
+which mechanically derives read/poll subtasks from member capabilities;
+the persistent counterpart is `springtale-runtime`
+`operations::formation_synthesis`.

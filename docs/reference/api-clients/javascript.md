@@ -170,6 +170,57 @@ source.addEventListener("rally_burned", (e) => {
 });
 ```
 
+## In-app chat
+
+```typescript
+// Send a message — fire-and-forget, the reply arrives on the stream:
+await fetch(`${host}/chat`, {
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${token}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify({ text: "what's running right now?" }),
+});
+
+// Stream the bot's replies (default `message` events, no custom name):
+const chat = new EventSource(
+  `${host}/chat/stream?token=${encodeURIComponent(token)}`,
+);
+chat.onmessage = (e) => {
+  const { session, text } = JSON.parse(e.data);
+  appendChatBubble(session, text);
+};
+```
+
+## Approvals queue
+
+```typescript
+async function listPendingApprovals() {
+  const res = await fetch(`${host}/approvals`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const { pending } = await res.json();
+  return pending;
+}
+
+async function resolveApproval(id: string, approve: boolean, reason?: string) {
+  const res = await fetch(`${host}/approvals/${id}`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      decision: approve ? "approve" : "deny",
+      ...(reason ? { reason } : {}),
+    }),
+  });
+  // 404 = timed out already, 409 = someone else resolved it first.
+  return res.ok;
+}
+```
+
 ## Auth in the browser
 
 The bearer token can be:

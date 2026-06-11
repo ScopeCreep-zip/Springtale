@@ -25,10 +25,10 @@ deploy connectors, dispatch actions — use the HTTP API instead. See
 
 | Type | What it is |
 |---|---|
-| `Formation` | Identity + intent + status |
-| `IntentPattern` | Reconnoiter / Execute / Stabilize / Surge / Dissolve, with payloads |
+| `Formation` | Read-only handle: auto-generated id + intent + momentum tier |
+| `Intent` | Reconnoiter / Execute / Stabilize / Surge / Dissolve, with payloads |
 | `MomentumTier` | Cold / Warming / Hot / Fever enum |
-| `AgentId` | Opaque integer-packed identity |
+| `FormationId` | 128-bit UUID identity, string-faced |
 
 ## What's out of scope
 

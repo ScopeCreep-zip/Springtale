@@ -79,6 +79,9 @@ pub trait AiAdapter: Send + Sync + 'static {
     async fn parse_rule(&self, prompt: &str, available_connectors: &[ConnectorInfo])
         -> Result<Rule, AiError>;
     async fn is_available(&self) -> bool;
+    // Optional (default: None) — return Some when your vendor supports
+    // schema-constrained JSON output. Powers Action::Extract's LlmSchema mode.
+    fn structured_extractor(&self) -> Option<&dyn StructuredExtractor>;
 }
 ```
 

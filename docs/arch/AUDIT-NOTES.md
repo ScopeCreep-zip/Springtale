@@ -131,21 +131,32 @@ from orchestrator escalation. Both are ergonomic, not behavioural.
 
 ---
 
-## 4. Formations → rules generation not connected ⚠
+## 4. Formations → rules generation ◆ RESOLVED
 
-**Where:** `crates/springtale-store/src/schema/sql/formations.sql`,
-`crates/springtale-runtime/src/operations/formations.rs`
+**Where:** `crates/springtale-runtime/src/operations/formation_synthesis.rs`
+(new), `crates/springtale-runtime/src/operations/formations.rs`
+(deploy/update/cycle/dissolve wiring),
+`crates/springtale-bot/src/runtime/trigger_dispatch.rs` (formation-scoped
+firing), `crates/springtale-bot/src/orchestrator/orchestrate.rs`
+(deterministic live decomposer).
 
-**State:** The `formations` and `formation_members` tables exist.
-Formations can be created, deployed, paused, dissolved, and have their
-intent cycled via the HTTP API. But the system that **generates rules
-from formation intent** — compiling "Reconnoiter against Telegram and
-Nostr" into actual `Rule` rows — is not implemented.
+**State (resolved):** Formation intent now **compiles into persistent,
+formation-scoped `Rule` rows** deterministically — no AI required. Each
+member's `(connector, trigger, action)` is persisted as the formation's
+automation config (`formation:{id}:automation`), and rules are synthesised
+from `(automation × intent)` with `RuleOwner::Formation`:
+Reconnoiter/Stabilize → read-only observation, Execute/Surge → the
+configured action (guard downgrades destructive). Intent cycling
+re-synthesises non-lossily; dissolve tears down the rules + config. The
+trigger dispatcher resolves which live formations own a connector event and
+fires their rules in the formation's momentum-tier context. An attached AI
+adapter at Fever tier additionally proposes richer subtasks on top
+(`orchestrate::orchestrate_formation`), but the deterministic path is the
+default — preserving the "NoopAdapter must work" invariant for formations.
 
-**Impact:** Formations are currently active at the coordination layer
-(cadence, momentum, orchestrator) but do not produce persistent rules.
-A formation that's paused and then resumed picks up its cadence state
-but not any emitted rules.
+**Impact:** A paused-and-resumed formation keeps both its cadence/momentum
+state and its synthesised rules. Formation intent now produces outward
+effect with or without AI.
 
 ---
 
@@ -301,6 +312,41 @@ but unpersisted.
 
 **Fix path:** Persist first, then update the engine. Rollback is trivial
 once the order flips.
+
+---
+
+## 14. AI command hierarchy — three independent layers ◆
+
+**Where:** `crates/springtale-runtime/src/operations/config.rs` (`build_adapter`),
+`capability_bridge.rs` (`ai_adapter_for`), `crates/springtale-bot/src/cooperation/lifecycle.rs`
+(`spawn_formation`), `crates/springtale-bot/src/colony/` (new), `event_loop.rs`.
+
+**State (June 2026 — RESOLVED).** The multi-layer AI control was *designed but
+inert* — only a single global adapter was live (`resolve_ai_config` had zero
+callers; `ai_adapter_for` collapsed to global; `spawn_formation` never attached an
+orchestrator). Now wired as **three independent control points, each a different
+job** (cascade/inheritance is a separate governance concern, not the control model):
+
+- **Unit (bot)** — per-agent action reasoning. `ai_adapter_for` resolves the
+  agent's own adapter from `ai:{agent_id}` (cached), keyed by a now-**stable**
+  AgentId (= member-row id). Noop-default.
+- **Squad (formation)** — intent → subtask decomposition. `spawn_formation`
+  attaches the orchestrator from `ai:formation:{id}`, lighting up the previously
+  dead `orchestrate_formation` AI path. Noop-default deterministic decomposer.
+- **Strategic (colony)** — cross-formation orchestration. New `ColonyCommander`
+  reviews the colony every `COLONY_INTERVAL` ticks (deterministic de-escalation by
+  default; `ai:colony` LLM cross-formation moves validated against the live colony).
+
+Also: **recruit-at-Fever** is now real (`FormationCommand::Recruit`, gated by
+`can_recruit()`); the **canvas is a control surface** via a backend generic
+dispatcher (`run_formation_command`) so the frontend carries zero command→action
+logic; and **stateful Total War morale** (§A.4 lerp 0.15 + contagion cap 4) plus
+the **§19 LFCG `CommunicationByDesign`/`MeansOfComms`** types (C.7) ship.
+
+**Deliberately deferred (spec-sanctioned, not gaps):** the `AgentLoop::tick()`
+facade (§3 calls it ergonomic; steps are behaviourally wired) and capnp-style
+override tokens (§25.2.5 itself accepts the current scarce-counter). Churning these
+working paths for cosmetic parity was declined.
 
 ---
 

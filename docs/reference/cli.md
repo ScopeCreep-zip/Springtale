@@ -8,6 +8,8 @@
      ├── init                         create vault + DB, optional onboarding
      ├── new TEMPLATE                 scaffold from starter template
      ├── server start                 run springtaled inline
+     ├── run                          alias for `server start`
+     ├── healthcheck [--url]          probe /health, exit 0 on healthy
      ├── doctor                       diagnostic checks
      ├── fix ERROR_ID                 apply an auto-repair for E001..E009
      ├── trace [--connector --rule]   real-time execution trace
@@ -24,7 +26,7 @@
      │
      ├── travel    { prepare --backup-to, restore --from }
      ├── memory    { audit, compact --max-entries N }
-     └── data      { export [--output --encrypt], purge }
+     └── data      { export [--output --encrypt], import --input, purge }
 ```
 
 *Fig. 1. CLI surface at a glance. `--json` is a global flag on every subcommand.*
@@ -59,6 +61,23 @@ Start the `springtaled` daemon inline (foreground). Useful for development.
 $ springtale server start
 INFO springtaled: listening on 127.0.0.1:8080
 INFO springtaled: READY
+```
+
+`springtale run` is a plain-English alias for the same thing —
+`springtale init cli-runner && springtale run` is the documented
+zero-to-running path.
+
+### 3.0.1 `springtale healthcheck [--url BASE_URL]`
+
+Probe the daemon's `/health` endpoint and exit `0` on a 2xx response,
+non-zero otherwise (3-second timeout). `--url` defaults to
+`http://127.0.0.1:8080`, matching the `springtaled` default bind.
+
+Built for container `HEALTHCHECK` — the distroless final image has no
+`wget` or `curl`:
+
+```dockerfile
+HEALTHCHECK --interval=30s --timeout=5s CMD ["/usr/local/bin/springtale", "healthcheck"]
 ```
 
 ---

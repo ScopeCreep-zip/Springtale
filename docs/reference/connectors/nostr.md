@@ -66,6 +66,7 @@ Ed25519-style identity via secp256k1 Schnorr signatures (BIP-340). Note: this is
 | `send_message` | `text` (required), `chat_id` (optional) — unified entrypoint that routes to `send_dm` when `chat_id` looks like a pubkey (hex or `npub1…`), or to `publish_note` when omitted. Used by the bot router. |
 | `react` | `event_id`, `emoji` |
 | `reply` | `event_id`, `content` |
+| `discover_destinations` | — (read-only; returns a `workspaces` array of `{workspace_key, display_name, kind, metadata}` — feeds the D1 external-workspaces directory, the 🔍 Scan affordance) |
 
 ## 5. Capabilities Required
 

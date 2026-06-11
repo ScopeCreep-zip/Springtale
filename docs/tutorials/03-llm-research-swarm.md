@@ -83,7 +83,8 @@ Use the LLM swarm template:
 
 ```bash
 springtale-cli new llm-swarm
-cd llm-swarm-bot/
+# Creating llm-swarm project in ~/.local/share/springtale/projects/llm-swarm-20260610-091500
+cd ~/.local/share/springtale/projects/llm-swarm-*/
 ```
 
 You now have a working starter. Look at what shipped:

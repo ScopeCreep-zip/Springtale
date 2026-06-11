@@ -448,6 +448,10 @@ Sentinel checks run in this order per action:
 
 The gate sees an `ApprovalRequest` with the action, target, and reason. Its async decision is one of `Approved` / `Denied` / `Escalated` (route to another surface, e.g. push notification).
 
+`ShellExec` is gated harder still: `crates/springtale-runtime/src/approval/` parks every ShellExec grant in a pending queue regardless of capability policy. The requestor blocks until a decision lands via `GET /approvals` + `POST /approvals/{id}` (HMAC bearer auth), the desktop approval card, or the in-app chat panel (`ChatApprovalGate`); the deny-fallback timeout (default 60s) means a dropped connection never silently grants. Decisions are recorded as `ApprovalRequested` / `ApprovalResolved` audit rows, and tool loops paused behind an approval are checkpointed (`approvals.sql`: `tool_loop_checkpoints`) and resumed after the verdict — replaying exactly the persisted bound calls, never a re-derived action.
+
+When a bot has an AI adapter configured, the adapter is additionally wrapped in `GuardrailAdapter` (`crates/springtale-ai/src/guardrail/`): wall-clock timeout, output size cap, refusal-rate counters, and a per-bot daily token quota (`[sentinel] daily_token_limit`, persisted in `ai_token_usage`). The tool surface defaults to a zero-tool allow-list (`[bot] tool_policy`, OWASP LLM06).
+
 After the action completes, `sentinel.report(action, outcome)` records the result.
 
 ### 10.3 Toxic pairs

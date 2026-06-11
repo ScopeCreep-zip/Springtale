@@ -3058,6 +3058,33 @@ openraft       = "0.9"      # used at most for Vote ordering pattern (§11)
 iroh-gossip    = "0.97"     # §19.4 — p2p topic gossip
 ```
 
+#### As-built crate deviations (June 2026 reconciliation)
+
+The list above is the *initial-research* recommendation. The shipped crate chose
+different vehicles for four of these, each more faithful to the spec's own
+*refined* sections (and to 2026 research) than §25.1's first pass — the
+cooperative *ideas* are realized, only the crate differs:
+
+- **`statig` → hand-rolled tier FSM** (`momentum.rs`). The §7 momentum machine is
+  4 flat tiers (Cold/Warming/Hot/Fever) with linear transitions; `statig`'s value
+  is *deep hierarchical* state trees, so a hand-rolled enum FSM is behaviorally
+  identical with less ceremony. The §7 idea (earned capability-gating) is intact.
+- **`typetag` → `dyn-clone` + name registry** (`role/registry.rs`). `typetag` rides
+  `inventory`/`ctor` runtime-init hooks with real static-link fragility (the spec's
+  own §25.2.10 flags this; upstream issue dtolnay/typetag#15). §21's reload design
+  *specifies* rebuilding a role "from the persisted name" — exactly the registry,
+  which is **more faithful** to §21 and avoids the linker bug.
+- **`big-brain` → local `utility/` module**. `big-brain` is a **Bevy** crate
+  (requires bevy@0.16); Springtale is not Bevy. §25.2.8 itself says the local
+  `Measure`/`Scorer` traits "suffice," and §25.3 offers framework-agnostic
+  `bonsai-bt`. The local module avoids a Bevy dependency while realizing §24.
+- **`sled` → SQLite via `springtale-store`**. CLAUDE.md mandates all cooperation
+  SQL live in `springtale-store`; the atomic `UPDATE…RETURNING` claim has the same
+  exactly-once / CAS semantics §13/§20 require.
+
+`AgentId` is a UUID, not the Bitsquid packed-u64 sketch — see the E11 note in
+`cadence.rs` (cross-process + Phase 3 transport make global uniqueness cheaper).
+
 ### 25.2 What the Rust ecosystem does NOT give you
 
 Flagged throughout the document. Collected here so you know what to write yourself:

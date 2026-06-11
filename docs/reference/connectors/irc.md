@@ -70,6 +70,7 @@ SASL PLAIN (modern) or NickServ password (legacy). Credentials are wrapped in `S
 | `part_channel` | `channel`, optional `reason` |
 | `set_topic` | `channel`, `topic` |
 | `send_action` | `target`, `text` (CTCP ACTION, i.e. `/me`) |
+| `discover_destinations` | — (read-only; returns a `workspaces` array of `{workspace_key, display_name, kind, metadata}` — feeds the D1 external-workspaces directory, the 🔍 Scan affordance) |
 
 ## 5. Capabilities Required
 

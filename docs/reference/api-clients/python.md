@@ -75,28 +75,40 @@ print(len(sp.list_connectors()))            # 7
 print([r["name"] for r in sp.list_rules()]) # ['welcome', 'flag-slurs', ...]
 ```
 
-## Typed responses with `springtale-py`
+## Typed values with `springtale-py`
 
-If you've installed the bindings:
+If you've installed the bindings, the cooperation model types are
+available for your own analysis code. They're pure types — there's no
+`from_dict`, so parse API JSON yourself and map onto them where it
+helps:
 
 ```python
 import requests
-from springtale import Formation
+from springtale import FormationId, MomentumTier
 
-def fetch_formations(host: str, token: str) -> list[Formation]:
+TIER = {
+    "cold": MomentumTier.Cold,
+    "warming": MomentumTier.Warming,
+    "hot": MomentumTier.Hot,
+    "fever": MomentumTier.Fever,
+}
+
+def fetch_formations(host: str, token: str):
     r = requests.get(
         f"{host}/formations",
         headers={"Authorization": f"Bearer {token}"},
     )
     r.raise_for_status()
-    return [Formation.from_dict(row) for row in r.json()]
+    for row in r.json():
+        # FormationId.parse validates the UUID; TIER maps the API string.
+        yield FormationId.parse(row["id"]), TIER[row["momentum_tier"]]
 
-for f in fetch_formations("http://127.0.0.1:8080", "<TOKEN>"):
-    print(f.id, f.intent.kind, f.momentum.name)
+for fid, tier in fetch_formations("http://127.0.0.1:8080", "<TOKEN>"):
+    print(fid, tier)
 ```
 
-Now your dashboard / monitoring / analysis code is type-checked end
-to end.
+See [`docs/python/api.md`](../../python/api.md) for the full binding
+surface.
 
 ## SSE streams (sync)
 
@@ -245,6 +257,39 @@ audit = sp.session.get(
 ).json()
 for row in audit:
     print(row["created_at"], row["verdict"], row["action_summary"])
+```
+
+### Chat with the bot in-app
+
+```python
+# Fire-and-forget; the reply arrives on /chat/stream (SSE):
+sp.session.post(f"{sp.host}/chat", json={"text": "pause the github watcher"})
+
+# Stream replies (same sseclient pattern as the other streams):
+import sseclient, json, requests
+
+resp = requests.get(
+    f"{sp.host}/chat/stream",
+    params={"token": sp.token},
+    stream=True,
+)
+for event in sseclient.SSEClient(resp).events():
+    msg = json.loads(event.data)
+    print(f"[{msg['session']}] {msg['text']}")
+```
+
+### Approve or deny a pending ShellExec request
+
+```python
+pending = sp.session.get(f"{sp.host}/approvals").json()["pending"]
+for req in pending:
+    print(req)
+
+# 200 = recorded, 404 = timed out already, 409 = already resolved:
+sp.session.post(
+    f"{sp.host}/approvals/{request_id}",
+    json={"decision": "deny", "reason": "not during business hours"},
+)
 ```
 
 ## Gotchas

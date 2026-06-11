@@ -33,6 +33,15 @@ via three independent layers:
 3. **Every `reqwest` consumer in the workspace** uses
    `features = ["rustls-tls"]` and `default-features = false`.
 
+*Update (2026-05): the stub layer was extended — `vendor/openssl-stub/`
+and `vendor/openssl-sys-stub/` now apply the same `compile_error!()`
+treatment to any transitive `openssl` / `openssl-sys` pull, which was
+previously only caught by `cargo deny`. Clients are additionally built
+through `springtale_transport::safe_http` (typed factory: rustls-only,
+PQ-hybrid KEX, bounded timeouts/redirects) rather than raw
+`reqwest::Client::new`, enforced by a `clippy.toml` disallowed-methods
+lint.*
+
 ## Consequences
 
 Positive:

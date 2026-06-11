@@ -63,10 +63,14 @@ None. Access is gated by the `allowed_domains` allow-list.
 | Name | Input fields | Output fields |
 |---|---|---|
 | `navigate` | `url: String` | `url`, `status` |
-| `fill_form` | `selectors: Map<String, String>` | — |
+| `fill_form` | `selector: String`, `value: String` (fills one field per call) | — |
 | `click` | `selector: String` | — |
-| `screenshot` | optional `region: Rect` | `bytes` (PNG) |
+| `screenshot` | — | `data` (base64-encoded PNG) |
 | `extract_text` | `selector: String` | `text` |
+| `get_html` | — (call `navigate` first) | `html` (rendered, post-JS), `bytes` |
+| `query_all` | `selector: String` | `matches` (array of `{text, html, tag_name, attrs}`), `count` |
+| `wait_for_selector` | `selector: String`, `timeout_ms` (optional, 100–60000, default 5000) | `found: bool` — returns `false` on timeout rather than failing; check the boolean explicitly |
+| `evaluate` | `js: String` (expression; wrap multi-statement logic in an IIFE `(() => { … })()`) | `value` (JSON-serializable result) |
 
 ## 5. Capabilities Required
 

@@ -64,6 +64,7 @@ All triggers are delivered via the Jetstream WebSocket firehose — a real-time 
 | `reply` | `text`, `parent_uri`, `parent_cid`, `root_uri`, `root_cid` | `uri: String`, `cid: String`, `response: Object` |
 | `like` | `subject_uri: String`, `subject_cid: String` | `uri: String`, `response: Object` |
 | `repost` | `subject_uri: String`, `subject_cid: String` | `uri: String`, `response: Object` |
+| `discover_destinations` | — (read-only) | `workspaces` array of `{workspace_key, display_name, kind, metadata}` — feeds the D1 external-workspaces directory (the 🔍 Scan affordance) |
 
 ## 5. Capabilities Required
 

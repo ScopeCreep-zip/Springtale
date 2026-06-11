@@ -68,6 +68,7 @@ not before.
 
 | Topic | Guide |
 |---|---|
+| Governance — what's allowed, who approved, what happened | [governance.md](governance.md) |
 | Why bots cooperate (the overall model) | [cooperation.md](cooperation.md) |
 | L6 intervention — when the orchestrator escalates | [intervention.md](intervention.md) |
 | Consensus votes at Fever tier | [consensus.md](consensus.md) |

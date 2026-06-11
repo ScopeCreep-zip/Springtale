@@ -149,7 +149,7 @@ When a rule's action says `RunConnector`, here's what happens:
 
 ## 5. First-Party Connectors
 
-Fourteen native connectors ship today. `connector-matrix` is deferred — `matrix-sdk` pins `rusqlite` 0.37 which has CVE-2025-70873 (heap info disclosure); Springtale uses the patched 0.39.
+Fifteen native connectors ship today. `connector-matrix` is deferred — `matrix-sdk` pins `rusqlite` 0.37 which has CVE-2025-70873 (heap info disclosure); Springtale uses the patched 0.39.
 
 **TABLE II. FIRST-PARTY CONNECTORS**
 
@@ -162,6 +162,7 @@ Fourteen native connectors ship today. `connector-matrix` is deferred — `matri
 | `connector-filesystem` | Local filesystem | — | `FilesystemRead` / `FilesystemWrite` (configured paths) |
 | `connector-shell` | Shell commands | — | `ShellExec` (requires approval) |
 | `connector-http` | Generic HTTP | — | `NetworkOutbound` (configured hosts) |
+| `connector-opencode` | OpenCode (agentic coding) | basic auth (optional) | `NetworkOutbound` (loopback `opencode serve` daemon) |
 | `connector-telegram` | Telegram Bot API | bot token | `NetworkOutbound` (api.telegram.org) |
 | `connector-discord` | Discord | bot token | `NetworkOutbound` (discord.com, gateway.discord.gg) |
 | `connector-slack` | Slack | app + bot tokens | `NetworkOutbound` (slack.com) |
@@ -205,7 +206,7 @@ Every connector automatically becomes an MCP (Model Context Protocol) server via
 *Fig. 4. MCP bridge. Any connector is automatically exposed as an MCP server. One framework, not N hand-written MCP servers.*
 
 This means:
-- 14 connectors = 14 MCP servers, automatically
+- 15 connectors = 15 MCP servers, automatically
 - No MCP-specific code in connectors
 - Same capability checks apply at both `list_tools` and `call_tool` — MCP doesn't bypass the sandbox
 - Input validated against JSON Schema (via the `jsonschema` crate) at runtime

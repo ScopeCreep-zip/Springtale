@@ -24,7 +24,7 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
                                 │
                                 ▼
                       ┌──────────────────┐
-                      │  14 connectors   │
+                      │  15 connectors   │
                       │  (native Rust)   │
                       └──────────────────┘
 ```
@@ -35,7 +35,7 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
 
 ## A
 
-**ApprovalGate** — Sentinel's fourth check after circuit-breaker, rate-limit, and dead-man. When `impact::classify_impact` reports a `Destructive` action, the verdict routes through an `ApprovalGate` (`crates/springtale-sentinel/src/approval.rs`) before dispatch. `DefaultDenyApprovalGate` is the safe headless default — destructive actions are refused unless an explicit gate is wired. The desktop wires a gate that prompts the user via the safety panel.
+**ApprovalGate** — Sentinel's fourth check after circuit-breaker, rate-limit, and dead-man. When `impact::classify_impact` reports a `Destructive` action, the verdict routes through an `ApprovalGate` (`crates/springtale-sentinel/src/approval.rs`) before dispatch. `DefaultDenyApprovalGate` is the safe headless default — destructive actions are refused unless an explicit gate is wired. The desktop wires a gate that prompts the user via the safety panel. `ShellExec` gets a harder version: `crates/springtale-runtime/src/approval/` parks every grant in a pending queue resolved over `GET /approvals` + `POST /approvals/{id}` (or the in-app chat panel), with a deny-fallback timeout (default 60s).
 
 **Action** — What a rule does when its trigger fires and conditions pass. Types include `RunConnector`, `SendMessage`, `WriteFile`, `RunShell`, `Chain`, `Transform`, `Delay`, and `AiComplete`. Defined in `crates/springtale-core/src/rule/types.rs`. See [guide/rules.md](guide/rules.md).
 
@@ -60,6 +60,12 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
 **Chiral diorama** — A Tauri desktop theme inspired by Death Stranding's diorama aesthetic. Default theme as of April 2026. Coexists with the original colony forest theme. Frontend-only — theme selection does not affect backend behaviour.
 
 **Capability** — A declared permission that a connector requires to function. Springtale enforces capabilities at install time and again at every action invocation. Variants: `NetworkOutbound { host }` (no wildcards), `FilesystemRead { path }`, `FilesystemWrite { path }`, `KeychainRead { key }`, `ShellExec` (always requires explicit approval). Defined in `crates/springtale-connector/src/manifest/types.rs`. See [guide/connectors.md](guide/connectors.md).
+
+**Chat (in-app)** — Talking to your bot without any external chat platform. `POST /chat` injects a message via the synthetic `in-app` connector; replies stream back over the `/chat/stream` SSE feed. Rendered by `ChatDock` / `ChatPanel` in the colony UI; pending approvals surface inline. See [reference/api.md](reference/api.md) §3.19.
+
+**Colony commander** — Strategic layer of the AI command hierarchy (`crates/springtale-bot/src/colony/`). Reviews ALL formations every 30 cadence ticks, after the per-formation tick, and proposes per-formation intent moves. AI-optional: with no `ai:colony` adapter it runs a deterministic de-escalation policy. Guarded formations are never auto-touched.
+
+**Conversational task setup** — Deterministic plain-language intent → recipe deploy engine (`crates/springtale-bot/src/conversation/`): catalog projection, deterministic NLU, slot-filling dialogue persisted in the session, varied NLG, deploy port. ZERO AI in the base path (NoopAdapter parity); a configured adapter only augments ranking and extraction.
 
 **Cooperation framework** — The 40-module crate `crates/springtale-cooperation/` (extracted from `springtale-bot` in April 2026) that implements non-hierarchical multi-agent coordination: cadence, momentum, formations, shared environment, orchestrator gating, attention economy, rally, sacrifice, recovery, supervision, stigmergy, contract net, routing, mental model, role dynamics, handoff, pacing, consensus, commit barriers, interference, transformation, and more. Wired into `springtale-bot` through a 14-step formation tick in `springtale-bot::runtime::event_loop::handle_cadence_tick`. Designed against the spec in [`docs/intended-arch/COOPERATION.md`](intended-arch/COOPERATION.md); user-facing tour in [`docs/guide/cooperation.md`](guide/cooperation.md).
 
@@ -115,6 +121,8 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
 
 **Gossip bus (cross-formation)** — Event bus carrying `FormationView` snapshots between sibling formations. Distinct from within-formation **awareness** (chitchat/SWIM substrate inside one formation). Implemented in `crates/springtale-cooperation/src/gossip/`. Lets one formation know what its peers are doing without polling the API. See [guide/cross-formation.md](guide/cross-formation.md).
 
+**GuardrailAdapter** — OWASP LLM Top-10 middleware wrapping every configured AI adapter (`crates/springtale-ai/src/guardrail/`): wall-clock timeout fence, output size cap, refusal-rate counters, and a per-bot daily token quota behind the `TokenQuota` trait. See [guide/security.md](guide/security.md) §5.2.
+
 **G-series milestones** — Internal milestone tags in code comments (`G2`, `G4`, `G5d`, `G5f`, `G5g`, `G6`) tracking the infrastructure rollout: G2 cross-formation memory store, G3 cross-language bindings (wit/py), G4 connector hot-reload, G5d disguise app fields, G5f tray icon profile, G5g quick-hide global hotkey, G6 cross-formation gossip bus.
 
 **Guard status** — Per-formation toggle that gates destructive or high-impact actions on members (e.g. dissolve, force-rally, intent change). Surfaces in the colony canvas formation detail card as a badge and is toggled via `POST /formations/{id}/toggle-guard`. State lives on the live `Formation` struct and is broadcast through `LiveFormationReader`. Read by the dashboard command grid to enable/disable destructive buttons.
@@ -157,7 +165,7 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
 
 ## N
 
-**Native connector** — A first-party connector compiled as Rust and loaded in-process. High trust, audited by the Springtale team. All 14 first-party connectors are native today. Contrast with **WASM connector**.
+**Native connector** — A first-party connector compiled as Rust and loaded in-process. High trust, audited by the Springtale team. All 15 first-party connectors are native today. Contrast with **WASM connector**.
 
 **NoopAdapter** — The default AI adapter that does nothing. Returns a fixed "no AI configured" response. Proves that the entire platform works without any AI plugged in. Defined in `crates/springtale-ai/src/noop/`.
 
@@ -165,11 +173,9 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
 
 **OAuth 2.1 PKCE** — The authorization flow used by `connector-kick`. PKCE (Proof Key for Code Exchange) prevents authorization code interception attacks without requiring a client secret.
 
+**OpenCode connector** — `connectors/connector-opencode`. Hands agentic coding tasks ("fix this bug", "add tests") to a locally-running `opencode serve` daemon over loopback HTTP. Actions `run_task` / `continue_session`, both mutating and approval-gated. See [reference/connectors/opencode.md](reference/connectors/opencode.md).
+
 **Orchestrator** — The component in `springtale-bot` that decomposes a formation's intent into sub-tasks via an AI adapter. Only invoked when the formation reaches Fever momentum tier. Sub-tasks are posted to the formation's shared blackboard under `task:*` keys; members pull via the agent loop (`scan` step). Defined in `crates/springtale-bot/src/orchestrator/` (split into `composer`, `intervention`, `orchestrate`). The `intervention` module handles L6 escalation actions: `change_intent`, `dissolve`, `escalate`, `inject_fuel`.
-
-**Rally** — A self-healing step a formation takes before escalating to the orchestrator. Implemented in `crates/springtale-cooperation/src/rally/`. Consumes a rally token, redirects attention to a weakest agent, and attempts to stabilise momentum. If tokens are exhausted, the formation escalates. Surfaces in the UI as rally pips (Monster Hunter-style cart icons).
-
-**Recovery** — Distress-signal-driven mutual aid between agents. `crates/springtale-cooperation/src/recovery/`. Non-operational members emit `DistressSignal::HealthLow`, `Incapacitated`, or `Dead`; each operational peer runs `evaluate_recovery` to decide whether to help (first willing helper wins, per L4D: nearest survivor rescues pinned teammate). Runs as step 9b of the tick pipeline.
 
 **OWASP ASVS** — The OWASP Application Security Verification Standard. Springtale targets Level 2 compliance. Mapping in `docs/current-arch/SECURITY.md`.
 
@@ -200,6 +206,10 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
 **Recipe** — A click-and-play blueprint that materialises a working bot. Backend-owned data shape: `RecipeCategory`, `Difficulty`, `RecipeSource` (Builtin / User / Community), `InputField` (each with `FieldVisibility`: Required / Optional / Advanced / Baked), `RecipeBlueprint` (connector configs + rules + AI config, all with `${input_id}` placeholders). The frontend renders what it's told, never invents categories or classifies fields. See [`docs/guide/recipes.md`](guide/recipes.md) and [`docs/reference/recipes-format.md`](reference/recipes-format.md).
 
 **RecipeSource** — Trust origin of a recipe: `Builtin` (compiled into the daemon), `User` (locally authored via W2.B, planned), `Community` (signed by an author the sentinel verifies, wire-shape only). Drives the UI's trust badge (W3.A).
+
+**Rally** — A self-healing step a formation takes before escalating to the orchestrator. Implemented in `crates/springtale-cooperation/src/rally/`. Consumes a rally token, redirects attention to a weakest agent, and attempts to stabilise momentum. If tokens are exhausted, the formation escalates. Surfaces in the UI as rally pips (Monster Hunter-style cart icons).
+
+**Recovery** — Distress-signal-driven mutual aid between agents. `crates/springtale-cooperation/src/recovery/`. Non-operational members emit `DistressSignal::HealthLow`, `Incapacitated`, or `Dead`; each operational peer runs `evaluate_recovery` to decide whether to help (first willing helper wins, per L4D: nearest survivor rescues pinned teammate). Runs as step 9b of the tick pipeline.
 
 **Rule** — The core automation unit: a trigger, zero or more conditions, and one or more actions. Rules are authored in TOML, stored in SQLite, and evaluated by the `RuleEngine`. See [guide/rules.md](guide/rules.md).
 
@@ -234,6 +244,8 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
 **Tauri** — A framework for building desktop and mobile apps with web frontends and Rust backends. Springtale's desktop shell uses Tauri 2 with a SolidJS + Tailwind 4 frontend. The desktop app and the web dashboard share a common component library (`tauri/packages/ui`) with a `DataProvider` abstraction: the desktop wraps Tauri `invoke()`, the web wraps HTTP + SSE.
 
 **Tool call** — A structured invocation emitted by an AI adapter when the AI wants to call a connector action. Typed as `ToolCall` in `springtale-ai`. The bot's `tool_runner` routes the call through the same capability gate used for direct actions — there is no back door. Supported by all three AI adapters (Anthropic, Ollama, OpenAI-compat); the MCP server exposes connectors as tools to external AI callers via the same path.
+
+**TokenQuota** — Per-bot daily AI token cap (OWASP LLM10). Trait in `springtale-ai`; SQLite-backed impl in `springtale-runtime::quota` persists counters in the `ai_token_usage` table. Configured via `[sentinel] daily_token_limit` — unset records usage without enforcing, set denies once a bot crosses the cap in a UTC day.
 
 **Toxic pair** — A dangerous combination of capabilities that could enable data exfiltration. Example: `KeychainRead` + `NetworkOutbound` to a different host. Blocked at install time. See [guide/security.md](guide/security.md).
 

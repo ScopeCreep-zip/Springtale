@@ -33,7 +33,7 @@ A minimal config is **empty** — every section has safe defaults. You only writ
   │    chat connectors — absent section = connector not loaded
   │
   └── [kick]  [github]  [bluesky]  [presearch]                     ─── §11
-      [http]  [filesystem]  [shell]  [browser]
+      [http]  [filesystem]  [shell]  [browser]  [opencode]
       service connectors
 ```
 
@@ -139,6 +139,7 @@ Bot runtime configuration. If absent, the bot is disabled — rules and connecto
 |---|---|---|---|
 | `context_window` | `usize` | `50` | Conversation context window size (entries kept in memory for AI fallback) |
 | `vault_timeout_secs` | `u64` | `300` | Auto-lock timeout in seconds |
+| `tool_policy` | `ToolPolicy` | default mode | Which connector actions the AI may invoke as tools (OWASP LLM06). Fields: `allow` (glob list, e.g. `["connector-github__read_*"]`), `deny` (glob list, always wins), `max_iterations` (0 = default 5), `writes_with_approval` (bool). With `allow` empty (**default mode**), only `read_only` actions are callable — mutating actions stay invisible unless `writes_with_approval = true`, which routes each through the blocking approval gate. A non-empty `allow` switches to explicit mode: exactly the listed tools. |
 | `[bot.persona]` | table | (defaults) | Persona block |
 
 ### 8.1 `[bot.persona]`
@@ -164,6 +165,7 @@ Behavioural monitor configuration. If absent, the sentinel runs with the default
 | `circuit_breaker_cooldown_secs` | `u64` | `300` | Cooldown before an opened breaker re-arms |
 | `dead_man_threshold` | `u32` | `120` | Actions per minute before the dead-man switch trips |
 | `audit_retention_days` | `u32` | `90` | Audit trail retention |
+| `daily_token_limit` | `Option<u64>` | `None` | Per-bot daily AI token cap (OWASP LLM10). `None` records usage without enforcing (observability mode); `Some(n)` denies once a single bot crosses `n` tokens in a UTC day. Counters persist across restarts in the `ai_token_usage` table. |
 
 The sentinel also checks toxic capability pairs at manifest install time and writes a row to the `audit_trail` table for every dispatch decision.
 
@@ -368,6 +370,17 @@ Headless Chromium.
 | `chrome_path` | `Option<String>` | auto-detect | Path to Chrome/Chromium binary |
 | `disable_telemetry` | `bool` | `true` | Launches Chromium with telemetry flags disabled |
 | `message_jitter_secs` | `u64` | `0` | Random 0..N second delay on sends |
+
+### 11.9 `[opencode]`
+
+Agentic coding via a locally-running `opencode serve` daemon.
+
+| Key | Type | Default | Description |
+|---|---|---|---|
+| `base_url` | `String` | `http://127.0.0.1:4096` | Base URL of the running `opencode serve` daemon |
+| `password` | `Option<Secret<String>>` | `None` | Daemon HTTP basic-auth password (its `OPENCODE_SERVER_PASSWORD`). Omit when the daemon runs without auth. The username is fixed (`opencode`). |
+| `model` | `Option<String>` | `None` | Model id passed through on each prompt (e.g. `anthropic/claude-sonnet-4`). `None` uses the daemon's default. |
+| `agent` | `Option<String>` | `None` | Route prompts to a specific opencode agent |
 
 ---
 

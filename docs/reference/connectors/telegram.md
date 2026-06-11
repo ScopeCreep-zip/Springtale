@@ -63,6 +63,7 @@ Handlers for `callback_query_received` should call `answer_callback_query` withi
 | `delete_message` | `chat_id`, `message_id` |
 | `send_inline_keyboard` | `chat_id`, `text`, `keyboard` (array of button arrays) |
 | `answer_callback_query` | `callback_query_id`, `text` (toast), `show_alert` (bool) |
+| `discover_destinations` | — (read-only; returns a `workspaces` array of `{workspace_key, display_name, kind, metadata}` — feeds the D1 external-workspaces directory, the 🔍 Scan affordance) |
 
 ## 5. Capabilities Required
 

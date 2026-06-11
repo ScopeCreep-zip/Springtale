@@ -120,18 +120,24 @@ systemd. Or syslog if you have an aggregator.
 
 ## Manual rotation (any path-based log)
 
-If `springtaled` is writing to a file directly and you've got no
-external rotator:
+`springtaled` does **not** handle `SIGHUP` — it logs to stdout/stderr
+and leaves file management to whatever captures them. That means the
+classic rename-then-HUP pattern does not work; the daemon would keep
+writing to the renamed file's open handle.
+
+If you're redirecting stdout to a file yourself, use copy-truncate
+semantics so the open file handle stays valid:
 
 ```bash
 # In a cron / launchd timer:
-mv /var/log/springtaled.log /var/log/springtaled.log.$(date +%Y%m%d)
-kill -HUP $(pidof springtaled)         # tell it to reopen the file
-gzip /var/log/springtaled.log.*        # eventually
+cp /var/log/springtaled.log /var/log/springtaled.log.$(date +%Y%m%d)
+: > /var/log/springtaled.log           # truncate in place, handle stays open
+gzip /var/log/springtaled.log.*       # eventually
 ```
 
-`springtaled` handles `SIGHUP` by reopening its stdout/stderr targets,
-so the rename-then-HUP pattern works without dropping log lines.
+(`logrotate` users: that's `copytruncate` in the stanza above.) Better
+still, run under systemd/journald or Docker's logging driver and let
+them own rotation entirely.
 
 ## Forwarding logs to an aggregator
 

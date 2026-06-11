@@ -1,12 +1,17 @@
 # Python API reference
 
 Every type and method exposed by `springtale-py`. Authoritative source
-is `crates/springtale-py/src/lib.rs`; this doc is the user-facing
-view.
+is `crates/springtale-py/src/` (one module per class); this doc is the
+user-facing view.
+
+The module exposes exactly four classes — `MomentumTier`, `Intent`,
+`FormationId`, `Formation` — plus `__version__`. Python embeds the
+cooperation *model* only; the live runtime stays in `springtaled`.
 
 ## `springtale.MomentumTier`
 
-Enum representing a formation's momentum.
+Enum representing a formation's momentum tier (the capability gate from
+`COOPERATION.md §7`).
 
 ```python
 from springtale import MomentumTier
@@ -17,160 +22,122 @@ MomentumTier.Hot        # ≥8 successful ticks, no interference
 MomentumTier.Fever      # ≥15 successful ticks, no interference
 ```
 
-Methods:
+Frozen (`frozen` in pyo3) — you can't mutate. Supports `==` between
+members and against ints (`eq, eq_int`), and members are hashable, so
+tiers work as `dict` keys.
 
-| Method | Returns | Description |
-|---|---|---|
-| `MomentumTier.from_str(s: str)` | `MomentumTier` | Parse from `"Cold"` / `"Warming"` / `"Hot"` / `"Fever"`. Raises `ValueError` on unknown. |
-| `MomentumTier.__str__()` | `str` | Round-trip with `from_str`. |
-| `MomentumTier.__eq__(other)` | `bool` | Identity comparison. |
-
-Properties (read-only):
-
-- `MomentumTier.name` — `"Cold" | "Warming" | "Hot" | "Fever"`.
-
-Frozen (`frozen=True` in pyo3) — you can't mutate.
-
-## `springtale.AgentId`
-
-Opaque integer-packed identity for an agent within a formation.
+There is no `from_str` constructor. If you're mapping API strings to
+tiers, build the dict yourself:
 
 ```python
-from springtale import AgentId
-
-a = AgentId(42)
-print(a)            # 'AgentId(42)'
-print(a.as_int())   # 42
+TIER = {
+    "cold": MomentumTier.Cold,
+    "warming": MomentumTier.Warming,
+    "hot": MomentumTier.Hot,
+    "fever": MomentumTier.Fever,
+}
 ```
 
-Methods:
+## `springtale.Intent`
 
-| Method | Returns | Description |
-|---|---|---|
-| `AgentId(value: int)` | `AgentId` | Construct. `value` must be a non-negative int. |
-| `as_int()` | `int` | Underlying integer. |
-| `__eq__(other)` | `bool` | Identity comparison. |
-| `__hash__()` | `int` | Usable in `dict` / `set`. |
-
-## `springtale.IntentPattern`
-
-A formation's high-level goal. Variants:
-
-- `Reconnoiter` — read-only intent (monitor / observe).
-- `Execute` — active intent (take action).
-- `Stabilize` — maintenance intent (maintain current state).
-- `Surge` — burst intent (maximum effort, burn rally tokens freely).
-- `Dissolve` — formation winding down.
-
-Each variant may carry a payload string — task description, plan ID,
-reason. The Rust types use newtypes (`TaskDescriptor`, `PlanId`,
-`StabilizeReason`, `DissolveReason`); the Python facade collapses
-them to `Optional[str]`.
+A formation's high-level goal. Five variants, built through static
+factory methods. Each payload is a plain Python string — the Rust
+newtype layer (`TaskDescriptor`, `PlanId`, `StabilizeReason`,
+`DissolveReason`) is collapsed so callers don't model every newtype.
 
 ```python
-from springtale import IntentPattern
+from springtale import Intent
 
-i = IntentPattern.reconnoiter(task="watch github issues")
-i = IntentPattern.execute(plan="plan-2026-05-11-incident-response")
-i = IntentPattern.stabilize(reason="cooldown after surge")
-i = IntentPattern.surge()
-i = IntentPattern.dissolve(reason="task complete")
+i = Intent.reconnoiter(target="github/issues")
+i = Intent.execute(plan_id="plan-2026-05-11-incident-response")
+i = Intent.execute()                       # plan_id=None — orchestrator picks
+i = Intent.stabilize(reason="cooldown after surge")
+i = Intent.surge(objective="ship the release")
+i = Intent.dissolve(reason="task complete")
 ```
-
-Methods:
 
 | Method | Returns | Description |
 |---|---|---|
-| `IntentPattern.reconnoiter(task: Optional[str] = None)` | `IntentPattern` | Construct Reconnoiter. |
-| `IntentPattern.execute(plan: Optional[str] = None)` | `IntentPattern` | Construct Execute. |
-| `IntentPattern.stabilize(reason: Optional[str] = None)` | `IntentPattern` | Construct Stabilize. |
-| `IntentPattern.surge()` | `IntentPattern` | Construct Surge. |
-| `IntentPattern.dissolve(reason: Optional[str] = None)` | `IntentPattern` | Construct Dissolve. |
-| `IntentPattern.from_dict(d: dict)` | `IntentPattern` | Parse from `{"kind": "Reconnoiter", "task": "..."}` shape used by the HTTP API. |
-| `IntentPattern.to_dict()` | `dict` | Round-trip back. |
-| `IntentPattern.kind` (property) | `str` | The variant name. |
-| `IntentPattern.payload` (property) | `Optional[str]` | The variant payload, or `None`. |
+| `Intent.reconnoiter(target: str)` | `Intent` | Gather information. `target` describes what to observe (`"news/feed"`, `"github/issues"`, …). Required. |
+| `Intent.execute(plan_id: str \| None = None)` | `Intent` | Act on a known plan. `plan_id` is opaque; `None` lets the orchestrator pick. |
+| `Intent.stabilize(reason: str)` | `Intent` | Defensive hold. `reason` documents why the formation is pausing. Required. |
+| `Intent.surge(objective: str)` | `Intent` | Maximum commitment to one objective. Required. |
+| `Intent.dissolve(reason: str)` | `Intent` | Graceful wind-down. `reason` is recorded into the global knowledge store. Required. |
+| `kind()` | `str` | Variant name — `"reconnoiter" \| "execute" \| "stabilize" \| "surge" \| "dissolve"`. Matches the snake_case serde tags the rest of the system uses. Note: a method, not a property. |
 
-`IntentPattern.kind` aliases: `intent.task` / `intent.plan` /
-`intent.reason` map to `payload` for the variants where those names
-match the Rust newtype.
+Frozen — instances are immutable.
+
+## `springtale.FormationId`
+
+Formation identity. Wraps the same 128-bit UUID the rest of the system
+uses; Python sees it as a string.
+
+```python
+from springtale import FormationId
+
+fid = FormationId()                                          # fresh random id
+fid = FormationId.parse("f47ac10b-58cc-4372-a567-0e02b2c3d479")
+str(fid)        # canonical UUID string
+```
+
+| Method | Returns | Description |
+|---|---|---|
+| `FormationId()` | `FormationId` | Generate a fresh formation id. |
+| `FormationId.parse(s: str)` | `FormationId` | Parse from the canonical UUID string. Raises `ValueError` on invalid input. |
+| `__str__()` | `str` | Canonical UUID string form. |
+| `__eq__(other)` / `__hash__()` | — | Usable in `dict` / `set`. |
 
 ## `springtale.Formation`
 
-A formation's identity + intent + momentum tier.
+Lightweight, read-only formation handle. Mirrors the `FormationView`
+gossip record without the live runtime hookup — pure-Python use is
+scripting and simulation; `springtaled` owns the real thing.
 
 ```python
-from springtale import Formation, IntentPattern, MomentumTier
+from springtale import Formation, Intent
 
-f = Formation(
-    id="f47ac10b-58cc-4372-a567-0e02b2c3d479",
-    intent=IntentPattern.reconnoiter(task="watch issues"),
-    momentum=MomentumTier.Warming,
-)
+f = Formation(Intent.reconnoiter(target="watch issues"))
+f.id              # FormationId (auto-generated)
+f.intent          # the Intent you passed
+f.momentum_tier   # MomentumTier.Cold — formations always start Cold
 ```
 
-Constructor parameters:
+Constructor takes exactly one argument:
 
 | Param | Type | Description |
 |---|---|---|
-| `id` | `str` | UUID string. Must parse as a valid UUID. |
-| `intent` | `IntentPattern` | The formation's current intent. |
-| `momentum` | `MomentumTier` | The formation's current momentum tier. |
+| `intent` | `Intent` | The formation's intent. The id is auto-generated and `momentum_tier` starts at `Cold` — momentum is *earned* through cooperation ticks, never assigned. |
 
-Properties (read-only):
-
-| Property | Type | Description |
-|---|---|---|
-| `id` | `str` | The UUID. |
-| `intent` | `IntentPattern` | The intent. |
-| `momentum` | `MomentumTier` | The momentum tier. |
-
-Methods:
-
-| Method | Returns | Description |
-|---|---|---|
-| `Formation.from_dict(d: dict)` | `Formation` | Parse from the shape returned by `GET /formations/{id}`. |
-| `to_dict()` | `dict` | Round-trip back. |
-| `__eq__(other)` | `bool` | Equal iff id, intent, and momentum match. |
-| `__repr__()` | `str` | Includes id (truncated) + intent kind + momentum tier. |
+Properties (read-only): `id: FormationId`, `intent: Intent`,
+`momentum_tier: MomentumTier`.
 
 ## Module-level constants
 
 ```python
 springtale.__version__        # str matching the workspace crate version
-springtale.SCHEMA_VERSION     # int matching the daemon's current schema version
 ```
 
 ## Errors
 
-All bindings raise `ValueError` on invalid input. Examples:
-
-- `IntentPattern.from_dict({})` → `ValueError: missing kind`
-- `MomentumTier.from_str("Smoldering")` → `ValueError: unknown tier 'Smoldering'`
-- `Formation(id="not-a-uuid", ...)` → `ValueError: invalid UUID`
-
-We deliberately don't define custom exception classes. Catching
-`ValueError` works.
+The bindings raise `ValueError` on invalid input — e.g.
+`FormationId.parse("not-a-uuid")`. We deliberately don't define custom
+exception classes; catching `ValueError` works.
 
 ## Thread safety
 
-All types are immutable (`frozen=True` in pyo3). Sharing instances
-across threads is safe. Pass instances freely; the GIL handles
-reference counting.
+All types are immutable (`frozen` in pyo3). Sharing instances across
+threads is safe.
 
 ## Caveats
 
 - **The bindings don't connect to a daemon.** They're pure types.
-  Anything that needs daemon state has to fetch over HTTP first.
+  Anything that needs daemon state has to fetch over HTTP first — see
+  [`docs/reference/api-clients/python.md`](../reference/api-clients/python.md).
 - **No async.** The bindings are synchronous because they don't do
-  I/O. If you want async HTTP to a daemon, use `httpx` or `aiohttp`;
-  the types are usable from async code without ceremony.
-- **`from_dict` is strict-ish.** Extra fields are ignored; missing
-  required fields raise `ValueError`. Mismatched types raise
-  `TypeError` from the underlying pyo3 conversion.
-- **No serialization to/from arbitrary formats.** We provide
-  `to_dict()` (matches the HTTP API JSON shape); pickle isn't
-  supported (pyo3 enums + frozen classes don't pickle by default).
+  I/O. The types are usable from async code without ceremony.
+- **No dict round-tripping.** There is no `from_dict` / `to_dict`;
+  parse API JSON yourself and construct via the factory methods.
+- **No pickle.** pyo3 frozen classes don't pickle by default.
 
 ## Examples in repository
 

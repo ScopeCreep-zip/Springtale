@@ -7,7 +7,7 @@
 - **Default bind:** `127.0.0.1:8080` (configurable via `[api] bind`)
 - **Transport:** HTTP (use a reverse proxy for remote TLS termination)
 - **Content type:** `application/json`
-- **Live streams:** Server-Sent Events on `/events/stream` and `/canvas/stream`
+- **Live streams:** Server-Sent Events on `/events/stream`, `/canvas/stream`, `/cooperation/events`, and `/chat/stream`
 
 ```
   Client                       springtaled
@@ -77,9 +77,9 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/connectors
       ┌─────────┬──────────┬──────────┬──────────┬─────────────┐
       ▼         ▼          ▼          ▼          ▼             ▼
    Send    Diagnostics  Fixes    Onboarding  Templates     Webhooks
-                                                                 │
-                                                                 ▼
-                                                          Dashboard (SPA)
+      ┌──────────────┬──────────────────┐
+      ▼              ▼                  ▼
+  Approvals     Chat (SSE)       Dashboard (SPA)
 ```
 
 *Fig. 3. Route groups at a glance. Public routes: health, ready, `/ui`, `/ui/*`. Everything else requires the bearer token.*
@@ -296,6 +296,44 @@ The endpoint requires the bearer token like every other authenticated route. Ext
 | GET | `/ui` | — | Embedded SPA index |
 | GET | `/ui/{*path}` | — | SPA static assets |
 
+### 3.18 Approvals
+
+Blocking-approval queue for capabilities that can never be auto-granted
+(currently `ShellExec` — the OpenClaw CVE-2026-25253 1-click-RCE class).
+When a connector invokes such a capability, the requestor blocks until a
+decision lands here or the gate's deny-fallback timeout fires (default
+60s). Every decision is written to the sentinel audit trail.
+
+| Method | Path | Description |
+|---|---|---|
+| GET | `/approvals` | List outstanding approval requests. Returns `{"pending": [...]}` — each entry carries the connector name, requested capability, human-readable summary, and the request id |
+| POST | `/approvals/{id}` | Resolve a pending request |
+
+`POST /approvals/{id}` body:
+
+```json
+{ "decision": "approve" | "deny", "approver": "optional label", "reason": "optional deny reason" }
+```
+
+`approver` defaults to `"maintainer"` (the bearer token already proves
+authority; the field is only audit-row attribution). Status codes: `200`
+decision recorded, `400` malformed id/body, `404` no pending request with
+that id (timeout already fired), `409` already resolved, `503` no
+approval gate wired.
+
+### 3.19 Chat
+
+In-app chat surface (W5). The desktop app, web dashboard, and PWA talk to
+the bot through one channel without any external chat platform. Messages
+are injected as if they arrived from a synthetic connector named
+`in-app`; replies stream back over SSE. Approvals raised by in-app tasks
+surface through the §3.18 endpoints.
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/chat` | Inject a chat message. Body `{"text": "...", "session": "optional"}` (`session` defaults to `in-app`). Fire-and-forget — returns `202 Accepted` with `{"status":"queued","session":"..."}` once queued; `400` on empty text, `503` if the bot runtime is unavailable |
+| GET | `/chat/stream` | SSE stream of bot replies. Each event's data is `{"session": "...", "text": "..."}` |
+
 ---
 
 ## 4. Middleware Stack
@@ -366,7 +404,7 @@ All errors return JSON:
 
 ## 6. Live Streams
 
-Both SSE endpoints emit `event:` + `data:` lines. Payloads are JSON.
+All four SSE endpoints emit `event:` + `data:` lines. Payloads are JSON.
 
 ### 6.1 `/events/stream`
 
@@ -387,6 +425,17 @@ data: {"kind":"node_moved","id":"...","x":120,"y":80}
 ```
 
 Broadcast semantics: slow consumers receive `RecvError::Lagged(n)` and must reconnect. The dashboard auto-refetches `GET /canvas` on reconnect.
+
+### 6.3 `/cooperation/events`
+
+Emits formation lifecycle, momentum transition, rally, and interference
+events. Accepts an optional `?formation_id=...` filter. See §3.4.
+
+### 6.4 `/chat/stream`
+
+Emits the bot's in-app chat replies (§3.19). Each event's data is a
+`{"session": "...", "text": "..."}` object. Same lagged-subscriber
+semantics as the other broadcast streams.
 
 ---
 

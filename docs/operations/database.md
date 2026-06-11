@@ -8,21 +8,26 @@ mental models, audit trail, webhook secrets, runtime config.
 
 ## Layout
 
-12 schema files in `crates/springtale-store/src/schema/sql/`, applied
+17 schema files in `crates/springtale-store/src/schema/sql/`, applied
 declaratively at boot via `schema/apply.rs`. The split:
 
 | File | Tables | Domain |
 |---|---|---|
-| `audit.sql` | `audit_trail` | every sentinel verdict |
-| `bot.sql` | `bot_memory`, `bot_pair`, `bot_session` | session memory, pairing |
-| `connectors.sql` | `connectors`, `connector_configs`, `connector_outputs` | installed connectors + their config |
-| `cooperation.sql` | `formation_momentum`, `mental_model_*` | cooperation state that crosses dissolves |
+| `ai_token_usage.sql` | `ai_token_usage` | per-bot daily AI token counters (quota / observability) |
+| `approvals.sql` | `pending_approvals`, `tool_loop_checkpoints` | approval-gate decisions + paused tool loops awaiting approval |
+| `audit.sql` | `audit_trail` | every sentinel verdict (hash-chained rows) |
+| `bot.sql` | `bot_sessions`, `user_prefs`, `bot_memory`, `bot_aliases` | session memory, prefs, aliases |
+| `connectors.sql` | `connectors` | installed connectors + their config |
+| `cooperation.sql` | `coop_writes`, `coop_deposits`, `mental_model_*` | cooperation state that crosses dissolves |
+| `dedupe.sql` | `dedupe_seen` | `Action::Dedupe` seen-keys (blake3 digests only) |
 | `events.sql` | `events` | trigger fires + dispatch outcomes |
-| `execution.sql` | `execution_results` | rule execution history |
-| `formations.sql` | `formations`, `formation_members` | formation rosters |
+| `execution.sql` | `execution_results` | legacy rule execution history |
+| `executions.sql` | `executions`, `execution_steps` | per-chain-fire observability (Phase B; sizes only, no payloads) |
+| `formations.sql` | `formations`, `formation_members`, `formation_momentum`, `formation_rally` | formation rosters + momentum + rally tokens |
 | `jobs.sql` | `jobs` | scheduled work (in-memory mpsc for now) |
-| `rules.sql` | `rules`, `rule_errors` | rule definitions + their errors |
-| `runtime_config.sql` | `runtime_config` | hot-swappable config (AI provider, etc.) |
+| `mental_model_workspaces.sql` | `mental_model_workspaces` | discovered external chat destinations (D1) |
+| `rules.sql` | `rules` | rule definitions |
+| `runtime_config.sql` | `config_store` | hot-swappable config (AI provider, etc.) |
 | `safety.sql` | `safety_config` | disguise, quick-hide, panic-tap settings |
 | `wasm.sql` | `wasm_binaries` | content-addressed WASM connector blobs |
 

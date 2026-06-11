@@ -62,6 +62,7 @@ HTTP JSON-RPC to the local `signal-cli` daemon. The daemon holds Signal Protocol
 | `send_message` | `text`, `recipients` (array) or `chat_id` (single) | `timestamp` |
 | `send_group_message` | `group_id`, `text` | `timestamp` |
 | `set_disappearing_timer` | `source`, `expires_in_seconds` (`0` = disabled) | — |
+| `discover_destinations` | — (read-only) | `workspaces` array of `{workspace_key, display_name, kind, metadata}` — feeds the D1 external-workspaces directory (the 🔍 Scan affordance) |
 
 ## 5. Capabilities Required
 

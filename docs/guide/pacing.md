@@ -14,11 +14,14 @@ this page covers what each phase feels like and how to operate.
 
 | Phase | L4D analog | What it does | Default quota |
 | ----- | ---------- | ------------ | ------------- |
-| `Preparation` | Build-up | Agents claim work slowly so they have headroom for the next phase. | 1 req / 2s per agent |
-| `Active` | Sustained peak | The formation's normal working speed. | 5 req / s per agent |
-| `Peak` | Crescendo | Brief high-throughput burst — used when a deadline is imminent. | 20 req / s per agent, capped at 30 s wall time |
-| `Recovery` | Peak fade | Throttle back hard so the formation cools down. | 1 req / 5s per agent |
-| `Disruption` | Director interrupt | All work pauses; the formation triages. | 0 req / s (no work claimed) |
+| `Preparation` | Build-up | Agents claim work slowly so they have headroom for the next phase. | 2 actions / min |
+| `Active` | Sustained peak | The formation's normal working speed. | 10 actions / min |
+| `Peak` | Crescendo | Brief high-throughput burst — used when a deadline is imminent. | 30 actions / min |
+| `Recovery` | Peak fade | Throttle back hard so the formation cools down. | 1 action / min |
+| `Disruption` | Director interrupt | All work pauses; the formation triages. | hard-block (every check rejected) |
+
+Quotas are per-formation GCRA budgets (the `governor` crate), defined in
+`crates/springtale-cooperation/src/pacing/quotas.rs`.
 
 The cooperation tick's `check_pacing` step decides transitions; the
 agent loop reads the current phase's quota off an `Arc<RateLimiter>`
@@ -64,21 +67,18 @@ adding members or reducing intent scope.
 
 ## When you want different quotas
 
-The default per-tier quotas live in
+The default per-phase quotas live in
 `crates/springtale-cooperation/src/pacing/quotas.rs` as a static
-table. Practical reasons to override:
+table — deliberately one file, so tweaking (e.g. raising Peak from
+30 → 60 actions/min) touches exactly one place. There is no runtime
+knob for the phase quotas today; changing them means editing the table
+and rebuilding.
 
-- **Connector with a stricter remote rate limit** — if Slack's
-  webhook is `1 req/s`, the formation should never claim faster
-  than that even at Peak. Per-connector overrides are declared in
-  the connector's manifest and merged into the formation's effective
-  quota at install time.
-- **Formation that's IO-bound rather than CPU-bound** — for HTTP-only
-  formations, Peak quota can be much higher (50 req/s) without
-  contention. Configure via `FormationConstraints::pacing_overrides`.
-
-There's no UI knob for pacing overrides; they're configured per
-formation via the `springtale formation config` CLI or in code.
+For per-connector limits — a service whose remote API is stricter than
+the phase quota — use the sentinel's per-connector rate limiter
+(`[sentinel] rate_limit_per_minute`). It runs on every dispatch
+regardless of formation phase, so the stricter of the two layers always
+wins.
 
 ## When pacing fights you
 

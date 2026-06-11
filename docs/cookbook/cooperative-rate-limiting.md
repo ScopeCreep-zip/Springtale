@@ -1,122 +1,92 @@
 # Recipe: Cooperative rate limiting
 
-Two bots share an API rate limit (a single OpenAI key shared between
-a moderation bot and a research swarm; a Discord bot token shared
-between a moderator and an announce bot). You want them to coordinate
-who gets to send next, not just race.
+Two bots share an API rate limit (a single Discord bot token shared
+between a moderator and an announce bot; one upstream API key shared by
+a research swarm). You want them to coordinate who gets to send next,
+not just race.
 
 This recipe uses the **cooperation framework's pacing module**, which
 implements GCRA (Generic Cell Rate Algorithm — the same algorithm
-Linux's `tc` and many CDNs use). Pacing is per-formation; if both
-bots are members of the same formation, they share its pacing state.
+Linux's `tc` and many CDNs use, via the `governor` crate). Pacing is
+per-formation: if both bots are members of the same formation, they
+share its pacing state automatically. There is nothing to configure —
+pacing is phase-driven, not a TOML block.
 
 ## Setup: one formation, two members
 
-```toml
-[rule]
-name = "shared-pacing-bot"
-enabled = true
+Create a formation and add both agents as members — from the desktop
+Team Builder, or over the API:
 
-[trigger]
-type = "ConnectorEvent"
-connector = "connector-telegram"
-event = "message_received"
+```bash
+curl -X POST http://127.0.0.1:8080/formations \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"name": "comm-bots", "intent": "Stabilize"}'
 
-# Both moderation and announce bots are members of the same formation.
-# They share the pacing GCRA state and the blackboard.
-[[formation]]
-id = "comm-bots"
-intent = "Stabilize"
-
-[[formation.members]]
-agent_id = "moderation-bot"
-
-[[formation.members]]
-agent_id = "announce-bot"
-
-[[formation.pacing]]
-# GCRA parameters.  See guide/pacing.md for the full model.
-budget = 30            # 30 requests
-window_secs = 60       # per 60 seconds
-emission_interval_secs = 2.0   # min gap between requests
+# Add members by their connector (id from the create response):
+curl -X POST "http://127.0.0.1:8080/formations/$FID/members" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"connector_name": "connector-discord"}'
 ```
 
-The `[[formation.pacing]]` block configures the GCRA limiter. With
-budget=30, window=60, emission=2, the formation allows up to 30
-calls per minute with at least 2 seconds between any two calls.
+From this point the two members draw from one GCRA budget. There is no
+`pacing_via` routing to declare — membership *is* the routing.
 
-## Members call through the formation
+## How the budget is decided
 
-A member's action goes through the formation's pacing check:
+The formation's current **pacing phase** picks the quota
+(`crates/springtale-cooperation/src/pacing/quotas.rs`):
 
-```toml
-[[actions]]
-type = "RunConnector"
-connector = "connector-discord"
-action = "send_message"
-pacing_via = "comm-bots"        # check formation comm-bots' pacing
+| Phase | Actions/min | When |
+|---|---:|---|
+| `Preparation` | 2 | build-up, information gathering |
+| `Active` | 10 | normal work pace |
+| `Peak` | 30 | brief maximum-throughput burst |
+| `Recovery` | 1 | cooldown, consolidation only |
+| `Disruption` | hard-block | sentinel-detected anomaly |
 
-[actions.params]
-channel_id = "..."
-text = "${trigger.text}"
-```
+Phase transitions are evaluated every cooperation tick (step 8,
+`check_pacing`) from formation state — momentum tier, cascade signals,
+objective progress — not wall clock. See
+[`guide/pacing.md`](../guide/pacing.md) for the full phase model and
+transition rules.
 
-Behind the scenes:
+Behind the scenes on every member dispatch:
 
-1. Member's per-agent loop runs the `respond_cfp` step.
-2. Before dispatch, the runtime asks the formation's pacing module
-   `can_emit_now()`.
-3. If yes, dispatch proceeds; pacing state is updated.
-4. If no, the action waits (delayed dispatch) or is dropped (per
-   `pacing_overflow_policy`).
+1. The member's agent loop wants to emit an action.
+2. The formation's `RateLimiter` (lock-free `ArcSwap`, shared by all
+   members) answers "can you emit now?" against the current phase's
+   GCRA budget.
+3. If yes, dispatch proceeds and the GCRA state advances.
+4. If no, the claim stays parked on the blackboard — another tick will
+   retry. Work is deferred, not dropped.
 
-The two bots competing for the same shared budget are arbitrated by
-the formation's pacing state, not by racing on the network.
-
-## Overflow policies
-
-```toml
-[[formation.pacing]]
-budget = 30
-window_secs = 60
-emission_interval_secs = 2.0
-overflow_policy = "delay"       # one of: delay, drop, escalate
-max_delay_secs = 30
-```
-
-- **`delay`** — caller blocks up to `max_delay_secs` waiting for a
-  slot. Default. Right for "I'd rather wait than skip".
-- **`drop`** — caller returns immediately with a rate-limited error.
-  Right for "skip if I can't send right now".
-- **`escalate`** — caller goes through the orchestrator (if at Fever
-  tier). Right for "decide dynamically whether to send".
+The two bots competing for the same budget are arbitrated by shared
+formation state, not by racing on the network.
 
 ## Pacing across formations
 
 Pacing is per-formation. Two separate formations don't share state.
-If you want **cross-formation** shared rate-limiting, the gossip
-bus carries the necessary signal:
+For **cross-formation** awareness, the gossip bus already carries
+`FormationView` snapshots between sibling formations every cooperation
+tick — a formation's view includes its pacing phase, so peers can back
+off when a sibling is running hot.
 
-```toml
-[[formation.pacing]]
-gossip_aware = true     # publish FormationView with current GCRA state
-```
-
-Other formations can read each other's `FormationView` and back off
-when peers are heavy. This is voluntary cooperation, not enforcement —
-a misbehaving formation can ignore peers' state. The cooperation
-framework explicitly doesn't try to enforce cross-formation behaviour;
-see [`docs/intended-arch/COOPERATION_SECURITY_REVIEW.md`](../intended-arch/COOPERATION_SECURITY_REVIEW.md)
+This is voluntary cooperation, not enforcement — a misbehaving
+formation can ignore peers' state. The cooperation framework
+explicitly doesn't try to enforce cross-formation behaviour; see
+[`docs/intended-arch/COOPERATION_SECURITY_REVIEW.md`](../intended-arch/COOPERATION_SECURITY_REVIEW.md)
 on this design choice.
 
 ## When NOT to use formation pacing
 
-- **Single-bot, no peers** — just use the sentinel's per-connector
-  rate limiter in `[sentinel] rate_limits`. Simpler, no formation
-  needed.
+- **Single-bot, no peers** — the sentinel's per-connector rate limiter
+  (`[sentinel] rate_limit_per_minute`) already protects the upstream
+  service. Simpler, no formation needed.
 - **Multi-process** — pacing state lives in the daemon process. Two
-  daemons can't share pacing yet. (Phase 3 / Veilid will fix this.)
-- **Hard real-time guarantees** — GCRA's "you can emit now" check is
+  daemons can't share pacing yet. (Phase 3 / Veilid territory.)
+- **Hard real-time guarantees** — GCRA's "can you emit now" check is
   fast but tokio-async. If you need microsecond precision, this
   isn't it.
 
@@ -126,40 +96,37 @@ Two layers, both useful:
 
 | Layer | Scope | Purpose |
 |---|---|---|
-| `[sentinel] rate_limits` | Per-connector global | Safety net — protects the **service** from overload regardless of which rule is calling |
-| `[[formation.pacing]]` | Per-formation | Coordination — lets multiple agents share a budget cooperatively |
+| `[sentinel] rate_limit_per_minute` | Per-connector, global | Safety net — protects the **service** from overload regardless of which rule or agent is calling |
+| Formation pacing | Per-formation, phase-driven | Coordination — lets multiple agents share a budget cooperatively |
 
 Use both. The sentinel layer is the floor; formation pacing is the
-ceiling per cooperating group.
+ceiling per cooperating group. The stricter layer always wins.
 
 ## Inspecting pacing state
 
+The formation detail card on the colony canvas shows the current
+pacing phase (with a CSS class per phase — Peak gets the yellow glow),
+and `PacingPhaseChanged` events stream over `GET /cooperation/events`:
+
 ```bash
-springtale-cli formation get comm-bots --include=pacing
+curl -N "http://127.0.0.1:8080/cooperation/events?token=$TOKEN&formation_id=$FID"
 ```
 
-Output includes current GCRA state: tokens remaining, last emission
-time, queue depth (for `delay` policy).
-
-The dashboard renders this in the formation detail card as a
-horizontal bar showing budget utilization.
+`tracing` logs carry the same transitions for headless installs.
 
 ## Gotchas
 
-- **GCRA isn't a token bucket.** Tokens regenerate continuously
-  (decay-based), not in chunks at window boundaries. Burstier than
-  a fixed-window limiter; smoother than a leaky bucket.
-- **`emission_interval_secs`** is the minimum gap between any two
-  emissions. If you set it to 0, you get token-bucket semantics
-  (instantaneous bursts up to budget).
-- **`gossip_aware` adds network overhead.** Each gossip-aware
-  formation publishes a `FormationView` every tick. For two
-  formations the cost is trivial; for 100, set `gossip_aware = false`
-  unless you genuinely need cross-formation backoff.
-- **Pacing doesn't replace retries.** Per-connector retry logic
-  still handles transient failures. Pacing decides "should I emit
-  now"; retries decide "what to do when the network ate my emit".
-- **`overflow_policy = "delay"` with a slow `max_delay_secs` blocks
-  agents.** During the delay the agent's `respond_cfp` step is
-  parked. Other agents in the same formation continue, but the
-  delayed one isn't doing other work.
+- **GCRA isn't a token bucket.** Cells regenerate continuously
+  (decay-based), not in chunks at window boundaries. Burstier than a
+  fixed-window limiter; smoother than a leaky bucket.
+- **Quotas are compile-time today.** The per-phase table is a static
+  map in `quotas.rs` — changing it means editing one file and
+  rebuilding. The runtime-configurable layer is the sentinel limiter.
+- **Recovery throttles hard (1/min).** If agents look idle with work
+  on the blackboard, check the pacing phase before assuming a bug —
+  a formation cooling down from Peak is *supposed* to crawl.
+- **Disruption blocks everything.** A cascade or sentinel anomaly
+  hard-blocks all emissions until it clears. That's the point.
+- **Pacing doesn't replace retries.** Per-connector retry logic still
+  handles transient failures. Pacing decides "should I emit now";
+  retries decide "what to do when the network ate my emit".

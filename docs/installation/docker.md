@@ -32,12 +32,12 @@ docker compose down
 │ - capabilities: NONE (no --cap-add)                          │
 │ - read-only rootfs, /data mounted writable                   │
 │ - 127.0.0.1:8080 published on host                           │
-│ - SPRINGTALE_PASSPHRASE_FILE=/run/secrets/passphrase         │
+│ - SPRINGTALE_PASSPHRASE_FILE=/run/secrets/springtale_passphrase │
 └──────────────────────────────────────────────────────────────┘
               │
               ▼
-         ./.data/springtale  ←  bind-mounted at /data
-         ./.secrets          ←  Docker secrets directory
+         ./data              ←  bind-mounted at /data
+         ./secrets           ←  Docker secrets directory
 ```
 
 ## Passphrase handling
@@ -55,28 +55,32 @@ order:
    useful in a daemon container.
 
 The compose file uses option 1 by default. Create
-`.secrets/passphrase` with your vault passphrase before `docker compose up`:
+`secrets/passphrase.txt` with your vault passphrase before `docker compose up`
+(the compose file maps it to `/run/secrets/springtale_passphrase`):
 
 ```bash
-mkdir -p .secrets && chmod 700 .secrets
-printf '%s' 'your-long-strong-passphrase' > .secrets/passphrase
-chmod 400 .secrets/passphrase
+mkdir -p secrets && chmod 700 secrets
+printf '%s' 'your-long-strong-passphrase' > secrets/passphrase.txt
+chmod 400 secrets/passphrase.txt
 ```
 
 ## Connector tokens
 
 Connector credentials (Telegram bot tokens, GitHub PATs, Bluesky app
-passwords, etc.) live in the vault, not in the docker-compose file. The
-typical flow:
+passwords, etc.) are parsed into `Secret<String>` at config load and
+never logged. Two ways to provide them:
 
-```bash
-docker compose up -d
-docker compose exec springtaled springtale-cli vault set telegram.bot_token
-```
+1. **`springtale.toml`** — the compose file bind-mounts
+   `./springtale.toml` read-only at `/etc/springtale/springtale.toml`.
+   Put the connector section there (e.g. `[telegram] bot_token = "..."`)
+   and `chmod 600` the file on the host.
+2. **Management API / dashboard** — upsert connector config over
+   `POST /connectors/setup` (or the dashboard UI) after the daemon is
+   up. Secrets land in the encrypted store, not in a file.
 
-The exec opens a TTY into the container so the CLI can prompt for the
-token from stdin. The token never appears in argv, env, logs, or
-`docker inspect` output.
+The container image ships the CLI as `/usr/local/bin/springtale` if you
+need to exec in (note: distroless — there is no shell, so use
+`docker compose exec springtaled springtale <subcommand>` directly).
 
 ## Webhooks
 

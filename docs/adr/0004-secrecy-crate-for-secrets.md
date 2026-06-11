@@ -71,7 +71,7 @@ Locks in:
   [`docs/contributing/adding-a-connector.md`](../contributing/adding-a-connector.md).
 - Any new credential added anywhere in the codebase goes through this
   type, no exceptions. We've enforced this in code review at every
-  one of the 14 first-party connectors.
+  one of the first-party connectors.
 
 ## Alternatives considered
 

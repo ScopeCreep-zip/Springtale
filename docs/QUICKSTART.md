@@ -66,6 +66,14 @@ curl http://127.0.0.1:8080/ready
 # {"status": "ready"}
 ```
 
+Or use the built-in probe (`exit 0` = healthy) — this is what the
+Docker image's `HEALTHCHECK` runs, since the distroless container has
+no `curl`:
+
+```bash
+springtale healthcheck
+```
+
 ---
 
 ## 3. Docker

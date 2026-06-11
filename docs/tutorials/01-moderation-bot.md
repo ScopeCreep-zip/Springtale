@@ -52,13 +52,16 @@ By default, bots in Telegram groups can't see message content (the
 
 ```bash
 springtale-cli new telegram-bot
-cd telegram-bot-bot/
+# Creating telegram-bot project in ~/.local/share/springtale/projects/telegram-bot-20260610-091500
+cd ~/.local/share/springtale/projects/telegram-bot-*/
 ```
 
-You now have:
+The CLI picks the destination itself (under the data directory's
+`projects/`, timestamped) — you never pass a path, which is what keeps
+the scaffold free of path-traversal surprises. You now have:
 
 ```
-telegram-bot-bot/
+telegram-bot-<timestamp>/
 ├── springtale.toml          # daemon config for this project
 └── rules/
     └── welcome.toml         # starter rule, fires on /start

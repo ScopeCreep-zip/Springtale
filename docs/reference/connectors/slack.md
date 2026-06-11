@@ -62,11 +62,12 @@ Two tokens. `bot_token` (`xoxb-`) authenticates Web API calls via `Authorization
 
 | Name | Input fields |
 |---|---|
-| `send_message` | `channel_id`, `text` |
-| `send_blocks` | `channel_id`, `blocks` (Block Kit array) |
-| `send_thread_reply` | `channel_id`, `thread_ts`, `text` |
-| `edit_message` | `channel_id`, `ts`, `text` |
-| `add_reaction` | `channel_id`, `ts`, `emoji` |
+| `send_message` | `channel` (or `chat_id` alias — bot response routing sends `chat_id`), `text` |
+| `send_blocks` | `channel`, `blocks` (Block Kit array) |
+| `send_thread_reply` | `channel`, `thread_ts`, `text`, `reply_broadcast` (optional bool, default `false`) |
+| `edit_message` | `channel`, `ts`, `text` |
+| `add_reaction` | `channel`, `timestamp`, `name` (emoji name without colons, e.g. `thumbsup`) |
+| `discover_destinations` | — (read-only; returns `workspaces` array of `{workspace_key, display_name, kind, metadata}` for the D1 external-workspaces directory) |
 
 ## 5. Capabilities Required
 

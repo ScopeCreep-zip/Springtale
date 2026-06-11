@@ -18,7 +18,7 @@ Springtale ships in five phases. Each phase builds on the last — no phase skip
 
 | Phase | Name | Deliverables | State |
 |---|---|---|---|
-| 1a | Framework + Connectors | Daemon, CLI, 14 library crates, 7 baseline connectors (kick, presearch, bluesky, github, filesystem, shell, http), SQLite (declarative schema v1 in `schema/sql/`), crypto vault, WASM sandbox, MCP bridge | Present. Connector roster grew to 14 first-party through Phases 1b/2a. |
+| 1a | Framework + Connectors | Daemon, CLI, 14 library crates, 8 baseline connectors (kick, presearch, bluesky, github, filesystem, shell, http, opencode), SQLite (declarative schema v1 in `schema/sql/`), crypto vault, WASM sandbox, MCP bridge | Present. Connector roster grew to 15 first-party through Phases 1b/2a. |
 | 1b | Bot Foundations | `springtale-bot`, command router (prefix / pattern / alias), cooperation framework, `connector-telegram`, session memory | Present. Cooperation framework extracted to its own `springtale-cooperation` crate (40 pub modules) and wired into a 14-step formation tick; see §3.2. |
 | 2a | Chat + AI | Discord, Slack, IRC, Signal, Nostr connectors. Anthropic / Ollama / OpenAI-compat adapters (all three stream). `HttpTransport` (rustls mTLS). `springtale-sentinel`. Tool-calling across all AI adapters. | Present. Matrix is held on upstream `rusqlite` CVE. |
 | 2b | Desktop + Safety | Tauri 2 shell, SolidJS dashboard + colony canvas (RTS formation visualisation), duress vault, panic wipe, travel mode. Visual rule builder, i18n, a11y. | Shell, dashboard, colony canvas (with formation command grid, rally pips, attention bar, liveness/health encoding), duress, panic wipe, travel mode present. Visual rule builder, i18n, a11y not implemented. |
@@ -52,6 +52,7 @@ The foundation. A single-binary daemon, CLI, rule engine, crypto vault, WASM san
 | `connector-filesystem` | connector | Local filesystem — watch, read, write with path allow-lists |
 | `connector-shell` | connector | Shell execution — command allow-list, timeout, direct process |
 | `connector-http` | connector | Generic HTTP — GET/POST with host allow-list |
+| `connector-opencode` | connector | OpenCode — agentic coding via local `opencode serve` daemon, approval-gated |
 | `springtaled` | application | Headless daemon with REST API, webhook ingestion, job dispatch |
 | `springtale-cli` | application | CLI for vault init, connector management, rule authoring, event queries |
 
@@ -195,7 +196,7 @@ Tauri 2 desktop shell with a SolidJS frontend that renders an RTS-inspired colon
 
 ### 5.1. Present
 
-- **Tauri 2 desktop shell** — `tauri/apps/desktop`. IPC via `invoke()` into the shared `springtale-runtime` crate. 32 command modules (agent, approval, authors, bot, canvas, config, connectors, cooperation, data, diagnostics, drift, events, executions, fixes, formations, heartbeat, memory, onboarding, panic, quick_hide, recipes, rules, safety, selector_picker, send, sessions, templates, test_step, travel, tray, vault, workspaces, plus runtime_guard).
+- **Tauri 2 desktop shell** — `tauri/apps/desktop`. IPC via `invoke()` into the shared `springtale-runtime` crate. 33 command modules (agent, approval, authors, bot, canvas, chat, config, connectors, cooperation, data, diagnostics, drift, events, executions, fixes, formations, heartbeat, memory, onboarding, panic, quick_hide, recipes, rules, safety, selector_picker, send, sessions, templates, test_step, travel, tray, vault, workspaces, plus runtime_guard).
 - **Web dashboard** — `tauri/apps/dashboard`. SPA served by `springtaled`, bearer-token auth, SSE for live event and canvas streams.
 - **Shared component library** — `tauri/packages/ui` with `DataProvider` abstraction. Desktop wraps Tauri IPC; web wraps HTTP + SSE.
 - **Colony canvas** — RTS-style pixel-art ecosystem view: connectors → nodes, rules/agents → springtails, formations → zones, pipelines → mycelium. Live state over `/canvas/stream` (SSE) + `LiveFormationReader` for formation detail. Formation command grid (DEPLOY / PAUSE / RESUME / REMOVE), rally pips (Monster Hunter carts), attention distribution bar (Army of Two aggro), guard status badge, agent liveness / health encoding. See [`docs/guide/colony-canvas.md`](guide/colony-canvas.md).

@@ -41,7 +41,7 @@ Full walkthrough with a worked example: [docs/QUICKSTART.md](docs/QUICKSTART.md)
 
 ## Connectors
 
-Fourteen first-party connectors ship today. You wire them together with rules — no code, no AI, just TOML:
+Fifteen first-party connectors ship today. You wire them together with rules — no code, no AI, just TOML:
 
 | Connector | Platform | What it does |
 |---|---|---|
@@ -52,6 +52,7 @@ Fourteen first-party connectors ship today. You wire them together with rules �
 | `connector-filesystem` | Local files | watch, read, write with path allow-lists |
 | `connector-shell` | Shell commands | execute with allow-list, timeout, approval gate |
 | `connector-http` | Generic HTTP | GET/POST with host allow-list |
+| `connector-opencode` | OpenCode | hand agentic coding tasks to a local `opencode serve` daemon, approval-gated |
 | `connector-telegram` | Telegram | Bot API, polling + webhooks |
 | `connector-discord` | Discord | twilight gateway, slash commands, messages |
 | `connector-slack` | Slack | Socket Mode + webhooks, messages, blocks |
@@ -162,11 +163,29 @@ Native connectors (first-party, audited) run in-process with runtime capability 
 
 Security guide: [docs/guide/security.md](docs/guide/security.md) | Full threat model + OWASP/MITRE mappings: [docs/current-arch/SECURITY.md](docs/current-arch/SECURITY.md)
 
+### Supply chain & verification
+
+- **CISA 2026 / NIST SP 800-218 SSDF / OWASP Top 10:2025 baseline.** Every release ships with a CycloneDX 1.7 + SPDX 2.3 SBOM, SLSA Build Level 3 provenance, and a Sigstore cosign keyless bundle. Verify recipe: [`docs/operations/verifying-releases.md`](docs/operations/verifying-releases.md).
+- **Daily KEV gate.** CI cross-references our entire dep graph against the CISA Known Exploited Vulnerabilities catalog and fails closed on any match.
+- **Post-quantum-ready TLS.** Hybrid `X25519MLKEM768` key exchange (via `rustls-post-quantum`) is the rustls default in every entry point. Falls back to classical X25519 with peers that don't speak the hybrid yet.
+- **Memory safety roadmap** ([`docs/security/MEMORY-SAFETY.md`](docs/security/MEMORY-SAFETY.md)) per the CISA January 2026 expectation. Three documented `unsafe` blocks, all in `springtale-crypto` for `mlock`. Everything else is `#![forbid(unsafe_code)]`.
+- **Crypto inventory** ([`docs/security/CRYPTO-INVENTORY.md`](docs/security/CRYPTO-INVENTORY.md)) tracks every algorithm with a NIST IR 8547 migration deadline.
+- **Disclosure pointer:** RFC 9116 `security.txt` at [`/.well-known/security.txt`](tauri/apps/dashboard/public/.well-known/security.txt).
+
+Documents for operators and security-conscious users:
+
+- [`SECURITY.md`](SECURITY.md) — disclosure policy + SLAs
+- [`docs/security/SECURITY-FAQ.md`](docs/security/SECURITY-FAQ.md) — "Secure by Demand" Q&A
+- [`docs/security/SUPPLY-CHAIN.md`](docs/security/SUPPLY-CHAIN.md) — dep policy + signing
+- [`docs/security/RISK-REGISTER.md`](docs/security/RISK-REGISTER.md) — 32-row STRIDE inventory
+- [`docs/security/CI-TRUST.md`](docs/security/CI-TRUST.md) — CI/CD trust posture
+- [`docs/security/INCIDENT-RUNBOOK.md`](docs/security/INCIDENT-RUNBOOK.md) — maintainer playbooks
+
 ## Roadmap
 
 | Phase | Scope | State |
 |---|---|---|
-| 1a | Framework + connectors. Daemon, CLI, rule engine, crypto vault, WASM sandbox, 7 baseline connectors, MCP bridge. | Present. |
+| 1a | Framework + connectors. Daemon, CLI, rule engine, crypto vault, WASM sandbox, 8 baseline connectors, MCP bridge. | Present. |
 | 1b | Bot foundations. `springtale-bot` with command router, cooperation framework, `connector-telegram`. | Present. Cooperation framework fully extracted into `springtale-cooperation` (40 pub modules, zero internal deps) and wired through a 14-step formation tick. See [`docs/arch/AUDIT-NOTES.md §3`](docs/arch/AUDIT-NOTES.md). |
 | 2a | Chat + AI. Discord, Signal, IRC, Slack, Nostr connectors. Anthropic / Ollama / OpenAI-compat adapters (all three stream). `HttpTransport` (rustls mTLS). `springtale-sentinel`. | Present. `connector-matrix` is not in the workspace — `matrix-sdk` pins a `rusqlite` with an open CVE. |
 | 2b | Desktop + safety. Tauri 2 shell, SolidJS dashboard, canvas visualisation. Duress vault, panic wipe, travel mode, disguise tray icon (G5f), OS-wide quick-hide shortcut (G5g), destructive-action approval gate (G5b). | Shell, dashboard, canvas, duress, panic wipe, travel mode, disguise, quick-hide, approval gate all present. Visual rule builder (basic overlay shipped), i18n, and a11y still in progress. |
