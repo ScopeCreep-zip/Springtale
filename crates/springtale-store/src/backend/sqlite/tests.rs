@@ -499,6 +499,8 @@ async fn test_delete_alias() {
 // ── Audit Trail ──────────────────────────────────────────
 
 fn test_audit_entry(connector: &str, verdict: &str) -> crate::schema::audit::AuditEntry {
+    // Chain columns (prev_hash / row_hash / chain_seq) are populated
+    // by the repository on INSERT; callers leave them empty.
     crate::schema::audit::AuditEntry {
         id: uuid::Uuid::new_v4(),
         timestamp: Utc::now(),
@@ -508,6 +510,9 @@ fn test_audit_entry(connector: &str, verdict: &str) -> crate::schema::audit::Aud
         verdict: verdict.into(),
         verdict_reason: String::new(),
         result: "ok".into(),
+        prev_hash: String::new(),
+        row_hash: String::new(),
+        chain_seq: 0,
     }
 }
 

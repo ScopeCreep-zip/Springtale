@@ -41,7 +41,17 @@ impl SqliteBackend {
             );
 
             match result {
-                Ok((title, minutes, protected, shortcut, app_name, icon_id, active, panic_taps, updated)) => {
+                Ok((
+                    title,
+                    minutes,
+                    protected,
+                    shortcut,
+                    app_name,
+                    icon_id,
+                    active,
+                    panic_taps,
+                    updated,
+                )) => {
                     let updated_at = chrono::DateTime::parse_from_rfc3339(&updated)
                         .map(|dt| dt.with_timezone(&Utc))
                         .map_err(|e| StoreError::Serialization(e.to_string()))?;

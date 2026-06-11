@@ -1,3 +1,4 @@
+mod ai_token_usage;
 mod aliases;
 mod audit;
 mod config;
@@ -50,6 +51,7 @@ pub struct InMemoryBackend {
     memory: RwLock<Vec<MemoryRow>>,
     aliases: RwLock<HashMap<String, (String, String)>>,
     audit: RwLock<Vec<AuditEntry>>,
+    ai_token_usage: RwLock<HashMap<(String, u32), u64>>,
     safety_config: RwLock<Option<SafetyConfigRow>>,
     formations: RwLock<Vec<FormationRow>>,
     formation_members: RwLock<Vec<FormationMemberRow>>,
@@ -74,6 +76,7 @@ impl InMemoryBackend {
             memory: RwLock::new(Vec::new()),
             aliases: RwLock::new(HashMap::new()),
             audit: RwLock::new(Vec::new()),
+            ai_token_usage: RwLock::new(HashMap::new()),
             safety_config: RwLock::new(None),
             formations: RwLock::new(Vec::new()),
             formation_members: RwLock::new(Vec::new()),
@@ -287,6 +290,46 @@ impl super::trait_::StorageBackend for InMemoryBackend {
         self.delete_audit_before_impl(before).await
     }
 
+    async fn list_audit_chain(&self) -> Result<Vec<AuditEntry>, StoreError> {
+        self.list_audit_chain_impl().await
+    }
+
+    async fn ai_token_usage_get(&self, agent_id: &str, day_ymd: u32) -> Result<u64, StoreError> {
+        self.ai_token_usage_get_impl(agent_id, day_ymd).await
+    }
+
+    async fn ai_token_usage_set(
+        &self,
+        agent_id: &str,
+        day_ymd: u32,
+        tokens_used: u64,
+    ) -> Result<(), StoreError> {
+        self.ai_token_usage_set_impl(agent_id, day_ymd, tokens_used)
+            .await
+    }
+
+    async fn ai_token_usage_reserve(
+        &self,
+        agent_id: &str,
+        day_ymd: u32,
+        requested: u64,
+        limit: Option<u64>,
+    ) -> Result<crate::backend::AiTokenReserveOutcome, StoreError> {
+        self.ai_token_usage_reserve_impl(agent_id, day_ymd, requested, limit)
+            .await
+    }
+
+    async fn ai_token_usage_commit(
+        &self,
+        agent_id: &str,
+        day_ymd: u32,
+        prior_reservation: u64,
+        actual_tokens: u64,
+    ) -> Result<(), StoreError> {
+        self.ai_token_usage_commit_impl(agent_id, day_ymd, prior_reservation, actual_tokens)
+            .await
+    }
+
     // ── Safety Config ──────────────────────────────────────────
 
     async fn get_safety_config(&self) -> Result<Option<SafetyConfigRow>, StoreError> {
@@ -347,7 +390,12 @@ impl super::trait_::StorageBackend for InMemoryBackend {
         &self,
         formation_id: &str,
     ) -> Result<Option<FormationMomentumRow>, StoreError> {
-        Ok(self.formation_momentum.read().await.get(formation_id).cloned())
+        Ok(self
+            .formation_momentum
+            .read()
+            .await
+            .get(formation_id)
+            .cloned())
     }
 
     async fn upsert_formation_momentum(
@@ -443,10 +491,7 @@ impl super::trait_::StorageBackend for InMemoryBackend {
         self.mental_model_save_impl(formation_id, bundle).await
     }
 
-    async fn mental_model_load(
-        &self,
-        formation_id: &str,
-    ) -> Result<MentalModelBundle, StoreError> {
+    async fn mental_model_load(&self, formation_id: &str) -> Result<MentalModelBundle, StoreError> {
         self.mental_model_load_impl(formation_id).await
     }
 

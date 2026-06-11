@@ -1,4 +1,6 @@
+mod ai_token_usage;
 mod aliases;
+mod approvals;
 mod audit;
 mod config;
 mod connectors;
@@ -356,6 +358,48 @@ impl super::trait_::StorageBackend for SqliteBackend {
         self.delete_audit_before_impl(before).await
     }
 
+    async fn list_audit_chain(&self) -> Result<Vec<AuditEntry>, StoreError> {
+        self.list_audit_chain_impl().await
+    }
+
+    // ── AI token usage ─────────────────────────────────────────
+
+    async fn ai_token_usage_get(&self, agent_id: &str, day_ymd: u32) -> Result<u64, StoreError> {
+        self.ai_token_usage_get_impl(agent_id, day_ymd).await
+    }
+
+    async fn ai_token_usage_set(
+        &self,
+        agent_id: &str,
+        day_ymd: u32,
+        tokens_used: u64,
+    ) -> Result<(), StoreError> {
+        self.ai_token_usage_set_impl(agent_id, day_ymd, tokens_used)
+            .await
+    }
+
+    async fn ai_token_usage_reserve(
+        &self,
+        agent_id: &str,
+        day_ymd: u32,
+        requested: u64,
+        limit: Option<u64>,
+    ) -> Result<crate::backend::AiTokenReserveOutcome, StoreError> {
+        self.ai_token_usage_reserve_impl(agent_id, day_ymd, requested, limit)
+            .await
+    }
+
+    async fn ai_token_usage_commit(
+        &self,
+        agent_id: &str,
+        day_ymd: u32,
+        prior_reservation: u64,
+        actual_tokens: u64,
+    ) -> Result<(), StoreError> {
+        self.ai_token_usage_commit_impl(agent_id, day_ymd, prior_reservation, actual_tokens)
+            .await
+    }
+
     // ── Safety Config ──────────────────────────────────────────
 
     async fn get_safety_config(&self) -> Result<Option<SafetyConfigRow>, StoreError> {
@@ -467,9 +511,19 @@ impl super::trait_::StorageBackend for SqliteBackend {
         manifest_json: &str,
         wasm_hash: &str,
         author: &str,
+        author_pubkey_hex: &str,
+        manifest_sig_hex: &str,
     ) -> Result<(), StoreError> {
-        self.store_wasm_binary_impl(name, wasm_bytes, manifest_json, wasm_hash, author)
-            .await
+        self.store_wasm_binary_impl(
+            name,
+            wasm_bytes,
+            manifest_json,
+            wasm_hash,
+            author,
+            author_pubkey_hex,
+            manifest_sig_hex,
+        )
+        .await
     }
 
     async fn get_wasm_binary(&self, name: &str) -> Result<Option<WasmBinaryRow>, StoreError> {
@@ -568,10 +622,7 @@ impl super::trait_::StorageBackend for SqliteBackend {
             .await
     }
 
-    async fn mental_model_load(
-        &self,
-        formation_id: &str,
-    ) -> Result<MentalModelBundle, StoreError> {
+    async fn mental_model_load(&self, formation_id: &str) -> Result<MentalModelBundle, StoreError> {
         self.mental_model_load_impl(formation_id.to_owned()).await
     }
 
@@ -607,11 +658,8 @@ impl super::trait_::StorageBackend for SqliteBackend {
         formation_id: &str,
         workspace_key: &str,
     ) -> Result<(), StoreError> {
-        self.mental_model_workspace_delete_impl(
-            formation_id.to_owned(),
-            workspace_key.to_owned(),
-        )
-        .await
+        self.mental_model_workspace_delete_impl(formation_id.to_owned(), workspace_key.to_owned())
+            .await
     }
 
     async fn mental_model_workspace_touch(
@@ -646,6 +694,88 @@ impl super::trait_::StorageBackend for SqliteBackend {
             history,
         )
         .await
+    }
+
+    // ── Approval-over-chat (W2) ───────────────────────────────
+
+    async fn insert_pending_approval(
+        &self,
+        row: crate::schema::approvals::PendingApprovalRow,
+    ) -> Result<(), StoreError> {
+        self.insert_pending_approval_impl(row).await
+    }
+
+    async fn get_pending_approval(
+        &self,
+        id: &str,
+    ) -> Result<Option<crate::schema::approvals::PendingApprovalRow>, StoreError> {
+        self.get_pending_approval_impl(id.to_owned()).await
+    }
+
+    async fn resolve_pending_approval(
+        &self,
+        id: &str,
+        decision_json: &str,
+    ) -> Result<bool, StoreError> {
+        self.resolve_pending_approval_impl(id.to_owned(), decision_json.to_owned())
+            .await
+    }
+
+    async fn list_pending_approvals(
+        &self,
+        now_ms: i64,
+    ) -> Result<Vec<crate::schema::approvals::PendingApprovalRow>, StoreError> {
+        self.list_pending_approvals_impl(now_ms).await
+    }
+
+    async fn expire_pending_approvals(
+        &self,
+        now_ms: i64,
+    ) -> Result<Vec<crate::schema::approvals::PendingApprovalRow>, StoreError> {
+        self.expire_pending_approvals_impl(now_ms).await
+    }
+
+    async fn upsert_tool_loop_checkpoint(
+        &self,
+        row: crate::schema::approvals::ToolLoopCheckpointRow,
+    ) -> Result<(), StoreError> {
+        self.upsert_tool_loop_checkpoint_impl(row).await
+    }
+
+    async fn get_tool_loop_checkpoint(
+        &self,
+        session_key: &str,
+    ) -> Result<Option<crate::schema::approvals::ToolLoopCheckpointRow>, StoreError> {
+        self.get_tool_loop_checkpoint_impl(session_key.to_owned(), false)
+            .await
+    }
+
+    async fn get_checkpoint_by_approval(
+        &self,
+        approval_id: &str,
+    ) -> Result<Option<crate::schema::approvals::ToolLoopCheckpointRow>, StoreError> {
+        self.get_tool_loop_checkpoint_impl(approval_id.to_owned(), true)
+            .await
+    }
+
+    async fn delete_tool_loop_checkpoint(&self, session_key: &str) -> Result<(), StoreError> {
+        self.delete_tool_loop_checkpoint_impl(session_key.to_owned())
+            .await
+    }
+
+    async fn list_tool_loop_checkpoints(
+        &self,
+    ) -> Result<Vec<crate::schema::approvals::ToolLoopCheckpointRow>, StoreError> {
+        self.list_tool_loop_checkpoints_impl().await
+    }
+
+    async fn find_approval_by_summary(
+        &self,
+        summary: &str,
+        since_ms: i64,
+    ) -> Result<Option<crate::schema::approvals::PendingApprovalRow>, StoreError> {
+        self.find_approval_by_summary_impl(summary.to_owned(), since_ms)
+            .await
     }
 
     // ── Executions log (Phase B) ──────────────────────────────

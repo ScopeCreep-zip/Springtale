@@ -14,6 +14,8 @@ impl SqliteBackend {
         manifest_json: &str,
         wasm_hash: &str,
         author: &str,
+        author_pubkey_hex: &str,
+        manifest_sig_hex: &str,
     ) -> Result<(), StoreError> {
         let conn = self.conn.clone();
         let name = name.to_owned();
@@ -21,15 +23,24 @@ impl SqliteBackend {
         let manifest_json = manifest_json.to_owned();
         let wasm_hash = wasm_hash.to_owned();
         let author = author.to_owned();
+        let author_pubkey_hex = author_pubkey_hex.to_owned();
+        let manifest_sig_hex = manifest_sig_hex.to_owned();
         tokio::task::spawn_blocking(move || {
             let conn = conn
                 .lock()
                 .map_err(|_| StoreError::Database("lock poisoned".into()))?;
             conn.execute(
-                "INSERT INTO wasm_binaries (name, wasm_bytes, manifest_json, wasm_hash, author, installed_at)
-                 VALUES (?1, ?2, ?3, ?4, ?5, datetime('now'))
-                 ON CONFLICT(name) DO UPDATE SET wasm_bytes = excluded.wasm_bytes, manifest_json = excluded.manifest_json, wasm_hash = excluded.wasm_hash, author = excluded.author, installed_at = excluded.installed_at",
-                rusqlite::params![name, wasm_bytes, manifest_json, wasm_hash, author],
+                "INSERT INTO wasm_binaries (name, wasm_bytes, manifest_json, wasm_hash, author, author_pubkey_hex, manifest_sig_hex, installed_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, datetime('now'))
+                 ON CONFLICT(name) DO UPDATE SET \
+                   wasm_bytes        = excluded.wasm_bytes, \
+                   manifest_json     = excluded.manifest_json, \
+                   wasm_hash         = excluded.wasm_hash, \
+                   author            = excluded.author, \
+                   author_pubkey_hex = excluded.author_pubkey_hex, \
+                   manifest_sig_hex  = excluded.manifest_sig_hex, \
+                   installed_at      = excluded.installed_at",
+                rusqlite::params![name, wasm_bytes, manifest_json, wasm_hash, author, author_pubkey_hex, manifest_sig_hex],
             )
             .map_err(|e| StoreError::Database(format!("store_wasm_binary: {e}")))?;
             Ok(())
@@ -49,7 +60,7 @@ impl SqliteBackend {
                 .lock()
                 .map_err(|_| StoreError::Database("lock poisoned".into()))?;
             let mut stmt = conn
-                .prepare("SELECT name, wasm_bytes, manifest_json, wasm_hash, author, installed_at FROM wasm_binaries WHERE name = ?1")
+                .prepare("SELECT name, wasm_bytes, manifest_json, wasm_hash, author, author_pubkey_hex, manifest_sig_hex, installed_at FROM wasm_binaries WHERE name = ?1")
                 .map_err(|e| StoreError::Database(format!("get_wasm_binary prepare: {e}")))?;
             let row = stmt
                 .query_row(rusqlite::params![name], |row| {
@@ -59,8 +70,10 @@ impl SqliteBackend {
                         manifest_json: row.get(2)?,
                         wasm_hash: row.get(3)?,
                         author: row.get(4)?,
+                        author_pubkey_hex: row.get(5)?,
+                        manifest_sig_hex: row.get(6)?,
                         installed_at: chrono::DateTime::parse_from_rfc3339(
-                            &row.get::<_, String>(5)?,
+                            &row.get::<_, String>(7)?,
                         )
                         .map(|dt| dt.with_timezone(&chrono::Utc))
                         .unwrap_or_else(|_| chrono::Utc::now()),
@@ -81,7 +94,7 @@ impl SqliteBackend {
                 .lock()
                 .map_err(|_| StoreError::Database("lock poisoned".into()))?;
             let mut stmt = conn
-                .prepare("SELECT name, wasm_bytes, manifest_json, wasm_hash, author, installed_at FROM wasm_binaries ORDER BY name")
+                .prepare("SELECT name, wasm_bytes, manifest_json, wasm_hash, author, author_pubkey_hex, manifest_sig_hex, installed_at FROM wasm_binaries ORDER BY name")
                 .map_err(|e| StoreError::Database(format!("list_wasm_binaries prepare: {e}")))?;
             let rows = stmt
                 .query_map([], |row| {
@@ -91,8 +104,10 @@ impl SqliteBackend {
                         manifest_json: row.get(2)?,
                         wasm_hash: row.get(3)?,
                         author: row.get(4)?,
+                        author_pubkey_hex: row.get(5)?,
+                        manifest_sig_hex: row.get(6)?,
                         installed_at: chrono::DateTime::parse_from_rfc3339(
-                            &row.get::<_, String>(5)?,
+                            &row.get::<_, String>(7)?,
                         )
                         .map(|dt| dt.with_timezone(&chrono::Utc))
                         .unwrap_or_else(|_| chrono::Utc::now()),

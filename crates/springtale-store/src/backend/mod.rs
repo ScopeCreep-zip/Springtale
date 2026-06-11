@@ -5,4 +5,4 @@ pub mod wipe;
 
 pub use memory::InMemoryBackend;
 pub use sqlite::SqliteBackend;
-pub use trait_::StorageBackend;
+pub use trait_::{AiTokenReserveOutcome, StorageBackend};

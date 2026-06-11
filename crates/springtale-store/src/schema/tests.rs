@@ -2,7 +2,7 @@
 
 use rusqlite::Connection;
 
-use super::apply::{apply, is_legacy_database, SCHEMA_VERSION};
+use super::apply::{SCHEMA_VERSION, apply, is_legacy_database};
 use crate::error::StoreError;
 
 fn fresh_conn() -> Connection {
@@ -139,8 +139,14 @@ fn apply_upgrades_v1_database_in_place_to_current_schema() {
         .unwrap()
         .collect::<Result<Vec<String>, _>>()
         .unwrap();
-    assert!(cols.contains(&"owner_kind".to_owned()), "owner_kind column not added");
-    assert!(cols.contains(&"owner_agent_id".to_owned()), "owner_agent_id column not added");
+    assert!(
+        cols.contains(&"owner_kind".to_owned()),
+        "owner_kind column not added"
+    );
+    assert!(
+        cols.contains(&"owner_agent_id".to_owned()),
+        "owner_agent_id column not added"
+    );
     assert!(
         cols.contains(&"owner_formation_id".to_owned()),
         "owner_formation_id column not added"

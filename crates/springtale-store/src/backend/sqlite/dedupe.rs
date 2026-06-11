@@ -38,8 +38,8 @@ impl SqliteBackend {
                 .map_err(|_| StoreError::Database("lock poisoned".into()))?;
 
             let now_ms: i64 = Utc::now().timestamp_millis();
-            let formation_key: String = formation_id
-                .unwrap_or_else(|| GLOBAL_FORMATION_SENTINEL.to_owned());
+            let formation_key: String =
+                formation_id.unwrap_or_else(|| GLOBAL_FORMATION_SENTINEL.to_owned());
 
             // Atomic check-and-record via INSERT OR IGNORE — if the
             // PK already exists, the insert is a no-op (0 rows
@@ -97,8 +97,8 @@ impl SqliteBackend {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use crate::backend::trait_::StorageBackend;
     use crate::SqliteBackend;
+    use crate::backend::trait_::StorageBackend;
 
     #[tokio::test]
     async fn dedupe_check_fresh_then_seen() {
@@ -182,10 +182,7 @@ mod tests {
         );
         // Global rule (None) is its own scope too.
         assert_eq!(
-            store
-                .dedupe_check(None, "r", "b", "h", 100)
-                .await
-                .unwrap(),
+            store.dedupe_check(None, "r", "b", "h", 100).await.unwrap(),
             DedupeOutcome::Fresh
         );
     }

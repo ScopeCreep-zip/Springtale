@@ -169,9 +169,9 @@ impl SqliteBackend {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+    use crate::SqliteBackend;
     use crate::backend::trait_::StorageBackend;
     use crate::schema::formations::FormationRow;
-    use crate::SqliteBackend;
     use std::sync::Arc;
 
     fn sample_row(key: &str, seen_at: i64) -> MentalModelWorkspaceRow {
@@ -183,7 +183,8 @@ mod tests {
             metadata_json: None,
             first_seen_at_unix_ms: seen_at,
             last_seen_at_unix_ms: seen_at,
-            provenance_json: r#"{"manual_entry":{"entered_by":"00000000-0000-0000-0000-000000000000"}}"#.into(),
+            provenance_json:
+                r#"{"manual_entry":{"entered_by":"00000000-0000-0000-0000-000000000000"}}"#.into(),
         }
     }
 
@@ -265,10 +266,7 @@ mod tests {
             .unwrap();
 
         let tg_only = store
-            .mental_model_workspaces_for_formation(
-                &formation_id,
-                Some("connector-telegram"),
-            )
+            .mental_model_workspaces_for_formation(&formation_id, Some("connector-telegram"))
             .await
             .unwrap();
         assert_eq!(tg_only.len(), 1);
@@ -351,6 +349,9 @@ mod tests {
             .mental_model_workspaces_for_formation(&formation_id, None)
             .await
             .unwrap();
-        assert!(rows.is_empty(), "workspaces should cascade-delete with formation");
+        assert!(
+            rows.is_empty(),
+            "workspaces should cascade-delete with formation"
+        );
     }
 }

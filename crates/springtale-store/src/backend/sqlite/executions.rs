@@ -15,8 +15,13 @@ use rusqlite::params;
 use crate::error::StoreError;
 use crate::schema::executions::{
     ExecutionFilter, ExecutionMode, ExecutionRow, ExecutionStatus, ExecutionStepRow,
-    ExecutionSummary, MomentumTag, StepStatus,
+    ExecutionSummary, StepStatus,
 };
+// `MomentumTag` is only referenced from the test fixtures below; pulled
+// in conditionally so the lib-target build doesn't flag it as unused
+// after the FromStr refactor moved the prod-path callers to `str::parse`.
+#[cfg(test)]
+use crate::schema::executions::MomentumTag;
 
 use super::SqliteBackend;
 
@@ -193,31 +198,26 @@ impl SqliteBackend {
             );
 
             let mut stmt = conn.prepare(&sql)?;
-            let rows = stmt.query_map(
-                rusqlite::params_from_iter(params_vec.iter()),
-                |row| {
-                    let mode_str: String = row.get(7)?;
-                    let status_str: String = row.get(8)?;
-                    let momentum_str: Option<String> = row.get(9)?;
-                    Ok(ExecutionSummary {
-                        id: row.get(0)?,
-                        bot_id: row.get(1)?,
-                        formation_id: row.get(2)?,
-                        rule_id: row.get(3)?,
-                        recipe_id: row.get(4)?,
-                        started_at: row.get(5)?,
-                        finished_at: row.get(6)?,
-                        mode: ExecutionMode::from_str(&mode_str)
-                            .unwrap_or(ExecutionMode::Manual),
-                        status: ExecutionStatus::from_str(&status_str)
-                            .unwrap_or(ExecutionStatus::Failed),
-                        momentum: momentum_str.as_deref().and_then(MomentumTag::from_str),
-                        trigger_summary: row.get(10)?,
-                        duration_ms: row.get(11)?,
-                        error_kind: row.get(12)?,
-                    })
-                },
-            )?;
+            let rows = stmt.query_map(rusqlite::params_from_iter(params_vec.iter()), |row| {
+                let mode_str: String = row.get(7)?;
+                let status_str: String = row.get(8)?;
+                let momentum_str: Option<String> = row.get(9)?;
+                Ok(ExecutionSummary {
+                    id: row.get(0)?,
+                    bot_id: row.get(1)?,
+                    formation_id: row.get(2)?,
+                    rule_id: row.get(3)?,
+                    recipe_id: row.get(4)?,
+                    started_at: row.get(5)?,
+                    finished_at: row.get(6)?,
+                    mode: mode_str.parse().unwrap_or(ExecutionMode::Manual),
+                    status: status_str.parse().unwrap_or(ExecutionStatus::Failed),
+                    momentum: momentum_str.as_deref().and_then(|s| s.parse().ok()),
+                    trigger_summary: row.get(10)?,
+                    duration_ms: row.get(11)?,
+                    error_kind: row.get(12)?,
+                })
+            })?;
 
             let mut out = Vec::new();
             for r in rows {
@@ -256,8 +256,7 @@ impl SqliteBackend {
                     action: row.get(4)?,
                     started_at: row.get(5)?,
                     finished_at: row.get(6)?,
-                    status: StepStatus::from_str(&status_str)
-                        .unwrap_or(StepStatus::Failed),
+                    status: status_str.parse().unwrap_or(StepStatus::Failed),
                     input_bytes: row.get(8)?,
                     output_bytes: row.get(9)?,
                     output_kind: row.get(10)?,
@@ -276,10 +275,7 @@ impl SqliteBackend {
         .map_err(|e| StoreError::Database(format!("spawn_blocking join: {e}")))?
     }
 
-    pub(super) async fn vacuum_executions_impl(
-        &self,
-        now_ms: i64,
-    ) -> Result<u64, StoreError> {
+    pub(super) async fn vacuum_executions_impl(&self, now_ms: i64) -> Result<u64, StoreError> {
         let conn = self.conn.clone();
         tokio::task::spawn_blocking(move || {
             let conn = conn
@@ -301,8 +297,8 @@ impl SqliteBackend {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
-    use crate::backend::trait_::StorageBackend;
     use crate::SqliteBackend;
+    use crate::backend::trait_::StorageBackend;
 
     fn sample_exec(id: &str, started: i64) -> ExecutionRow {
         ExecutionRow {

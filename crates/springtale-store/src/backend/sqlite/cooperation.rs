@@ -4,13 +4,13 @@
 
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use rusqlite::{params, OptionalExtension};
+use rusqlite::{OptionalExtension, params};
 
 use crate::error::StoreError;
 use crate::schema::cooperation::{CoopCasOutcome, CoopDepositRow};
 use crate::schema::mental_model::{
-    MentalModelBundle, MentalModelCapabilityRow, MentalModelConventionRow,
-    MentalModelDomainRow, MentalModelPatternRow, MentalModelVocabularyRow,
+    MentalModelBundle, MentalModelCapabilityRow, MentalModelConventionRow, MentalModelDomainRow,
+    MentalModelPatternRow, MentalModelVocabularyRow,
 };
 
 use super::SqliteBackend;

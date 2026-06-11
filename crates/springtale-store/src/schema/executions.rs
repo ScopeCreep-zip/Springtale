@@ -6,6 +6,8 @@
 //! posture is enforced at write time — these structs have no
 //! content fields, only sizes / kinds / refs.
 
+use std::str::FromStr;
+
 use serde::{Deserialize, Serialize};
 
 /// One row in `executions`. Carries the chain lifecycle for a
@@ -94,18 +96,22 @@ impl ExecutionMode {
             Self::DryRun => "dry_run",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for ExecutionMode {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "cron" => Some(Self::Cron),
-            "webhook" => Some(Self::Webhook),
-            "connector_event" => Some(Self::ConnectorEvent),
-            "file_watch" => Some(Self::FileWatch),
-            "manual" => Some(Self::Manual),
-            "cooperation" => Some(Self::Cooperation),
-            "retry" => Some(Self::Retry),
-            "dry_run" => Some(Self::DryRun),
-            _ => None,
+            "cron" => Ok(Self::Cron),
+            "webhook" => Ok(Self::Webhook),
+            "connector_event" => Ok(Self::ConnectorEvent),
+            "file_watch" => Ok(Self::FileWatch),
+            "manual" => Ok(Self::Manual),
+            "cooperation" => Ok(Self::Cooperation),
+            "retry" => Ok(Self::Retry),
+            "dry_run" => Ok(Self::DryRun),
+            _ => Err(()),
         }
     }
 }
@@ -137,16 +143,20 @@ impl ExecutionStatus {
             Self::TimedOut => "timed_out",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for ExecutionStatus {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "running" => Some(Self::Running),
-            "succeeded" => Some(Self::Succeeded),
-            "empty" => Some(Self::Empty),
-            "failed" => Some(Self::Failed),
-            "aborted" => Some(Self::Aborted),
-            "timed_out" => Some(Self::TimedOut),
-            _ => None,
+            "running" => Ok(Self::Running),
+            "succeeded" => Ok(Self::Succeeded),
+            "empty" => Ok(Self::Empty),
+            "failed" => Ok(Self::Failed),
+            "aborted" => Ok(Self::Aborted),
+            "timed_out" => Ok(Self::TimedOut),
+            _ => Err(()),
         }
     }
 }
@@ -172,14 +182,18 @@ impl StepStatus {
             Self::Skipped => "skipped",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for StepStatus {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "succeeded" => Some(Self::Succeeded),
-            "failed" => Some(Self::Failed),
-            "suppressed" => Some(Self::Suppressed),
-            "skipped" => Some(Self::Skipped),
-            _ => None,
+            "succeeded" => Ok(Self::Succeeded),
+            "failed" => Ok(Self::Failed),
+            "suppressed" => Ok(Self::Suppressed),
+            "skipped" => Ok(Self::Skipped),
+            _ => Err(()),
         }
     }
 }
@@ -205,14 +219,18 @@ impl MomentumTag {
             Self::Fever => "fever",
         }
     }
+}
 
-    pub fn from_str(s: &str) -> Option<Self> {
+impl FromStr for MomentumTag {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s {
-            "cold" => Some(Self::Cold),
-            "warming" => Some(Self::Warming),
-            "hot" => Some(Self::Hot),
-            "fever" => Some(Self::Fever),
-            _ => None,
+            "cold" => Ok(Self::Cold),
+            "warming" => Ok(Self::Warming),
+            "hot" => Ok(Self::Hot),
+            "fever" => Ok(Self::Fever),
+            _ => Err(()),
         }
     }
 }
@@ -268,7 +286,7 @@ mod tests {
             ExecutionMode::Retry,
             ExecutionMode::DryRun,
         ] {
-            assert_eq!(ExecutionMode::from_str(m.as_str()), Some(m));
+            assert_eq!(ExecutionMode::from_str(m.as_str()), Ok(m));
         }
     }
 
@@ -282,7 +300,7 @@ mod tests {
             ExecutionStatus::Aborted,
             ExecutionStatus::TimedOut,
         ] {
-            assert_eq!(ExecutionStatus::from_str(s.as_str()), Some(s));
+            assert_eq!(ExecutionStatus::from_str(s.as_str()), Ok(s));
         }
     }
 
@@ -294,7 +312,7 @@ mod tests {
             StepStatus::Suppressed,
             StepStatus::Skipped,
         ] {
-            assert_eq!(StepStatus::from_str(s.as_str()), Some(s));
+            assert_eq!(StepStatus::from_str(s.as_str()), Ok(s));
         }
     }
 
@@ -306,15 +324,15 @@ mod tests {
             MomentumTag::Hot,
             MomentumTag::Fever,
         ] {
-            assert_eq!(MomentumTag::from_str(m.as_str()), Some(m));
+            assert_eq!(MomentumTag::from_str(m.as_str()), Ok(m));
         }
     }
 
     #[test]
-    fn from_str_returns_none_for_unknown() {
-        assert!(ExecutionMode::from_str("nope").is_none());
-        assert!(ExecutionStatus::from_str("nope").is_none());
-        assert!(StepStatus::from_str("nope").is_none());
-        assert!(MomentumTag::from_str("nope").is_none());
+    fn from_str_returns_err_for_unknown() {
+        assert!(ExecutionMode::from_str("nope").is_err());
+        assert!(ExecutionStatus::from_str("nope").is_err());
+        assert!(StepStatus::from_str("nope").is_err());
+        assert!(MomentumTag::from_str("nope").is_err());
     }
 }

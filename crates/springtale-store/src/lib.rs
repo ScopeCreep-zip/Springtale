@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
-#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)
+)]
 
 pub mod backend;
 pub mod error;
@@ -7,9 +10,12 @@ pub mod paths;
 pub mod queries;
 pub mod schema;
 
+pub use backend::AiTokenReserveOutcome;
 pub use backend::SqliteBackend;
 pub use backend::StorageBackend;
 pub use error::StoreError;
+pub use schema::ai_token_usage::AiTokenUsageRow;
+pub use schema::approvals::{PendingApprovalRow, ToolLoopCheckpointRow};
 pub use schema::audit::{AuditEntry, AuditFilter};
 pub use schema::bot::{MemoryRow, SessionRow, UserPrefsRow};
 pub use schema::connectors::ConnectorRow;
@@ -21,8 +27,8 @@ pub use schema::formations::{
 };
 pub use schema::jobs::{JobId, JobRow};
 pub use schema::mental_model::{
-    MentalModelBundle, MentalModelCapabilityRow, MentalModelConventionRow,
-    MentalModelDomainRow, MentalModelPatternRow, MentalModelVocabularyRow,
+    MentalModelBundle, MentalModelCapabilityRow, MentalModelConventionRow, MentalModelDomainRow,
+    MentalModelPatternRow, MentalModelVocabularyRow,
 };
 pub use schema::safety::SafetyConfigRow;
 pub use schema::wasm::WasmBinaryRow;

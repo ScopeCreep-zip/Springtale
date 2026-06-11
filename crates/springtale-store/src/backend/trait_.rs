@@ -1,5 +1,15 @@
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
+
+/// Outcome of `StorageBackend::ai_token_usage_reserve`. Separated
+/// from `QuotaCheck` (in `springtale-ai`) so the store crate stays
+/// independent of the ai crate — the runtime layer converts.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum AiTokenReserveOutcome {
+    Reserved { total_after: u64 },
+    Denied { used: u64, limit: u64 },
+}
 
 use crate::error::StoreError;
 use crate::schema::audit::{AuditEntry, AuditFilter};
@@ -186,6 +196,22 @@ pub trait StorageBackend: Send + Sync + 'static {
     /// Delete audit entries older than a given timestamp (retention).
     async fn delete_audit_before(&self, before: &DateTime<Utc>) -> Result<u64, StoreError>;
 
+    /// Walk the audit trail in `chain_seq` ascending order. Used by
+    /// the daemon-startup verifier to recompute and check the SHA-256
+    /// row-hash chain (Phase-7 audit Finding B). Default impl falls
+    /// back to a `list_audit_entries` call sorted client-side — every
+    /// backend should override with an indexed walk.
+    async fn list_audit_chain(&self) -> Result<Vec<AuditEntry>, StoreError> {
+        let mut rows = self
+            .list_audit_entries(&AuditFilter {
+                limit: Some(u32::MAX),
+                ..Default::default()
+            })
+            .await?;
+        rows.sort_by_key(|e| e.chain_seq);
+        Ok(rows)
+    }
+
     // ── Safety Config ──────────────────────────────────────────
 
     /// Get the current safety configuration.
@@ -309,6 +335,13 @@ pub trait StorageBackend: Send + Sync + 'static {
     // ── WASM Binaries ──────────────────────────────────────────
 
     /// Store a WASM connector binary for persistence across restarts.
+    ///
+    /// `author_pubkey_hex` / `manifest_sig_hex` are persisted out of
+    /// band from the manifest body so the boot re-verifier can pin the
+    /// install-time trust anchor (Phase-7 audit Finding #1, R-004).
+    /// Callers MUST pass the install-time pubkey + signature; pre-
+    /// migration rows that lack them carry empty strings and the
+    /// verifier logs a warning rather than failing closed.
     async fn store_wasm_binary(
         &self,
         _name: &str,
@@ -316,6 +349,8 @@ pub trait StorageBackend: Send + Sync + 'static {
         _manifest_json: &str,
         _wasm_hash: &str,
         _author: &str,
+        _author_pubkey_hex: &str,
+        _manifest_sig_hex: &str,
     ) -> Result<(), StoreError> {
         Ok(())
     }
@@ -512,6 +547,86 @@ pub trait StorageBackend: Send + Sync + 'static {
         Ok(())
     }
 
+    // ── AI token usage (Phase-7 audit Finding D) ───────────────
+    //
+    // Per-bot daily quota persistence. The runtime's
+    // `SqliteTokenQuota` calls these methods from inside
+    // `check_and_reserve` and `commit`; the rows survive daemon
+    // restart so quota counters don't reset.
+
+    /// Read the tokens_used counter for `(agent_id, day_ymd)`.
+    /// Returns `0` when no row exists for that bot/day (the row is
+    /// created lazily on the first reservation). Default impl
+    /// returns 0 — backends without quota persistence fall through
+    /// to the in-process behaviour.
+    async fn ai_token_usage_get(&self, _agent_id: &str, _day_ymd: u32) -> Result<u64, StoreError> {
+        Ok(0)
+    }
+
+    /// Atomic reserve: read tokens_used, compare against limit, and
+    /// if (tokens_used + requested) ≤ limit (or limit is None) write
+    /// the new total back. Returns the post-reservation total on
+    /// success, or the current tokens_used when the reservation
+    /// would exceed limit. The caller passes `None` for limit to
+    /// disable enforcement (records usage without denying).
+    async fn ai_token_usage_reserve(
+        &self,
+        agent_id: &str,
+        day_ymd: u32,
+        requested: u64,
+        limit: Option<u64>,
+    ) -> Result<AiTokenReserveOutcome, StoreError> {
+        let used = self.ai_token_usage_get(agent_id, day_ymd).await?;
+        let new_total = used.saturating_add(requested);
+        if let Some(cap) = limit
+            && new_total > cap
+        {
+            return Ok(AiTokenReserveOutcome::Denied { used, limit: cap });
+        }
+        self.ai_token_usage_set(agent_id, day_ymd, new_total)
+            .await?;
+        Ok(AiTokenReserveOutcome::Reserved {
+            total_after: new_total,
+        })
+    }
+
+    /// Set the absolute tokens_used value for `(agent_id, day_ymd)`.
+    /// Used by tests/admin to reset a counter. UPSERT semantics —
+    /// creates the row if missing. Avoid for commit paths; use
+    /// `ai_token_usage_commit` instead so the read-adjust-write runs
+    /// atomically under the backend's lock.
+    async fn ai_token_usage_set(
+        &self,
+        _agent_id: &str,
+        _day_ymd: u32,
+        _tokens_used: u64,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Atomically adjust the tokens_used counter from a pessimistic
+    /// reservation to actual usage. Runs under the same backend lock
+    /// as `ai_token_usage_reserve` so two concurrent commits for the
+    /// same `(agent_id, day_ymd)` can't race a stale `used` into the
+    /// write. Equivalent to
+    /// `tokens_used = max(0, tokens_used - prior + actual)`.
+    async fn ai_token_usage_commit(
+        &self,
+        agent_id: &str,
+        day_ymd: u32,
+        prior_reservation: u64,
+        actual_tokens: u64,
+    ) -> Result<(), StoreError> {
+        // Conservative default for backends that don't override:
+        // round-trip via get+set. Production backends MUST override
+        // for atomicity.
+        let used = self.ai_token_usage_get(agent_id, day_ymd).await?;
+        let adjusted = used
+            .saturating_sub(prior_reservation)
+            .saturating_add(actual_tokens);
+        self.ai_token_usage_set(agent_id, day_ymd, adjusted).await
+    }
+
     // ── Dedupe (Phase A) ───────────────────────────────────────
 
     /// Check whether `key_hash` has been seen for
@@ -535,6 +650,103 @@ pub trait StorageBackend: Send + Sync + 'static {
         _history: u32,
     ) -> Result<DedupeOutcome, StoreError> {
         Ok(DedupeOutcome::Fresh)
+    }
+
+    // ── Approval-over-chat (W2) ────────────────────────────────
+
+    /// Persist a pending approval (ChatApprovalGate). Durable so the
+    /// request survives restart. Default no-op keeps in-memory/mock
+    /// backends working; SQLite overrides.
+    async fn insert_pending_approval(
+        &self,
+        _row: crate::schema::approvals::PendingApprovalRow,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Fetch one approval row (pending or decided).
+    async fn get_pending_approval(
+        &self,
+        _id: &str,
+    ) -> Result<Option<crate::schema::approvals::PendingApprovalRow>, StoreError> {
+        Ok(None)
+    }
+
+    /// Land a decision (serialized `ApprovalDecision`) on a pending row.
+    /// Returns `false` when the row is missing or already decided —
+    /// the gate maps that to `DuplicateResolve` idempotency.
+    async fn resolve_pending_approval(
+        &self,
+        _id: &str,
+        _decision_json: &str,
+    ) -> Result<bool, StoreError> {
+        Ok(false)
+    }
+
+    /// Undecided, unexpired approvals (the owner's open card queue).
+    async fn list_pending_approvals(
+        &self,
+        _now_ms: i64,
+    ) -> Result<Vec<crate::schema::approvals::PendingApprovalRow>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    /// Mark every undecided row past its expiry as denied (deny-by-
+    /// default). Returns the rows so the boot sweep can notify/clean
+    /// their checkpoints.
+    async fn expire_pending_approvals(
+        &self,
+        _now_ms: i64,
+    ) -> Result<Vec<crate::schema::approvals::PendingApprovalRow>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    /// Persist the chat tool-loop state paused behind an approval.
+    async fn upsert_tool_loop_checkpoint(
+        &self,
+        _row: crate::schema::approvals::ToolLoopCheckpointRow,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Fetch the checkpoint for one chat session (thread id), if any.
+    async fn get_tool_loop_checkpoint(
+        &self,
+        _session_key: &str,
+    ) -> Result<Option<crate::schema::approvals::ToolLoopCheckpointRow>, StoreError> {
+        Ok(None)
+    }
+
+    /// Fetch the checkpoint correlated to one pending approval — the boot
+    /// resumer's join from a surviving approval back to its conversation.
+    async fn get_checkpoint_by_approval(
+        &self,
+        _approval_id: &str,
+    ) -> Result<Option<crate::schema::approvals::ToolLoopCheckpointRow>, StoreError> {
+        Ok(None)
+    }
+
+    /// Drop a session's checkpoint after the loop resumed (or was denied).
+    async fn delete_tool_loop_checkpoint(&self, _session_key: &str) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// All persisted paused threads — the boot resumer's worklist.
+    async fn list_tool_loop_checkpoints(
+        &self,
+    ) -> Result<Vec<crate::schema::approvals::ToolLoopCheckpointRow>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    /// Latest approval row (pending OR decided) whose bound-action summary
+    /// matches, requested at/after `since_ms`. The boot resumer's join from
+    /// an orphaned checkpoint back to its approval verdict.
+    async fn find_approval_by_summary(
+        &self,
+        _summary: &str,
+        _since_ms: i64,
+    ) -> Result<Option<crate::schema::approvals::PendingApprovalRow>, StoreError> {
+        Ok(None)
     }
 
     // ── Executions log (Phase B) ───────────────────────────────
@@ -564,10 +776,7 @@ pub trait StorageBackend: Send + Sync + 'static {
     /// Append one step row to `execution_steps`. Sizes-only per
     /// the privacy default — content blob refs are populated by
     /// the recorder when `bot.retain_step_content` is on.
-    async fn record_execution_step(
-        &self,
-        _step: ExecutionStepRow,
-    ) -> Result<(), StoreError> {
+    async fn record_execution_step(&self, _step: ExecutionStepRow) -> Result<(), StoreError> {
         Ok(())
     }
 
