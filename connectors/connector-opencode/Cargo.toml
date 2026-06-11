@@ -1,0 +1,24 @@
+[package]
+name = "connector-opencode"
+version = "0.1.0"
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "OpenCode connector — drive a local `opencode serve` daemon for agentic coding tasks over its HTTP API."
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+secrecy = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+springtale-connector = { workspace = true }
+springtale-transport = { workspace = true }
+springtale-crypto = { workspace = true }
+inventory = { workspace = true }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["test-util"] }
