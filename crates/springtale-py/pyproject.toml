@@ -1,0 +1,52 @@
+# Springtale Python bindings (pyo3 + maturin).
+# https://www.maturin.rs/
+
+[build-system]
+requires = ["maturin>=1.7,<2.0"]
+build-backend = "maturin"
+
+[project]
+name = "springtale"
+description = "Python bindings for Springtale's cooperation primitives"
+requires-python = ">=3.9"
+license = "MIT"
+readme = "../../README.md"
+authors = [
+  { name = "Springtale Maintainers", email = "k1104jackson@hotmail.com" },
+]
+keywords = [
+  "automation",
+  "cooperation",
+  "privacy",
+  "local-first",
+]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3 :: Only",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Rust",
+  "Topic :: Security",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+dynamic = ["version"]
+
+[project.urls]
+Homepage = "https://github.com/ScopeCreep-zip/Springtale"
+Source = "https://github.com/ScopeCreep-zip/Springtale"
+Issues = "https://github.com/ScopeCreep-zip/Springtale/issues"
+Security = "https://github.com/ScopeCreep-zip/Springtale/blob/main/SECURITY.md"
+Documentation = "https://github.com/ScopeCreep-zip/Springtale/blob/main/docs/python/"
+
+[tool.maturin]
+module-name = "springtale"
+features = ["pyo3/extension-module"]
+strip = true
+# Build an abi3 wheel that's portable across Python ≥3.9 minor versions —
+# matches the pyo3 feature pin in workspace Cargo.toml.
+python-source = "python"
+manifest-path = "Cargo.toml"
