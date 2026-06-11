@@ -281,6 +281,12 @@ pub struct Formation {
     /// must be atomic w.r.t. concurrent member churn.
     pub member_subs: std::sync::Mutex<std::collections::HashMap<AgentId, FormationBusSubscription>>,
 
+    /// Wall-clock instant of the last PROCESSED tick (after the §22
+    /// pacing divider). `None` until the first processed tick. Used to
+    /// compute the true per-formation elapsed time for pacing — the
+    /// divider makes "one bus tick" a wrong unit, and `tick.window`
+    /// (the agent commit window, interval ×4) always was.
+    pub last_tick_at: Option<std::time::Instant>,
     /// Cursor into `shared_env.snapshot().write_log` — number of entries
     /// consumed by the last tick's interference pass. Writes at index
     /// ≥ this cursor on the next tick are "current-tick" writes; earlier
@@ -488,6 +494,7 @@ impl Formation {
             flex_chain_pool: deps.flex_chain_pool,
             direct_inbox,
             member_subs: std::sync::Mutex::new(initial_subs),
+            last_tick_at: None,
             last_tick_write_count: 0,
             last_broadcast_tier: MomentumTier::Cold,
             cascade_hit_streak: 0,

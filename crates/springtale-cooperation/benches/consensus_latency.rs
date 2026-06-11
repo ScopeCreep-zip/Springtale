@@ -23,7 +23,7 @@ fn build_vote(n: usize) -> ConsensusVote {
             description: "bench".into(),
             options: vec!["yes".into(), "no".into()],
             required_participants: n as u32,
-                subject: springtale_cooperation::consensus::DecisionSubject::IntentChange {
+            subject: springtale_cooperation::consensus::DecisionSubject::IntentChange {
                 proposed: springtale_cooperation::IntentPattern::Execute { plan_id: None },
             },
         },

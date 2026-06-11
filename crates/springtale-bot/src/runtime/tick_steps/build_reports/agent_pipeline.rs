@@ -222,9 +222,10 @@ pub async fn run(
                     ),
                     options: vec!["approve".into(), "deny".into()],
                     required_participants: voter_count,
-                    subject: springtale_cooperation::consensus::DecisionSubject::DestructiveAction {
-                        task,
-                    },
+                    subject:
+                        springtale_cooperation::consensus::DecisionSubject::DestructiveAction {
+                            task,
+                        },
                 },
                 std::time::Duration::from_secs(5),
                 &voters,

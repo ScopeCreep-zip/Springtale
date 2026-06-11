@@ -36,6 +36,10 @@ pub trait Blackboard: Send + Sync {
         fuel: &FuelBudget,
     ) -> Result<(), OrchestratorError>;
     fn release_task(&self, task_id: &str);
+    /// Remove a task (and any claim on it) without posting a result.
+    /// Used by the consensus resolution path when a destructive task is
+    /// denied or its vote times out — the task must not stay scannable.
+    fn remove_task(&self, task_id: &str);
     fn post_result(
         &self,
         result: &SubTaskResult,

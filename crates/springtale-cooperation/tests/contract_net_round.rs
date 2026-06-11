@@ -37,7 +37,6 @@ fn make_tick() -> Tick {
     Tick {
         sequence: springtale_cooperation::TickId(1),
         timestamp: std::time::Instant::now(),
-        intent: IntentPattern::Execute { plan_id: None },
         window: Duration::from_millis(33),
     }
 }

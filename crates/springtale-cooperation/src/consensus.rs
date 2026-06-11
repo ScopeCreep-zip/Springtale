@@ -504,9 +504,9 @@ mod tests {
         let a = AgentId::new();
         let q = || DecisionDescriptor {
             required_participants: 1,
-                subject: DecisionSubject::IntentChange {
-                    proposed: crate::cadence::IntentPattern::Execute { plan_id: None },
-                },
+            subject: DecisionSubject::IntentChange {
+                proposed: crate::cadence::IntentPattern::Execute { plan_id: None },
+            },
             description: "x".into(),
             options: vec!["y".into()],
         };
@@ -546,7 +546,11 @@ mod tests {
     }
 
     #[test]
-    fn engine_try_override_removes_vote() {
+    fn engine_override_resolves_via_resolve_ready() {
+        // try_override records the committed ballot but leaves the vote in
+        // the active set — resolve_ready is the single application
+        // chokepoint, so the override flows through the same audit/event
+        // path as quorum and timeout resolutions.
         let mut engine = ConsensusEngine::new();
         let a = AgentId::new();
         let id = engine.propose(
@@ -565,6 +569,20 @@ mod tests {
 
         let result = engine.try_override(&id, a, VoteChoice::Option(0));
         assert!(matches!(result, Ok(VoteResolution::Override { .. })));
-        assert_eq!(engine.active_count(), 0);
+        assert_eq!(engine.active_count(), 1, "vote stays active until swept");
+
+        let resolved = engine.resolve_ready();
+        assert_eq!(resolved.len(), 1);
+        let (rid, desc, resolution) = &resolved[0];
+        assert_eq!(*rid, id);
+        assert!(matches!(desc.subject, DecisionSubject::IntentChange { .. }));
+        assert!(matches!(
+            resolution,
+            VoteResolution::Override {
+                choice: VoteChoice::Option(0),
+                ..
+            }
+        ));
+        assert_eq!(engine.active_count(), 0, "swept after resolution");
     }
 }

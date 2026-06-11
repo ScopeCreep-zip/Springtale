@@ -24,7 +24,6 @@ pub mod build_reports;
 pub mod check_cascade;
 pub mod check_interventions;
 pub mod check_pacing;
-pub mod consensus_deadlines;
 pub mod emit_canvas_update;
 pub mod expire_commits;
 pub mod fuel;
@@ -39,6 +38,7 @@ pub mod publish_context;
 pub mod publish_formation_view;
 pub mod recovery;
 pub mod replan_cbba;
+pub mod resolve_consensus;
 pub mod shutdown;
 pub mod state_broadcast;
 pub mod supervision;
@@ -57,6 +57,23 @@ use crate::cooperation::formation::Formation;
 /// One formation's full 14-step pipeline. Order matches `docs/ROADMAP.md
 /// §3.2`. Each step is one named module under `tick_steps/`.
 pub async fn run_tick(formation: &mut Formation, tick: &Tick, deps: &mut TickDeps<'_>) {
+    // §22 frequency modulation — the pacing divider skips bus ticks so a
+    // formation's effective tick rate tracks its phase (Peak ÷1 … Recovery
+    // ÷6). Skipping is safe: momentum decay, commit deadlines, and vote
+    // deadlines are all wall-clock based and settle on the next processed
+    // tick.
+    if !tick.sequence.0.is_multiple_of(formation.pacing.tick_divider()) {
+        return;
+    }
+    // True per-formation elapsed time since the last PROCESSED tick —
+    // pacing timers run on this, not on `tick.window` (the agent commit
+    // window) and not on the bus interval (wrong under the divider).
+    let elapsed = formation
+        .last_tick_at
+        .map(|prev| tick.timestamp.duration_since(prev))
+        .unwrap_or_default();
+    formation.last_tick_at = Some(tick.timestamp);
+
     let result = build_reports::run(formation, tick, deps).await;
     formation.momentum.check_decay();
     update_momentum::run(formation, &result);
@@ -69,13 +86,13 @@ pub async fn run_tick(formation: &mut Formation, tick: &Tick, deps: &mut TickDep
     publish_context::run(formation);
     gossip_awareness::run(formation, &result).await;
     log_interference::run(formation, &result, deps.cooperation_tx);
-    check_pacing::run(formation, &result, tick.window, deps.cooperation_tx);
+    check_pacing::run(formation, &result, elapsed, deps.cooperation_tx);
     check_cascade::run(formation, &result, deps.store.as_ref(), deps.cooperation_tx).await;
     check_interventions::run(formation, deps).await;
     recovery::run(formation, deps.cooperation_tx);
     transformation::run(formation, deps.role_registry.as_ref(), deps.cooperation_tx);
     replan_cbba::run(formation, deps.cooperation_tx);
-    consensus_deadlines::run(formation, deps.cooperation_tx);
+    resolve_consensus::run(formation, deps.cooperation_tx);
     tick_commits::run(formation, deps.cooperation_tx);
     expire_commits::run(formation, deps.cooperation_tx);
     update_mental_model::run(formation, &result);

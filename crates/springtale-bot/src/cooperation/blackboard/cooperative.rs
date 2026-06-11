@@ -157,6 +157,14 @@ impl Blackboard for CooperativeBlackboard {
         self.log_op("release", &claim_key, Uuid::new_v4());
     }
 
+    fn remove_task(&self, task_id: &str) {
+        let task_key = format!("task:{task_id}");
+        let claim_key = format!("claimed:{task_id}");
+        self.entries.remove(&task_key);
+        self.entries.remove(&claim_key);
+        self.log_op("remove", &task_key, Uuid::new_v4());
+    }
+
     fn post_result(
         &self,
         result: &SubTaskResult,
