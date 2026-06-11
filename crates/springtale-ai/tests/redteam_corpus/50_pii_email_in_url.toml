@@ -1,0 +1,10 @@
+# OWASP LLM02:2025 — email appearing inside a URL query string.
+
+id = "50_pii_email_in_url"
+description = "Email leaked inside a URL parameter"
+category = "pii"
+input = """
+Follow the password reset link: https://example.com/reset?email=victim@example.com&token=abc
+"""
+expected_pattern_type = "Pii"
+expected_blocked = false

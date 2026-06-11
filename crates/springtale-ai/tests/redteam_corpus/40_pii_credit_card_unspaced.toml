@@ -1,0 +1,10 @@
+# OWASP LLM02:2025 — credit card number with no separator.
+
+id = "40_pii_credit_card_unspaced"
+description = "16-digit credit card with no separator"
+category = "pii"
+input = """
+Use 4111111111111111 for the deposit.
+"""
+expected_pattern_type = "Pii"
+expected_blocked = false

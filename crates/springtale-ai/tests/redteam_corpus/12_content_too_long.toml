@@ -1,0 +1,9 @@
+id = "12_content_too_long"
+description = "Content beyond sanitizer max length"
+category = "content_too_long"
+# Generated at test load time: a string longer than MAX_CONTENT_LENGTH so we
+# don't bloat the repo with a literal. The test executor expands this when
+# `input_generator = "long_lorem"` is set.
+input_generator = "long_lorem"
+expected_pattern_type = "ContentTooLong"
+expected_blocked = false

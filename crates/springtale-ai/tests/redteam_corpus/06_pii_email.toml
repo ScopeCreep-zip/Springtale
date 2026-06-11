@@ -1,0 +1,6 @@
+id = "06_pii_email"
+description = "Email address in user input"
+category = "pii"
+input = "Please contact survivor.account@example.org about this matter."
+expected_pattern_type = "Pii"
+expected_blocked = false

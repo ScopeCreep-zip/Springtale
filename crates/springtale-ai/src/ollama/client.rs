@@ -15,7 +15,9 @@ impl OllamaClient {
     pub fn new(base_url: &str) -> Result<Self, AiError> {
         crate::validate::validate_url_scheme(base_url)?;
 
-        let http = reqwest::Client::builder()
+        // 120s overrides safe_http's 30s default — local Ollama inference
+        // can take that long for large models on commodity hardware.
+        let http = springtale_transport::safe_http::builder()
             .timeout(std::time::Duration::from_secs(120))
             .build()
             .map_err(|e| AiError::InferenceFailed(format!("failed to build HTTP client: {e}")))?;
@@ -59,10 +61,7 @@ impl OllamaClient {
     /// is enabled and the caller needs to set fields not on
     /// `OllamaChatRequest` (e.g. `tools`). Returns the parsed JSON value
     /// so the adapter can walk `message.tool_calls`.
-    pub async fn chat_raw(
-        &self,
-        body: &serde_json::Value,
-    ) -> Result<serde_json::Value, AiError> {
+    pub async fn chat_raw(&self, body: &serde_json::Value) -> Result<serde_json::Value, AiError> {
         let url = format!("{}/api/chat", self.base_url);
         let response = self
             .http
@@ -126,6 +125,43 @@ impl OllamaClient {
             }
             Err(_) => false,
         }
+    }
+
+    /// Fetch the daemon's view of the local model registry, returning
+    /// the SHA-256 manifest digest for `model_name` if present.
+    ///
+    /// Returns `Ok(None)` if the daemon doesn't know the model OR if
+    /// the daemon's response omits the `digest` field (older Ollama
+    /// builds). Returns `Err` only for transport / parse failures —
+    /// callers can decide whether absent-digest is fatal.
+    pub async fn model_digest(&self, model_name: &str) -> Result<Option<String>, AiError> {
+        let url = format!("{}/api/tags", self.base_url);
+        let resp = self
+            .http
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| AiError::InferenceFailed(e.to_string()))?;
+        if !resp.status().is_success() {
+            return Err(AiError::InferenceFailed(format!(
+                "ollama /api/tags returned {}",
+                resp.status()
+            )));
+        }
+        let parsed: OllamaTagsResponse = resp
+            .json()
+            .await
+            .map_err(|e| AiError::Serialization(e.to_string()))?;
+        let models = parsed.models.unwrap_or_default();
+        let entry = models.iter().find(|m| {
+            // Ollama records may include a `:tag` suffix; treat
+            // "llama3.2" as matching "llama3.2" and "llama3.2:latest".
+            m.name == model_name
+                || m.name
+                    .split_once(':')
+                    .is_some_and(|(base, _)| base == model_name)
+        });
+        Ok(entry.and_then(|m| m.digest.clone()))
     }
 }
 

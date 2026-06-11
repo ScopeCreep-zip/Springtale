@@ -17,6 +17,12 @@ pub struct SensitivePattern {
 /// - Credential patterns (API keys, tokens, passwords)
 /// - Prompt injection patterns ("ignore previous instructions", etc.)
 /// - Suspicious encoding patterns (base64 blobs)
+///
+/// Provider-specific credential patterns (Anthropic sk-ant-, OpenAI sk-proj-,
+/// GitHub ghp_/gho_, npm, AWS AKIA, age) sit alongside generic forms because
+/// the generic patterns (`api_key:` assignment, `sk-/pk-`) miss tokens that
+/// appear in flowing prose without a key=value envelope. The red-team
+/// corpus in `tests/redteam_corpus/` is the regression contract.
 pub fn default_patterns() -> Vec<SensitivePattern> {
     let definitions: &[(&str, PatternType, &str)] = &[
         // ── PII ─────────────────────────────────────────────────
@@ -36,11 +42,77 @@ pub fn default_patterns() -> Vec<SensitivePattern> {
             "US phone number (XXX-XXX-XXXX)",
         ),
         (
+            r"\(\d{3}\)\s*\d{3}[\s.-]?\d{4}",
+            PatternType::Pii,
+            "US phone number with parens ((XXX) XXX-XXXX)",
+        ),
+        (
             r"\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b",
             PatternType::Pii,
             "email address",
         ),
-        // ── Credentials ─────────────────────────────────────────
+        // ── Provider-specific credentials (high signal, no false positives) ──
+        (
+            r"sk-ant-[a-zA-Z0-9_\-]{20,}",
+            PatternType::Credential,
+            "Anthropic API key (sk-ant-)",
+        ),
+        (
+            r"sk-(?:proj-)?[A-Za-z0-9_\-]{32,}",
+            PatternType::Credential,
+            "OpenAI API key (sk- / sk-proj-)",
+        ),
+        (
+            r"\borg-[A-Za-z0-9]{24}\b",
+            PatternType::Credential,
+            "OpenAI organization key (org-)",
+        ),
+        (
+            r"\bAIza[0-9A-Za-z\-_]{35}\b",
+            PatternType::Credential,
+            "Google AI Studio API key",
+        ),
+        (
+            r"\bghp_[A-Za-z0-9]{36}\b",
+            PatternType::Credential,
+            "GitHub classic personal access token (ghp_)",
+        ),
+        (
+            r"\bgho_[A-Za-z0-9]{36}\b",
+            PatternType::Credential,
+            "GitHub OAuth access token (gho_)",
+        ),
+        (
+            r"\bghs_[A-Za-z0-9]{36}\b",
+            PatternType::Credential,
+            "GitHub server-to-server token (ghs_)",
+        ),
+        (
+            r"\bgithub_pat_[A-Za-z0-9_]{82}\b",
+            PatternType::Credential,
+            "GitHub fine-grained personal access token (github_pat_)",
+        ),
+        (
+            r"\bnpm_[A-Za-z0-9]{36}\b",
+            PatternType::Credential,
+            "npm token",
+        ),
+        (
+            r"\bAKIA[0-9A-Z]{16}\b",
+            PatternType::Credential,
+            "AWS access key ID (AKIA)",
+        ),
+        (
+            r"\bAGE-SECRET-KEY-1[0-9A-Z]{58}\b",
+            PatternType::Credential,
+            "age secret key",
+        ),
+        (
+            r"xox[bpars]-(?:\d+-)+[A-Za-z0-9]+",
+            PatternType::Credential,
+            "Slack token (xoxb/xoxp/xoxa/xoxr/xoxs)",
+        ),
+        // ── Generic credentials ─────────────────────────────────
         (
             r"(?i)(api[_\s-]?key|api[_\s-]?token|auth[_\s-]?token)\s*[:=]\s*\S+",
             PatternType::Credential,
@@ -60,6 +132,11 @@ pub fn default_patterns() -> Vec<SensitivePattern> {
             r"(?i)(sk|pk)[-_][a-zA-Z0-9]{20,}",
             PatternType::Credential,
             "API secret/public key (sk-/pk- prefix)",
+        ),
+        (
+            r"-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY-----",
+            PatternType::Credential,
+            "PEM-encoded private key",
         ),
         // ── Prompt Injection (per OWASP LLM Cheat Sheet) ────────
         (
@@ -83,9 +160,34 @@ pub fn default_patterns() -> Vec<SensitivePattern> {
             "prompt injection: reveal prompt",
         ),
         (
-            r"(?i)disregard\s+(all\s+)?(prior|previous|above)\s+",
+            r"(?i)disregard\s+(all\s+)?(prior|previous|above|your)\s+",
             PatternType::PromptInjection,
-            "prompt injection: disregard prior context",
+            "prompt injection: disregard prior/your context",
+        ),
+        (
+            r"(?i)bypass\s+(your\s+)?(safety|guidelines|guardrails|rules)",
+            PatternType::PromptInjection,
+            "prompt injection: bypass safety/guidelines",
+        ),
+        (
+            r"(?i)you\s+are\s+(now\s+)?DAN\b",
+            PatternType::PromptInjection,
+            "prompt injection: DAN (Do Anything Now) jailbreak",
+        ),
+        (
+            r"(?i)<<\s*SYSTEM\s*>>|<<\s*/?\s*SYSTEM\s*>>",
+            PatternType::PromptInjection,
+            "prompt injection: fabricated <<SYSTEM>> delimiter",
+        ),
+        (
+            r"(?i)</?\s*(system|user_input|user|assistant)\s*>",
+            PatternType::PromptInjection,
+            "prompt injection: fabricated XML-style role tag",
+        ),
+        (
+            r"(?i)all\s+previous\s+rules\s+are\s+disabled",
+            PatternType::PromptInjection,
+            "prompt injection: rules-disabled claim",
         ),
         // ── Suspicious Encoding ─────────────────────────────────
         (
@@ -156,9 +258,13 @@ mod tests {
     #[test]
     fn test_api_key_pattern_matches() {
         let patterns = default_patterns();
+        // The generic `api_key: ...` / `api_token = ...` assignment
+        // pattern. Multiple provider-specific patterns also include
+        // "API key" in their description (sk-ant-, sk-proj-, AIza...)
+        // so we pick the generic one by its exact label.
         let key_pattern = patterns
             .iter()
-            .find(|p| p.description.contains("API key"))
+            .find(|p| p.description == "API key or token assignment")
             .unwrap();
         assert!(key_pattern.regex.is_match("api_key: sk-abc123def456"));
         assert!(key_pattern.regex.is_match("API_TOKEN = mytoken123"));

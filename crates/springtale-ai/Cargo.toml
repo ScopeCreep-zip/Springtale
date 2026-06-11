@@ -21,7 +21,16 @@ reqwest = { workspace = true }
 async-stream = { workspace = true }
 secrecy = { workspace = true }
 toml = { workspace = true }
+# UTC day-boundary keying for the in-memory token quota's daily reset.
+chrono = { workspace = true }
 springtale-core = { workspace = true }
+# safe_http factory — the only legitimate way to construct a reqwest::Client
+# in the workspace. Gates rustls + PQ KEX + timeout defaults.
+springtale-transport = { workspace = true }
+# secret_use helpers (bearer_header, clone_into_box, with_hmac_key, …) —
+# the only place outside springtale-crypto itself that legitimately calls
+# `expose_secret`. Pulled in for the AI adapter HTTP auth headers.
+springtale-crypto = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

@@ -1,4 +1,4 @@
-use secrecy::{ExposeSecret, SecretBox};
+use secrecy::SecretBox;
 
 use crate::error::AiError;
 
@@ -15,7 +15,9 @@ impl OpenAiClient {
     pub fn new(base_url: &str, api_key: SecretBox<String>) -> Result<Self, AiError> {
         crate::validate::validate_url_scheme(base_url)?;
 
-        let http = reqwest::Client::builder()
+        // 120s overrides safe_http's 30s default — OpenAI chat completions
+        // can block on the server for the full generation window.
+        let http = springtale_transport::safe_http::builder()
             .timeout(std::time::Duration::from_secs(120))
             .build()
             .map_err(|e| AiError::InferenceFailed(format!("failed to build HTTP client: {e}")))?;
@@ -40,7 +42,7 @@ impl OpenAiClient {
             .post(&url)
             .header(
                 "Authorization",
-                format!("Bearer {}", self.api_key.expose_secret()),
+                springtale_crypto::secret_use::bearer_header(&self.api_key),
             )
             .json(body)
             .send()
@@ -76,7 +78,7 @@ impl OpenAiClient {
             .post(&url)
             .header(
                 "Authorization",
-                format!("Bearer {}", self.api_key.expose_secret()),
+                springtale_crypto::secret_use::bearer_header(&self.api_key),
             )
             .json(body)
             .send()
@@ -105,7 +107,7 @@ impl OpenAiClient {
             .get(&url)
             .header(
                 "Authorization",
-                format!("Bearer {}", self.api_key.expose_secret()),
+                springtale_crypto::secret_use::bearer_header(&self.api_key),
             )
             .send()
             .await

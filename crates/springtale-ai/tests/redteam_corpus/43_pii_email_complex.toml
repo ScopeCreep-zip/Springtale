@@ -1,0 +1,10 @@
+# OWASP LLM02:2025 — email with subaddressing.
+
+id = "43_pii_email_complex"
+description = "Plus-addressed email"
+category = "pii"
+input = """
+Send the report to alice+work@example.co.uk and CC bob.smith@example.org.
+"""
+expected_pattern_type = "Pii"
+expected_blocked = false

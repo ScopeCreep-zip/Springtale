@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use secrecy::{ExposeSecret, SecretBox};
+use secrecy::SecretBox;
 
 use crate::error::AiError;
 
@@ -44,7 +44,7 @@ impl WhisperHttpAdapter {
         // Validate endpoint URL scheme
         crate::validate::validate_url_scheme(&endpoint)?;
 
-        let client = reqwest::Client::builder()
+        let client = springtale_transport::safe_http::builder()
             .timeout(std::time::Duration::from_secs(120)) // STT can be slow
             .build()
             .map_err(|e| AiError::NotConfigured(format!("failed to build HTTP client: {e}")))?;
@@ -74,8 +74,10 @@ impl SttAdapter for WhisperHttpAdapter {
         let mut request = self.client.post(&url).multipart(form);
 
         if let Some(ref key) = self.api_key {
-            // SECURITY: expose needed for Whisper API Bearer auth
-            request = request.header("Authorization", format!("Bearer {}", key.expose_secret()));
+            request = request.header(
+                "Authorization",
+                springtale_crypto::secret_use::bearer_header(key),
+            );
         }
 
         let response = request

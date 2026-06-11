@@ -54,6 +54,13 @@ pub struct OllamaTagsResponse {
 #[derive(Debug, Deserialize, Type)]
 pub struct OllamaModel {
     pub name: String,
+    /// SHA-256 manifest digest reported by the Ollama daemon. The
+    /// adapter compares this against the user-pinned digest (when
+    /// `OllamaConfig::expected_digest` is set) to defend against a
+    /// poisoned local model store (OWASP LLM03: training data
+    /// poisoning / model swap).
+    #[serde(default)]
+    pub digest: Option<String>,
 }
 
 /// Ollama adapter configuration.
@@ -65,6 +72,15 @@ pub struct OllamaConfig {
     /// Model name. Default: "llama3.2".
     #[serde(default = "default_model")]
     pub model: String,
+    /// Optional SHA-256 manifest digest that the configured model must
+    /// match. When set, the adapter calls `/api/tags` at construction
+    /// and refuses to load if Ollama reports a different digest. Maps
+    /// to OWASP LLM03 + LLM10 (data-poisoning / model supply-chain).
+    ///
+    /// Format: hex-encoded SHA-256 (the same string `ollama list`
+    /// prints in the DIGEST column).
+    #[serde(default)]
+    pub expected_digest: Option<String>,
 }
 
 fn default_base_url() -> String {
@@ -80,6 +96,7 @@ impl Default for OllamaConfig {
         Self {
             base_url: default_base_url(),
             model: default_model(),
+            expected_digest: None,
         }
     }
 }

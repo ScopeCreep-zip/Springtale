@@ -4,9 +4,9 @@ use std::time::Duration;
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
 
-use specta::Type;
 use crate::error::AiError;
 use crate::extractor::StructuredExtractor;
+use specta::Type;
 use springtale_core::rule::types::Rule;
 
 // ── Stream type ─────────────────────────────────────────────────────
@@ -143,12 +143,20 @@ pub struct ToolResult {
 /// Per-bot policy controlling which connector actions the AI can see and call.
 ///
 /// Pattern: LangChain's `bind_tools` + MCP `annotations.requiresConsent`.
-/// Default is ZERO tools (empty `allow` list) per OWASP LLM06:
-/// "Limit extensions to the minimum necessary."
+///
+/// Three modes (decided by the tool builder, which can see each action's
+/// `read_only` hint — this crate cannot name `ActionDecl`):
+/// - **Default (bimbo) mode** — `allow` empty: every `read_only` action is
+///   chat-callable out of the box (zero side effects ⇒ still satisfies OWASP
+///   LLM06 least-privilege); mutating actions are exposed only when
+///   `writes_with_approval` is set AND an approval gate can actually ask the
+///   user (W2 approval-over-chat).
+/// - **Explicit mode** — `allow` non-empty: exactly the allow-list, as before.
+/// - `deny` always wins, in every mode.
 #[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
 pub struct ToolPolicy {
     /// Glob allow-list. e.g. `["connector-telegram__*", "connector-github__read_*"]`.
-    /// Empty = no tools exposed (safe default).
+    /// Empty = default mode (read-only actions only; see struct docs).
     #[serde(default)]
     pub allow: Vec<String>,
     /// Glob deny-list. Overrides allow. e.g. `["*__execute", "*__delete_*"]`.
@@ -157,9 +165,19 @@ pub struct ToolPolicy {
     /// Max tool-call iterations per AI invocation. 0 = use default (5).
     #[serde(default)]
     pub max_iterations: u8,
+    /// In default mode, also expose mutating (non-`read_only`) actions —
+    /// each call is then routed through the blocking approval gate so the
+    /// user confirms from chat. Default `false`: until approval-over-chat
+    /// is wired, mutating tools stay invisible to the model.
+    #[serde(default)]
+    pub writes_with_approval: bool,
 }
 
 impl ToolPolicy {
+    /// Explicit-mode check: tool is on the allow-list and not denied.
+    /// Returns `false` when `allow` is empty — default-mode exposure is
+    /// decided by the tool builder via [`Self::is_denied`] + the action's
+    /// `read_only` hint (see struct docs).
     pub fn is_allowed(&self, tool_name: &str) -> bool {
         if self.allow.is_empty() {
             return false;
@@ -167,6 +185,13 @@ impl ToolPolicy {
         let allowed = self.allow.iter().any(|pat| glob_match(pat, tool_name));
         let denied = self.deny.iter().any(|pat| glob_match(pat, tool_name));
         allowed && !denied
+    }
+
+    /// Whether the deny-list matches. Used by the tool builder's default
+    /// (bimbo) mode, where there is no allow-list to consult but deny must
+    /// still always win.
+    pub fn is_denied(&self, tool_name: &str) -> bool {
+        self.deny.iter().any(|pat| glob_match(pat, tool_name))
     }
 
     pub fn effective_max_iterations(&self) -> usize {

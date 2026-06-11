@@ -1,7 +1,7 @@
 use async_trait::async_trait;
-use specta::Type;
-use secrecy::{ExposeSecret, SecretBox};
+use secrecy::SecretBox;
 use serde::Deserialize;
+use specta::Type;
 
 use crate::adapter::{
     AiAdapter, AiOptions, AiRequest, AiResponse, AiStream, ChatMessage, ConnectorInfo, TokenUsage,
@@ -63,8 +63,7 @@ pub struct AnthropicAdapter {
 
 impl AnthropicAdapter {
     pub fn new(config: &AnthropicConfig) -> Result<Self, AiError> {
-        // SECURITY: expose needed to clone API key into client
-        let api_key = SecretBox::new(Box::new(config.api_key.expose_secret().clone()));
+        let api_key = springtale_crypto::secret_use::clone_into_box(&config.api_key);
         let client = AnthropicClient::new(&config.base_url, api_key)?;
         Ok(Self {
             client,

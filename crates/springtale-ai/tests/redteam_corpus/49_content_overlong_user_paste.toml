@@ -1,0 +1,11 @@
+# OWASP LLM04:2025 — Data and Model Poisoning / DoS via oversized input.
+# The harness's `long_lorem` generator produces ~1.2M chars, far over
+# the MAX_CONTENT_LENGTH (10K) — the sanitizer must flag
+# `ContentTooLong` without panicking or allocating unbounded memory.
+
+id = "49_content_overlong_user_paste"
+description = "Attacker pastes a giant blob to exhaust context"
+category = "content_too_long"
+input_generator = "long_lorem"
+expected_pattern_type = "ContentTooLong"
+expected_blocked = false

@@ -41,7 +41,7 @@ use async_trait::async_trait;
 use crate::adapter::TokenUsage;
 use crate::extractor::error::ExtractorError;
 use crate::extractor::trait_::{
-    synthesize_full_confidence, ExtractOptions, ExtractOutcome, StructuredExtractor,
+    ExtractOptions, ExtractOutcome, StructuredExtractor, synthesize_full_confidence,
 };
 
 use super::adapter::AnthropicAdapter;
@@ -85,12 +85,10 @@ impl StructuredExtractor for AnthropicAdapter {
                 &options,
             );
 
-            let result = tokio::time::timeout(
-                options.timeout,
-                self.anthropic_client().messages(&body),
-            )
-            .await
-            .map_err(|_| ExtractorError::Adapter(crate::error::AiError::Timeout))??;
+            let result =
+                tokio::time::timeout(options.timeout, self.anthropic_client().messages(&body))
+                    .await
+                    .map_err(|_| ExtractorError::Adapter(crate::error::AiError::Timeout))??;
 
             match parse_extract_response(&result, schema) {
                 ParseOutcome::Refused(reason) => {
@@ -100,7 +98,11 @@ impl StructuredExtractor for AnthropicAdapter {
                     last_error = Some(reason);
                     continue;
                 }
-                ParseOutcome::Ok { value, usage, model } => {
+                ParseOutcome::Ok {
+                    value,
+                    usage,
+                    model,
+                } => {
                     let mut confidence = synthesize_full_confidence(&value);
                     if attempt > 0 {
                         for c in confidence.values_mut() {
@@ -262,10 +264,10 @@ fn parse_extract_response(result: &serde_json::Value, schema: &serde_json::Value
 fn first_text_block(result: &serde_json::Value) -> Option<String> {
     let blocks = result.get("content").and_then(|c| c.as_array())?;
     for block in blocks {
-        if block.get("type").and_then(|t| t.as_str()) == Some("text") {
-            if let Some(t) = block.get("text").and_then(|t| t.as_str()) {
-                return Some(t.to_owned());
-            }
+        if block.get("type").and_then(|t| t.as_str()) == Some("text")
+            && let Some(t) = block.get("text").and_then(|t| t.as_str())
+        {
+            return Some(t.to_owned());
         }
     }
     None
@@ -297,7 +299,11 @@ mod tests {
             "required": ["title"]
         });
         match parse_extract_response(&resp, &schema) {
-            ParseOutcome::Ok { value, usage, model } => {
+            ParseOutcome::Ok {
+                value,
+                usage,
+                model,
+            } => {
                 assert_eq!(value["title"], "hello");
                 assert_eq!(model, "claude-sonnet-4-6");
                 let usage = usage.unwrap();
@@ -384,9 +390,11 @@ mod tests {
         );
         let messages = body["messages"].as_array().unwrap();
         assert_eq!(messages.len(), 2);
-        assert!(messages[1]["content"]
-            .as_str()
-            .unwrap()
-            .contains("missing field x"));
+        assert!(
+            messages[1]["content"]
+                .as_str()
+                .unwrap()
+                .contains("missing field x")
+        );
     }
 }

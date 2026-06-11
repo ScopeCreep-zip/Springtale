@@ -1,7 +1,7 @@
 use async_trait::async_trait;
-use specta::Type;
-use secrecy::{ExposeSecret, SecretBox};
+use secrecy::SecretBox;
 use serde::Deserialize;
+use specta::Type;
 
 use crate::adapter::{
     AiAdapter, AiOptions, AiRequest, AiResponse, AiStream, ChatMessage, ConnectorInfo, TokenUsage,
@@ -47,8 +47,7 @@ pub struct OpenAiCompatAdapter {
 
 impl OpenAiCompatAdapter {
     pub fn new(config: &OpenAiConfig) -> Result<Self, AiError> {
-        // SECURITY: expose needed to clone API key into client
-        let api_key = SecretBox::new(Box::new(config.api_key.expose_secret().clone()));
+        let api_key = springtale_crypto::secret_use::clone_into_box(&config.api_key);
         let client = OpenAiClient::new(&config.base_url, api_key)?;
         Ok(Self {
             client,
@@ -149,20 +148,22 @@ impl OpenAiCompatAdapter {
     /// Translate cross-vendor `ChatMessage` list into the OpenAI
     /// `messages` shape, carrying through `tool_calls` on assistant
     /// turns and `tool_call_id` on `"tool"` role turns.
-    fn build_messages(
-        &self,
-        request: AiRequest,
-    ) -> Result<Vec<serde_json::Value>, AiError> {
+    fn build_messages(&self, request: AiRequest) -> Result<Vec<serde_json::Value>, AiError> {
         match request {
             AiRequest::Complete { prompt } => {
                 let sanitized = self.sanitize("prompt", &prompt)?;
-                Ok(vec![serde_json::json!({"role": "user", "content": sanitized})])
+                Ok(vec![
+                    serde_json::json!({"role": "user", "content": sanitized}),
+                ])
             }
             AiRequest::Chat { messages } => self.chat_to_openai(messages),
         }
     }
 
-    fn chat_to_openai(&self, messages: Vec<ChatMessage>) -> Result<Vec<serde_json::Value>, AiError> {
+    fn chat_to_openai(
+        &self,
+        messages: Vec<ChatMessage>,
+    ) -> Result<Vec<serde_json::Value>, AiError> {
         let mut out = Vec::with_capacity(messages.len());
         for m in messages {
             let sanitized = self.sanitize(&format!("chat.{}", m.role), &m.content)?;
@@ -191,8 +192,8 @@ impl OpenAiCompatAdapter {
                     .tool_calls
                     .into_iter()
                     .map(|c| {
-                        let args_string = serde_json::to_string(&c.arguments)
-                            .unwrap_or_else(|_| "{}".into());
+                        let args_string =
+                            serde_json::to_string(&c.arguments).unwrap_or_else(|_| "{}".into());
                         serde_json::json!({
                             "id": c.id,
                             "type": "function",
@@ -259,9 +260,16 @@ impl OpenAiCompatAdapter {
             .to_owned();
 
         let mut tool_calls = Vec::new();
-        if let Some(calls) = message.and_then(|m| m.get("tool_calls")).and_then(|v| v.as_array()) {
+        if let Some(calls) = message
+            .and_then(|m| m.get("tool_calls"))
+            .and_then(|v| v.as_array())
+        {
             for call in calls {
-                let id = call.get("id").and_then(|i| i.as_str()).unwrap_or("").to_owned();
+                let id = call
+                    .get("id")
+                    .and_then(|i| i.as_str())
+                    .unwrap_or("")
+                    .to_owned();
                 let func = call.get("function");
                 let name = func
                     .and_then(|f| f.get("name"))
@@ -360,12 +368,10 @@ impl AiAdapter for OpenAiCompatAdapter {
             body["temperature"] = serde_json::json!(temp);
         }
 
-        let response = tokio::time::timeout(
-            options.timeout,
-            self.client.chat_completion_stream(&body),
-        )
-        .await
-        .map_err(|_| AiError::Timeout)??;
+        let response =
+            tokio::time::timeout(options.timeout, self.client.chat_completion_stream(&body))
+                .await
+                .map_err(|_| AiError::Timeout)??;
 
         let mut byte_stream = response.bytes_stream();
         let stream = async_stream::stream! {

@@ -1,0 +1,10 @@
+# OWASP LLM02:2025 — US Social Security Number leak.
+
+id = "38_pii_ssn"
+description = "US SSN appears in prompt (XXX-XX-XXXX format)"
+category = "pii"
+input = """
+Please file the tax form for SSN 123-45-6789.
+"""
+expected_pattern_type = "Pii"
+expected_blocked = false

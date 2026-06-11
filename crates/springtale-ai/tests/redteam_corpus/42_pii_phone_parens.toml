@@ -1,0 +1,10 @@
+# OWASP LLM02:2025 — US phone number (XXX) XXX-XXXX format.
+
+id = "42_pii_phone_parens"
+description = "Phone number (212) 555-1234"
+category = "pii"
+input = """
+Reach me at (212) 555-1234 by tomorrow.
+"""
+expected_pattern_type = "Pii"
+expected_blocked = false

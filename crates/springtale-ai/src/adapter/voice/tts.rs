@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use secrecy::{ExposeSecret, SecretBox};
+use secrecy::SecretBox;
 
 use crate::error::AiError;
 
@@ -41,7 +41,7 @@ impl ElevenLabsAdapter {
     pub fn new(endpoint: String, api_key: SecretBox<String>) -> Result<Self, AiError> {
         crate::validate::validate_url_scheme(&endpoint)?;
 
-        let client = reqwest::Client::builder()
+        let client = springtale_transport::safe_http::builder()
             .timeout(std::time::Duration::from_secs(60))
             .build()
             .map_err(|e| AiError::NotConfigured(format!("failed to build HTTP client: {e}")))?;
@@ -67,8 +67,10 @@ impl TtsAdapter for ElevenLabsAdapter {
         let response = self
             .client
             .post(&url)
-            // SECURITY: expose needed for ElevenLabs xi-api-key header
-            .header("xi-api-key", self.api_key.expose_secret().as_str())
+            .header(
+                "xi-api-key",
+                springtale_crypto::secret_use::header_value(&self.api_key),
+            )
             .header("Content-Type", "application/json")
             .json(&body)
             .send()

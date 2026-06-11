@@ -31,7 +31,7 @@ use async_trait::async_trait;
 use crate::adapter::TokenUsage;
 use crate::extractor::error::ExtractorError;
 use crate::extractor::trait_::{
-    synthesize_full_confidence, ExtractOptions, ExtractOutcome, StructuredExtractor,
+    ExtractOptions, ExtractOutcome, StructuredExtractor, synthesize_full_confidence,
 };
 
 use super::adapter::OpenAiCompatAdapter;
@@ -76,12 +76,10 @@ impl StructuredExtractor for OpenAiCompatAdapter {
                 &options,
             );
 
-            let result = tokio::time::timeout(
-                options.timeout,
-                self.openai_client().chat_completion(&body),
-            )
-            .await
-            .map_err(|_| ExtractorError::Adapter(crate::error::AiError::Timeout))??;
+            let result =
+                tokio::time::timeout(options.timeout, self.openai_client().chat_completion(&body))
+                    .await
+                    .map_err(|_| ExtractorError::Adapter(crate::error::AiError::Timeout))??;
 
             match parse_extract_response(&result, schema) {
                 ParseOutcome::Refused(reason) => {
@@ -92,7 +90,11 @@ impl StructuredExtractor for OpenAiCompatAdapter {
                     last_error = Some(reason);
                     continue;
                 }
-                ParseOutcome::Ok { value, usage, model } => {
+                ParseOutcome::Ok {
+                    value,
+                    usage,
+                    model,
+                } => {
                     let mut confidence = synthesize_full_confidence(&value);
                     // First-try success: leave 1.0 across the board.
                     // Retry success: drop the score so the executions
@@ -138,14 +140,14 @@ fn parse_extract_response(result: &serde_json::Value, schema: &serde_json::Value
         None => return ParseOutcome::Invalid("response missing choices[0].message".into()),
     };
 
-    if let Some(refusal) = message.get("refusal").and_then(|r| r.as_str()) {
-        if !refusal.is_empty() {
-            // Truncate to 256 chars — the audit-trail invariant
-            // caps the executions-log refusal payload at the same
-            // limit so the privacy boundary holds.
-            let truncated: String = refusal.chars().take(256).collect();
-            return ParseOutcome::Refused(truncated);
-        }
+    if let Some(refusal) = message.get("refusal").and_then(|r| r.as_str())
+        && !refusal.is_empty()
+    {
+        // Truncate to 256 chars — the audit-trail invariant caps the
+        // executions-log refusal payload at the same limit so the privacy
+        // boundary holds.
+        let truncated: String = refusal.chars().take(256).collect();
+        return ParseOutcome::Refused(truncated);
     }
 
     let content = match message.get("content").and_then(|c| c.as_str()) {
@@ -238,7 +240,11 @@ mod tests {
             "required": ["title"]
         });
         match parse_extract_response(&resp, &schema) {
-            ParseOutcome::Ok { value, usage, model } => {
+            ParseOutcome::Ok {
+                value,
+                usage,
+                model,
+            } => {
                 assert_eq!(value["title"], "x");
                 assert_eq!(model, "gpt-4o-2024-08-06");
                 let usage = usage.unwrap();

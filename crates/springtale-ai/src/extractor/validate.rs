@@ -38,10 +38,10 @@ pub fn validate_against(
         value.as_object(),
     ) {
         for (field, sub_schema) in props {
-            if let Some(sub_value) = obj.get(field) {
-                if let Err(reason) = validate_against(sub_value, sub_schema) {
-                    return Err(format!("field `{field}`: {reason}"));
-                }
+            if let Some(sub_value) = obj.get(field)
+                && let Err(reason) = validate_against(sub_value, sub_schema)
+            {
+                return Err(format!("field `{field}`: {reason}"));
             }
         }
     }
@@ -51,17 +51,15 @@ pub fn validate_against(
         value.as_object(),
     ) {
         for entry in required {
-            if let Some(field) = entry.as_str() {
-                if !obj.contains_key(field) {
-                    return Err(format!("missing required field `{field}`"));
-                }
+            if let Some(field) = entry.as_str()
+                && !obj.contains_key(field)
+            {
+                return Err(format!("missing required field `{field}`"));
             }
         }
     }
 
-    if let (Some(items_schema), Some(arr)) =
-        (schema_obj.get("items"), value.as_array())
-    {
+    if let (Some(items_schema), Some(arr)) = (schema_obj.get("items"), value.as_array()) {
         for (i, item) in arr.iter().enumerate() {
             if let Err(reason) = validate_against(item, items_schema) {
                 return Err(format!("item[{i}]: {reason}"));
@@ -69,10 +67,10 @@ pub fn validate_against(
         }
     }
 
-    if let Some(enum_vals) = schema_obj.get("enum").and_then(|e| e.as_array()) {
-        if !enum_vals.iter().any(|v| v == value) {
-            return Err("value not in declared enum".into());
-        }
+    if let Some(enum_vals) = schema_obj.get("enum").and_then(|e| e.as_array())
+        && !enum_vals.iter().any(|v| v == value)
+    {
+        return Err("value not in declared enum".into());
     }
 
     Ok(())
@@ -92,7 +90,10 @@ fn check_type(value: &serde_json::Value, ty: &str) -> Result<(), String> {
     if matches {
         Ok(())
     } else {
-        Err(format!("expected type `{ty}`, got {}", json_type_name(value)))
+        Err(format!(
+            "expected type `{ty}`, got {}",
+            json_type_name(value)
+        ))
     }
 }
 

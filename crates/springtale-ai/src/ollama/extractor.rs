@@ -28,7 +28,7 @@ use async_trait::async_trait;
 use crate::adapter::TokenUsage;
 use crate::extractor::error::ExtractorError;
 use crate::extractor::trait_::{
-    synthesize_full_confidence, ExtractOptions, ExtractOutcome, StructuredExtractor,
+    ExtractOptions, ExtractOutcome, StructuredExtractor, synthesize_full_confidence,
 };
 
 use super::adapter::OllamaAdapter;
@@ -72,16 +72,21 @@ impl StructuredExtractor for OllamaAdapter {
                 &options,
             );
 
-            let result = tokio::time::timeout(options.timeout, self.ollama_client().chat_raw(&body))
-                .await
-                .map_err(|_| ExtractorError::Adapter(crate::error::AiError::Timeout))??;
+            let result =
+                tokio::time::timeout(options.timeout, self.ollama_client().chat_raw(&body))
+                    .await
+                    .map_err(|_| ExtractorError::Adapter(crate::error::AiError::Timeout))??;
 
             match parse_extract_response(&result, schema) {
                 ParseOutcome::Invalid(reason) => {
                     last_error = Some(reason);
                     continue;
                 }
-                ParseOutcome::Ok { value, usage, model } => {
+                ParseOutcome::Ok {
+                    value,
+                    usage,
+                    model,
+                } => {
                     let mut confidence = synthesize_full_confidence(&value);
                     if attempt > 0 {
                         for c in confidence.values_mut() {
@@ -249,7 +254,11 @@ mod tests {
             "required": ["title"]
         });
         match parse_extract_response(&resp, &schema) {
-            ParseOutcome::Ok { value, usage, model } => {
+            ParseOutcome::Ok {
+                value,
+                usage,
+                model,
+            } => {
                 assert_eq!(value["title"], "x");
                 assert_eq!(model, "llama3.2:3b");
                 let usage = usage.unwrap();
@@ -299,9 +308,11 @@ mod tests {
         );
         let messages = body["messages"].as_array().unwrap();
         assert_eq!(messages.len(), 3);
-        assert!(messages[2]["content"]
-            .as_str()
-            .unwrap()
-            .contains("missing field x"));
+        assert!(
+            messages[2]["content"]
+                .as_str()
+                .unwrap()
+                .contains("missing field x")
+        );
     }
 }

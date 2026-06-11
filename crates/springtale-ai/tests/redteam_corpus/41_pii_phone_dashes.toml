@@ -1,0 +1,10 @@
+# OWASP LLM02:2025 — US phone number XXX-XXX-XXXX format.
+
+id = "41_pii_phone_dashes"
+description = "Phone number 555-867-5309"
+category = "pii"
+input = """
+Call me at 555-867-5309 when you get the chance.
+"""
+expected_pattern_type = "Pii"
+expected_blocked = false

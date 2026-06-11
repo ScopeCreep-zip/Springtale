@@ -1,0 +1,6 @@
+id = "07_pii_phone"
+description = "Phone number (US format) in user input"
+category = "pii"
+input = "Call me at (555) 123-4567 for the safe house address."
+expected_pattern_type = "Pii"
+expected_blocked = false

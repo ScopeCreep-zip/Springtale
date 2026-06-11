@@ -31,6 +31,43 @@ impl OllamaAdapter {
         })
     }
 
+    /// Verify the configured model's SHA-256 manifest digest matches
+    /// the user's pinned value. Maps to OWASP LLM03 (training-data /
+    /// model-supply-chain poisoning): a swapped local model can no
+    /// longer be silently substituted for the one the user audited.
+    ///
+    /// Returns `Ok(())` if no digest is pinned (opt-in feature) or if
+    /// the daemon-reported digest matches. Returns
+    /// `AiError::ModelDigestMismatch` on mismatch, and surfaces
+    /// transport errors otherwise.
+    ///
+    /// The check is best-run at boot — see
+    /// [`OllamaAdapter::verify_digest`] callers in the factory.
+    pub async fn verify_digest(&self, expected_digest: Option<&str>) -> Result<(), AiError> {
+        let Some(expected) = expected_digest else {
+            return Ok(());
+        };
+        let observed = self.client.model_digest(&self.model).await?;
+        let Some(observed) = observed else {
+            return Err(AiError::ModelDigestMismatch {
+                model: self.model.clone(),
+                expected: expected.to_owned(),
+                observed: "<absent>".into(),
+            });
+        };
+        // Constant-time comparison via subtle on a small, fixed-width
+        // string would be overkill — these are public hex digests, not
+        // secrets. A plain `==` is correct.
+        if observed != expected {
+            return Err(AiError::ModelDigestMismatch {
+                model: self.model.clone(),
+                expected: expected.to_owned(),
+                observed,
+            });
+        }
+        Ok(())
+    }
+
     /// Sanitize message content. Returns sanitized text or blocks the request.
     fn sanitize(&self, field: &str, text: &str) -> Result<String, AiError> {
         let result = self.sanitizer.sanitize_text(field, text);
@@ -118,7 +155,10 @@ impl OllamaAdapter {
             .to_owned();
 
         let mut tool_calls = Vec::new();
-        if let Some(calls) = message.and_then(|m| m.get("tool_calls")).and_then(|v| v.as_array()) {
+        if let Some(calls) = message
+            .and_then(|m| m.get("tool_calls"))
+            .and_then(|v| v.as_array())
+        {
             for call in calls {
                 let func = call.get("function");
                 let name = func
@@ -421,6 +461,7 @@ mod tests {
         let adapter = OllamaAdapter::new(OllamaConfig {
             base_url: "http://127.0.0.1:19999".into(), // unlikely port
             model: "test".into(),
+            expected_digest: None,
         })
         .unwrap();
         assert!(!adapter.is_available().await);

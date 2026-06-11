@@ -1,4 +1,4 @@
-use secrecy::{ExposeSecret, SecretBox};
+use secrecy::SecretBox;
 
 use crate::error::AiError;
 
@@ -16,7 +16,9 @@ impl AnthropicClient {
     pub fn new(base_url: &str, api_key: SecretBox<String>) -> Result<Self, AiError> {
         crate::validate::validate_url_scheme(base_url)?;
 
-        let http = reqwest::Client::builder()
+        // 120s overrides safe_http's 30s default — Anthropic chat completions
+        // can block on the server for the full generation window.
+        let http = springtale_transport::safe_http::builder()
             .timeout(std::time::Duration::from_secs(120))
             .build()
             .map_err(|e| AiError::InferenceFailed(format!("failed to build HTTP client: {e}")))?;
@@ -36,7 +38,10 @@ impl AnthropicClient {
         let response = self
             .http
             .post(&url)
-            .header("x-api-key", self.api_key.expose_secret().as_str())
+            .header(
+                "x-api-key",
+                springtale_crypto::secret_use::header_value(&self.api_key),
+            )
             .header("anthropic-version", "2023-06-01")
             .json(body)
             .send()
@@ -66,7 +71,10 @@ impl AnthropicClient {
         // SECURITY: expose needed for Anthropic x-api-key header
         self.http
             .post(&url)
-            .header("x-api-key", self.api_key.expose_secret().as_str())
+            .header(
+                "x-api-key",
+                springtale_crypto::secret_use::header_value(&self.api_key),
+            )
             .header("anthropic-version", "2023-06-01")
             .json(body)
     }
@@ -78,7 +86,10 @@ impl AnthropicClient {
         match self
             .http
             .head(&url)
-            .header("x-api-key", self.api_key.expose_secret().as_str())
+            .header(
+                "x-api-key",
+                springtale_crypto::secret_use::header_value(&self.api_key),
+            )
             .header("anthropic-version", "2023-06-01")
             .send()
             .await
