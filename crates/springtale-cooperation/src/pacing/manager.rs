@@ -9,6 +9,24 @@ use crate::tick_processor::FormationTickResult;
 use super::rate_limiter::GovernorRateLimiter;
 use super::types::{PacingPhase, PacingTransition};
 
+/// L4D `intensity_decay_time = 30` (spec §A.1.1): full-scale intensity
+/// decays to zero over 30 seconds without engagement. Decay pauses while
+/// the formation is actively succeeding — Booth: "Do NOT decay Survivor
+/// Intensity if there are Infected actively engaging."
+pub const INTENSITY_DECAY: Duration = Duration::from_secs(30);
+
+/// L4D `IntensityRelaxThreshold = 0.99` (spec §A.1.1): Peak fades only
+/// once intensity decays below 99% of its peak-entry value — prevents
+/// transition chatter right at the peak.
+pub const RELAX_THRESHOLD: f32 = 0.99;
+
+/// L4D `SustainPeakMinTime = 3` (spec §A.1.1): Peak holds at least 3s
+/// before it may fade, guaranteeing a minimum build-up payoff.
+pub const SUSTAIN_PEAK_MIN: Duration = Duration::from_secs(3);
+/// L4D `SustainPeakMaxTime = 5` (spec §A.1.1): past 5s at Peak the
+/// failure path no longer waits for the relax threshold.
+pub const SUSTAIN_PEAK_MAX: Duration = Duration::from_secs(5);
+
 /// Manages pacing for a formation.
 pub struct PacingManager {
     pub current_phase: PacingPhase,
@@ -51,6 +69,16 @@ impl PacingManager {
         tick_elapsed: Duration,
     ) -> Option<PacingTransition> {
         self.time_since_last_recovery += tick_elapsed;
+
+        // §A.1.1 intensity decay: drains toward zero over INTENSITY_DECAY
+        // of wall time, paused while the formation is actively succeeding
+        // (L4D: no decay during engagement).
+        let engaged = tick_result.all_succeeded
+            && tick_result.reports.iter().any(|r| r.action_taken.is_some());
+        if !engaged && self.cumulative_intensity > 0.0 {
+            let decay = tick_elapsed.as_secs_f32() / INTENSITY_DECAY.as_secs_f32();
+            self.cumulative_intensity = (self.cumulative_intensity - decay).max(0.0);
+        }
 
         match &self.current_phase {
             PacingPhase::Preparation { started } => {
@@ -111,8 +139,12 @@ impl PacingManager {
                 }
                 None
             }
-            PacingPhase::Peak { started, .. } => {
+            PacingPhase::Peak {
+                started, intensity, ..
+            } => {
                 let started = *started;
+                let entry_intensity = *intensity;
+                // Hard cap regardless of sustain/threshold state.
                 if started.elapsed() > self.peak_duration_max {
                     let from = self.phase_name();
                     self.set_phase(PacingPhase::Recovery {
@@ -123,7 +155,18 @@ impl PacingManager {
                         to: "Recovery",
                     });
                 }
-                if !tick_result.all_succeeded {
+                // §A.1.1 SustainPeakMinTime: hold Peak ≥3s before any fade.
+                if started.elapsed() < SUSTAIN_PEAK_MIN {
+                    return None;
+                }
+                // Fade once any of the three L4D conditions holds:
+                // 1. IntensityRelaxThreshold — intensity decayed below
+                //    0.99 × the peak-entry value;
+                // 2. the formation failed a tick at Peak;
+                // 3. SustainPeakMaxTime elapsed — past 5s the sustain
+                //    window is over and the fade begins regardless.
+                let faded = self.cumulative_intensity < RELAX_THRESHOLD * entry_intensity;
+                if faded || !tick_result.all_succeeded || started.elapsed() > SUSTAIN_PEAK_MAX {
                     let from = self.phase_name();
                     self.set_phase(PacingPhase::Recovery {
                         remaining: self.recovery_duration_min,
@@ -174,13 +217,27 @@ impl PacingManager {
         self.rate_limiter.check()
     }
 
-    /// Get the tick interval modifier for the current phase.
-    pub fn tick_interval_modifier(&self) -> f32 {
+    /// §22 frequency modulation — L4D: "Amplitude (difficulty) is not
+    /// changed, frequency (pacing) is." One CadenceBus serves every
+    /// formation in the process, so the per-formation tick rate is
+    /// modulated by SKIPPING bus ticks rather than changing the bus
+    /// interval: a formation processes only ticks where
+    /// `sequence % divider == 0`. Effective rate = bus rate ÷ divider.
+    ///
+    /// | Phase       | Divider | Effective @ 30 Hz |
+    /// |-------------|:-------:|:-----------------:|
+    /// | Peak        | 1       | 30 Hz             |
+    /// | Active      | 2       | 15 Hz             |
+    /// | Preparation | 3       | 10 Hz             |
+    /// | Disruption  | 3       | 10 Hz             |
+    /// | Recovery    | 6       | 5 Hz              |
+    pub fn tick_divider(&self) -> u64 {
         match &self.current_phase {
-            PacingPhase::Peak { .. } => 0.5,
-            PacingPhase::Recovery { .. } => 2.0,
-            PacingPhase::Disruption { .. } => 1.5,
-            _ => 1.0,
+            PacingPhase::Peak { .. } => 1,
+            PacingPhase::Active { .. } => 2,
+            PacingPhase::Preparation { .. } => 3,
+            PacingPhase::Disruption { .. } => 3,
+            PacingPhase::Recovery { .. } => 6,
         }
     }
 
@@ -331,20 +388,84 @@ mod tests {
     }
 
     #[test]
-    fn tick_interval_modifiers() {
+    fn tick_divider_per_phase() {
         let mut pm = PacingManager::default();
-        assert!((pm.tick_interval_modifier() - 1.0).abs() < f32::EPSILON);
+        assert_eq!(pm.tick_divider(), 3, "Preparation runs at 1/3 rate");
 
         pm.set_phase(PacingPhase::Peak {
             intensity: 0.9,
             fuel_rate: 2.0,
             started: Instant::now(),
         });
-        assert!((pm.tick_interval_modifier() - 0.5).abs() < f32::EPSILON);
+        assert_eq!(pm.tick_divider(), 1, "Peak runs at full bus rate");
 
         pm.set_phase(PacingPhase::Recovery {
             remaining: Duration::from_secs(30),
         });
-        assert!((pm.tick_interval_modifier() - 2.0).abs() < f32::EPSILON);
+        assert_eq!(pm.tick_divider(), 6, "Recovery runs at 1/6 rate");
+    }
+
+    #[test]
+    fn intensity_decays_over_thirty_seconds_idle() {
+        let mut pm = PacingManager {
+            cumulative_intensity: 1.0,
+            ..PacingManager::default()
+        };
+        // One idle evaluation worth 15s of wall time → half the scale gone.
+        pm.evaluate_transition(
+            &empty_tick(),
+            &MomentumState::default(),
+            Duration::from_secs(15),
+        );
+        assert!((pm.cumulative_intensity - 0.5).abs() < 0.01);
+        // Another 15s drains it to zero (clamped).
+        pm.evaluate_transition(
+            &empty_tick(),
+            &MomentumState::default(),
+            Duration::from_secs(15),
+        );
+        assert!(pm.cumulative_intensity <= f32::EPSILON);
+    }
+
+    #[test]
+    fn peak_sustains_minimum_before_fade() {
+        let mut pm = PacingManager {
+            cumulative_intensity: 0.9,
+            ..PacingManager::default()
+        };
+        pm.set_phase(PacingPhase::Peak {
+            intensity: 0.9,
+            fuel_rate: 2.0,
+            started: Instant::now(),
+        });
+        // Within SUSTAIN_PEAK_MIN even a failing tick can't fade the peak.
+        let t = pm.evaluate_transition(
+            &empty_tick(),
+            &MomentumState::default(),
+            Duration::from_millis(33),
+        );
+        assert!(t.is_none(), "Peak holds during the 3s sustain window");
+        assert!(matches!(pm.current_phase, PacingPhase::Peak { .. }));
+    }
+
+    #[test]
+    fn peak_fades_below_relax_threshold_after_sustain() {
+        let mut pm = PacingManager {
+            cumulative_intensity: 0.9,
+            ..PacingManager::default()
+        };
+        // Backdate Peak entry past the sustain window.
+        pm.set_phase(PacingPhase::Peak {
+            intensity: 0.9,
+            fuel_rate: 2.0,
+            started: Instant::now() - Duration::from_secs(4),
+        });
+        // Idle decay pulls intensity below 0.99 × entry → fade.
+        let t = pm.evaluate_transition(
+            &empty_tick(),
+            &MomentumState::default(),
+            Duration::from_secs(1),
+        );
+        assert_eq!(t.as_ref().map(|t| t.to), Some("Recovery"));
     }
 }

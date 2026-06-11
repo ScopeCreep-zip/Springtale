@@ -1,8 +1,9 @@
 //! Step 8 — evaluate pacing transitions (`COOPERATION.md §22`, L4D Director).
 //!
-//! `tick.window` equals the configured tick interval (set by `CadenceBus::run`).
-//! It is used here as the per-tick elapsed duration for phase transition
-//! evaluation. Transitions are logged + (Phase H5) emitted onto the
+//! `elapsed` is the true wall-clock duration since this formation's last
+//! PROCESSED tick (computed in `run_tick` from tick timestamps — correct
+//! under the §22 pacing divider, unlike the old `tick.window` which ran
+//! pacing timers 4× fast). Transitions are logged + (Phase H5) emitted onto the
 //! cooperation events bus so the formation-card pacing-phase indicator
 //! updates live.
 
@@ -16,13 +17,13 @@ use springtale_cooperation::tick_processor::FormationTickResult;
 pub fn run(
     formation: &mut Formation,
     result: &FormationTickResult,
-    tick_window: Duration,
+    elapsed: Duration,
     cooperation_tx: Option<&broadcast::Sender<CooperationEventEnvelope>>,
 ) {
     if let Some(transition) =
         formation
             .pacing
-            .evaluate_transition(result, &formation.momentum, tick_window)
+            .evaluate_transition(result, &formation.momentum, elapsed)
     {
         tracing::info!(
             formation = %formation.id.0,
