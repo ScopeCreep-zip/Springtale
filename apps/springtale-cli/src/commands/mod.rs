@@ -6,6 +6,7 @@ pub mod data;
 pub mod doctor;
 pub mod events;
 pub mod fix;
+pub mod healthcheck;
 pub mod init;
 pub mod memory;
 pub mod new;

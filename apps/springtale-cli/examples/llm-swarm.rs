@@ -28,10 +28,8 @@ use std::sync::Arc;
 
 use clap::Parser;
 
-use springtale_ai::{
-    AiAdapter, AiOptions, AiRequest, ChatMessage, NoopAdapter, OllamaConfig,
-};
 use springtale_ai::ollama::OllamaAdapter;
+use springtale_ai::{AiAdapter, AiOptions, AiRequest, ChatMessage, NoopAdapter, OllamaConfig};
 use springtale_bot::cooperation::formation::{Formation, FormationDeps, FormationMember};
 use springtale_cooperation::awareness::InMemoryGossipStore;
 use springtale_cooperation::cadence::{AgentId, CadenceBus};
@@ -41,7 +39,10 @@ use springtale_cooperation::{IntentPattern, PlanId};
 use springtale_store::backend::InMemoryBackend;
 
 #[derive(Parser, Debug)]
-#[command(name = "llm-swarm", about = "3-agent LLM orchestration swarm (plan §7.2)")]
+#[command(
+    name = "llm-swarm",
+    about = "3-agent LLM orchestration swarm (plan §7.2)"
+)]
 struct Args {
     /// User prompt the swarm will research, write about, and critique.
     prompt: String,
@@ -69,6 +70,7 @@ fn pick_adapter(args: &Args) -> Arc<dyn AiAdapter> {
     match OllamaAdapter::new(OllamaConfig {
         base_url: args.ollama_url.clone(),
         model: args.model.clone(),
+        expected_digest: None,
     }) {
         Ok(adapter) => {
             tracing::info!(url = %args.ollama_url, model = %args.model, "using Ollama");
@@ -153,9 +155,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // 2. Role system prompts. Kept short for readability; real-world
     //    agents would load these from the bot config + per-role
     //    capability declarations.
-    let researcher_sys = "You are a researcher. List bullet points of what the user asks about. Be concise.";
-    let writer_sys = "You are a writer. Given research notes, draft a clear 2-paragraph explanation.";
-    let critic_sys = "You are a critic. Given a draft, flag inaccuracies and suggest one improvement.";
+    let researcher_sys =
+        "You are a researcher. List bullet points of what the user asks about. Be concise.";
+    let writer_sys =
+        "You are a writer. Given research notes, draft a clear 2-paragraph explanation.";
+    let critic_sys =
+        "You are a critic. Given a draft, flag inaccuracies and suggest one improvement.";
 
     // 3. Pipeline: researcher → writer → critic. Handoff is a plain
     //    `String` between calls here; a production bot routes this
@@ -176,7 +181,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("\n── llm-swarm summary ──");
     println!("  prompt       : {}", args.prompt);
     println!("  formation id : {}", formation.id);
-    println!("  adapter      : {}", std::any::type_name_of_val(adapter.as_ref()));
+    println!(
+        "  adapter      : {}",
+        std::any::type_name_of_val(adapter.as_ref())
+    );
     println!("  stages       : research → write → critique");
 
     Ok(())

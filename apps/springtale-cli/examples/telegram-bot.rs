@@ -29,17 +29,20 @@ use clap::Parser;
 use secrecy::SecretBox;
 
 use connector_telegram::{TelegramConfig, TelegramConnector};
-use springtale_ai::{NoopAdapter};
+use springtale_ai::NoopAdapter;
 use springtale_bot::cooperation::formation::{Formation, FormationDeps, FormationMember};
+use springtale_cooperation::IntentPattern;
 use springtale_cooperation::awareness::InMemoryGossipStore;
 use springtale_cooperation::cadence::{AgentId, CadenceBus};
 use springtale_cooperation::handoff::FlexibleChainPool;
 use springtale_cooperation::types::FormationConstraints;
-use springtale_cooperation::IntentPattern;
 use springtale_store::backend::InMemoryBackend;
 
 #[derive(Parser, Debug)]
-#[command(name = "telegram-bot", about = "Telegram bot formation pattern (plan §7.3)")]
+#[command(
+    name = "telegram-bot",
+    about = "Telegram bot formation pattern (plan §7.3)"
+)]
 struct Args {
     /// Attempt to talk to the real Telegram API (requires
     /// `TELEGRAM_BOT_TOKEN` in the environment). Without it the demo

@@ -23,7 +23,11 @@ pub async fn run(error_id: &str) -> Result<()> {
         }
         println!(
             "\nResult: {}",
-            if outcome.success { "success" } else { "no change" }
+            if outcome.success {
+                "success"
+            } else {
+                "no change"
+            }
         );
     }
 

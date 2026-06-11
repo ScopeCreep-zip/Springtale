@@ -29,6 +29,11 @@ springtale-crypto = { workspace = true }
 springtale-connector = { workspace = true }
 springtale-store = { workspace = true }
 springtale-runtime = { workspace = true }
+# Brings in `crypto_provider::install_default_pq` for the rustls bootstrap
+# at `main.rs` entry. CLI subcommands `server`/`run` boot the daemon path
+# which constructs `rustls::ServerConfig`; that needs a process-global
+# provider installed first.
+springtale-transport = { workspace = true }
 
 # Required so `apps/springtale-cli/examples/task-runner.rs` (plan §7.1),
 # `llm-swarm.rs` (§7.2), and `telegram-bot.rs` (§7.3) can import Formation,

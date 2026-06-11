@@ -34,7 +34,8 @@ pub async fn run(connector_filter: Option<&str>, rule_filter: Option<&str>) -> R
 
     // Authorization header (never query param) so the token isn't logged
     // or exposed in process listings. security.md: "No secrets in URLs."
-    let client = reqwest::Client::new();
+    let client =
+        springtale_transport::safe_http::client().map_err(|e| anyhow::anyhow!("safe_http: {e}"))?;
     let response = client
         .get(&url)
         .header("Authorization", format!("Bearer {token}"))

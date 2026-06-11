@@ -29,16 +29,19 @@ use std::time::Duration;
 use clap::Parser;
 
 use springtale_bot::cooperation::formation::{Formation, FormationDeps, FormationMember};
+use springtale_cooperation::TaskDescriptor;
 use springtale_cooperation::awareness::InMemoryGossipStore;
 use springtale_cooperation::cadence::{ActionDescriptor, AgentId, CadenceBus, TickReport};
 use springtale_cooperation::handoff::FlexibleChainPool;
 use springtale_cooperation::types::FormationConstraints;
 use springtale_cooperation::{IntentPattern, StabilizeReason};
-use springtale_cooperation::TaskDescriptor;
 use springtale_store::backend::InMemoryBackend;
 
 #[derive(Parser, Debug)]
-#[command(name = "task-runner", about = "Minimal cooperation-module demo (plan §7.1)")]
+#[command(
+    name = "task-runner",
+    about = "Minimal cooperation-module demo (plan §7.1)"
+)]
 struct Args {
     /// Free-text task description — worker agents echo this back as their action.
     task: String,
@@ -126,7 +129,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             action_taken: Some(ActionDescriptor {
                                 kind: "summarize".to_owned(),
                                 target: Some(task_text.clone()),
-                                payload_hash: tick.sequence,
+                                payload_hash: tick.sequence.0,
                             }),
                             latency: Duration::from_millis(5),
                             intent_alignment: 1.0,
@@ -154,11 +157,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let successful_threshold: u32 = 3;
     let mut success_count = 0u32;
     let mut aggregated = Vec::<String>::new();
-    let mut last_tick = 0u64;
+    let mut last_tick = springtale_cooperation::TickId::ZERO;
 
     while let Some(report) = reports_rx.recv().await {
         last_tick = report.tick_sequence;
-        if report.tick_sequence > args.max_ticks {
+        if report.tick_sequence.0 > args.max_ticks {
             break;
         }
         if report.intent_alignment > 0.5 {

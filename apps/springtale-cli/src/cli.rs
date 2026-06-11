@@ -41,6 +41,16 @@ pub enum Command {
     /// Run Springtale — alias for `server start`, matches plan §16.4
     /// (`springtale init cli-runner && springtale run` in ≤60s).
     Run,
+    /// Container healthcheck — probes the daemon's /health endpoint
+    /// and exits 0 on 2xx, non-zero otherwise. Used by Dockerfile
+    /// `HEALTHCHECK` and docker-compose because the distroless final
+    /// image has no `wget` / `curl`.
+    Healthcheck {
+        /// Override the management API base URL.
+        /// Defaults to `http://127.0.0.1:8080` (matches `springtaled` default).
+        #[arg(long, default_value = "http://127.0.0.1:8080")]
+        url: String,
+    },
     /// Initialize Springtale (create data directory, vault, config).
     /// After setup, optionally links a chat platform and starts the daemon.
     ///

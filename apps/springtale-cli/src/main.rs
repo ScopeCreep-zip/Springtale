@@ -11,6 +11,14 @@ use cli::{BotAction, Cli, Command, CryptoAction, ServerAction, TravelAction, Vau
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Install the post-quantum-preferring rustls crypto provider before any
+    // TLS surface is constructed. The CLI's `server`/`run` subcommands boot
+    // the daemon path which builds `rustls::ServerConfig` / `reqwest`
+    // clients, both of which require a process-global provider. Calling
+    // here is idempotent — `install_default_pq` returns `false` if a
+    // provider is already installed.
+    springtale_transport::crypto_provider::install_default_pq();
+
     let cli = Cli::parse();
 
     match cli.command {
@@ -44,6 +52,10 @@ async fn main() -> Result<()> {
             // `run` is the plain-English name for the daemon entry point
             // so the plan's success-criterion prompt works literally.
             commands::server::run().await?;
+        }
+        Command::Healthcheck { url } => {
+            // Used by container HEALTHCHECK — distroless has no wget/curl.
+            commands::healthcheck::run(&url).await?;
         }
         Command::Panic => {
             let store = open_store()?;

@@ -58,7 +58,9 @@ async fn set_owner_id(store: &SqliteBackend) -> Result<()> {
     println!("\n--- Owner Setup ---");
     println!("Enter your user ID on the chat platform (e.g., your Telegram numeric ID).");
     println!("This user will be the bot owner — they can manage pairing and settings.");
-    println!("(Leave blank to use trust-on-first-use mode — first person to message becomes owner)");
+    println!(
+        "(Leave blank to use trust-on-first-use mode — first person to message becomes owner)"
+    );
     print!("> ");
     io::stdout().flush().ok();
 
@@ -115,9 +117,8 @@ fn setup_vault(vault_path: &std::path::Path) -> Result<Vec<u8>> {
     let keypair = Keypair::generate().context("failed to generate identity")?;
     let mut vault =
         Vault::create(vault_path, passphrase.as_bytes()).context("failed to create vault")?;
-    // SECURITY: expose needed to persist identity key material
     vault
-        .set("identity", keypair.expose_secret_bytes().to_vec())
+        .set("identity", keypair.with_secret_bytes(|b| b.to_vec()))
         .context("failed to store identity")?;
     vault.save().context("failed to save vault")?;
 
@@ -191,7 +192,10 @@ async fn run_platform_wizard(store: &SqliteBackend) -> Result<()> {
     println!("\n--- Channel Setup ---");
     let platforms = onboarding::list_platforms();
     let choices: Vec<&str> = platforms.iter().map(|p| p.id).collect();
-    println!("Connect a chat platform? Options: {}, skip", choices.join(", "));
+    println!(
+        "Connect a chat platform? Options: {}, skip",
+        choices.join(", ")
+    );
     print!("> ");
     io::stdout().flush().ok();
 
@@ -222,7 +226,11 @@ async fn run_platform_wizard(store: &SqliteBackend) -> Result<()> {
         "  {} configured. Stored {} field{} at {}.",
         platform.label,
         report.fields_stored.len(),
-        if report.fields_stored.len() == 1 { "" } else { "s" },
+        if report.fields_stored.len() == 1 {
+            ""
+        } else {
+            "s"
+        },
         report.stored_key,
     );
     Ok(())
