@@ -1057,7 +1057,7 @@ dependencies = [
  "springtale-connector",
  "thiserror 2.0.18",
  "tokio",
- "toml 0.8.23",
+ "toml 0.9.12+spec-1.1.0",
  "tracing",
 ]
 
@@ -5708,7 +5708,7 @@ dependencies = [
  "springtale-transport",
  "thiserror 2.0.18",
  "tokio",
- "toml 0.8.23",
+ "toml 0.9.12+spec-1.1.0",
  "tracing",
 ]
 
@@ -5735,7 +5735,7 @@ dependencies = [
  "springtale-transport",
  "thiserror 2.0.18",
  "tokio",
- "toml 0.8.23",
+ "toml 0.9.12+spec-1.1.0",
  "tracing",
  "uuid",
 ]
@@ -5770,7 +5770,7 @@ dependencies = [
  "tabled",
  "tempfile",
  "tokio",
- "toml 0.8.23",
+ "toml 0.9.12+spec-1.1.0",
  "tracing",
  "tracing-subscriber",
  "uuid",
@@ -5798,7 +5798,7 @@ dependencies = [
  "springtale-store",
  "thiserror 2.0.18",
  "tokio",
- "toml 0.8.23",
+ "toml 0.9.12+spec-1.1.0",
  "tracing",
  "wasmtime",
  "wasmtime-wasi",
@@ -5852,7 +5852,7 @@ dependencies = [
  "specta",
  "thiserror 2.0.18",
  "tokio",
- "toml 0.8.23",
+ "toml 0.9.12+spec-1.1.0",
  "tracing",
  "uuid",
 ]
@@ -5968,7 +5968,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
- "toml 0.8.23",
+ "toml 0.9.12+spec-1.1.0",
  "tracing",
  "uuid",
 ]
@@ -6028,7 +6028,7 @@ dependencies = [
  "tempfile",
  "thiserror 2.0.18",
  "tokio",
- "toml 0.8.23",
+ "toml 0.9.12+spec-1.1.0",
  "tracing",
  "uuid",
 ]
@@ -6111,7 +6111,7 @@ dependencies = [
  "subtle",
  "tokio",
  "tokio-stream",
- "toml 0.8.23",
+ "toml 0.9.12+spec-1.1.0",
  "tower",
  "tower-http",
  "tracing",
