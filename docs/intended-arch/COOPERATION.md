@@ -1,12 +1,14 @@
 # Cooperative Agent Architecture — Technical Companion
 
-**Status:** Implemented (April 2026 — see `crates/springtale-cooperation/`) · **Phase:** 1b/2a · **Updated:** 2026-04-10
+**Status:** Implemented (April 2026 — see `crates/springtale-cooperation/`) · **Phase:** 1b/2a · **Updated:** 2026-06-10
 **Companion to:** `COOPERATION.pdf` (game-design spec) and `ARCHITECTURE.md §14`.
 
-> The 40-module crate this document specifies is shipped and wired through a 14-step
-> formation tick. User-facing tour: [`docs/guide/cooperation.md`](../guide/cooperation.md).
-> Wiring report: [`docs/arch/AUDIT-NOTES.md §3`](../arch/AUDIT-NOTES.md). The text below
-> is preserved as the design rationale of record.
+> The 41-module crate this document specifies is shipped and wired through the
+> formation tick pipeline (`tick_steps/`, a superset of the original 14 steps).
+> User-facing tour: [`docs/guide/cooperation.md`](../guide/cooperation.md).
+> Wiring report: [`docs/arch/AUDIT-NOTES.md §3`](../arch/AUDIT-NOTES.md). As-built
+> deviations and the June 2026 gap-closure pass are recorded in §25.1. The text
+> below is preserved as the design rationale of record.
 
 ---
 
@@ -2112,6 +2114,12 @@ Phase 2b: Legacy users migrate to formations. recursive.rs deprecated.
 Phase 3:  recursive.rs and subagent.rs removed. Formation-only coordination.
 ```
 
+> **As-built (June 2026):** `recursive.rs` and `subagent.rs` were removed
+> ahead of schedule, in Phase 2b — a workspace-wide sweep found zero callers
+> (formations had fully replaced the parent→child pipeline), and pre-launch
+> dead code is deleted wholesale rather than deprecated in place. Coordination
+> is formation-only as of that removal.
+
 ---
 
 ## 18. Recovery & Mutual Aid
@@ -3084,6 +3092,60 @@ cooperative *ideas* are realized, only the crate differs:
 
 `AgentId` is a UUID, not the Bitsquid packed-u64 sketch — see the E11 note in
 `cadence.rs` (cross-process + Phase 3 transport make global uniqueness cheaper).
+
+#### Gap-closure reconciliation (June 2026, second pass)
+
+A line-by-line audit of this document against the shipped tree closed the
+remaining drift. Recorded here so the as-built shape stays auditable:
+
+- **`Tick` carries no `IntentPattern`.** §5.3's sketch put intent inside every
+  tick because it assumed a bus per formation. As built, ONE `CadenceBus` per
+  bot serves every formation, so the bus is a pure metronome
+  (sequence/timestamp/window) and intent travels on the §6 `FormationContext`
+  watch channel. Every intent write goes through one chokepoint —
+  `orchestrator::intent::apply_intent` — which also feeds the §7 momentum FSM
+  an `IntentChanged` event.
+- **§5.5 intent-transition source 2 is wired.** Formation self-governance is a
+  consensus vote on a typed `DecisionSubject::IntentChange` (Fever-gated),
+  applied by the `resolve_consensus` tick step. Academic anchor: Joint
+  Intention Theory (Cohen & Levesque; STEAM) — a joint persistent goal changes
+  only by mutual belief, i.e. a vote.
+- **§11 consensus loop is closed.** Votes carry a typed `DecisionSubject`
+  (`DestructiveAction` | `IntentChange`); `ConsensusEngine::resolve_ready()`
+  sweeps quorum/override/deadline resolutions once per tick and the
+  `resolve_consensus` step APPLIES them — approval mints a one-shot execution
+  permit, deny/timeout removes the task. A pending-vote guard
+  (`Formation::awaiting_consensus`) prevents per-tick re-proposal. Timeout on a
+  destructive subject is ALWAYS a denial (default-safe), even though the engine
+  itself stays As-Dusk-Falls-faithful (most-popular-wins on timeout).
+- **§12 `Countdown` is live.** `CommitBarrier::with_countdown(d)` holds Ready →
+  Countdown → Execute on a deadline; `Duration::ZERO` (default) preserves the
+  straight Ready → Execute path.
+- **§22 decision #5 constants implemented.** `INTENSITY_DECAY = 30s`,
+  `RELAX_THRESHOLD = 0.99`, `SUSTAIN_PEAK_MIN/MAX = 3s/5s` in
+  `pacing/manager.rs` (per §A.1.1), with decay paused while engaged. Pacing
+  elapsed time is now true wall-clock between processed ticks (the old code
+  reused the ×4 agent commit window as elapsed — pacing clocks ran 4× fast).
+- **§22 frequency modulation is real.** `PacingManager::tick_divider()` skips
+  bus ticks per phase (Peak ÷1, Active ÷2, Preparation/Disruption ÷3, Recovery
+  ÷6) — L4D's "amplitude is not changed, frequency is" — replacing the unwired
+  `tick_interval_modifier`.
+- **Decision #6 rally falloff implemented non-spatially.** WH3's 70/×1.5 linear
+  aura maps onto snapshot **Age of Information**: neighbor influence in
+  `morale_target()` is weighted by `aoi_weight(last_updated.elapsed())` — full
+  ≤2s, linear to zero at 3s (`awareness/types.rs`). The `MAX_CONTAGION_DISTRESSED
+  = 4` cap applies to the weighted sum.
+- **Decision #2 `TickId` newtype implemented.** Research re-confirmed the typed
+  tick (DST practice, Rust API guidelines C-NEWTYPE); `tick::TickId(u64)`
+  replaced every raw `tick_sequence: u64` — and the sweep immediately caught a
+  real instance of the bug class (a tick stuffed into `payload_hash`).
+- **`recursive.rs` / `subagent.rs` removed early** (originally scheduled for
+  Phase 3 in §17.5): both were caller-free, and pre-launch dead code is deleted
+  wholesale rather than deprecated in place.
+- **Crate deps:** `springtale-cooperation` depends on `springtale-core` and
+  `springtale-store` (the all-SQL-in-store rule requires the latter); the
+  implementation plan's "zero internal deps" line was stale. The direct
+  `rusqlite` dependency was unused and removed; `lib.rs` declares 41 modules.
 
 ### 25.2 What the Rust ecosystem does NOT give you
 

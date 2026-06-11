@@ -69,6 +69,7 @@ modules, preserving the defense-in-depth posture
 | ---- | -------- | ----- |
 | 2026-05-10 | initial pass | Validated review covers `crates/springtale-cooperation/` as shipped. No drift. |
 | 2026-05-10 | J2 (this pass) | Added paragraphs for `gossip/` (G6) and `memory/` (G2). Added inline `## Security` cross-link blocks to both modules' `mod.rs`. Refreshed attacker-capability summary. |
+| 2026-06-10 | gap-closure pass | Consensus resolution now APPLIES typed subjects (one-shot permits, pending-vote guard, timeout-deny for destructive) — `consensus.rs` paragraph extended for the execution path. Rally paragraph corrected: WH3 contagion cap lives in `awareness/types.rs` (`MAX_CONTAGION_DISTRESSED`), now AoI-weighted. `recursive.rs`/`subagent.rs` deleted (zero callers). |
 
 ## When to refresh
 

@@ -10,6 +10,40 @@ This file is the **user-facing** changelog.
 
 ## [Unreleased]
 
+### Cooperation gap-closure pass (2026-06-10)
+
+- **Consensus loop closed end-to-end (§11).** Votes now carry a typed
+  `DecisionSubject` and resolutions are *applied*, not just logged: an
+  approved destructive action mints a one-shot execution permit, a deny or
+  timeout removes the task (timeout is ALWAYS a denial for destructive
+  subjects — no-quorum silence never executes anything). A pending-vote
+  guard stops the same task re-opening a vote every tick.
+- **Formation self-governance wired (§5.5).** At Fever tier a formation can
+  vote to change its own intent (`ProposeIntentChange` + `CastVote`
+  commands, `POST /formations/{id}/propose-intent` and
+  `/formations/{id}/votes/{vote_id}` API routes). Anchored in Joint
+  Intention Theory: the joint goal changes by mutual belief, i.e. a vote.
+- **All intent writes flow through one chokepoint**
+  (`orchestrator::intent::apply_intent`): user command, intervention,
+  colony commander, and consensus resolution — each resets the §7 momentum
+  run and rebroadcasts the formation context. The cadence bus is now a
+  pure metronome (`Tick` no longer carries an intent).
+- **Pacing completed (§22).** L4D Director constants implemented
+  (30s intensity decay, 0.99 relax threshold, 3–5s sustain-peak); pacing
+  clocks now run on true wall-time (previously 4× fast); per-formation
+  tick rates modulate via the pacing divider (Peak 30 Hz → Recovery 5 Hz).
+- **Commit `Countdown` phase live (§12)** via
+  `CommitBarrier::with_countdown` — Ready → Countdown → Execute with
+  observable transitions.
+- **Rally falloff implemented (§A.4.2)** — WH3's 70/×1.5 aura mapped onto
+  snapshot Age-of-Information: stale gossip influences morale less,
+  fading to zero at 3s.
+- **`TickId` newtype** replaces raw `u64` tick sequences across the
+  workspace (deterministic-simulation practice; the sweep caught a real
+  tick-as-payload-hash bug in the task-runner example).
+- **Legacy orchestrator deleted** — `recursive.rs`/`subagent.rs` had zero
+  callers; formations are the only coordination model.
+
 ### Security (CI / supply-chain hardening pass — 2026-05-13)
 
 - **Memory-safety roadmap published** (`docs/security/MEMORY-SAFETY.md`) per

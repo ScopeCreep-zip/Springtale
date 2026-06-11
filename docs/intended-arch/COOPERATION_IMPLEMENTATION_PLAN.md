@@ -3,12 +3,23 @@
 **Status:** Implemented · **Updated:** 2026-04-10 · **Companion to:** `COOPERATION.md` (spec), `COOPERATION.pdf` (design origin).
 
 > **Completion summary.** The 10-week plan below shipped: `crates/springtale-cooperation/`
-> exists with 40 pub modules and zero internal Springtale deps; `springtale-bot` runs the
-> 14-step formation tick described in §3 (`crates/springtale-bot/src/runtime/event_loop.rs::handle_cadence_tick`);
+> exists with 41 pub modules, depending internally on `springtale-core` and
+> `springtale-store` (the CLAUDE.md all-SQL-in-store rule requires the latter);
+> `springtale-bot` runs the formation tick pipeline described in §3
+> (`crates/springtale-bot/src/runtime/tick_steps/`, a superset of the original 14 steps);
 > all parity-matrix rows are covered; and the three worked examples ship as starter
 > templates (`cli-runner`, `llm-swarm`, `telegram-bot`) — the full template set lives in
 > `crates/springtale-runtime/src/operations/templates.rs`. See [`docs/arch/AUDIT-NOTES.md §3`](../arch/AUDIT-NOTES.md)
-> for the wiring confirmation. Remaining work tracked there is ergonomic only.
+> for the wiring confirmation.
+>
+> **June 2026 gap-closure pass** (see `COOPERATION.md §25.1` for the full record):
+> the §11 consensus loop now closes end-to-end (typed `DecisionSubject`, pending-vote
+> guard, one-shot execution permits, timeout-deny for destructive subjects); §5.5
+> formation self-governance is wired (consensus-approved intent change at Fever,
+> `ProposeIntentChange`/`CastVote` commands + API routes); decision #2 (`TickId`
+> newtype), #5 (L4D pacing constants), and #6 (rally falloff, AoI-weighted) are
+> implemented; §12 `Countdown` is live; §22 frequency modulation runs via the
+> per-formation tick divider; `recursive.rs`/`subagent.rs` were deleted (zero callers).
 
 ---
 

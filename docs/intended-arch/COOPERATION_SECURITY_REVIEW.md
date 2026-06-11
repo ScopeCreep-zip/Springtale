@@ -72,12 +72,22 @@ tick.
 ## `consensus.rs`
 
 Threats: byzantine vote-stuffing (3), replay of a valid vote (6), override
-drain (4). Detection: votes are tagged by `(agent_id, proposal_id, tick)`
+drain (4), and — since the resolution path now *executes* approved
+subjects — a forged or replayed approval escalating to a destructive
+action (1+6). Detection: votes are tagged by `(agent_id, proposal_id, tick)`
 — duplicates per key are dropped; `ConsensusVote::override_used` is a
-single bit per agent per proposal. Mitigation: `resolve` enumerates eligible
-voters from the current formation roster, so swapped/unknown ids cannot
-vote; timeouts only fire after `deadline_tick` to stop premature resolves.
-Recovery: a single proposal window (default ≤10 ticks).
+single bit per agent per proposal. Mitigation: `resolve_ready` is the
+single application chokepoint (overrides, quorum, and deadlines all flow
+through it once per tick); approvals mint a ONE-SHOT execution permit
+(`Formation::consensus_approved`, removed on claim) so a captured
+approval cannot authorize a second execution; a pending-vote guard
+(`Formation::awaiting_consensus`) stops re-proposal spam for the same
+task; and a deadline timeout on a `DestructiveAction` subject is ALWAYS
+applied as a denial regardless of the most-popular tally — no-quorum
+silence never executes anything. `IntentChange` subjects are
+Fever-gated at proposal time (`MomentumState::can_consensus`).
+Recovery: a single proposal window (default 5 s destructive / 10 s
+governance).
 
 ## `commit.rs`
 
@@ -93,8 +103,12 @@ or none do; audit log records abort reason. Recovery: next tick after a
 
 Threats: rally-token double-spend (4), forged rally targets by a byzantine
 member (3), cascade contagion amplification (4). Detection: tokens are
-consumed atomically from the formation's token pool; cascade spread uses
-the WH3 caps (4 friends / 5 enemies) hard-coded in the supervisor.
+consumed atomically from the formation's token pool; cascade contagion is
+bounded by `awareness/types.rs::MAX_CONTAGION_DISTRESSED = 4` (the WH3
+friends cap — the enemies cap has no analog in a cooperative formation),
+and every neighbor's influence is additionally weighted by snapshot
+Age-of-Information (`aoi_weight`, full ≤2s, zero at 3s) so a byzantine
+member cannot keep amplifying panic from a stale snapshot.
 Mitigation: supervisor runs in one task per formation and reconciles the
 pool each tick; a member trying to spend a token it doesn't hold gets a
 `COOP-4001` (rally.token_missing). Recovery: next tick.

@@ -61,9 +61,24 @@ end-to-end. SDK dispatch example in `sdk/connector-sdk/src/lib.rs:9-24`.
 
 **State update (April 2026):** What this section previously described as
 "type-defined, not wired" is now wired. The cooperation code moved into
-its own crate (`springtale-cooperation`, 40 pub modules, zero internal deps)
-and `springtale-bot` gained a 14-step per-formation tick pipeline that
+its own crate (`springtale-cooperation`, 41 pub modules; internal deps:
+`springtale-core` + `springtale-store` per the all-SQL-in-store rule)
+and `springtale-bot` gained a per-formation tick pipeline
+(`runtime/tick_steps/`, a superset of the original 14 steps) that
 exercises every module.
+
+**State update (June 2026, gap-closure pass):** step 11 is now
+`resolve_consensus` — it APPLIES vote resolutions to their typed
+`DecisionSubject` (one-shot execution permits for approved destructive
+actions, timeout = deny, consensus-approved intent change at Fever per
+§5.5 source 2) instead of only logging deadline expiry. The tick head
+gained the §22 pacing divider (per-formation tick rate: Peak ÷1 …
+Recovery ÷6) and true wall-clock pacing elapsed. `Tick` no longer
+carries an `IntentPattern` (the bus is a pure metronome; intent rides
+the FormationContext watch channel through the
+`orchestrator::intent::apply_intent` chokepoint). Legacy
+`recursive.rs`/`subagent.rs` were deleted (zero callers). See
+`COOPERATION.md §25.1` for the full as-built record.
 
 ```
   event_loop.rs::handle_cadence_tick() — 14 steps
@@ -97,8 +112,8 @@ exercises every module.
 | `awareness` | ✓ wired | gossip substrate (InMemory / chitchat) |
 | `attention` | ✓ wired | zero-sum broker |
 | `state` (environment) | ✓ wired | blackboard, shared env, write log |
-| `consensus` | ✓ wired | deadlines checked step 11 |
-| `commit` | ✓ wired | barriers expired step 12 |
+| `consensus` | ✓ wired | resolutions applied step 11 (permits / deny / intent change) |
+| `commit` | ✓ wired | barriers ticked (incl. Countdown) + expired step 12 |
 | `interference` | ✓ wired | detected step 2 |
 | `transformation` | ✓ wired | step 10 |
 | `capability` | ✓ wired | DynamicCapabilitySet built per tick |
