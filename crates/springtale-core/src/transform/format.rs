@@ -6,6 +6,27 @@
 /// Security: no nested `${}` allowed. No code execution. Variables
 /// resolve to string values only. Unresolvable variables are left as-is.
 pub fn resolve_template(template: &str, payload: &serde_json::Value) -> String {
+    resolve_template_wrapped(template, payload, |s| s.to_string())
+}
+
+/// Same as [`resolve_template`] but each substituted scalar is passed
+/// through `wrap_fn` first. The OWASP-LLM01 indirect-injection guard
+/// uses this to envelope every external value in
+/// `<external_context>...</external_context>` before it reaches the
+/// AI prompt — see
+/// [`crate::rule::template_resolve::resolve_chain_template_for_ai`].
+///
+/// `wrap_fn` runs on the SCALAR value only, not on the surrounding
+/// template literal. Empty resolutions (`None` / complex types) are
+/// left unwrapped — they are not external data.
+pub fn resolve_template_wrapped<F>(
+    template: &str,
+    payload: &serde_json::Value,
+    wrap_fn: F,
+) -> String
+where
+    F: Fn(&str) -> String,
+{
     let mut result = String::with_capacity(template.len());
     let mut chars = template.chars().peekable();
 
@@ -36,10 +57,10 @@ pub fn resolve_template(template: &str, payload: &serde_json::Value) -> String {
             if found_close && !var_name.is_empty() {
                 // Resolve the variable against the payload
                 match resolve_field(payload, &var_name) {
-                    Some(serde_json::Value::String(s)) => result.push_str(s),
-                    Some(serde_json::Value::Number(n)) => result.push_str(&n.to_string()),
-                    Some(serde_json::Value::Bool(b)) => result.push_str(&b.to_string()),
-                    Some(serde_json::Value::Null) => result.push_str("null"),
+                    Some(serde_json::Value::String(s)) => result.push_str(&wrap_fn(s)),
+                    Some(serde_json::Value::Number(n)) => result.push_str(&wrap_fn(&n.to_string())),
+                    Some(serde_json::Value::Bool(b)) => result.push_str(&wrap_fn(&b.to_string())),
+                    Some(serde_json::Value::Null) => result.push_str(&wrap_fn("null")),
                     Some(_) => result.push_str(&format!("${{{var_name}}}")), // complex types left as-is
                     None => result.push_str(&format!("${{{var_name}}}")), // unresolvable left as-is
                 }

@@ -135,21 +135,16 @@ pub struct Rule {
 /// `FormationId` newtypes because `springtale-core` has zero deps on
 /// `springtale-cooperation`. Callers in higher crates convert from
 /// `AgentId(Uuid)` / `FormationId(Uuid)` at the boundary.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RuleOwner {
     /// Any context can fire this rule.
+    #[default]
     Global,
     /// Only the named agent can fire this rule.
     Agent { agent_id: Uuid },
     /// Only the named formation can fire this rule.
     Formation { formation_id: Uuid },
-}
-
-impl Default for RuleOwner {
-    fn default() -> Self {
-        Self::Global
-    }
 }
 
 impl RuleOwner {
@@ -158,19 +153,15 @@ impl RuleOwner {
     /// rules always match. Agent rules match only when the firing
     /// context carries the same agent id. Formation rules match only
     /// when the firing context carries the same formation id.
-    pub fn matches(
-        &self,
-        agent_id: Option<Uuid>,
-        formation_id: Option<Uuid>,
-    ) -> bool {
+    pub fn matches(&self, agent_id: Option<Uuid>, formation_id: Option<Uuid>) -> bool {
         match self {
             RuleOwner::Global => true,
-            RuleOwner::Agent { agent_id: rule_agent } => {
-                agent_id.is_some_and(|firing| firing == *rule_agent)
-            }
-            RuleOwner::Formation { formation_id: rule_formation } => {
-                formation_id.is_some_and(|firing| firing == *rule_formation)
-            }
+            RuleOwner::Agent {
+                agent_id: rule_agent,
+            } => agent_id.is_some_and(|firing| firing == *rule_agent),
+            RuleOwner::Formation {
+                formation_id: rule_formation,
+            } => formation_id.is_some_and(|firing| firing == *rule_formation),
         }
     }
 

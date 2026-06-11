@@ -191,6 +191,7 @@ pub enum ExtractKind {
     ///   - `selector :all` — returns an array of all matches' text.
     ///   - `selector @attr` — returns the named attribute instead
     ///     of text (e.g. `"a.link @href"`).
+    ///
     /// Implementation: `scraper` crate (html5ever + Servo selectors).
     Css {
         schema: serde_json::Map<String, serde_json::Value>,
@@ -296,7 +297,10 @@ title = "h1.article-title"
 "#;
         let action: Action = toml::from_str(toml).unwrap();
         match action {
-            Action::Extract { kind: ExtractKind::Css { schema }, .. } => {
+            Action::Extract {
+                kind: ExtractKind::Css { schema },
+                ..
+            } => {
                 assert_eq!(schema["title"], "h1.article-title");
             }
             _ => panic!("expected Extract::Css"),
@@ -335,7 +339,10 @@ desc = "$.current_condition[0].weatherDesc[0].value"
         let s = serde_json::to_string(&action).unwrap();
         let back: Action = serde_json::from_str(&s).unwrap();
         match back {
-            Action::Extract { kind: ExtractKind::Feed, .. } => {}
+            Action::Extract {
+                kind: ExtractKind::Feed,
+                ..
+            } => {}
             _ => panic!("expected Feed kind round-trip"),
         }
     }
@@ -394,7 +401,11 @@ history = 5000
 "#;
         let action: Action = toml::from_str(toml).unwrap();
         match action {
-            Action::Dedupe { key, bucket, history } => {
+            Action::Dedupe {
+                key,
+                bucket,
+                history,
+            } => {
                 assert_eq!(key, "${last_extract_output.entries.0.id}");
                 assert_eq!(bucket, "rss-broadcast");
                 assert_eq!(history, 5000);
@@ -429,7 +440,13 @@ bucket = "page-watcher"
         let s = serde_json::to_string(&action).unwrap();
         let back: Action = serde_json::from_str(&s).unwrap();
         assert!(
-            matches!(back, Action::Extract { kind: ExtractKind::Passthrough, .. }),
+            matches!(
+                back,
+                Action::Extract {
+                    kind: ExtractKind::Passthrough,
+                    ..
+                }
+            ),
             "passthrough round-trip failed"
         );
     }

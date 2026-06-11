@@ -172,9 +172,7 @@ impl ChainContext {
     /// (duplicate names are rejected at preflight, see
     /// [`super::template_resolve::validate_step_names`]).
     pub fn step_by_name(&self, name: &str) -> Option<&StepOutput> {
-        self.steps
-            .iter()
-            .find(|s| s.name.as_deref() == Some(name))
+        self.steps.iter().find(|s| s.name.as_deref() == Some(name))
     }
 }
 
@@ -317,10 +315,7 @@ mod tests {
     fn record_connector_step_refreshes_last_connector_output() {
         let mut c = ChainContext::new(json!(null));
         c.record_step(connector_step(1, json!({ "body": "hello" })));
-        assert_eq!(
-            c.last_connector_output.as_ref().unwrap()["body"],
-            "hello"
-        );
+        assert_eq!(c.last_connector_output.as_ref().unwrap()["body"], "hello");
     }
 
     #[test]
@@ -353,10 +348,7 @@ mod tests {
             error: None,
         };
         c.record_step(step);
-        assert_eq!(
-            c.last_dedupe_output.as_ref().unwrap()["outcome"],
-            "fresh"
-        );
+        assert_eq!(c.last_dedupe_output.as_ref().unwrap()["outcome"], "fresh");
     }
 
     #[test]
@@ -390,14 +382,8 @@ mod tests {
         // last_connector_output exposes the raw connector output so
         // recipes can write `${last_connector_output.status}`
         // without wrapper indirection.
-        assert_eq!(
-            c.last_connector_output.as_ref().unwrap()["status"],
-            200
-        );
-        assert_eq!(
-            c.last_connector_output.as_ref().unwrap()["body"],
-            "hello"
-        );
+        assert_eq!(c.last_connector_output.as_ref().unwrap()["status"], 200);
+        assert_eq!(c.last_connector_output.as_ref().unwrap()["body"], "hello");
         // last_connector_message holds the human line.
         assert_eq!(c.last_connector_message.as_deref(), Some("ok"));
     }
