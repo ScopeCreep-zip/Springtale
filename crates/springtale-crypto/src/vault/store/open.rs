@@ -133,8 +133,8 @@ mod tests {
         let key = kdf::derive_key(passphrase, &salt).unwrap();
         let nonce_bytes: [u8; 24] = [9; 24];
         let nonce = XNonce::from_slice(&nonce_bytes);
-        let cipher = crate::secret_use::with_key32(&key, |k| XChaCha20Poly1305::new_from_slice(k))
-            .unwrap();
+        let cipher =
+            crate::secret_use::with_key32(&key, |k| XChaCha20Poly1305::new_from_slice(k)).unwrap();
         let legacy_plaintext = serde_json::to_vec(&entries).unwrap();
         let ciphertext = cipher.encrypt(nonce, legacy_plaintext.as_ref()).unwrap();
 
@@ -154,7 +154,10 @@ mod tests {
 
         let vault = Vault::open(&path, passphrase).expect("legacy flat vault must open");
         assert_eq!(vault.get("identity").unwrap(), Some(&b"keypair".to_vec()));
-        assert_eq!(vault.get("openai.api_key").unwrap(), Some(&b"sk-test".to_vec()));
+        assert_eq!(
+            vault.get("openai.api_key").unwrap(),
+            Some(&b"sk-test".to_vec())
+        );
     }
 }
 

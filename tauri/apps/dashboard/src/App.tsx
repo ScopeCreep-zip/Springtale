@@ -11,8 +11,8 @@ import type {
 import {
   AiConfigPanel,
   BottomPanel,
-  COMMANDS,
   ChatPanel,
+  COMMANDS,
   ColonyShell,
   ConnectorConfigPanel,
   MemberPickerOverlay,

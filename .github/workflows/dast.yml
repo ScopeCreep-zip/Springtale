@@ -22,11 +22,13 @@ jobs:
       contents: read
       issues: write   # ZAP action opens issues for findings
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 9
       - uses: actions/setup-node@v4
@@ -45,7 +47,7 @@ jobs:
             if curl -fsS http://127.0.0.1:4173 > /dev/null; then break; fi
             sleep 1
           done
-      - uses: zaproxy/action-baseline@v0.14.0
+      - uses: zaproxy/action-baseline@7c4deb10e6261301961c86d65d54a516394f9aed # v0.14.0
         with:
           target: 'http://127.0.0.1:4173'
           rules_file_name: '.github/zap-rules.tsv'

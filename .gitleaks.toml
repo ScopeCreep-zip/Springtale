@@ -5,6 +5,11 @@ title = "Springtale gitleaks config"
 # OWASP Secrets Management Cheat Sheet and the CISA Sep-2025 npm advisory
 # (rotation patterns when tokens leak via build logs).
 
+# Without this block a custom config REPLACES the built-in ruleset;
+# useDefault keeps every upstream rule active alongside the ones below.
+[extend]
+useDefault = true
+
 [allowlist]
 description = "Known false positives"
 stopwords = [
@@ -28,15 +33,16 @@ paths = [
   # whose whole purpose is to look like a credential to the regex.
   '''crates/springtale-ai/tests/redteam_corpus/.*\.toml''',
   '''crates/springtale-ai/src/sanitize/patterns\.rs''',
+  # Vendored third-party C sources (SQLite/SQLCipher) — generic-api-key
+  # false positives on callback identifiers like xAuth.
+  '''crates/libsqlite3-sys-mc/.*''',
 ]
-
-# Known doc-example tokens that look real but aren't.
-[[rules]]
-id = "discord-token-format"
-description = "Discord token format example in config docs"
-regex = '''NDcyNTk2MDcwMzU1MzE2NzQ2'''
-[rules.allowlist]
-paths = ['''connectors/connector-discord/src/config\.rs''']
+regexes = [
+  # Fake Discord bot-id from a connector-discord doc comment. Removed at
+  # HEAD (the comment now describes the format instead), but the literal
+  # survives in already-pushed commits, which the full-history scan covers.
+  '''NDcyNTk2MDcwMzU1MzE2NzQ2''',
+]
 
 # AI provider secrets — Anthropic, OpenAI, Google AI Studio.
 [[rules]]

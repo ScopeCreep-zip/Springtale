@@ -13,8 +13,8 @@ import {
   ApprovalCard,
   AppSettingsPanel,
   BottomPanel,
-  COMMANDS,
   ChatDock,
+  COMMANDS,
   ColonyShell,
   ConnectorConfigPanel,
   MemberPickerOverlay,
@@ -1359,39 +1359,39 @@ export const App = () => {
       }
       viewport={
         <div class="relative h-full w-full">
-        <Viewport
-          nodes={nodes()}
-          agents={agents()}
-          connections={connections()}
-          formations={formations()}
-          events={db.events()}
-          selection={selection()}
-          onSelectConnector={(id) => {
-            setSelection({ id, type: "connector" });
-            setDetailView({ mode: "entity" });
-          }}
-          onSelectAgent={(id) => {
-            setSelection({ id, type: "agent" });
-            setDetailView({ mode: "entity" });
-          }}
-          onSelectFormation={(id) => {
-            setSelection({ id, type: "formation" });
-            setDetailView({ mode: "entity" });
-          }}
-          onClearSelection={() => setSelection({ id: null, type: null })}
-          connectorPositions={connectorPositions()}
-          onConnectorDrag={handleConnectorDrag}
-          onHatch={() => setShowModeSelect(true)}
-          availableConnectors={availableConnectors()}
-          connectorSchemas={db.schemas()}
-          onSetupConnector={(name) => {
-            const avail = availableConnectors().find((a) => a.name === name);
-            setConnectorConfigData({ id: name, config: {}, configSchema: avail?.config_schema });
-          }}
-          onParseRule={async (intent) => db.provider.parseRuleFromIntent(intent)}
-        />
-        {/* Floating chat dock — bottom-left, above the minimap. */}
-        <ChatDock open={chatOpen()} onOpenChange={setChatOpen} />
+          <Viewport
+            nodes={nodes()}
+            agents={agents()}
+            connections={connections()}
+            formations={formations()}
+            events={db.events()}
+            selection={selection()}
+            onSelectConnector={(id) => {
+              setSelection({ id, type: "connector" });
+              setDetailView({ mode: "entity" });
+            }}
+            onSelectAgent={(id) => {
+              setSelection({ id, type: "agent" });
+              setDetailView({ mode: "entity" });
+            }}
+            onSelectFormation={(id) => {
+              setSelection({ id, type: "formation" });
+              setDetailView({ mode: "entity" });
+            }}
+            onClearSelection={() => setSelection({ id: null, type: null })}
+            connectorPositions={connectorPositions()}
+            onConnectorDrag={handleConnectorDrag}
+            onHatch={() => setShowModeSelect(true)}
+            availableConnectors={availableConnectors()}
+            connectorSchemas={db.schemas()}
+            onSetupConnector={(name) => {
+              const avail = availableConnectors().find((a) => a.name === name);
+              setConnectorConfigData({ id: name, config: {}, configSchema: avail?.config_schema });
+            }}
+            onParseRule={async (intent) => db.provider.parseRuleFromIntent(intent)}
+          />
+          {/* Floating chat dock — bottom-left, above the minimap. */}
+          <ChatDock open={chatOpen()} onOpenChange={setChatOpen} />
         </div>
       }
       bottomPanel={

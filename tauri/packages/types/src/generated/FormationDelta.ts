@@ -7,4 +7,6 @@ import type { FormationView } from "./FormationView";
  * snapshot stream and the terminal-outcome stream so subscribers don't
  * have to wire two channels.
  */
-export type FormationDelta = { "kind": "view" } & FormationView | { "kind": "outcome" } & FormationOutcome;
+export type FormationDelta =
+  | ({ kind: "view" } & FormationView)
+  | ({ kind: "outcome" } & FormationOutcome);

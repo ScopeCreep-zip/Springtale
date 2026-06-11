@@ -284,9 +284,7 @@ export const RuleBuilderOverlay: Component<RuleBuilderOverlayProps> = (props) =>
                   <button
                     type="button"
                     class="colony-text-3xs text-status-warn"
-                    onClick={() =>
-                      setExtraActions((prev) => prev.filter((_, idx) => idx !== i()))
-                    }
+                    onClick={() => setExtraActions((prev) => prev.filter((_, idx) => idx !== i()))}
                   >
                     ✕ remove
                   </button>

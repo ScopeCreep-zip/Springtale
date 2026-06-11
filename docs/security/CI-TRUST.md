@@ -14,12 +14,15 @@ Last review: 2026-05-13.
 1. **Least privilege per job.** Every workflow declares
    `permissions: contents: read` at top level and elevates per-job only where
    needed (e.g. `id-token: write` for OIDC signing jobs).
-2. **SHA-pinned actions.** Target posture: every third-party action pinned by
-   full commit SHA with a `# vX.Y.Z` trailing comment for human readability.
-   **Current state: tag-pinned.** The SHA-pin sweep across all workflows is
-   pending; until it lands, zizmor runs with persona `regular` (its `auditor`
-   persona requires SHA pins and flips on once the sweep merges — see the
-   note in `sast.yml`).
+2. **SHA-pinned actions.** Every third-party action is pinned by full commit
+   SHA with a `# vX.Y.Z` trailing comment for human readability. GitHub-owned
+   `actions/*` and `github/*` stay tag-pinned (they carry GitHub's own
+   supply-chain guarantees). Two actions select behavior from the git ref name
+   and therefore cannot be SHA-pinned — `dtolnay/rust-toolchain@{stable,nightly}`
+   (the ref is the toolchain channel) and `taiki-e/install-action@{nextest,…}`
+   (the ref names the tool); both are documented ref-pin exceptions in
+   `.github/zizmor.yml`. zizmor enforces this with persona `regular` +
+   `min-severity: low`.
 3. **Egress-controlled runners.** Every job's first step is
    `step-security/harden-runner` with `egress-policy: block` and a per-job
    `allowed-endpoints` list.
@@ -54,7 +57,7 @@ workflow that uses it.
 | `EmbarkStudios/cargo-deny-action` | `cargo deny` runner | vendor first-party |
 | `rustsec/audit-check` | `cargo audit` runner | RustSec project first-party |
 | `pnpm/action-setup` | pnpm install | pnpm first-party |
-| `gitleaks/gitleaks-action` | Secrets detection | vendor first-party |
+| `gitleaks` (CLI binary) | Secrets detection — downloaded as a version+SHA256-pinned release binary, not an action (the action requires a paid license for org repos) | vendor first-party |
 | `trufflesecurity/trufflehog` | Secrets detection | vendor first-party |
 | `aquasecurity/trivy-action` | Container scan | vendor first-party |
 | `anchore/scan-action` | Grype container scan | vendor first-party |
@@ -62,9 +65,9 @@ workflow that uses it.
 | `docker/setup-buildx-action` | BuildKit setup | Docker first-party |
 | `docker/build-push-action` | Image build/push | Docker first-party |
 | `hadolint/hadolint-action` | Dockerfile lint | upstream first-party |
-| `returntocorp/semgrep` (container image) | Semgrep SAST — runs as a pinned container image, not an action | vendor first-party |
+| `semgrep/semgrep` (container image) | Semgrep SAST — runs as a pinned container image, not an action (`returntocorp/*` was renamed to `semgrep/*`) | vendor first-party |
 | `raven-actions/actionlint` | Workflow YAML lint | community wrapper around upstream `rhysd/actionlint`, audited |
-| `woodruffw/zizmor-action` | GitHub Actions security audit | upstream first-party |
+| `zizmorcore/zizmor-action` | GitHub Actions security audit (the action moved from `woodruffw/*` to the `zizmorcore` org) | upstream first-party |
 | `ossf/scorecard-action` | OpenSSF Scorecard | OpenSSF first-party |
 | `google/osv-scanner-action` | Multi-ecosystem OSV scan | Google first-party |
 | `step-security/harden-runner` | Egress policy on runners | StepSecurity first-party |

@@ -1,0 +1,30 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://springtale.dev/vex/proc-macro-error2-rustsec-2026-0173.json",
+  "author": "Springtale Maintainers <k1104jackson@hotmail.com>",
+  "timestamp": "2026-06-11T00:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": {
+        "@id": "https://rustsec.org/advisories/RUSTSEC-2026-0173",
+        "name": "RUSTSEC-2026-0173",
+        "description": "proc-macro-error2 2.0.1 — author confirmed the crate is unmaintained (2026-06-07) and recommends migrating away"
+      },
+      "products": [
+        {
+          "@id": "pkg:cargo/proc-macro-error2@2.0.1",
+          "subcomponents": [
+            { "@id": "pkg:cargo/tabled_derive@0.9.0" },
+            { "@id": "pkg:cargo/tabled@0.17.0" },
+            { "@id": "pkg:cargo/springtale-cli@0.1.0" }
+          ]
+        }
+      ],
+      "status": "affected",
+      "justification": "vulnerable_code_not_present",
+      "impact_statement": "RUSTSEC-2026-0173 is an unmaintained-crate informational advisory, not a vulnerability — there is no CVE and no exploitable code path. proc-macro-error2 is a procedural-macro support crate that executes only at compile time (inside `tabled_derive`'s derive expansion); none of its code is linked into the shipped `springtale-cli` binary. The transitive path is tabled_derive -> tabled, used solely for human-readable table rendering in the CLI. Even a hypothetical defect in the crate could not affect a built artifact, as the crate is absent from the runtime dependency closure.",
+      "action_statement": "Tracking `tabled` upstream for a release that drops proc-macro-error2 (the maintained successors are `manyhow` / `proc-macro2-diagnostics`). We will take the bump once tabled migrates; no action is required in the interim because the crate is build-time only and carries no runtime risk."
+    }
+  ]
+}
