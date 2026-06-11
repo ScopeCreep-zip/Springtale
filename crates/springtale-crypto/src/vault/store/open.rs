@@ -111,6 +111,25 @@ fn open_single_vault(path: PathBuf, data: &[u8], passphrase: &[u8]) -> Result<Va
     })
 }
 
+/// Check that an open vault file has secure permissions (0o600).
+///
+/// Uses fstat on the file descriptor to avoid TOCTOU race conditions --
+/// the permission check operates on the same file handle we'll read from.
+#[cfg(unix)]
+fn check_fd_permissions(file: &std::fs::File) -> Result<(), CryptoError> {
+    use std::os::unix::fs::MetadataExt;
+    let metadata = file.metadata()?;
+    let mode = metadata.mode() & 0o777;
+    if mode & 0o077 != 0 {
+        tracing::warn!(
+            mode = format!("{mode:04o}"),
+            "vault file has insecure permissions (should be 0600)"
+        );
+        return Err(CryptoError::InsecurePermissions);
+    }
+    Ok(())
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
@@ -159,23 +178,4 @@ mod tests {
             Some(&b"sk-test".to_vec())
         );
     }
-}
-
-/// Check that an open vault file has secure permissions (0o600).
-///
-/// Uses fstat on the file descriptor to avoid TOCTOU race conditions --
-/// the permission check operates on the same file handle we'll read from.
-#[cfg(unix)]
-fn check_fd_permissions(file: &std::fs::File) -> Result<(), CryptoError> {
-    use std::os::unix::fs::MetadataExt;
-    let metadata = file.metadata()?;
-    let mode = metadata.mode() & 0o777;
-    if mode & 0o077 != 0 {
-        tracing::warn!(
-            mode = format!("{mode:04o}"),
-            "vault file has insecure permissions (should be 0600)"
-        );
-        return Err(CryptoError::InsecurePermissions);
-    }
-    Ok(())
 }

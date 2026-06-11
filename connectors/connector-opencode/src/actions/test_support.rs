@@ -1,6 +1,7 @@
 //! Shared test double for action unit tests.
-
-#![cfg(test)]
+//!
+//! Gated with `#[cfg(test)]` at the `mod test_support;` declaration in
+//! `mod.rs`, so no inner `#![cfg(test)]` here (clippy::duplicated_attributes).
 
 use async_trait::async_trait;
 

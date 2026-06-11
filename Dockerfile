@@ -36,11 +36,11 @@ RUN corepack enable && corepack prepare pnpm@9 --activate
 WORKDIR /build
 COPY tauri/ tauri/
 # `--frozen-lockfile` mirrors CI; lifecycle scripts are blocked by tauri/.npmrc
-# (`ignore-scripts=true`), enforced by the hardening-check job.
-RUN pnpm -C tauri install --frozen-lockfile
-# Build the dashboard and its workspace deps (@springtale/ui, @springtale/types).
-# `...` selects the package plus everything it depends on.
-RUN pnpm -C tauri --filter "springtale-dashboard..." run build
+# (`ignore-scripts=true`), enforced by the hardening-check job. Install and
+# build in one RUN (hadolint DL3059). `springtale-dashboard...` selects the
+# dashboard plus its workspace deps (@springtale/ui, @springtale/types).
+RUN pnpm -C tauri install --frozen-lockfile && \
+    pnpm -C tauri --filter "springtale-dashboard..." run build
 
 # ── Builder stage ─────────────────────────────────────────────────────────────
 # rust:1.96-slim multi-arch manifest-list digest (2026-05-28). Matches
@@ -68,7 +68,7 @@ RUN cargo auditable build --release --locked \
 # dynamically-linked Rust binary (rustls' ring backend links to libc).
 # OCI image-index digest (2026-05); Dependabot tracks updates per the
 # docker ecosystem entry in `.github/dependabot.yml`.
-FROM gcr.io/distroless/cc-debian12:nonroot@sha256:bd2899c12b335c827750ccf2359879eab09c09b206023dcebea408947d54127c AS runtime
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:b0ae8e989418b458e0f25489bc3be523718938a2b70864cc0f6a00af1ddbd985 AS runtime
 
 # OCI image annotations improve Trivy / Grype scan output + GitHub Packages
 # display.
