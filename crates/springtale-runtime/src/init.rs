@@ -112,8 +112,7 @@ pub async fn init(
     {
         let store_sweeper = store.clone();
         tokio::spawn(async move {
-            let mut interval =
-                tokio::time::interval(std::time::Duration::from_secs(3600));
+            let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
             loop {
                 interval.tick().await;
                 let now_ms = chrono::Utc::now().timestamp_millis();
@@ -145,14 +144,20 @@ pub async fn init(
     // surfaces stale data. The identifier the sweep uses is the peer's
     // SocketAddr string — the same id chitchat stamps onto incoming
     // entries via `GossipEntry::with_peer_id`.
-    let swim_node =
-        init_swim_node(&config.cooperation, gossip_store.clone()).await?;
+    let swim_node = init_swim_node(&config.cooperation, gossip_store.clone()).await?;
 
     // Canvas/A2UI
     let canvas = Arc::new(tokio::sync::RwLock::new(
         springtale_core::canvas::CanvasState::default(),
     ));
     let (canvas_tx, _) = tokio::sync::broadcast::channel(64);
+
+    // Delivery fan-out for fired Notify/SendMessage steps. Capacity
+    // 256 — a deployed colony fires far fewer user-facing
+    // notifications than canvas ticks, and subscribers (chat SSE / OS
+    // notification) drain promptly. Lagged receivers drop the oldest
+    // (broadcast semantics) — acceptable for best-effort delivery.
+    let (notification_tx, _) = tokio::sync::broadcast::channel(256);
 
     // W3.B — canvas state syncer. Subscribes to `canvas_tx` and
     // applies every broadcast update to the in-memory `canvas` state
@@ -204,15 +209,133 @@ pub async fn init(
     // and the bridge share the inner ArcSwap.
     let ai_adapter_handle: Arc<arc_swap::ArcSwap<Arc<dyn springtale_ai::AiAdapter>>> =
         Arc::new(arc_swap::ArcSwap::from(Arc::new(ai_adapter_arc)));
-    let executions_recorder: Arc<
-        dyn crate::operations::executions::ExecutionRecorder,
-    > = Arc::new(crate::operations::executions::StoreRecorder::new(
-        store.clone(),
-    ));
+    let executions_recorder: Arc<dyn crate::operations::executions::ExecutionRecorder> = Arc::new(
+        crate::operations::executions::StoreRecorder::new(store.clone()),
+    );
+    // OpenClaw CVE-2026-25253 1-click-RCE class: every connector that
+    // declared `Capability::ShellExec` routes invocations through a
+    // blocking approval gate before reaching `host.execute_checked`.
+    // W2: the gate is now the store-backed [`crate::approval::ChatApprovalGate`]
+    // — pending approvals are durable rows (restart-safe, deny-by-default
+    // on expiry) and each new request is announced on a broadcast channel
+    // the bot-side notifier turns into a 3-button chat card. Single Arc
+    // shared across RuntimeState + bridge so `POST /approvals/:id` AND the
+    // chat callback path resolve into the same gate the dispatcher awaits.
+    let chat_gate = Arc::new(crate::approval::ChatApprovalGate::new(store.clone()));
+    // Boot sweep — 2026 durable-resume semantics (LangGraph thread pattern +
+    // OWASP Agentic bind+expiry): pending approvals SURVIVE a restart; only
+    // rows past their `expires_at` are denied here. Safety comes from the
+    // approval being bound to the exact persisted action with an expiry and
+    // single-use resolve — not from killing it on process death. Expired
+    // rows also drop their conversation checkpoints (dead threads).
+    match store
+        .expire_pending_approvals(chrono::Utc::now().timestamp_millis())
+        .await
+    {
+        Ok(expired) if !expired.is_empty() => {
+            tracing::info!(
+                count = expired.len(),
+                "boot sweep denied EXPIRED pending approvals"
+            );
+            for row in &expired {
+                if let Ok(Some(cp)) = store.get_checkpoint_by_approval(&row.id).await {
+                    let _ = store.delete_tool_loop_checkpoint(&cp.session_key).await;
+                }
+            }
+        }
+        Ok(_) => {}
+        Err(e) => tracing::warn!(error = %e, "pending-approval boot sweep failed"),
+    }
+    let approval_gate: Arc<dyn crate::approval::ApprovalGate> = chat_gate.clone();
+
+    // OWASP LLM10 (Unbounded Consumption) — per-bot daily token
+    // quota persisted to SQLite (Phase-7 audit Finding D). Replaces
+    // the in-process `InMemoryTokenQuota` so daemon restart no
+    // longer resets the counters. The optional daily cap is sourced
+    // from `RuntimeConfig.sentinel` — `None` means observability
+    // mode (records usage, never denies).
+    let daily_token_limit = config.sentinel.as_ref().and_then(|s| s.daily_token_limit);
+    let token_quota: Arc<dyn springtale_ai::TokenQuota> = Arc::new(
+        crate::quota::SqliteTokenQuota::new(store.clone(), daily_token_limit),
+    );
+    let ai_guardrails = crate::cooperation::capability_bridge::AiGuardrailHandles {
+        quota: token_quota,
+        refusal_counter: springtale_ai::RefusalCounter::default(),
+        output_cap_bytes: springtale_ai::DEFAULT_OUTPUT_CAP_BYTES,
+    };
+
     let capability_bridge = crate::cooperation::CapabilityBridge::new(registry.clone())
         .with_ai_adapter(ai_adapter_handle.clone())
         .with_store(store.clone())
-        .with_recorder(executions_recorder);
+        .with_recorder(executions_recorder)
+        .with_approval_gate(approval_gate)
+        .with_ai_guardrails(ai_guardrails);
+
+    // W2 — approval-card notifier. Turns each gate announcement into a
+    // 3-button card in the operator's most recent chat channel
+    // (`approval:origin`, recorded by the bot on every allowed message).
+    // Telegram gets a real inline keyboard; other connectors get a typed
+    // `apr:<id>:y|n` reply fallback. Exactly three actions (Nintendo rule).
+    {
+        let mut announcements = chat_gate.subscribe();
+        let bridge = capability_bridge.clone();
+        let notifier_store = store.clone();
+        tokio::spawn(async move {
+            while let Ok(req) = announcements.recv().await {
+                let origin = crate::operations::config::get_config(
+                    notifier_store.as_ref(),
+                    "approval:origin",
+                )
+                .await
+                .unwrap_or(serde_json::Value::Null);
+                let (Some(conn), Some(chan)) = (
+                    origin.get("connector").and_then(|v| v.as_str()),
+                    origin.get("channel_id").and_then(|v| v.as_str()),
+                ) else {
+                    tracing::warn!(approval = %req.id, "no approval:origin — card undeliverable; deny-on-timeout applies");
+                    continue;
+                };
+                let text = format!(
+                    "⚠️ Approval needed\n{} wants to run:\n{}",
+                    req.connector_name, req.summary
+                );
+                let (action, input) = if conn == "connector-telegram" {
+                    (
+                        "send_inline_keyboard",
+                        serde_json::json!({
+                            "chat_id": chan,
+                            "text": text,
+                            "inline_keyboard": [
+                                [{"text": "✅ Approve", "callback_data": format!("apr:{}:y", req.id)}],
+                                [{"text": "❌ Deny", "callback_data": format!("apr:{}:n", req.id)}],
+                                [{"text": "👁 Details", "callback_data": format!("apr:{}:d", req.id)}],
+                            ],
+                        }),
+                    )
+                } else {
+                    (
+                        "send_message",
+                        serde_json::json!({
+                            "channel_id": chan,
+                            "chat_id": chan,
+                            "text": format!("{text}\nReply `apr:{}:y` to approve or `apr:{}:n` to deny.", req.id, req.id),
+                        }),
+                    )
+                };
+                if let Err(e) = bridge
+                    .execute(
+                        conn,
+                        action,
+                        input,
+                        springtale_connector::tier::WasmTier::Warming,
+                    )
+                    .await
+                {
+                    tracing::warn!(approval = %req.id, error = %e, "approval card delivery failed");
+                }
+            }
+        });
+    }
 
     // Role registry (Phase 21) — starts with built-in General/Information/
     // Support. Community roles are folded in by `register_manifest_roles`
@@ -233,6 +356,8 @@ pub async fn init(
         role_registry,
         canvas,
         canvas_tx,
+        notification_tx,
+        trigger_registry: Arc::new(std::sync::OnceLock::new()),
         cooperation_tx,
         formation_cmd_tx,
         live_formations,
@@ -277,12 +402,9 @@ async fn register_persisted_manifest_roles(
 async fn init_swim_node(
     cfg: &crate::config::CooperationConfig,
     gossip_store: Arc<dyn springtale_cooperation::awareness::GossipStore>,
-) -> Result<
-    Option<Arc<springtale_cooperation::awareness::SwimNode>>,
-    OperationError,
-> {
-    use std::num::NonZeroU32;
+) -> Result<Option<Arc<springtale_cooperation::awareness::SwimNode>>, OperationError> {
     use springtale_cooperation::awareness::{SwimNode, SwimNodeConfig};
+    use std::num::NonZeroU32;
 
     if !cfg.cross_process {
         return Ok(None);
@@ -299,9 +421,8 @@ async fn init_swim_node(
         .swim_seeds
         .iter()
         .map(|s| {
-            s.parse().map_err(|e| {
-                OperationError::Init(format!("invalid swim seed {s}: {e}"))
-            })
+            s.parse()
+                .map_err(|e| OperationError::Init(format!("invalid swim seed {s}: {e}")))
         })
         .collect::<Result<Vec<_>, _>>()?;
 
@@ -374,10 +495,7 @@ async fn init_swim_node(
 /// Construct the gossip substrate based on cooperation config.
 async fn init_gossip_store(
     cfg: &crate::config::CooperationConfig,
-) -> Result<
-    Arc<dyn springtale_cooperation::awareness::GossipStore>,
-    OperationError,
-> {
+) -> Result<Arc<dyn springtale_cooperation::awareness::GossipStore>, OperationError> {
     use springtale_cooperation::awareness::{
         ChitchatGossipConfig, ChitchatGossipStore, InMemoryGossipStore,
     };
@@ -624,6 +742,16 @@ async fn init_registry(
     // Load persisted WASM connectors from store (installed via UI/CLI).
     // These are community connectors that were installed as .wasm packages
     // and persisted in the wasm_binaries table.
+    //
+    // Phase-7 audit Finding #1 (R-004 hash re-check on every load):
+    // before handing a persisted WASM binary to `install_wasm`, we
+    // re-verify (a) the WASM bytes' SHA-256 matches the manifest
+    // declaration, and (b) the manifest's Ed25519 signature against
+    // the install-time pubkey pinned in `author_pubkey_hex`. The
+    // store-pinned pubkey is the trust anchor (TUF §4) — it lives
+    // outside the signed metadata, so an attacker who swaps the
+    // manifest_json blob can't also forge a matching signature
+    // without compromising the original signing key.
     {
         use springtale_connector::wasm::SandboxLimits;
 
@@ -643,6 +771,23 @@ async fn init_registry(
                         continue;
                     }
                 };
+
+                if let Err(e) = reverify_persisted_wasm(
+                    &bin.name,
+                    &bin.wasm_bytes,
+                    &bin.wasm_hash,
+                    &manifest,
+                    &bin.author_pubkey_hex,
+                    &bin.manifest_sig_hex,
+                ) {
+                    tracing::error!(
+                        connector = %bin.name,
+                        error = %e,
+                        "PERSISTED WASM CONNECTOR FAILED RE-VERIFICATION — refusing to load"
+                    );
+                    continue;
+                }
+
                 match registry.install_wasm(
                     shared_wasm_engine.clone(),
                     &bin.wasm_bytes,
@@ -692,11 +837,105 @@ fn init_sentinel(
     approval_gate: Option<Arc<dyn springtale_sentinel::ApprovalGate>>,
 ) -> Arc<springtale_sentinel::Sentinel> {
     let sentinel_config = config.sentinel.clone().unwrap_or_default();
-    let gate = approval_gate
-        .unwrap_or_else(|| Arc::new(springtale_sentinel::DefaultDenyApprovalGate));
+    let gate =
+        approval_gate.unwrap_or_else(|| Arc::new(springtale_sentinel::DefaultDenyApprovalGate));
     Arc::new(springtale_sentinel::Sentinel::with_approval_gate(
         sentinel_config,
         store.clone(),
         gate,
     ))
+}
+
+/// Phase-7 audit Finding #1 — re-verify a persisted WASM connector
+/// before handing it to `registry.install_wasm` at daemon boot.
+///
+/// Checks:
+///   1. WASM SHA-256 matches the stored `wasm_hash` AND the manifest's
+///      declared `wasm_hash`. Defeats a swap of the WASM bytes alone.
+///   2. Manifest signature (if pinned) verifies against the
+///      `author_pubkey_hex` STORED at install time (not embedded in
+///      the manifest). Defeats a swap-the-whole-bundle attack where
+///      the attacker rewrites manifest + signature together: the
+///      attacker would need to also overwrite the pinned pubkey, but
+///      then their forged signature would have to verify against the
+///      ORIGINAL signing key — which they don't have. TUF §4
+///      trust-anchor separation.
+///
+/// Legacy rows (pre-v8 migration) carry empty `author_pubkey_hex`;
+/// these are treated as "TOFU-grandfathered" and logged at WARN. We
+/// don't fail closed on them so an existing deployment isn't bricked
+/// by the audit fix; the operator sees the warning and can re-install
+/// the connector to repopulate the pin.
+fn reverify_persisted_wasm(
+    name: &str,
+    wasm_bytes: &[u8],
+    expected_hash: &str,
+    manifest: &springtale_connector::ConnectorManifest,
+    pinned_pubkey_hex: &str,
+    pinned_sig_hex: &str,
+) -> Result<(), OperationError> {
+    // 1. WASM hash re-check (R-004 "hash re-check on every load").
+    springtale_connector::wasm::WasmEngine::verify_wasm_hash(wasm_bytes, expected_hash).map_err(
+        |e| OperationError::Validation(format!("wasm_hash re-verification failed for {name}: {e}")),
+    )?;
+
+    // Also require the manifest's declared wasm_hash matches what
+    // we stored — defends against a swap where the attacker keeps
+    // the WASM bytes intact but rewrites the manifest to remove or
+    // change the declared hash.
+    let manifest_hash = manifest.wasm_hash.as_deref().unwrap_or("");
+    if manifest_hash != expected_hash {
+        return Err(OperationError::Validation(format!(
+            "manifest wasm_hash drift for {name}: stored {expected_hash}, manifest {manifest_hash}"
+        )));
+    }
+
+    // 2. Signature re-verify against the pinned trust anchor.
+    if pinned_pubkey_hex.is_empty() || pinned_sig_hex.is_empty() {
+        // Legacy install (pre-v8) — log + accept. Operators re-install
+        // to upgrade the row to a pinned-pubkey one.
+        tracing::warn!(
+            connector = %name,
+            "WASM connector loaded without pinned author pubkey — \
+             legacy pre-v8 install. Re-install to enable boot-time \
+             signature re-verification (Phase-7 audit Finding #1)."
+        );
+        return Ok(());
+    }
+
+    let pubkey_bytes = hex::decode(pinned_pubkey_hex).map_err(|e| {
+        OperationError::Validation(format!(
+            "pinned author pubkey for {name} is invalid hex: {e}"
+        ))
+    })?;
+    let pubkey_arr: [u8; 32] = pubkey_bytes.try_into().map_err(|_| {
+        OperationError::Validation(format!("pinned author pubkey for {name} must be 32 bytes"))
+    })?;
+    let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(&pubkey_arr).map_err(|e| {
+        OperationError::Validation(format!(
+            "pinned author pubkey for {name} not a valid Ed25519 key: {e}"
+        ))
+    })?;
+
+    // The manifest's `signature` field must equal the install-time
+    // pinned signature — and that signature must verify against the
+    // pinned pubkey. We require BOTH so a tampered manifest_json
+    // (with a different but valid signature) is still rejected.
+    let manifest_sig = manifest.signature.as_deref().unwrap_or("");
+    if manifest_sig != pinned_sig_hex {
+        return Err(OperationError::Validation(format!(
+            "manifest signature drift for {name}: stored sig does not match manifest sig"
+        )));
+    }
+
+    springtale_connector::manifest::verify::verify_manifest_signature(manifest, &verifying_key)
+        .map_err(|e| {
+            OperationError::Validation(format!("signature re-verification failed for {name}: {e}"))
+        })?;
+
+    tracing::debug!(
+        connector = %name,
+        "WASM connector trust-anchor re-verified at boot"
+    );
+    Ok(())
 }

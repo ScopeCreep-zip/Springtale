@@ -1,0 +1,971 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Office Holidays Ltd.//EN
+X-WR-CALNAME:USA Holidays
+X-WR-CALDESC:Public Holidays in USA. Provided by http://www.officeholidays.com
+REFRESH-INTERVAL;VALUE=DURATION:PT48H
+X-PUBLISHED-TTL:PT48H
+CALSCALE:GREGORIAN
+METHOD:PUBLISH
+X-MS-OLK-FORCEINSPECTOROPEN:TRUE
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2026-01-01US415regcountry@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: New Year's Day is a public holiday in all countries that observe the Gregorian calendar, with the exception of Israel\n\n\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/international-new-years-day
+DTSTART;VALUE=DATE:20260101
+DTEND;VALUE=DATE:20260102
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20230724T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:New Year's Day
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2026-01-19US536regcountry@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: Each year on the third Monday of January, America honors the birth, life and dream of Dr. Martin Luther King, Jr.\n\n3rd Monday in January\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/martin-luther-king-jr-day
+DTSTART;VALUE=DATE:20260119
+DTEND;VALUE=DATE:20260120
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20240930T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Martin Luther King Jr. Day
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2026-02-16US686regregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: The original version of the holiday was in commemoration of George Washington's birthday.\n\n3rd Monday in February\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/presidents-day
+DTSTART;VALUE=DATE:20260216
+DTEND;VALUE=DATE:20260217
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20230724T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:President's Day (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2026-02-16US686regregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: The original version of the holiday was in commemoration of George Washington's birthday.\n\n3rd Monday in February\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/presidents-day
+DTSTART;VALUE=DATE:20260216
+DTEND;VALUE=DATE:20260217
+DTSTAMP:20080101T000000Z
+LOCATION:Alabama, Alaska, Arizona, Arkansas, California, Colorado, Connecticut, Florida, Hawaii, Idaho, Illinois, Maine, Maryland, Massachusetts, Michigan, Minnesota, Mississippi, Missouri, Montana, Nebraska, Nevada, New Hampshire, New Jersey, New York, North Dakota, Ohio, Oklahoma, Oregon, Pennsylvania, South Carolina, South Dakota, Tennessee, Texas, Utah, Vermont, Virginia, Washington, West Virginia, Wyoming
+PRIORITY:5
+LAST-MODIFIED:20240125T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:President's Day (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2026-05-25US548regcountry@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: Memorial Day is a day of remembrance for those who have died in military service for the United States\n\nLast Monday in May\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/memorial-day
+DTSTART;VALUE=DATE:20260525
+DTEND;VALUE=DATE:20260526
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20230724T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Memorial Day
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2026-06-16US-UT445regregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: Juneteenth is a federal holiday and state holiday in several states. It commemorates the date in 1865 when news of the emancipation of African American slaves reached Galveston\n\nEmancipation Day\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/utah/juneteenth
+DTSTART;VALUE=DATE:20260616
+DTEND;VALUE=DATE:20260617
+DTSTAMP:20080101T000000Z
+LOCATION:Utah
+PRIORITY:5
+LAST-MODIFIED:20240228T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Juneteenth (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2026-06-19US445lieuregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: Juneteenth is a federal holiday and state holiday in several states. It commemorates the date in 1865 when news of the emancipation of African American slaves reached Galveston\n\nEmancipation Day\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/juneteenth
+DTSTART;VALUE=DATE:20260619
+DTEND;VALUE=DATE:20260620
+DTSTAMP:20080101T000000Z
+LOCATION:Alabama, Alaska
+PRIORITY:5
+LAST-MODIFIED:20240701T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Juneteenth (in lieu) (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2026-06-19US445regregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: Juneteenth is a federal holiday and state holiday in several states. It commemorates the date in 1865 when news of the emancipation of African American slaves reached Galveston\n\nEmancipation Day\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/juneteenth
+DTSTART;VALUE=DATE:20260619
+DTEND;VALUE=DATE:20260620
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20240524T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Juneteenth (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2026-06-19US445regregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: Juneteenth is a federal holiday and state holiday in several states. It commemorates the date in 1865 when news of the emancipation of African American slaves reached Galveston\n\nEmancipation Day\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/juneteenth
+DTSTART;VALUE=DATE:20260619
+DTEND;VALUE=DATE:20260620
+DTSTAMP:20080101T000000Z
+LOCATION:California, Colorado, Connecticut, Delaware, District of Columbia, Georgia, Idaho, Illinois, Kansas, Kentucky, Maine, Maryland, Massachusetts, Michigan, Minnesota, Missouri, Nebraska, Nevada, New Mexico, New York, Ohio, Oregon, Pennsylvania, Rhode Island, South Dakota, Tennessee, Texas, Virginia, Washington
+PRIORITY:5
+LAST-MODIFIED:20230724T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Juneteenth (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2026-07-03US895lieucountry@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: On July 4th 1776 the United States of America proclaimed its independence from England\n\n\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/usa-independence-day
+DTSTART;VALUE=DATE:20260703
+DTEND;VALUE=DATE:20260704
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20230724T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Independence Day (in lieu)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2026-07-04US895regcountry@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: On July 4th 1776 the United States of America proclaimed its independence from England\n\n\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/usa-independence-day
+DTSTART;VALUE=DATE:20260704
+DTEND;VALUE=DATE:20260705
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20230724T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Independence Day
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2026-09-07US474regcountry@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: This holiday is most commonly associated with a commemoration of the achievements of the labor movement\n\n1st Monday in September\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/labor-day
+DTSTART;VALUE=DATE:20260907
+DTEND;VALUE=DATE:20260908
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20230724T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Labor Day
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2026-10-12US190regregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: This national holiday commemorates the exact date when Christopher Columbus first set foot in the Americas\n\n2nd Monday in October\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/columbus-day
+DTSTART;VALUE=DATE:20261012
+DTEND;VALUE=DATE:20261013
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20230724T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Columbus Day (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2026-10-12US190regregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: This national holiday commemorates the exact date when Christopher Columbus first set foot in the Americas\n\n2nd Monday in October\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/columbus-day
+DTSTART;VALUE=DATE:20261012
+DTEND;VALUE=DATE:20261013
+DTSTAMP:20080101T000000Z
+LOCATION:Alabama, Arizona, Connecticut, Georgia, Idaho, Illinois, Indiana, Maryland, Massachusetts, Missouri, Montana, New Jersey, New York, Ohio, Pennsylvania, Rhode Island, Utah, West Virginia
+PRIORITY:5
+LAST-MODIFIED:20230724T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Columbus Day (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2026-10-12US3334regregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: This state holiday has been adopted on the second Monday in October to replace Columbus Day\n\n\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/us-indigenous-peoples-day
+DTSTART;VALUE=DATE:20261012
+DTEND;VALUE=DATE:20261013
+DTSTAMP:20080101T000000Z
+LOCATION:District of Columbia, Maine, Montana, Nebraska, New Mexico, South Dakota, Virginia
+PRIORITY:5
+LAST-MODIFIED:20230724T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:US Indigenous People's Day (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2026-11-11US907regregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: Observed on November 11th to recall the end of World War I on that date in 1918\n\n\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/veterans-day
+DTSTART;VALUE=DATE:20261111
+DTEND;VALUE=DATE:20261112
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20230724T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Veterans' Day (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2026-11-11US907regregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: Observed on November 11th to recall the end of World War I on that date in 1918\n\n\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/veterans-day
+DTSTART;VALUE=DATE:20261111
+DTEND;VALUE=DATE:20261112
+DTSTAMP:20080101T000000Z
+LOCATION:Alabama, Alaska, Arizona, Arkansas, California, Colorado, Connecticut, Delaware, Florida, Georgia, Hawaii, Idaho, Illinois, Indiana, Iowa, Kansas, Kentucky, Louisiana, Maine, Maryland, Massachusetts, Michigan, Minnesota, Mississippi, Missouri, Montana, Nebraska, Nevada, New Hampshire, New Jersey, New Mexico, New York, North Carolina, North Dakota, Ohio, Oklahoma, Oregon, Pennsylvania, Rhode Island, South Carolina, South Dakota, Tennessee, Texas, Utah, Vermont, Virginia, Washington, West Virginia, Wyoming
+PRIORITY:5
+LAST-MODIFIED:20230724T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Veterans Day (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2026-11-26US842regcountry@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: Fourth Thursday in November. Traditionally, this holiday celebrates the giving of thanks for the autumn harvest\n\n4th Thursday in November\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/thanksgiving
+DTSTART;VALUE=DATE:20261126
+DTEND;VALUE=DATE:20261127
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20230724T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Thanksgiving
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2026-11-27US216regregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: Whilst it is not an official holiday, the Day after Thanksgiving is given an a holiday by most employers\n\nDay after 4th Thursday in November\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/day-after-thanksgiving
+DTSTART;VALUE=DATE:20261127
+DTEND;VALUE=DATE:20261128
+DTSTAMP:20080101T000000Z
+LOCATION:California, Delaware, Florida, Georgia, Illinois, Iowa, Kansas, Kentucky, Maine, Maryland, Michigan, Minnesota, Nebraska, Nevada, New Hampshire, New Mexico, North Carolina, Oklahoma, Oregon, Pennsylvania, South Carolina, Tennessee, Texas, Washington, West Virginia
+PRIORITY:5
+LAST-MODIFIED:20230724T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Day after Thanksgiving (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2026-12-25US181regcountry@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: Christmas celebrates the Nativity of Jesus which according to tradition took place on December 25th 1 BC\n\n\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/christmas-day
+DTSTART;VALUE=DATE:20261225
+DTEND;VALUE=DATE:20261226
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20230724T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Christmas Day
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2027-01-01US415regcountry@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: New Year's Day is a public holiday in all countries that observe the Gregorian calendar, with the exception of Israel\n\n\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/international-new-years-day
+DTSTART;VALUE=DATE:20270101
+DTEND;VALUE=DATE:20270102
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20250714T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:New Year's Day
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2027-01-18US536regcountry@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: Each year on the third Monday of January, America honors the birth, life and dream of Dr. Martin Luther King, Jr.\n\n3rd Monday in January\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/martin-luther-king-jr-day
+DTSTART;VALUE=DATE:20270118
+DTEND;VALUE=DATE:20270119
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20250714T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Martin Luther King Jr. Day
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2027-02-15US686regregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: The original version of the holiday was in commemoration of George Washington's birthday.\n\n3rd Monday in February\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/presidents-day
+DTSTART;VALUE=DATE:20270215
+DTEND;VALUE=DATE:20270216
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20250714T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:President's Day (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2027-02-15US686regregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: The original version of the holiday was in commemoration of George Washington's birthday.\n\n3rd Monday in February\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/presidents-day
+DTSTART;VALUE=DATE:20270215
+DTEND;VALUE=DATE:20270216
+DTSTAMP:20080101T000000Z
+LOCATION:Alabama, Alaska, Arizona, Arkansas, California, Colorado, Connecticut, Hawaii, Idaho, Illinois, Maine, Maryland, Massachusetts, Michigan, Minnesota, Mississippi, Missouri, Montana, Nebraska, Nevada, New Hampshire, New Jersey, New York, North Dakota, Ohio, Oklahoma, Oregon, Pennsylvania, South Carolina, South Dakota, Tennessee, Texas, Utah, Vermont, Virginia, Washington, West Virginia, Wyoming
+PRIORITY:5
+LAST-MODIFIED:20250714T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:President's Day (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2027-05-31US548regcountry@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: Memorial Day is a day of remembrance for those who have died in military service for the United States\n\nLast Monday in May\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/memorial-day
+DTSTART;VALUE=DATE:20270531
+DTEND;VALUE=DATE:20270601
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20250714T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Memorial Day
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2027-06-16US-UT445regregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: Juneteenth is a federal holiday and state holiday in several states. It commemorates the date in 1865 when news of the emancipation of African American slaves reached Galveston\n\nEmancipation Day\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/utah/juneteenth
+DTSTART;VALUE=DATE:20270616
+DTEND;VALUE=DATE:20270617
+DTSTAMP:20080101T000000Z
+LOCATION:Utah
+PRIORITY:5
+LAST-MODIFIED:20250714T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Juneteenth (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2027-06-19US445lieuregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: Juneteenth is a federal holiday and state holiday in several states. It commemorates the date in 1865 when news of the emancipation of African American slaves reached Galveston\n\nEmancipation Day\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/juneteenth
+DTSTART;VALUE=DATE:20270619
+DTEND;VALUE=DATE:20270620
+DTSTAMP:20080101T000000Z
+LOCATION:Alabama, Alaska
+PRIORITY:5
+LAST-MODIFIED:20250714T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Juneteenth (in lieu) (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2027-06-19US445regregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: Juneteenth is a federal holiday and state holiday in several states. It commemorates the date in 1865 when news of the emancipation of African American slaves reached Galveston\n\nEmancipation Day\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/juneteenth
+DTSTART;VALUE=DATE:20270619
+DTEND;VALUE=DATE:20270620
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20250714T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Juneteenth (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2027-06-19US445regregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: Juneteenth is a federal holiday and state holiday in several states. It commemorates the date in 1865 when news of the emancipation of African American slaves reached Galveston\n\nEmancipation Day\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/juneteenth
+DTSTART;VALUE=DATE:20270619
+DTEND;VALUE=DATE:20270620
+DTSTAMP:20080101T000000Z
+LOCATION:California, Colorado, Connecticut, Delaware, District of Columbia, Georgia, Idaho, Illinois, Kansas, Kentucky, Maine, Maryland, Massachusetts, Michigan, Minnesota, Missouri, Nebraska, Nevada, New Mexico, New York, Ohio, Oregon, Pennsylvania, Rhode Island, South Dakota, Tennessee, Texas, Virginia, Washington
+PRIORITY:5
+LAST-MODIFIED:20250714T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Juneteenth (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2027-07-04US895regcountry@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: On July 4th 1776 the United States of America proclaimed its independence from England\n\n\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/usa-independence-day
+DTSTART;VALUE=DATE:20270704
+DTEND;VALUE=DATE:20270705
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20250714T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Independence Day
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2027-07-05INTL895lieucountry@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: On July 4th 1776 the United States of America proclaimed its independence from England\n\n\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa-independence-day
+DTSTART;VALUE=DATE:20270705
+DTEND;VALUE=DATE:20270706
+DTSTAMP:20080101T000000Z
+LOCATION:USA, USA
+PRIORITY:5
+LAST-MODIFIED:20250714T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Independence Day (in lieu)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2027-09-06US474regcountry@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: This holiday is most commonly associated with a commemoration of the achievements of the labor movement\n\n1st Monday in September\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/labor-day
+DTSTART;VALUE=DATE:20270906
+DTEND;VALUE=DATE:20270907
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20250714T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Labor Day
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2027-10-11US190regregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: This national holiday commemorates the exact date when Christopher Columbus first set foot in the Americas\n\n2nd Monday in October\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/columbus-day
+DTSTART;VALUE=DATE:20271011
+DTEND;VALUE=DATE:20271012
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20250714T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Columbus Day (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2027-10-11US190regregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: This national holiday commemorates the exact date when Christopher Columbus first set foot in the Americas\n\n2nd Monday in October\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/columbus-day
+DTSTART;VALUE=DATE:20271011
+DTEND;VALUE=DATE:20271012
+DTSTAMP:20080101T000000Z
+LOCATION:Alabama, Arizona, Connecticut, Georgia, Idaho, Illinois, Indiana, Maryland, Massachusetts, Missouri, Montana, New Jersey, New York, Ohio, Pennsylvania, Rhode Island, Utah, West Virginia
+PRIORITY:5
+LAST-MODIFIED:20250714T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Columbus Day (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2027-10-11US3334regregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: This state holiday has been adopted on the second Monday in October to replace Columbus Day\n\n\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/us-indigenous-peoples-day
+DTSTART;VALUE=DATE:20271011
+DTEND;VALUE=DATE:20271012
+DTSTAMP:20080101T000000Z
+LOCATION:District of Columbia, Maine, Montana, Nebraska, New Mexico, South Dakota, Virginia
+PRIORITY:5
+LAST-MODIFIED:20250714T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:US Indigenous People's Day (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2027-11-11US907regregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: Observed on November 11th to recall the end of World War I on that date in 1918\n\n\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/veterans-day
+DTSTART;VALUE=DATE:20271111
+DTEND;VALUE=DATE:20271112
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20250714T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Veterans' Day (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2027-11-11US907regregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: Observed on November 11th to recall the end of World War I on that date in 1918\n\n\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/veterans-day
+DTSTART;VALUE=DATE:20271111
+DTEND;VALUE=DATE:20271112
+DTSTAMP:20080101T000000Z
+LOCATION:Alabama, Alaska, Arizona, Arkansas, California, Colorado, Connecticut, Delaware, Florida, Georgia, Hawaii, Idaho, Illinois, Indiana, Iowa, Kansas, Kentucky, Louisiana, Maine, Maryland, Massachusetts, Michigan, Minnesota, Mississippi, Missouri, Montana, Nebraska, Nevada, New Hampshire, New Jersey, New Mexico, New York, North Carolina, North Dakota, Ohio, Oklahoma, Oregon, Pennsylvania, Rhode Island, South Carolina, South Dakota, Tennessee, Texas, Utah, Vermont, Virginia, Washington, West Virginia, Wyoming
+PRIORITY:5
+LAST-MODIFIED:20250714T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Veterans Day (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2027-11-25US842regcountry@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: Fourth Thursday in November. Traditionally, this holiday celebrates the giving of thanks for the autumn harvest\n\n4th Thursday in November\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/thanksgiving
+DTSTART;VALUE=DATE:20271125
+DTEND;VALUE=DATE:20271126
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20250714T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Thanksgiving
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2027-11-26US216regregion@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: Whilst it is not an official holiday, the Day after Thanksgiving is given an a holiday by most employers\n\nDay after 4th Thursday in November\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/day-after-thanksgiving
+DTSTART;VALUE=DATE:20271126
+DTEND;VALUE=DATE:20271127
+DTSTAMP:20080101T000000Z
+LOCATION:California, Delaware, Florida, Georgia, Illinois, Iowa, Kansas, Kentucky, Maine, Maryland, Michigan, Minnesota, Nebraska, Nevada, New Hampshire, New Mexico, North Carolina, Oklahoma, Oregon, Pennsylvania, South Carolina, Tennessee, Texas, Washington, West Virginia
+PRIORITY:5
+LAST-MODIFIED:20250714T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Day after Thanksgiving (Regional Holiday)
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+BEGIN:VEVENT
+CLASS:PUBLIC
+UID:2027-12-25US181regcountry@www.officeholidays.com
+CREATED:20260611T080000Z
+DESCRIPTION: Christmas celebrates the Nativity of Jesus which according to tradition took place on December 25th 1 BC\n\n\n\nInformation provided by www.officeholidays.com
+URL:https://www.officeholidays.com/holidays/usa/christmas-day
+DTSTART;VALUE=DATE:20271225
+DTEND;VALUE=DATE:20271226
+DTSTAMP:20080101T000000Z
+LOCATION:USA
+PRIORITY:5
+LAST-MODIFIED:20250714T000000Z
+SEQUENCE:1
+SUMMARY;LANGUAGE=en-us:Christmas Day
+TRANSP:OPAQUE
+X-MICROSOFT-CDO-BUSYSTATUS:BUSY
+X-MICROSOFT-CDO-IMPORTANCE:1
+X-MICROSOFT-DISALLOW-COUNTER:FALSE
+X-MS-OLK-ALLOWEXTERNCHECK:TRUE
+X-MS-OLK-AUTOFILLLOCATION:FALSE
+X-MICROSOFT-CDO-ALLDAYEVENT:TRUE
+X-MICROSOFT-MSNCALENDAR-ALLDAYEVENT:TRUE
+X-MS-OLK-CONFTYPE:0
+END:VEVENT
+END:VCALENDAR

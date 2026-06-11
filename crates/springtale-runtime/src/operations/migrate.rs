@@ -19,6 +19,7 @@ use specta::Type;
 use springtale_connector::manifest::types::{Capability, ConnectorManifest};
 
 use crate::error::OperationError;
+use springtale_connector::manifest::SignatureAlgorithm;
 
 /// Result of migrating an OpenClaw SKILL.md.
 pub struct MigratedSkill {
@@ -194,6 +195,7 @@ pub fn parse_openclaw_skill(skill_md: &str) -> Result<MigratedSkill, OperationEr
         data_disclosure: vec![],
         roles: vec![],
         wasm_hash: None,
+        signature_alg: SignatureAlgorithm::default(),
         signature: None,
     };
 

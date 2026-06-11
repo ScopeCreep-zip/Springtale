@@ -13,9 +13,9 @@
 
 use std::path::Path;
 
-use specta::Type;
-use secrecy::{ExposeSecret, SecretString};
+use secrecy::SecretString;
 use serde::Deserialize;
+use specta::Type;
 
 use springtale_crypto::token::derive_api_token_hash;
 
@@ -86,10 +86,13 @@ pub fn load_base_url(config_path: &Path) -> Result<String, ClientConfigError> {
 /// calls at boot to populate `AppState::api_token_hash`. Use this helper
 /// exclusively — do not reimplement the HMAC.
 pub fn token_from_passphrase(passphrase: &SecretString) -> String {
-    let hash = derive_api_token_hash(passphrase.expose_secret().as_bytes());
-    // SECURITY: expose needed to feed passphrase bytes into the HMAC.
-    // The resulting hash is NOT secret in the threat model (it's what
-    // the daemon stores in memory and compares against).
+    // Feed passphrase bytes into the HMAC derivation. The resulting
+    // hash is NOT secret in the threat model — it's what the daemon
+    // stores in memory and compares against, so emitting it as hex
+    // back to the caller is fine.
+    let hash = springtale_crypto::secret_use::with_secret_string_bytes(passphrase, |bytes| {
+        derive_api_token_hash(bytes)
+    });
     hex::encode(hash)
 }
 

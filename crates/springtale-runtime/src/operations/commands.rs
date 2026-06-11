@@ -14,10 +14,10 @@
 
 use serde::Serialize;
 
-use specta::Type;
 use crate::error::OperationError;
 use crate::operations::formations::{FormationDetail, get_formation};
 use crate::state::RuntimeState;
+use specta::Type;
 
 /// Declarative command descriptor sent to the UI. The frontend renders the
 /// list as-is and dispatches by `id`. `enabled = false` items render greyed
@@ -70,6 +70,7 @@ const FORMATION_COMMANDS_CANONICAL: &[(&str, &str, &str, &str)] = &[
     ("formation:guard", "GUARD", "#", "G"),
     ("formation:add_member", "ADD MBR", "+", "A"),
     ("formation:remove_member", "RM MBR", "-", "X"),
+    ("formation:recruit", "RECRUIT", "++", "T"),
     ("formation:dissolve", "REMOVE", "x", "D"),
 ];
 
@@ -108,15 +109,28 @@ fn is_enabled_for(cid: &str, d: &FormationDetail) -> (bool, Option<String>) {
         },
         "formation:pause" => match status {
             "active" => (true, None),
-            other => (false, Some(format!("can only pause an active formation (currently {other})"))),
+            other => (
+                false,
+                Some(format!(
+                    "can only pause an active formation (currently {other})"
+                )),
+            ),
         },
         "formation:resume" => match status {
             "paused" => (true, None),
-            other => (false, Some(format!("can only resume a paused formation (currently {other})"))),
+            other => (
+                false,
+                Some(format!(
+                    "can only resume a paused formation (currently {other})"
+                )),
+            ),
         },
         "formation:rally" => {
             if status != "active" {
-                (false, Some("rally only applies to active formations".to_owned()))
+                (
+                    false,
+                    Some("rally only applies to active formations".to_owned()),
+                )
             } else if rally_remaining <= 0 {
                 (false, Some("no rally tokens remaining".to_owned()))
             } else {
@@ -134,9 +148,86 @@ fn is_enabled_for(cid: &str, d: &FormationDetail) -> (bool, Option<String>) {
                 )
             }
         }
+        // §7 momentum unlock: recruit is the formation's own capability, earned
+        // at Fever tier. Shown (greyed) below Fever so the unlock is visible.
+        "formation:recruit" => {
+            if d.info.momentum_tier == "Fever" {
+                (true, None)
+            } else {
+                (
+                    false,
+                    Some(format!(
+                        "recruit unlocks at Fever (currently {})",
+                        d.info.momentum_tier
+                    )),
+                )
+            }
+        }
         // INTENT, GUARD, DISSOLVE always enabled when a formation exists.
         _ => (true, None),
     }
+}
+
+/// Generic command dispatcher — the single backend entry point the canvas calls
+/// so the frontend carries ZERO command→action mapping (all logic stays in the
+/// backend, served identically to every frontend). Parameterless commands run
+/// directly; parameterized ones read `params` (e.g. `{"connector_name":"..."}`).
+/// Eligibility is enforced by the underlying op and surfaced via
+/// [`formation_available_commands`].
+pub async fn run_formation_command(
+    state: &RuntimeState,
+    formation_id: &str,
+    command_id: &str,
+    params: Option<&serde_json::Value>,
+) -> Result<(), OperationError> {
+    use crate::operations::{config, formations as f};
+    match command_id {
+        "formation:deploy" => f::deploy_formation(state, formation_id).await,
+        "formation:pause" => f::pause_formation(state, formation_id).await,
+        "formation:resume" => f::resume_formation(state, formation_id).await,
+        "formation:rally" => f::rally_formation(state, formation_id).await,
+        "formation:intent" => f::cycle_intent(state, formation_id).await.map(|_| ()),
+        "formation:guard" => config::toggle_formation_guard(state, formation_id)
+            .await
+            .map(|_| ()),
+        "formation:dissolve" => f::dissolve_formation(state, formation_id).await,
+        "formation:add_member" => {
+            f::add_member(
+                state,
+                formation_id,
+                &command_param(params, "connector_name")?,
+            )
+            .await
+        }
+        "formation:remove_member" => {
+            f::remove_member(
+                state,
+                formation_id,
+                &command_param(params, "connector_name")?,
+            )
+            .await
+        }
+        "formation:recruit" => {
+            f::recruit_member(
+                state,
+                formation_id,
+                &command_param(params, "connector_name")?,
+            )
+            .await
+        }
+        other => Err(OperationError::Validation(format!(
+            "unknown formation command: {other}"
+        ))),
+    }
+}
+
+/// Extract a required string parameter from a command's `params` payload.
+fn command_param(params: Option<&serde_json::Value>, key: &str) -> Result<String, OperationError> {
+    params
+        .and_then(|p| p.get(key))
+        .and_then(|v| v.as_str())
+        .map(str::to_owned)
+        .ok_or_else(|| OperationError::Validation(format!("command requires `{key}` parameter")))
 }
 
 /// Build the eligible-removal list for the RM MBR overlay. `can_remove =
@@ -148,8 +239,7 @@ pub async fn formation_eligible_members(
     let detail = get_formation(state, id).await?;
     let total = detail.member_details.len();
     let last_member = total <= 1;
-    let block_reason = last_member
-        .then(|| "use DISSOLVE to remove the last member".to_owned());
+    let block_reason = last_member.then(|| "use DISSOLVE to remove the last member".to_owned());
     Ok(detail
         .member_details
         .into_iter()

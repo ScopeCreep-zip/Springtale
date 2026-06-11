@@ -20,7 +20,7 @@
 
 use std::sync::Arc;
 
-use springtale_store::{schema::dedupe::DedupeOutcome, StorageBackend};
+use springtale_store::{StorageBackend, schema::dedupe::DedupeOutcome};
 
 use crate::error::OperationError;
 
@@ -55,18 +55,15 @@ mod tests {
 
     #[tokio::test]
     async fn check_and_record_returns_fresh_then_seen() {
-        let store: Arc<dyn StorageBackend> =
-            Arc::new(SqliteBackend::open_in_memory().unwrap());
-        let outcome1 =
-            check_and_record(&store, None, "rule1", "bucket1", "key-alpha", 100)
-                .await
-                .unwrap();
+        let store: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open_in_memory().unwrap());
+        let outcome1 = check_and_record(&store, None, "rule1", "bucket1", "key-alpha", 100)
+            .await
+            .unwrap();
         assert_eq!(outcome1, DedupeOutcome::Fresh);
 
-        let outcome2 =
-            check_and_record(&store, None, "rule1", "bucket1", "key-alpha", 100)
-                .await
-                .unwrap();
+        let outcome2 = check_and_record(&store, None, "rule1", "bucket1", "key-alpha", 100)
+            .await
+            .unwrap();
         assert_eq!(outcome2, DedupeOutcome::SeenBefore);
     }
 
@@ -76,22 +73,19 @@ mod tests {
         // that re-fires with the same upstream payload always lands
         // on the same hash, so dedupe state survives runtime
         // restarts.
-        let store: Arc<dyn StorageBackend> =
-            Arc::new(SqliteBackend::open_in_memory().unwrap());
+        let store: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open_in_memory().unwrap());
         check_and_record(&store, None, "rule1", "bucket1", "same-key", 100)
             .await
             .unwrap();
-        let again =
-            check_and_record(&store, None, "rule1", "bucket1", "same-key", 100)
-                .await
-                .unwrap();
+        let again = check_and_record(&store, None, "rule1", "bucket1", "same-key", 100)
+            .await
+            .unwrap();
         assert_eq!(again, DedupeOutcome::SeenBefore);
     }
 
     #[tokio::test]
     async fn distinct_keys_dont_collide() {
-        let store: Arc<dyn StorageBackend> =
-            Arc::new(SqliteBackend::open_in_memory().unwrap());
+        let store: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open_in_memory().unwrap());
         let a = check_and_record(&store, None, "r", "b", "alpha", 100)
             .await
             .unwrap();
@@ -108,8 +102,7 @@ mod tests {
         // (the store API only exposes check-and-record), but we can
         // assert that two keys differing by one byte produce
         // distinct outcomes — proving the hash is sensitive to input.
-        let store: Arc<dyn StorageBackend> =
-            Arc::new(SqliteBackend::open_in_memory().unwrap());
+        let store: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open_in_memory().unwrap());
         let a = check_and_record(&store, None, "r", "b", "key", 100)
             .await
             .unwrap();

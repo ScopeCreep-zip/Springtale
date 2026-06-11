@@ -31,15 +31,13 @@
 //! UI surfaces it.
 
 use icalendar::{Calendar, CalendarComponent, Component, EventLike};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use super::{source_as_str, ExtractError};
+use super::{ExtractError, source_as_str};
 
 pub fn extract(source: &Value, _window_days: Option<i32>) -> Result<Value, ExtractError> {
     let body = source_as_str(source)?;
-    let calendar: Calendar = body
-        .parse()
-        .map_err(|e: String| ExtractError::Ical(e))?;
+    let calendar: Calendar = body.parse().map_err(|e: String| ExtractError::Ical(e))?;
 
     let events: Vec<Value> = calendar
         .components
@@ -98,6 +96,9 @@ END:VCALENDAR\r\n";
     fn errors_on_non_string_source() {
         let source = Value::Number(serde_json::Number::from(42));
         let err = extract(&source, None).unwrap_err();
-        assert!(matches!(err, ExtractError::SourceNotString { got: "number" }));
+        assert!(matches!(
+            err,
+            ExtractError::SourceNotString { got: "number" }
+        ));
     }
 }

@@ -57,9 +57,8 @@ pub fn unregister_manifest_roles(registry: &Arc<RoleRegistry>, manifest: &Connec
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use springtale_connector::manifest::types::{
-        Capability, ConnectorManifest, RoleDecl,
-    };
+    use springtale_connector::manifest::SignatureAlgorithm;
+    use springtale_connector::manifest::types::{Capability, ConnectorManifest, RoleDecl};
     use springtale_cooperation::cadence::ActionDescriptor;
 
     fn sample_manifest() -> ConnectorManifest {
@@ -89,6 +88,7 @@ mod tests {
                 },
             ],
             wasm_hash: None,
+            signature_alg: SignatureAlgorithm::default(),
             signature: None,
         }
     }

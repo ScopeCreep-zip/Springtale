@@ -102,13 +102,11 @@ fn rule_name_from_toml(toml: &str) -> Option<String> {
         if trimmed.starts_with('[') {
             in_rule = false;
         }
-        if in_rule {
-            if let Some(rest) = trimmed.strip_prefix("name") {
-                let after_eq = rest.split_once('=').map(|(_, v)| v.trim())?;
-                let stripped = after_eq.trim_matches('"').trim_matches('\'');
-                if !stripped.is_empty() {
-                    return Some(stripped.to_owned());
-                }
+        if in_rule && let Some(rest) = trimmed.strip_prefix("name") {
+            let after_eq = rest.split_once('=').map(|(_, v)| v.trim())?;
+            let stripped = after_eq.trim_matches('"').trim_matches('\'');
+            if !stripped.is_empty() {
+                return Some(stripped.to_owned());
             }
         }
     }
@@ -126,10 +124,16 @@ mod tests {
         let recipe = builtin::get("telegram-echo").unwrap();
         let pieces = extract_pieces(&recipe);
         // Telegram echo has 1 rule + 1 connector config.
-        assert!(pieces.iter().any(|p| matches!(p.piece, RecipePiece::Trigger { .. })));
-        assert!(pieces
-            .iter()
-            .any(|p| matches!(p.piece, RecipePiece::ConnectorConfig { .. })));
+        assert!(
+            pieces
+                .iter()
+                .any(|p| matches!(p.piece, RecipePiece::Trigger { .. }))
+        );
+        assert!(
+            pieces
+                .iter()
+                .any(|p| matches!(p.piece, RecipePiece::ConnectorConfig { .. }))
+        );
     }
 
     #[test]
@@ -147,6 +151,10 @@ type = "ConnectorEvent"
     fn llm_assistant_exposes_ai_piece() {
         let recipe = builtin::get("llm-assistant").unwrap();
         let pieces = extract_pieces(&recipe);
-        assert!(pieces.iter().any(|p| matches!(p.piece, RecipePiece::AiConfig { .. })));
+        assert!(
+            pieces
+                .iter()
+                .any(|p| matches!(p.piece, RecipePiece::AiConfig { .. }))
+        );
     }
 }

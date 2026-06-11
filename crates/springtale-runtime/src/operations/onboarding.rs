@@ -24,14 +24,14 @@
 
 use std::collections::BTreeMap;
 
-use specta::Type;
 use serde::Serialize;
+use specta::Type;
 // F-conn-1: PlatformForm + FormField now live in `springtale-connector` so
 // each connector crate self-registers its onboarding form via
 // `ConnectorFactory::onboarding_form()`. The runtime collects them via
 // `inventory::iter::<FactoryEntry>` instead of a hardcoded table.
-pub use springtale_connector::{FormField, PlatformForm};
 use springtale_connector::FactoryEntry;
+pub use springtale_connector::{FormField, PlatformForm};
 use springtale_store::StorageBackend;
 
 use super::config::set_config;
@@ -83,8 +83,7 @@ pub async fn apply_platform(
         && val.trim_matches('"') == "true"
     {
         return Err(OperationError::Validation(
-            "onboarding already completed — use the dashboard or API to add more connectors"
-                .into(),
+            "onboarding already completed — use the dashboard or API to add more connectors".into(),
         ));
     }
 
@@ -188,7 +187,11 @@ mod tests {
         assert!(report.fields_stored.contains(&"bot_token".to_owned()));
         assert!(report.fields_stored.contains(&"update_mode".to_owned()));
 
-        let stored = store.get_config("connector:telegram").await.unwrap().unwrap();
+        let stored = store
+            .get_config("connector:telegram")
+            .await
+            .unwrap()
+            .unwrap();
         let json: serde_json::Value = serde_json::from_str(&stored).unwrap();
         assert_eq!(json["bot_token"], "123456789:ABCdefGHI-jkl_MNO");
         assert_eq!(json["update_mode"], "polling");
@@ -200,7 +203,9 @@ mod tests {
         let mut answers = BTreeMap::new();
         answers.insert("bot_token".into(), "111:abc".into());
         answers.insert("hacker_payload".into(), "!!".into());
-        let err = apply_platform(&*store, "telegram", answers).await.unwrap_err();
+        let err = apply_platform(&*store, "telegram", answers)
+            .await
+            .unwrap_err();
         assert!(matches!(err, OperationError::Validation(_)));
     }
 

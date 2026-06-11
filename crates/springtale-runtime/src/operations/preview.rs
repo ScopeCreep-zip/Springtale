@@ -82,11 +82,14 @@ pub fn preview_blueprint(recipe: &Recipe, inputs: &RecipeInputs) -> PreviewRepor
 
     // Connector config steps — show one bubble per connector.
     for cfg in &recipe.blueprint.connector_configs {
-        let resolved =
-            super::recipes::apply::substitute_value_public(&cfg.config, inputs);
+        let resolved = super::recipes::apply::substitute_value_public(&cfg.config, inputs);
         steps.push(PreviewStep {
             speaker: "system".into(),
-            narrative: format!("Configure {} with {}.", cfg.connector_name, redact_secrets(&resolved)),
+            narrative: format!(
+                "Configure {} with {}.",
+                cfg.connector_name,
+                redact_secrets(&resolved)
+            ),
             would_send_to: None,
         });
     }
@@ -177,16 +180,20 @@ fn describe_action(action: &springtale_core::rule::Action) -> (String, Option<St
                 target,
             )
         }
-        Action::WriteFile { destination, content, delete_source } => {
+        Action::WriteFile {
+            destination,
+            content,
+            delete_source,
+        } => {
             let op = if *delete_source { "Move" } else { "Write" };
-            (format!("{op} to {destination}: {content}"), Some(destination.clone()))
+            (
+                format!("{op} to {destination}: {content}"),
+                Some(destination.clone()),
+            )
         }
         Action::RunShell { command } => (format!("Run shell: {command}"), None),
         Action::Notify { title, body } => (format!("Notify: {title} — {body}"), None),
-        Action::Chain { steps } => (
-            format!("Chain ({} steps)", steps.len()),
-            None,
-        ),
+        Action::Chain { steps } => (format!("Chain ({} steps)", steps.len()), None),
         Action::Transform { operation, params } => (
             format!(
                 "Transform {operation} with {}",
@@ -210,15 +217,14 @@ fn describe_action(action: &springtale_core::rule::Action) -> (String, Option<St
                 springtale_core::rule::action::ExtractKind::Passthrough => "passthrough",
                 springtale_core::rule::action::ExtractKind::PageDiff => "page_diff",
             };
-            (
-                format!("Extract `{kind_label}` from {source}"),
-                None,
-            )
+            (format!("Extract `{kind_label}` from {source}"), None)
         }
-        Action::Dedupe { key, bucket, history } => (
-            format!(
-                "Dedupe by `{key}` in bucket `{bucket}` (history {history})"
-            ),
+        Action::Dedupe {
+            key,
+            bucket,
+            history,
+        } => (
+            format!("Dedupe by `{key}` in bucket `{bucket}` (history {history})"),
             None,
         ),
     }

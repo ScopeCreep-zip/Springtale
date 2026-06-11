@@ -23,10 +23,7 @@ use serde_json_path::JsonPath;
 
 use super::ExtractError;
 
-pub fn extract(
-    source: &Value,
-    schema: &Map<String, Value>,
-) -> Result<Value, ExtractError> {
+pub fn extract(source: &Value, schema: &Map<String, Value>) -> Result<Value, ExtractError> {
     // Auto-parse a JSON-encoded string source so the recipe author
     // writes the JSONPath against the *data shape*, not against the
     // raw response container the connector handed us.
@@ -36,9 +33,7 @@ pub fn extract(
             if trimmed.starts_with('{') || trimmed.starts_with('[') {
                 Some(serde_json::from_str(s).map_err(|e| ExtractError::JsonPath {
                     path: "(source body)".to_owned(),
-                    reason: format!(
-                        "upstream source is a string but did not parse as JSON: {e}"
-                    ),
+                    reason: format!("upstream source is a string but did not parse as JSON: {e}"),
                 })?)
             } else {
                 None

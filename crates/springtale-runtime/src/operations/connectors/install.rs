@@ -69,8 +69,9 @@ pub async fn install_wasm_connector(
     springtale_sentinel::Sentinel::check_toxic_pairs(&manifest.capabilities)
         .map_err(|e| OperationError::Validation(format!("toxic capability pair: {e}")))?;
 
-    // Verify signature if present
-    verify_manifest_sig_if_present(&manifest, &*state.store).await?;
+    // Verify signature if present. Return the pubkey hex we used so
+    // we can pin it to the persisted row (Phase-7 audit Finding #1).
+    let trusted_pubkey_hex = verify_manifest_sig_if_present(&manifest, &*state.store).await?;
 
     // Verify WASM hash
     let wasm_hash = manifest.wasm_hash.as_deref().ok_or_else(|| {
@@ -102,6 +103,14 @@ pub async fn install_wasm_connector(
     // Persist to store for restart survival
     let manifest_json = serde_json::to_string(&manifest)
         .map_err(|e| OperationError::Serialization(e.to_string()))?;
+    // Whole-codebase audit Finding #1: persist the install-time
+    // pubkey + signature in trust-anchor columns so the boot
+    // re-verifier can fail closed on a swap-the-whole-bundle attack
+    // against the SQLite store (TUF §4). Empty strings indicate an
+    // unsigned install — the verifier logs that case rather than
+    // failing closed, preserving the existing TOFU posture.
+    let pinned_pubkey = trusted_pubkey_hex.unwrap_or_default();
+    let pinned_sig = manifest.signature.clone().unwrap_or_default();
     state
         .store
         .store_wasm_binary(
@@ -110,6 +119,8 @@ pub async fn install_wasm_connector(
             &manifest_json,
             wasm_hash,
             &manifest.author,
+            &pinned_pubkey,
+            &pinned_sig,
         )
         .await?;
 
@@ -127,7 +138,8 @@ pub async fn install_wasm_connector(
     Ok(registered_name)
 }
 
-/// Verify a manifest's Ed25519 signature if present.
+/// Verify a manifest's Ed25519 signature if present and return the
+/// pubkey hex that successfully verified it.
 ///
 /// Looks up the author's trusted public key from config store
 /// (`trusted-author:{author_name}` → `{ "pubkey": "hex..." }`).
@@ -135,12 +147,21 @@ pub async fn install_wasm_connector(
 /// but does not reject — unsigned/unknown-author connectors are
 /// allowed but flagged. This matches the TOFU (Trust On First Use)
 /// model: the first install establishes trust.
+///
+/// Return value:
+///   - `Ok(Some(hex))` — manifest had a signature AND we verified it
+///     against the trusted-author pubkey. Caller pins this hex into
+///     the persisted row so the boot re-verifier can re-check it
+///     (Phase-7 audit Finding #1).
+///   - `Ok(None)` — manifest had no signature OR no trusted-author
+///     pubkey was on file. Caller persists empty strings; the
+///     re-verifier logs "legacy, skip" rather than failing closed.
 pub(super) async fn verify_manifest_sig_if_present(
     manifest: &springtale_connector::ConnectorManifest,
     store: &dyn springtale_store::StorageBackend,
-) -> Result<(), OperationError> {
+) -> Result<Option<String>, OperationError> {
     let Some(ref _sig) = manifest.signature else {
-        return Ok(()); // unsigned — no verification needed
+        return Ok(None); // unsigned — no verification needed
     };
 
     let author_key_entry = format!("trusted-author:{}", manifest.author);
@@ -180,6 +201,7 @@ pub(super) async fn verify_manifest_sig_if_present(
                 author = %manifest.author,
                 "manifest signature verified"
             );
+            Ok(Some(pubkey_hex.to_owned()))
         }
         _ => {
             tracing::warn!(
@@ -187,8 +209,7 @@ pub(super) async fn verify_manifest_sig_if_present(
                 author = %manifest.author,
                 "manifest is signed but author not in trusted registry"
             );
+            Ok(None)
         }
     }
-
-    Ok(())
 }

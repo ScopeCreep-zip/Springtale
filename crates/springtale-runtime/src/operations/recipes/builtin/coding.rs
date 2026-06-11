@@ -26,6 +26,7 @@ pub fn all() -> Vec<Recipe> {
         github_comment_mobile_ping(),
         github_release_multipost(),
         github_repo_mirror_backup(),
+        opencode_task(),
     ]
 }
 
@@ -90,9 +91,9 @@ text = "New PR in ${repo}: ${trigger.title} (#${trigger.number})"
             }],
             ai_config: None,
             summary: Some(
-                "Watches a GitHub repository and posts a notification when a PR is opened."
-                    .into(),
+                "Watches a GitHub repository and posts a notification when a PR is opened.".into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -184,6 +185,7 @@ body = "${last_ai_output}"
             summary: Some(
                 "Watches the repo; when a PR opens, the AI produces a review and posts it as a comment.".into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -297,6 +299,7 @@ content = "[${repo}] ${trigger.pusher} pushed ${trigger.commits_count} commits t
             summary: Some(
                 "Real-time Discord alert for every push to the configured branch.".into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -383,9 +386,8 @@ text = "[${repo}] #${trigger.number} ${trigger.title} — by ${trigger.author}\n
                 .into(),
             }],
             ai_config: None,
-            summary: Some(
-                "Telegram ping for every new issue opened on the watched repo.".into(),
-            ),
+            summary: Some("Telegram ping for every new issue opened on the watched repo.".into()),
+            derived_inputs: vec![],
         },
     }
 }
@@ -490,6 +492,7 @@ text = "[${repo}#${trigger.issue_number}] ${trigger.author} mentioned you: ${tri
                 "Filters issue/PR comment events for `@your-handle` and pings your Signal so you can ack from a phone."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -503,7 +506,12 @@ fn github_release_multipost() -> Recipe {
         description: "Announce new releases on Bluesky + Nostr in one move.".into(),
         icon_id: "github".into(),
         category: RecipeCategory::Coding,
-        tags: vec!["github".into(), "release".into(), "bluesky".into(), "nostr".into()],
+        tags: vec![
+            "github".into(),
+            "release".into(),
+            "bluesky".into(),
+            "nostr".into(),
+        ],
         connectors_used: vec![
             "connector-github".into(),
             "connector-bluesky".into(),
@@ -618,9 +626,8 @@ content = "🚀 ${repo} ${trigger.tag_name} is out: ${trigger.html_url}"
                 .into(),
             }],
             ai_config: None,
-            summary: Some(
-                "Release tag → Bluesky + Nostr announcement with link.".into(),
-            ),
+            summary: Some("Release tag → Bluesky + Nostr announcement with link.".into()),
+            derived_inputs: vec![],
         },
     }
 }
@@ -683,9 +690,98 @@ command = "git clone --mirror ${repo_url} ${backup_dir}/${repo_name}.git || git 
             }],
             ai_config: None,
             summary: Some(
-                "Sunday 3am: mirror-clones the repo to your local disk so a deplatforming or repo deletion doesn't lose history."
+                "Sunday 3am: mirror-clones the repo to your local disk so a deplatforming or repo deletion doesn't lose history. It runs git as a system command, so Springtale asks you to approve it the first time it fires."
                     .into(),
             ),
+            derived_inputs: vec![],
+        },
+    }
+}
+
+// ── OpenCode auto-fix tagged issues (W4 — code-change parity) ──
+
+/// When a GitHub issue is opened, hand it to a local `opencode serve`
+/// agent as a coding task. The agent edits files and runs commands on the
+/// host, so `run_task` is mutating — the W2 chat-approval gate fronts it
+/// before anything runs. (The connector's `run_task`/`continue_session`
+/// tools are also chat-callable directly for ad-hoc tasks; this recipe is
+/// the event-driven automation form.)
+fn opencode_task() -> Recipe {
+    Recipe {
+        id: "opencode-issue-fix".into(),
+        name: "Auto-Fix GitHub Issues".into(),
+        description:
+            "When an issue is opened, hand it to your local opencode agent as a coding task.".into(),
+        icon_id: "terminal".into(),
+        category: RecipeCategory::Coding,
+        tags: vec![
+            "code".into(),
+            "opencode".into(),
+            "github".into(),
+            "agent".into(),
+        ],
+        connectors_used: vec!["connector-github".into(), "connector-opencode".into()],
+        ai_required: false,
+        difficulty: Difficulty::Power,
+        source: RecipeSource::Builtin,
+        inputs: vec![
+            InputField {
+                id: "github_token".into(),
+                label: "GitHub PAT".into(),
+                kind: FieldKind::Secret,
+                visibility: FieldVisibility::Required,
+                default: None,
+                hint: Some("Repo scope — used to watch for new issues.".into()),
+            },
+            InputField {
+                id: "repo".into(),
+                label: "Repository (owner/name)".into(),
+                kind: FieldKind::Text,
+                visibility: FieldVisibility::Required,
+                default: None,
+                hint: Some("e.g. octocat/hello-world".into()),
+            },
+        ],
+        blueprint: RecipeBlueprint {
+            connector_configs: vec![
+                ConnectorConfigStep {
+                    connector_name: "connector-github".into(),
+                    config: json!({
+                        "access_token": "${github_token}",
+                        "watched_repos": ["${repo}"]
+                    }),
+                },
+                ConnectorConfigStep {
+                    connector_name: "connector-opencode".into(),
+                    config: json!({ "base_url": "http://127.0.0.1:4096" }),
+                },
+            ],
+            rules: vec![RuleStep {
+                toml: r#"name = "opencode-issue-fix"
+
+[trigger]
+type = "ConnectorEvent"
+connector = "connector-github"
+event = "issues"
+
+[[conditions]]
+type = "FieldEquals"
+field = "action"
+value = "opened"
+
+[[actions]]
+type = "RunConnector"
+connector = "connector-opencode"
+action = "run_task"
+
+[actions.params]
+prompt = "Work on this GitHub issue: ${trigger.title}\n\n${trigger.body}"
+"#
+                .into(),
+            }],
+            ai_config: None,
+            summary: Some("Issue opened → opencode run_task on the issue (approval-gated).".into()),
+            derived_inputs: vec![],
         },
     }
 }

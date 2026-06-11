@@ -195,6 +195,7 @@ text = "${message_template}"
                  to Telegram. Use as a building block for daily digests."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -205,11 +206,10 @@ fn rss_broadcast() -> Recipe {
     Recipe {
         id: "rss-broadcast".into(),
         name: "RSS Broadcast".into(),
-        description:
-            "Watch any RSS/Atom feed; for each new entry, send a Telegram message. \
+        description: "Watch any RSS/Atom feed; for each new entry, send a Telegram message. \
              Replaces YouTube channel alerts, GitHub release watches, blog feeds, \
              Nitter/RSSHub bridges."
-                .into(),
+            .into(),
         icon_id: "rss".into(),
         category: RecipeCategory::Web,
         tags: vec![
@@ -328,6 +328,7 @@ text = "📰 ${last_extract_output.entries.0.title}\n${last_extract_output.entri
                  new entry alerts exactly once."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -475,6 +476,7 @@ text = "${alert_template}"
                  service health monitoring."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -607,6 +609,7 @@ text = "📅 ${last_extract_output.events.0.summary}\nStarts: ${last_extract_out
                  sends a Telegram reminder with summary, start time, location."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -617,23 +620,15 @@ fn webhook_fanout_multi() -> Recipe {
     Recipe {
         id: "webhook-fanout-multi".into(),
         name: "Webhook Fan-out".into(),
-        description:
-            "An inbound webhook fans out to multiple messaging channels. Wire \
+        description: "An inbound webhook fans out to multiple messaging channels. Wire \
              external systems (GitHub, CI/CD, monitoring) to a single Springtale \
              URL and have them broadcast to your Telegram + Signal + Discord at \
              once."
-                .into(),
+            .into(),
         icon_id: "broadcast".into(),
         category: RecipeCategory::Web,
-        tags: vec![
-            "webhook".into(),
-            "fanout".into(),
-            "universal".into(),
-        ],
-        connectors_used: vec![
-            "connector-telegram".into(),
-            "connector-signal".into(),
-        ],
+        tags: vec!["webhook".into(), "fanout".into(), "universal".into()],
+        connectors_used: vec!["connector-telegram".into(), "connector-signal".into()],
         ai_required: false,
         difficulty: Difficulty::Standard,
         source: RecipeSource::Builtin,
@@ -644,10 +639,7 @@ fn webhook_fanout_multi() -> Recipe {
                 kind: FieldKind::Text,
                 visibility: FieldVisibility::Required,
                 default: Some(json!("incoming")),
-                hint: Some(
-                    "Becomes /webhook/${slug}. POST to that URL to fire the rule."
-                        .into(),
-                ),
+                hint: Some("Becomes /webhook/${slug}. POST to that URL to fire the rule.".into()),
             },
             InputField {
                 id: "bot_token".into(),
@@ -702,10 +694,7 @@ fn webhook_fanout_multi() -> Recipe {
                 kind: FieldKind::Text,
                 visibility: FieldVisibility::Optional,
                 default: Some(json!("📡 ${trigger.message}")),
-                hint: Some(
-                    "Refer to incoming webhook fields as `${trigger.field_name}`."
-                        .into(),
-                ),
+                hint: Some("Refer to incoming webhook fields as `${trigger.field_name}`.".into()),
             },
         ],
         blueprint: RecipeBlueprint {
@@ -750,6 +739,7 @@ text = "${message_template}"
                  Signal with a templated message that reads the webhook body."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -760,22 +750,14 @@ fn cross_channel_broadcast() -> Recipe {
     Recipe {
         id: "cross-channel-broadcast".into(),
         name: "Cross-Channel Broadcast".into(),
-        description:
-            "When a connector emits an event (Telegram message, Discord post, etc.), \
+        description: "When a connector emits an event (Telegram message, Discord post, etc.), \
              fan out to multiple other messaging channels. Generalises the existing \
              nostr↔bluesky relay pattern."
-                .into(),
+            .into(),
         icon_id: "broadcast".into(),
         category: RecipeCategory::Messaging,
-        tags: vec![
-            "cross-post".into(),
-            "fanout".into(),
-            "universal".into(),
-        ],
-        connectors_used: vec![
-            "connector-telegram".into(),
-            "connector-signal".into(),
-        ],
+        tags: vec!["cross-post".into(), "fanout".into(), "universal".into()],
+        connectors_used: vec!["connector-telegram".into(), "connector-signal".into()],
         ai_required: false,
         difficulty: Difficulty::Standard,
         source: RecipeSource::Builtin,
@@ -814,8 +796,7 @@ fn cross_channel_broadcast() -> Recipe {
                 visibility: FieldVisibility::Required,
                 default: Some(json!("message")),
                 hint: Some(
-                    "Event name as declared by the source connector (e.g. `message`)."
-                        .into(),
+                    "Event name as declared by the source connector (e.g. `message`).".into(),
                 ),
             },
             InputField {
@@ -920,6 +901,7 @@ text = "${message_template}"
                  Telegram + Signal with a templated message."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -935,12 +917,11 @@ fn browser_page_function() -> Recipe {
     Recipe {
         id: "browser-page-function".into(),
         name: "Browser Page Function".into(),
-        description:
-            "Scrape a JavaScript-rendered page on a schedule using headless Chromium. \
+        description: "Scrape a JavaScript-rendered page on a schedule using headless Chromium. \
              Picks values out of the rendered DOM by CSS selector. \
              ⚠️ Some sites detect headless browsers and may ban your IP — \
              prefer official APIs / RSS feeds when available."
-                .into(),
+            .into(),
         icon_id: "browser".into(),
         category: RecipeCategory::Web,
         tags: vec![
@@ -950,10 +931,7 @@ fn browser_page_function() -> Recipe {
             "universal".into(),
             "advanced".into(),
         ],
-        connectors_used: vec![
-            "connector-browser".into(),
-            "connector-telegram".into(),
-        ],
+        connectors_used: vec!["connector-browser".into(), "connector-telegram".into()],
         ai_required: false,
         difficulty: Difficulty::Power,
         source: RecipeSource::Builtin,
@@ -1050,10 +1028,7 @@ fn browser_page_function() -> Recipe {
                 kind: FieldKind::Text,
                 visibility: FieldVisibility::Optional,
                 default: Some(json!("📄 ${last_extract_output.value}")),
-                hint: Some(
-                    "`${last_extract_output.value}` is the extracted text."
-                        .into(),
-                ),
+                hint: Some("`${last_extract_output.value}` is the extracted text.".into()),
             },
         ],
         blueprint: RecipeBlueprint {
@@ -1124,6 +1099,7 @@ text = "${message_template}"
                  scripts for stable SPAs."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -1139,13 +1115,12 @@ fn page_change_watcher() -> Recipe {
     Recipe {
         id: "page-change-watcher".into(),
         name: "Page Change Watcher".into(),
-        description:
-            "Watch a page region and alert on change. Renders the page in \
+        description: "Watch a page region and alert on change. Renders the page in \
              headless Chromium, narrows to a CSS region, hashes the normalised \
              text (script/style stripped), dedupes on the hash — alerts fire \
              only when the region actually changed. \
              ⚠️ Anti-bot detection risk; prefer official feeds where possible."
-                .into(),
+            .into(),
         icon_id: "eye".into(),
         category: RecipeCategory::Web,
         tags: vec![
@@ -1156,10 +1131,7 @@ fn page_change_watcher() -> Recipe {
             "universal".into(),
             "advanced".into(),
         ],
-        connectors_used: vec![
-            "connector-browser".into(),
-            "connector-telegram".into(),
-        ],
+        connectors_used: vec!["connector-browser".into(), "connector-telegram".into()],
         ai_required: false,
         difficulty: Difficulty::Power,
         source: RecipeSource::Builtin,
@@ -1328,6 +1300,7 @@ text = "${alert_template}"
                  fires once per change, not once per poll."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }

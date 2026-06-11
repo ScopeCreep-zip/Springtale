@@ -14,12 +14,9 @@
 use scraper::{Html, Selector};
 use serde_json::{Map, Value};
 
-use super::{source_as_str, ExtractError};
+use super::{ExtractError, source_as_str};
 
-pub fn extract(
-    source: &Value,
-    schema: &Map<String, Value>,
-) -> Result<Value, ExtractError> {
+pub fn extract(source: &Value, schema: &Map<String, Value>) -> Result<Value, ExtractError> {
     let html = source_as_str(source)?;
     let doc = Html::parse_document(html);
     let mut out = Map::with_capacity(schema.len());
@@ -31,11 +28,9 @@ pub fn extract(
                 field: field.clone(),
             })?;
         let spec = SelectorSpec::parse(selector_str);
-        let parsed = Selector::parse(spec.selector).map_err(|e| {
-            ExtractError::CssSelector {
-                selector: spec.selector.to_owned(),
-                reason: e.to_string(),
-            }
+        let parsed = Selector::parse(spec.selector).map_err(|e| ExtractError::CssSelector {
+            selector: spec.selector.to_owned(),
+            reason: e.to_string(),
         })?;
 
         let value = match (spec.mode, &spec.attr) {
@@ -56,9 +51,7 @@ pub fn extract(
             ),
             (Mode::All, Some(attr)) => Value::Array(
                 doc.select(&parsed)
-                    .filter_map(|el| {
-                        el.value().attr(attr).map(|s| Value::String(s.to_owned()))
-                    })
+                    .filter_map(|el| el.value().attr(attr).map(|s| Value::String(s.to_owned())))
                     .collect(),
             ),
         };

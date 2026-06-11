@@ -26,9 +26,9 @@ use std::sync::Arc;
 
 use async_trait::async_trait;
 
-use springtale_core::rule::StepOutput;
 use springtale_cooperation::execution::{ExecutionContext, ExecutionMode as CoopExecutionMode};
 use springtale_cooperation::momentum::MomentumTier;
+use springtale_core::rule::StepOutput;
 use springtale_store::backend::StorageBackend;
 use springtale_store::schema::executions::{
     ExecutionMode as StoreExecutionMode, ExecutionRow, ExecutionStatus, ExecutionStepRow,
@@ -172,7 +172,10 @@ impl ExecutionRecorder for StoreRecorder {
             input_bytes: 0,
             output_bytes,
             output_kind: Some(output_kind.to_owned()),
-            error_kind: step.error.as_ref().map(|e| classify_error_kind(e).to_owned()),
+            error_kind: step
+                .error
+                .as_ref()
+                .map(|e| classify_error_kind(e).to_owned()),
             input_blob_ref: None,
             output_blob_ref: None,
         };
@@ -287,7 +290,10 @@ fn classify_error_kind(msg: &str) -> &'static str {
         "schema_invalid"
     } else if lower.contains("rate") || lower.contains("throttle") {
         "rate_limited"
-    } else if lower.contains("permission") || lower.contains("forbidden") || lower.contains("unauthor") {
+    } else if lower.contains("permission")
+        || lower.contains("forbidden")
+        || lower.contains("unauthor")
+    {
         "permission_denied"
     } else if lower.contains("sentinel") {
         "sentinel"
@@ -322,8 +328,14 @@ mod tests {
         assert_eq!(classify_error_kind("operation timed out"), "timeout");
         assert_eq!(classify_error_kind("connection refused"), "refused");
         assert_eq!(classify_error_kind("DNS lookup failed"), "network");
-        assert_eq!(classify_error_kind("invalid CSS selector"), "selector_not_found");
-        assert_eq!(classify_error_kind("schema validation failed"), "schema_invalid");
+        assert_eq!(
+            classify_error_kind("invalid CSS selector"),
+            "selector_not_found"
+        );
+        assert_eq!(
+            classify_error_kind("schema validation failed"),
+            "schema_invalid"
+        );
         assert_eq!(classify_error_kind("rate limit hit"), "rate_limited");
         assert_eq!(classify_error_kind("forbidden 403"), "permission_denied");
         assert_eq!(classify_error_kind("sentinel paused: foo"), "sentinel");

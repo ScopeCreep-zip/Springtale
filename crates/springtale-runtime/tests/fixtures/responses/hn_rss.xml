@@ -1,0 +1,31 @@
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:atom="http://www.w3.org/2005/Atom"><channel><title>Hacker News: Newest</title><link>https://news.ycombinator.com/newest</link><description>Hacker News RSS</description><docs>https://hnrss.org/</docs><generator>hnrss v2.1.1</generator><lastBuildDate>Thu, 11 Jun 2026 03:32:22 +0000</lastBuildDate><atom:link href="https://hnrss.org/newest?count=5" rel="self" type="application/rss+xml"></atom:link><item><title><![CDATA[Show HN: DocStreamAI – Automatic invoice/receipt collection for Quickbooks/Xero]]></title><description><![CDATA[
+<p>An email based application that monitors your email in real time to remove the need to manually do bookkeeping for your small businesses. Auto matches receipts to bank transactions and creates invoice drafts ready to be paid with your approval.</p>
+<hr>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=48485900">https://news.ycombinator.com/item?id=48485900</a></p>
+<p>Points: 1</p>
+<p># Comments: 0</p>
+]]></description><pubDate>Thu, 11 Jun 2026 03:28:49 +0000</pubDate><link>https://docstreamai.com/</link><dc:creator>alexjimenez99</dc:creator><comments>https://news.ycombinator.com/item?id=48485900</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=48485900</guid></item><item><title><![CDATA[They Spent Years on a Math Problem. Then They Were Scooped by A.I]]></title><description><![CDATA[
+<p>Article URL: <a href="https://www.nytimes.com/2026/06/08/science/ai-scoop-young-mathematicians.html">https://www.nytimes.com/2026/06/08/science/ai-scoop-young-mathematicians.html</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=48485896">https://news.ycombinator.com/item?id=48485896</a></p>
+<p>Points: 1</p>
+<p># Comments: 0</p>
+]]></description><pubDate>Thu, 11 Jun 2026 03:28:13 +0000</pubDate><link>https://www.nytimes.com/2026/06/08/science/ai-scoop-young-mathematicians.html</link><dc:creator>lxm</dc:creator><comments>https://news.ycombinator.com/item?id=48485896</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=48485896</guid></item><item><title><![CDATA[The backlash against AI, in 4 charts]]></title><description><![CDATA[
+<p>Article URL: <a href="https://www.fastcompany.com/91553925/the-backlash-against-ai-in-4-charts">https://www.fastcompany.com/91553925/the-backlash-against-ai-in-4-charts</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=48485889">https://news.ycombinator.com/item?id=48485889</a></p>
+<p>Points: 2</p>
+<p># Comments: 0</p>
+]]></description><pubDate>Thu, 11 Jun 2026 03:26:40 +0000</pubDate><link>https://www.fastcompany.com/91553925/the-backlash-against-ai-in-4-charts</link><dc:creator>1vuio0pswjnm7</dc:creator><comments>https://news.ycombinator.com/item?id=48485889</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=48485889</guid></item><item><title><![CDATA[I made an agent skill for making HTML slides with consultant style]]></title><description><![CDATA[
+<p>I was a consultant in one of the top firms and have been an software engineer before joining consultancy... As an engineer, I really don't like to deal with the software made by Windows, especially the Office -- yep, I hate doing PPT..<p>so I made MBB Page Maker - The project generates static HTML/CSS/JS decks. It can export HTML, PDF, and PNG. I made it as an agent skill so it can work with Codex, Claude Code, Cursor, OpenClaw, Hermes, or any agent that can read local files.<p>Repo:
+https://github.com/NomiciAI/mbb-page-maker<p>Examples:
+https://nomici.ai/mbb-page-maker/examples/ai-erp-saas-lop/index.html
+https://nomici.ai/mbb-page-maker/examples/agent-technology-outlook/index.html<p>I'd like your feedback on this. Pls try!</p>
+<hr>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=48485885">https://news.ycombinator.com/item?id=48485885</a></p>
+<p>Points: 1</p>
+<p># Comments: 0</p>
+]]></description><pubDate>Thu, 11 Jun 2026 03:25:42 +0000</pubDate><link>https://news.ycombinator.com/item?id=48485885</link><dc:creator>Hansun</dc:creator><comments>https://news.ycombinator.com/item?id=48485885</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=48485885</guid></item><item><title><![CDATA[200x kv Cache Compression]]></title><description><![CDATA[
+<p>Article URL: <a href="https://twitter.com/oneill_c/status/2064724063478767804">https://twitter.com/oneill_c/status/2064724063478767804</a></p>
+<p>Comments URL: <a href="https://news.ycombinator.com/item?id=48485878">https://news.ycombinator.com/item?id=48485878</a></p>
+<p>Points: 1</p>
+<p># Comments: 0</p>
+]]></description><pubDate>Thu, 11 Jun 2026 03:23:58 +0000</pubDate><link>https://twitter.com/oneill_c/status/2064724063478767804</link><dc:creator>nico</dc:creator><comments>https://news.ycombinator.com/item?id=48485878</comments><guid isPermaLink="false">https://news.ycombinator.com/item?id=48485878</guid></item></channel></rss>

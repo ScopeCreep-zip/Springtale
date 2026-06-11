@@ -11,7 +11,6 @@ mod schema;
 
 use serde::Serialize;
 
-use specta::Type;
 pub use create::{
     CreateConnectorRuleRequest, create_connector_rule, create_rule, delete_rule, toggle_rule,
     update_rule,
@@ -25,6 +24,7 @@ pub use query::{
     list_rules_from_store, toggle_rule_in_store,
 };
 pub use schema::get_rule_schema;
+use specta::Type;
 
 use crate::error::OperationError;
 use crate::state::RuntimeState;

@@ -40,8 +40,7 @@ use crate::operations::workspaces::query::WorkspaceInfo;
 /// `matched=true` means the chat passed the `/start <payload>` filter
 /// — i.e. it is the user's own onboarding tap. Frontend uses this to
 /// auto-select the chat in the picker dropdown.
-pub type OnDiscoveryCallback =
-    Arc<dyn Fn(WorkspaceInfo, bool) + Send + Sync + 'static>;
+pub type OnDiscoveryCallback = Arc<dyn Fn(WorkspaceInfo, bool) + Send + Sync + 'static>;
 
 /// Maximum onboarding window. After this much wall-clock time the
 /// stream terminates on its own even if no chat was discovered.
@@ -83,9 +82,7 @@ pub fn start_onboard_stream(
         .into_iter()
         .find(|e| e.factory.name() == connector_name)
         .ok_or_else(|| {
-            OperationError::Connector(format!(
-                "no factory registered for {connector_name}"
-            ))
+            OperationError::Connector(format!("no factory registered for {connector_name}"))
         })?
         .factory;
 
@@ -125,28 +122,16 @@ pub fn start_onboard_stream(
                 input["since_update_id"] = serde_json::Value::from(id);
             }
 
-            match connector
-                .execute("discover_destinations", input)
-                .await
-            {
+            match connector.execute("discover_destinations", input).await {
                 Ok(result) => {
-                    if let Some(next) = result
-                        .output
-                        .get("next_update_id")
-                        .and_then(|v| v.as_i64())
+                    if let Some(next) = result.output.get("next_update_id").and_then(|v| v.as_i64())
                     {
                         since_update_id = Some(next);
                     }
                     let mut found_match = false;
-                    if let Some(rows) = result
-                        .output
-                        .get("workspaces")
-                        .and_then(|v| v.as_array())
-                    {
+                    if let Some(rows) = result.output.get("workspaces").and_then(|v| v.as_array()) {
                         for row in rows {
-                            if let Some(info) =
-                                row_to_workspace_info(row, &connector_name)
-                            {
+                            if let Some(info) = row_to_workspace_info(row, &connector_name) {
                                 (on_discover)(info, true);
                                 found_match = true;
                             }
@@ -193,10 +178,7 @@ pub fn start_onboard_stream(
 /// Convert one `workspaces[]` action-result row into a
 /// `WorkspaceInfo` the frontend can render in the picker dropdown.
 /// Provenance is `ActiveDiscovery` — the row was just observed live.
-fn row_to_workspace_info(
-    row: &serde_json::Value,
-    connector_name: &str,
-) -> Option<WorkspaceInfo> {
+fn row_to_workspace_info(row: &serde_json::Value, connector_name: &str) -> Option<WorkspaceInfo> {
     let workspace_key = row
         .get("workspace_key")
         .and_then(|v| v.as_str())?
@@ -211,14 +193,16 @@ fn row_to_workspace_info(
         .and_then(|v| v.as_str())
         .unwrap_or("unknown")
         .to_owned();
-    let metadata = row.get("metadata").cloned().unwrap_or(serde_json::Value::Null);
-    let metadata_json = if metadata.is_null()
-        || metadata.as_object().map(|o| o.is_empty()).unwrap_or(false)
-    {
-        None
-    } else {
-        serde_json::to_string(&metadata).ok()
-    };
+    let metadata = row
+        .get("metadata")
+        .cloned()
+        .unwrap_or(serde_json::Value::Null);
+    let metadata_json =
+        if metadata.is_null() || metadata.as_object().map(|o| o.is_empty()).unwrap_or(false) {
+            None
+        } else {
+            serde_json::to_string(&metadata).ok()
+        };
     let now_ms = Utc::now().timestamp_millis();
     let provenance = WorkspaceProvenance::ActiveDiscovery {
         scanned_at: Utc::now(),

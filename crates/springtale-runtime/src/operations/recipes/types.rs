@@ -62,10 +62,7 @@ impl Recipe {
     /// Iterate inputs whose [`FieldVisibility`] matches the predicate.
     /// Preserves author-declared order. Used by deploy form, preview,
     /// and preflight to render / validate one tier at a time.
-    pub fn inputs_with(
-        &self,
-        visibility: FieldVisibility,
-    ) -> impl Iterator<Item = &InputField> {
+    pub fn inputs_with(&self, visibility: FieldVisibility) -> impl Iterator<Item = &InputField> {
         self.inputs
             .iter()
             .filter(move |f| f.visibility == visibility)
@@ -140,10 +137,7 @@ pub enum RecipeSource {
     /// Reserved for the future community marketplace; carries author
     /// identity + Ed25519 signature so the sentinel can verify before
     /// install (W3.A; wire-shape only today).
-    Community {
-        author: String,
-        signature: String,
-    },
+    Community { author: String, signature: String },
 }
 
 /// A typed input field the user fills (or that has a default the
@@ -223,9 +217,11 @@ pub enum FieldKind {
     Select { options: Vec<SelectOption> },
     /// Cron expression (5- or 6-field). Frontend renders a
     /// `CronFrequencyChip` next to the input that shows:
+    ///
     ///   - red 🔴 on sub-minute schedules (preflight blocking)
     ///   - yellow 🟡 on 1–4 minute polls (preflight warning)
     ///   - green 🟢 on ≥5 minute cadences (preflight verified)
+    ///
     /// Plus a "next 5 fire times" preview computed against the
     /// `cron` crate. Surfaces the same classification the backend's
     /// `check_schedule_frequency` produces so frontend never invents
@@ -304,6 +300,33 @@ pub struct RecipeBlueprint {
     /// evolve (vs. relying on the frontend to compose a summary).
     #[serde(default)]
     pub summary: Option<String>,
+    /// Derived inputs resolved at deploy time, BEFORE placeholder
+    /// substitution. This is what makes a recipe a universal
+    /// "playbook strategy": the commander supplies a free-text target
+    /// (e.g. a city), and a resolver turns it into the concrete value
+    /// the blueprint needs (e.g. `latitude=..&longitude=..`). Each
+    /// resolver's `target_input_id` is treated as a declared
+    /// placeholder by `apply`, so the rule TOML can reference it.
+    #[serde(default)]
+    pub derived_inputs: Vec<DerivedInputResolver>,
+}
+
+/// How a derived input is resolved at deploy time. Internally-tagged so
+/// the JSON wire matches the TS discriminated-union shape, like
+/// [`FieldKind`]. The extension point for the universal-recipe
+/// mechanism — new resolvers (timezone, currency, …) add variants here.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum DerivedInputResolver {
+    /// Geocode a free-text place (the value of `source_input_id`, e.g.
+    /// `"city"`) into a `"latitude=..&longitude=.."` query fragment
+    /// stored under `target_input_id` (e.g. `"location"`), via the
+    /// keyless Open-Meteo geocoding API. Lets the weather strategy take
+    /// any city instead of a hardcoded dropdown.
+    Geocode {
+        source_input_id: String,
+        target_input_id: String,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
@@ -448,6 +471,7 @@ mod tests {
                 rules: vec![],
                 ai_config: None,
                 summary: Some("Telegram echo bot".into()),
+                derived_inputs: vec![],
             },
         };
         let json = serde_json::to_string(&recipe).unwrap();
@@ -462,8 +486,14 @@ mod tests {
     fn select_kind_round_trips() {
         let kind = FieldKind::Select {
             options: vec![
-                SelectOption { value: "ollama".into(), label: "Ollama (local)".into() },
-                SelectOption { value: "openai".into(), label: "OpenAI".into() },
+                SelectOption {
+                    value: "ollama".into(),
+                    label: "Ollama (local)".into(),
+                },
+                SelectOption {
+                    value: "openai".into(),
+                    label: "OpenAI".into(),
+                },
             ],
         };
         let json = serde_json::to_string(&kind).unwrap();

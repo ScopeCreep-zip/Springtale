@@ -26,8 +26,7 @@
 /// time. Useful when this crate is consumed as a build dependency and
 /// the host's `build.rs` wants to pass the path to `wit-bindgen` /
 /// `wasmtime::component::bindgen!`.
-pub const COOPERATION_WIT_PATH: &str =
-    concat!(env!("CARGO_MANIFEST_DIR"), "/wit/cooperation.wit");
+pub const COOPERATION_WIT_PATH: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/wit/cooperation.wit");
 
 /// The literal source of the WIT world definition. Bundled so hosts
 /// that prefer not to track filesystem paths can embed the WIT text

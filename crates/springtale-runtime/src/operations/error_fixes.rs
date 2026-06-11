@@ -7,8 +7,8 @@
 
 use std::path::Path;
 
-use specta::Type;
 use serde::Serialize;
+use specta::Type;
 
 use crate::operations::diagnostics::{self, DiagnosticPaths};
 
@@ -142,8 +142,7 @@ fn try_open_db(path: &Path) -> Result<(), String> {
 }
 
 async fn fix_init_error() -> FixOutcome {
-    let mut outcome = FixOutcome::new("E009")
-        .push("Running diagnostics...");
+    let mut outcome = FixOutcome::new("E009").push("Running diagnostics...");
     let report = diagnostics::run_default_checks(diagnostics::CallerContext::Cli).await;
     for check in &report.checks {
         outcome
@@ -287,7 +286,6 @@ static GUIDES: &[FixGuide] = &[
         ],
         has_auto_fix: true,
     },
-
     // ── Cooperation-layer guidance (COOP-XXXX) ──────────────────────────
     // One entry per `CooperationError` sub-variant so `springtale fix
     // COOP-NNNN` always returns something actionable. Required by plan
@@ -310,8 +308,12 @@ static GUIDES: &[FixGuide] = &[
     FixGuide {
         id: "COOP-1002",
         title: "Cadence — tick sequence wrapped",
-        causes: &["A single formation ran long enough for the u64 tick counter to wrap. This should be practically impossible but is guarded anyway."],
-        suggestions: &["Recycle the formation. Wrap-around on u64 at 30 Hz implies uptime on the order of billions of years."],
+        causes: &[
+            "A single formation ran long enough for the u64 tick counter to wrap. This should be practically impossible but is guarded anyway.",
+        ],
+        suggestions: &[
+            "Recycle the formation. Wrap-around on u64 at 30 Hz implies uptime on the order of billions of years.",
+        ],
         has_auto_fix: false,
     },
     FixGuide {
@@ -327,7 +329,6 @@ static GUIDES: &[FixGuide] = &[
         ],
         has_auto_fix: false,
     },
-
     // Formation (COOP-2xxx)
     FixGuide {
         id: "COOP-2001",
@@ -373,15 +374,18 @@ static GUIDES: &[FixGuide] = &[
         id: "COOP-2005",
         title: "Formation — context uninitialized",
         causes: &["A formation was constructed but its FormationContext was never set."],
-        suggestions: &["This is a library-level bug. File an issue with the formation id and recent actions."],
+        suggestions: &[
+            "This is a library-level bug. File an issue with the formation id and recent actions.",
+        ],
         has_auto_fix: false,
     },
-
     // Momentum (COOP-3xxx)
     FixGuide {
         id: "COOP-3001",
         title: "Momentum — insufficient tier",
-        causes: &["An operation was attempted at a momentum tier that doesn't unlock it (e.g. environment writes require Hot)."],
+        causes: &[
+            "An operation was attempted at a momentum tier that doesn't unlock it (e.g. environment writes require Hot).",
+        ],
         suggestions: &[
             "Keep the formation running with low interference so momentum climbs.",
             "See docs/guide/cooperation.md for the §7 capability table.",
@@ -391,13 +395,14 @@ static GUIDES: &[FixGuide] = &[
     FixGuide {
         id: "COOP-3002",
         title: "Momentum — capability locked at tier",
-        causes: &["The requested capability is gated behind a higher tier (e.g. consensus requires Fever)."],
+        causes: &[
+            "The requested capability is gated behind a higher tier (e.g. consensus requires Fever).",
+        ],
         suggestions: &[
             "Run more successful ticks to climb tier, or choose a capability available at current tier.",
         ],
         has_auto_fix: false,
     },
-
     // Awareness (COOP-4xxx)
     FixGuide {
         id: "COOP-4001",
@@ -422,13 +427,16 @@ static GUIDES: &[FixGuide] = &[
         ],
         has_auto_fix: false,
     },
-
     // Consensus (COOP-5xxx)
     FixGuide {
         id: "COOP-5001",
         title: "Consensus — no override tokens",
-        causes: &["An agent tried to override a vote but has already spent all their override tokens."],
-        suggestions: &["Wait for the vote deadline, accept the majority outcome, or dissolve the vote."],
+        causes: &[
+            "An agent tried to override a vote but has already spent all their override tokens.",
+        ],
+        suggestions: &[
+            "Wait for the vote deadline, accept the majority outcome, or dissolve the vote.",
+        ],
         has_auto_fix: false,
     },
     FixGuide {
@@ -444,11 +452,12 @@ static GUIDES: &[FixGuide] = &[
     FixGuide {
         id: "COOP-5003",
         title: "Consensus — vote not found",
-        causes: &["A vote id was referenced that doesn't exist on the formation (typo, wrong formation)."],
+        causes: &[
+            "A vote id was referenced that doesn't exist on the formation (typo, wrong formation).",
+        ],
         suggestions: &["List open votes in the formation detail API."],
         has_auto_fix: false,
     },
-
     // Commit (COOP-6xxx)
     FixGuide {
         id: "COOP-6001",
@@ -484,7 +493,9 @@ static GUIDES: &[FixGuide] = &[
         id: "COOP-6004",
         title: "Commit — agent not a participant",
         causes: &["An agent tried to signal readiness on a barrier it wasn't listed in."],
-        suggestions: &["Verify the `begin_commit(participants, ...)` call included every agent that would signal."],
+        suggestions: &[
+            "Verify the `begin_commit(participants, ...)` call included every agent that would signal.",
+        ],
         has_auto_fix: false,
     },
     FixGuide {
@@ -497,7 +508,6 @@ static GUIDES: &[FixGuide] = &[
         ],
         has_auto_fix: false,
     },
-
     // Interference (COOP-7xxx)
     FixGuide {
         id: "COOP-7001",
@@ -512,7 +522,6 @@ static GUIDES: &[FixGuide] = &[
         ],
         has_auto_fix: false,
     },
-
     // Rally (COOP-8xxx)
     FixGuide {
         id: "COOP-8001",
@@ -527,7 +536,9 @@ static GUIDES: &[FixGuide] = &[
     FixGuide {
         id: "COOP-8002",
         title: "Rally — cascade threshold exceeded",
-        causes: &["Too many agents failed in quick succession; the formation is cascading toward dissolution."],
+        causes: &[
+            "Too many agents failed in quick succession; the formation is cascading toward dissolution.",
+        ],
         suggestions: &[
             "Pause the formation and investigate recent actions.",
             "Consider sacrifice evaluation to preserve partial operation.",
@@ -541,7 +552,6 @@ static GUIDES: &[FixGuide] = &[
         suggestions: &["File an issue with the stack trace from `springtale logs`."],
         has_auto_fix: false,
     },
-
     // Recovery (COOP-9xxx)
     FixGuide {
         id: "COOP-9001",
@@ -556,7 +566,9 @@ static GUIDES: &[FixGuide] = &[
     FixGuide {
         id: "COOP-9002",
         title: "Recovery — cost exceeds budget",
-        causes: &["The cheapest recovery path would exhaust the formation's remaining fuel or rally tokens."],
+        causes: &[
+            "The cheapest recovery path would exhaust the formation's remaining fuel or rally tokens.",
+        ],
         suggestions: &[
             "Increase the formation's fuel budget before redeploying.",
             "Reduce recovery ambition — accept degraded operation instead.",
@@ -767,29 +779,56 @@ mod tests {
         // and the `code()` accessor each error enum exposes (J1).
         for id in [
             // Cadence
-            "COOP-1001", "COOP-1002", "COOP-1003",
+            "COOP-1001",
+            "COOP-1002",
+            "COOP-1003",
             // Formation
-            "COOP-2001", "COOP-2002", "COOP-2003", "COOP-2004", "COOP-2005",
+            "COOP-2001",
+            "COOP-2002",
+            "COOP-2003",
+            "COOP-2004",
+            "COOP-2005",
             // Momentum
-            "COOP-3001", "COOP-3002",
+            "COOP-3001",
+            "COOP-3002",
             // Awareness
-            "COOP-4001", "COOP-4002",
+            "COOP-4001",
+            "COOP-4002",
             // Consensus
-            "COOP-5001", "COOP-5002", "COOP-5003",
+            "COOP-5001",
+            "COOP-5002",
+            "COOP-5003",
             // Commit
-            "COOP-6001", "COOP-6002", "COOP-6003", "COOP-6004", "COOP-6005",
+            "COOP-6001",
+            "COOP-6002",
+            "COOP-6003",
+            "COOP-6004",
+            "COOP-6005",
             // Interference
             "COOP-7001",
             // Rally
-            "COOP-8001", "COOP-8002", "COOP-8003",
+            "COOP-8001",
+            "COOP-8002",
+            "COOP-8003",
             // Recovery
-            "COOP-9001", "COOP-9002", "COOP-9003",
+            "COOP-9001",
+            "COOP-9002",
+            "COOP-9003",
             // Handoff (J1)
-            "COOP-A001", "COOP-A002", "COOP-A003", "COOP-A004", "COOP-A005",
+            "COOP-A001",
+            "COOP-A002",
+            "COOP-A003",
+            "COOP-A004",
+            "COOP-A005",
             // Pacing (J1)
             "COOP-B001",
             // Cross-cutting aggregate variants (J1)
-            "COOP-C000", "COOP-C001", "COOP-C002", "COOP-C003", "COOP-C004", "COOP-C005",
+            "COOP-C000",
+            "COOP-C001",
+            "COOP-C002",
+            "COOP-C003",
+            "COOP-C004",
+            "COOP-C005",
         ] {
             assert!(
                 lookup(id).is_some(),
@@ -805,8 +844,7 @@ mod tests {
     fn error_code_accessor_matches_registry() {
         use springtale_cooperation::error::{
             AwarenessError, CadenceError, CommitError, ConsensusError, FormationError,
-            HandoffError, InterferenceError, MomentumError, PacingError, RallyError,
-            RecoveryError,
+            HandoffError, InterferenceError, MomentumError, PacingError, RallyError, RecoveryError,
         };
 
         let cadence_codes = [
@@ -825,10 +863,13 @@ mod tests {
         for code in formation {
             assert!(lookup(code).is_some(), "no guide for formation {code}");
         }
-        let momentum = [MomentumError::CapabilityLocked(
-            springtale_cooperation::momentum::MomentumTier::Cold,
-        )
-        .code()];
+        let momentum =
+            [
+                MomentumError::CapabilityLocked(
+                    springtale_cooperation::momentum::MomentumTier::Cold,
+                )
+                .code(),
+            ];
         for code in momentum {
             assert!(lookup(code).is_some(), "no guide for momentum {code}");
         }

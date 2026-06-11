@@ -120,6 +120,24 @@ pub struct CreateConnectorRuleRequest {
     pub action_name: String,
     #[serde(default)]
     pub conditions: Vec<springtale_core::rule::Condition>,
+    /// W6 chain composer — additional action steps run in order after the
+    /// primary action. When non-empty, the rule's actions become a single
+    /// `Action::Chain` of `[primary, ...extra]`.
+    #[serde(default)]
+    pub extra_actions: Vec<ConnectorActionStep>,
+    /// W6 all-of / any-of toggle. `false` (default) = every condition must
+    /// hold (the engine's implicit AND over the flat list). `true` = any one
+    /// suffices: the conditions are wrapped in a single `Condition::Or`.
+    #[serde(default)]
+    pub match_any: bool,
+}
+
+/// One step in a W6 action chain.
+#[derive(Debug, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct ConnectorActionStep {
+    pub action_connector: String,
+    pub action_name: String,
 }
 
 /// Create a connector-event rule from simple field names.
@@ -140,16 +158,8 @@ pub async fn create_connector_rule(
             connector: req.trigger_connector,
             event: req.trigger_event,
         },
-        conditions: req.conditions,
-        actions: if req.action_name.is_empty() {
-            vec![]
-        } else {
-            vec![springtale_core::rule::Action::RunConnector {
-                connector: req.action_connector,
-                action: req.action_name,
-                params: serde_json::Map::new(),
-            }]
-        },
+        conditions: build_conditions(req.conditions, req.match_any),
+        actions: build_actions(req.action_connector, req.action_name, req.extra_actions),
         // Connector-event rules created from the UI form path are
         // global by default. Per-agent / per-formation scoping lands
         // when the rule-builder UI surfaces an owner picker (Phase A+).
@@ -157,4 +167,131 @@ pub async fn create_connector_rule(
     };
 
     create_rule(state, rule).await
+}
+
+/// W6: wrap the user's leaf conditions for all-of (default) vs any-of.
+/// All-of leaves the flat list (the engine ANDs siblings implicitly).
+/// Any-of with 2+ leaves wraps them in one `Condition::Or`; a single leaf
+/// needs no wrapper either way.
+fn build_conditions(
+    conditions: Vec<springtale_core::rule::Condition>,
+    match_any: bool,
+) -> Vec<springtale_core::rule::Condition> {
+    if match_any && conditions.len() > 1 {
+        vec![springtale_core::rule::Condition::Or { conditions }]
+    } else {
+        conditions
+    }
+}
+
+/// W6: build the rule's action list. One action → a bare `RunConnector`.
+/// Two or more → a single `Action::Chain` of `[primary, ...extra]` so the
+/// steps run in order. An empty primary action → no actions (monitor rule).
+fn build_actions(
+    action_connector: String,
+    action_name: String,
+    extra_actions: Vec<ConnectorActionStep>,
+) -> Vec<springtale_core::rule::Action> {
+    if action_name.is_empty() {
+        return vec![];
+    }
+    let primary = springtale_core::rule::Action::RunConnector {
+        connector: action_connector,
+        action: action_name,
+        params: serde_json::Map::new(),
+    };
+    if extra_actions.is_empty() {
+        return vec![primary];
+    }
+    let mut steps = Vec::with_capacity(1 + extra_actions.len());
+    steps.push(primary);
+    for step in extra_actions {
+        steps.push(springtale_core::rule::Action::RunConnector {
+            connector: step.action_connector,
+            action: step.action_name,
+            params: serde_json::Map::new(),
+        });
+    }
+    vec![springtale_core::rule::Action::Chain { steps }]
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+    use springtale_core::rule::{Action, Condition};
+
+    fn leaf(field: &str) -> Condition {
+        Condition::FieldEquals {
+            field: field.to_owned(),
+            value: serde_json::json!("x"),
+        }
+    }
+
+    #[test]
+    fn build_actions_single_is_bare_run_connector() {
+        let actions = build_actions("c".into(), "a".into(), vec![]);
+        assert_eq!(actions.len(), 1);
+        assert!(matches!(actions[0], Action::RunConnector { .. }));
+    }
+
+    #[test]
+    fn build_actions_empty_name_yields_no_actions() {
+        assert!(build_actions("c".into(), String::new(), vec![]).is_empty());
+    }
+
+    #[test]
+    fn build_actions_multi_wraps_in_ordered_chain() {
+        let extra = vec![
+            ConnectorActionStep {
+                action_connector: "c2".into(),
+                action_name: "a2".into(),
+            },
+            ConnectorActionStep {
+                action_connector: "c3".into(),
+                action_name: "a3".into(),
+            },
+        ];
+        let actions = build_actions("c1".into(), "a1".into(), extra);
+        assert_eq!(actions.len(), 1);
+        match &actions[0] {
+            Action::Chain { steps } => {
+                assert_eq!(steps.len(), 3);
+                // Order preserved: primary first, then extras.
+                match &steps[0] {
+                    Action::RunConnector { action, .. } => assert_eq!(action, "a1"),
+                    other => panic!("expected RunConnector, got {other:?}"),
+                }
+                match &steps[2] {
+                    Action::RunConnector { action, .. } => assert_eq!(action, "a3"),
+                    other => panic!("expected RunConnector, got {other:?}"),
+                }
+            }
+            other => panic!("expected Chain, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_conditions_all_of_stays_flat() {
+        let conds = build_conditions(vec![leaf("a"), leaf("b")], false);
+        assert_eq!(conds.len(), 2);
+        assert!(matches!(conds[0], Condition::FieldEquals { .. }));
+    }
+
+    #[test]
+    fn build_conditions_any_of_wraps_in_or() {
+        let conds = build_conditions(vec![leaf("a"), leaf("b")], true);
+        assert_eq!(conds.len(), 1);
+        match &conds[0] {
+            Condition::Or { conditions } => assert_eq!(conditions.len(), 2),
+            other => panic!("expected Or, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn build_conditions_single_any_of_needs_no_wrapper() {
+        let conds = build_conditions(vec![leaf("a")], true);
+        assert_eq!(conds.len(), 1);
+        assert!(matches!(conds[0], Condition::FieldEquals { .. }));
+    }
 }

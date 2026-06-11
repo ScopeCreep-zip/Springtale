@@ -11,9 +11,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use springtale_store::backend::StorageBackend;
-use springtale_store::schema::executions::{
-    ExecutionFilter, ExecutionStepRow, ExecutionSummary,
-};
+use springtale_store::schema::executions::{ExecutionFilter, ExecutionStepRow, ExecutionSummary};
 use thiserror::Error;
 
 use crate::error::OperationError;
@@ -127,8 +125,8 @@ impl ExecutionFilterIpc {
         let status = match self.status {
             None => None,
             Some(ref s) => Some(
-                springtale_store::schema::executions::ExecutionStatus::from_str(s)
-                    .ok_or_else(|| format!("unknown status: {s}"))?,
+                s.parse::<springtale_store::schema::executions::ExecutionStatus>()
+                    .map_err(|_| format!("unknown status: {s}"))?,
             ),
         };
         Ok(ExecutionFilter {
@@ -179,12 +177,12 @@ pub async fn list_executions(
     store: &Arc<dyn StorageBackend>,
     filter: ExecutionFilter,
 ) -> Result<Vec<ExecutionSummary>, ListExecutionsError> {
-    if let Some(limit) = filter.limit {
-        if limit == 0 {
-            return Err(ListExecutionsError::Invalid(
-                "limit must be > 0; pass None for the default".into(),
-            ));
-        }
+    if let Some(limit) = filter.limit
+        && limit == 0
+    {
+        return Err(ListExecutionsError::Invalid(
+            "limit must be > 0; pass None for the default".into(),
+        ));
     }
     let rows = store.list_executions(filter).await?;
     Ok(rows)
@@ -212,9 +210,7 @@ pub async fn list_executions_ipc(
     store: &Arc<dyn StorageBackend>,
     filter: ExecutionFilterIpc,
 ) -> Result<Vec<ExecutionInfo>, ListExecutionsError> {
-    let typed = filter
-        .into_typed()
-        .map_err(ListExecutionsError::Invalid)?;
+    let typed = filter.into_typed().map_err(ListExecutionsError::Invalid)?;
     let rows = list_executions(store, typed).await?;
     Ok(rows.into_iter().map(ExecutionInfo::from).collect())
 }
@@ -272,7 +268,9 @@ mod tests {
     #[tokio::test]
     async fn list_empty_store_returns_empty_vec() {
         let s = store();
-        let rows = list_executions(&s, ExecutionFilter::default()).await.unwrap();
+        let rows = list_executions(&s, ExecutionFilter::default())
+            .await
+            .unwrap();
         assert!(rows.is_empty());
     }
 

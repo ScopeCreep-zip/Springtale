@@ -2,8 +2,8 @@
 
 use std::path::Path;
 
-use specta::Type;
 use serde::Serialize;
+use specta::Type;
 
 use springtale_crypto::vault::store::Vault;
 
@@ -40,9 +40,10 @@ pub fn create_vault(
     let keypair = springtale_crypto::identity::keypair::Keypair::generate()
         .map_err(|e| OperationError::Rule(format!("failed to generate identity: {e}")))?;
 
-    // SECURITY: expose needed to persist identity key material
+    // Persist identity key material via the closure-scoped helper so the
+    // bytes never live in an outer let-binding.
     vault
-        .set("identity", keypair.expose_secret_bytes().to_vec())
+        .set("identity", keypair.with_secret_bytes(|b| b.to_vec()))
         .map_err(|e| OperationError::Rule(format!("failed to store identity: {e}")))?;
 
     vault

@@ -112,6 +112,7 @@ url = "${url}"
             summary: Some(
                 "Visits a URL on a schedule and captures a screenshot. Domain is added to the connector's allow-list.".into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -194,7 +195,7 @@ num_results = 5
 
 [[actions]]
 type = "AiComplete"
-prompt = "Summarise these search results in 3 short bullets, no fluff:\n${last_connector_output}"
+prompt = "Summarise these search results in 3 short bullets, no fluff:\n${last_connector_output.body}"
 
 [[actions]]
 type = "RunConnector"
@@ -212,6 +213,7 @@ text = "🗞 ${query}\n${last_ai_output}"
                 "Every morning at 7am, search the web for your query, AI-summarise the top 5 results, and ping you on Telegram."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -298,6 +300,7 @@ text = "⚠ ${watch_url} health: HTTP ${last_connector_output.status}"
                 "Hits your URL every 5 minutes. Connector reports the status; Signal pings on every check (you can refine to non-200 only once the connector exposes a status condition)."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -308,8 +311,7 @@ fn browser_form_autosubmit() -> Recipe {
     Recipe {
         id: "browser-form-autosubmit".into(),
         name: "Headless Form Autosubmit".into(),
-        description: "Power-user automation: log into a routine site, fill a form, submit."
-            .into(),
+        description: "Power-user automation: log into a routine site, fill a form, submit.".into(),
         icon_id: "wrench".into(),
         category: RecipeCategory::Web,
         tags: vec!["browser".into(), "automation".into()],
@@ -363,9 +365,18 @@ fn browser_form_autosubmit() -> Recipe {
                 label: "Schedule".into(),
                 kind: FieldKind::Select {
                     options: vec![
-                        SelectOption { value: "0 9 * * 1".into(), label: "Mondays 9am".into() },
-                        SelectOption { value: "0 12 * * *".into(), label: "Daily at noon".into() },
-                        SelectOption { value: "0 0 1 * *".into(), label: "1st of month".into() },
+                        SelectOption {
+                            value: "0 9 * * 1".into(),
+                            label: "Mondays 9am".into(),
+                        },
+                        SelectOption {
+                            value: "0 12 * * *".into(),
+                            label: "Daily at noon".into(),
+                        },
+                        SelectOption {
+                            value: "0 0 1 * *".into(),
+                            label: "1st of month".into(),
+                        },
                     ],
                 },
                 visibility: FieldVisibility::Required,
@@ -417,9 +428,9 @@ selector = "${submit_selector}"
             }],
             ai_config: None,
             summary: Some(
-                "Power-user routine: navigate → fill → submit. Host stays allow-list-gated."
-                    .into(),
+                "Power-user routine: navigate → fill → submit. Host stays allow-list-gated.".into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -536,6 +547,7 @@ content = "${trigger.body}"
                 "Bridge for systems Springtale doesn't have a connector for. Anything that can POST a webhook can now ping Telegram + Discord."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -638,7 +650,7 @@ url = "${feed_url}"
 
 [[actions]]
 type = "AiComplete"
-prompt = "From this RSS body, pull the most recent entry and rewrite the headline + a one-sentence summary as a single short post (≤280 chars):\n${last_connector_output}"
+prompt = "From this RSS body, pull the most recent entry and rewrite the headline + a one-sentence summary as a single short post (≤280 chars):\n${last_connector_output.body}"
 
 [[actions]]
 type = "RunConnector"
@@ -663,6 +675,7 @@ content = "${last_ai_output}"
                 "Every 6 hours: fetch RSS → AI-distill the latest entry into a short post → publish to Bluesky + Nostr in one shot."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -744,6 +757,7 @@ url = "${url}"
                 "Midnight: screenshot the URL. Lightweight twin of the existing Web Snapshot recipe for the common \"I just want a daily PNG\" case."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -850,6 +864,7 @@ content = "${last_connector_output}"
                 "Nightly 2am: visit your own profile page, extract text content, write it to a timestamped markdown file you own. Survives deplatforming."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }

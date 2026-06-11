@@ -2,8 +2,8 @@
 
 use serde::Serialize;
 
-use specta::Type;
 use crate::state::RuntimeState;
+use specta::Type;
 
 /// Info about a connector that CAN be installed (from factory registry).
 ///

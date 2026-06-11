@@ -140,12 +140,12 @@ mod tests {
     fn every_builtin_input_has_explicit_visibility() {
         for recipe in all() {
             for f in &recipe.inputs {
-                let _ = match f.visibility {
+                match f.visibility {
                     FieldVisibility::Required
                     | FieldVisibility::Optional
                     | FieldVisibility::Advanced
                     | FieldVisibility::Baked => (),
-                };
+                }
             }
         }
     }
@@ -218,6 +218,19 @@ mod tests {
             for f in &recipe.inputs {
                 inputs.insert(f.id.clone(), serde_json::json!("placeholder"));
             }
+            // Derived inputs (e.g. `location` from `geocode(city)`) are
+            // resolved at apply time too, so the input layer consumes their
+            // `${target}` placeholders. Inject synthetic values for them.
+            for resolver in &recipe.blueprint.derived_inputs {
+                match resolver {
+                    crate::operations::recipes::types::DerivedInputResolver::Geocode {
+                        target_input_id,
+                        ..
+                    } => {
+                        inputs.insert(target_input_id.clone(), serde_json::json!("placeholder"));
+                    }
+                }
+            }
 
             for step in &recipe.blueprint.rules {
                 let resolved_toml = substitute_template_public(&step.toml, &inputs);
@@ -245,5 +258,175 @@ mod tests {
                 }
             }
         }
+    }
+
+    /// OUTPUT-TRANSFORM CONTRACT (skeleton check). A recipe must never
+    /// hand a person — or an AI prompt — a RAW data blob. Every value
+    /// surfaced to a user (`Notify.body`, `SendMessage`, a messaging
+    /// `send_*` text) or fed to `AiComplete` must be a formatted message
+    /// or a specific extracted field, never the whole connector output /
+    /// raw response body / whole extract object. The deterministic fix is
+    /// an `Extract` step + `${last_extract_output.FIELD}`. This is the
+    /// output-quality analogue of the placeholder test above — the check
+    /// that would have caught the weather raw-JSON bug.
+    #[test]
+    fn no_recipe_hands_a_raw_blob_to_a_user_or_ai() {
+        use crate::operations::recipes::apply::substitute_template_public;
+        use crate::operations::recipes::types::RecipeInputs;
+        use springtale_core::rule::action::Action;
+        use springtale_core::rule::types::Rule;
+
+        // What a USER may never be shown: ANY raw data (whole connector
+        // envelope, raw response `.body`/`.output`, whole extract object,
+        // gated shell stub). `${last_ai_output}` / `${last_connector_message}`
+        // are allowed — already-formatted prose / human messages.
+        const RAW_USER: &[&str] = &[
+            "${last_connector_output}",
+            "${last_connector_output.body}",
+            "${last_connector_output.output}",
+            "${last_shell_output}",
+            "${last_extract_output}",
+        ];
+        // What an AI PROMPT may never be fed: the whole HTTP envelope (status+
+        // headers noise) or the gated shell stub. Feeding `.body` (the response
+        // TEXT the model should read) is fine — the model reads text.
+        const RAW_AI: &[&str] = &["${last_connector_output}", "${last_shell_output}"];
+
+        // (text, is_user_facing) — AiComplete prompts are AI-facing, the rest user-facing.
+        fn collect(action: &Action, out: &mut Vec<(String, bool)>) {
+            match action {
+                Action::Notify { body, .. } => out.push((body.clone(), true)),
+                Action::SendMessage { text } => out.push((text.clone(), true)),
+                Action::AiComplete { prompt, .. } => out.push((prompt.clone(), false)),
+                Action::RunConnector { action, params, .. } if action.starts_with("send") => {
+                    for key in ["text", "message", "body"] {
+                        if let Some(s) = params.get(key).and_then(|v| v.as_str()) {
+                            out.push((s.to_owned(), true));
+                        }
+                    }
+                }
+                Action::Chain { steps } => {
+                    for s in steps {
+                        collect(s, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let mut violations: Vec<String> = Vec::new();
+        for recipe in all() {
+            let mut inputs = RecipeInputs::empty();
+            for f in &recipe.inputs {
+                inputs.insert(f.id.clone(), serde_json::json!("x"));
+            }
+            for rule_step in &recipe.blueprint.rules {
+                let toml = substitute_template_public(&rule_step.toml, &inputs);
+                let Ok(rule) = toml::from_str::<Rule>(&toml) else {
+                    continue;
+                };
+                let mut surfaced = Vec::new();
+                for a in &rule.actions {
+                    collect(a, &mut surfaced);
+                }
+                for (body, user_facing) in surfaced {
+                    let raws = if user_facing { RAW_USER } else { RAW_AI };
+                    for raw in raws {
+                        if body.contains(raw) {
+                            let dest = if user_facing {
+                                "to a user"
+                            } else {
+                                "to an AI prompt"
+                            };
+                            violations.push(format!("{} surfaces raw `{raw}` {dest}", recipe.id));
+                        }
+                    }
+                }
+            }
+        }
+
+        assert!(
+            violations.is_empty(),
+            "recipes hand raw data to a user/AI — add an `Extract` step and \
+             reference `${{last_extract_output.FIELD}}` instead:\n{}",
+            violations.join("\n"),
+        );
+    }
+
+    /// END-TO-END SUCCESS (no AI). Fire the weather recipe's chain with a
+    /// realistic stubbed connector response and assert the user sees a
+    /// human sentence — the actual `Extract` + template-resolve code, the
+    /// thing the parse tests never exercised. This is the test that proves
+    /// the recipe WORKS (not just parses), with a NoopAdapter (no AI).
+    #[tokio::test]
+    async fn weather_recipe_fires_with_human_readable_output() {
+        use crate::extraction::extract;
+        use crate::operations::recipes::apply::substitute_template_public;
+        use crate::operations::recipes::types::RecipeInputs;
+        use springtale_core::rule::action::Action;
+        use springtale_core::rule::chain_context::ChainContext;
+        use springtale_core::rule::template_resolve::resolve_chain_template;
+        use springtale_core::rule::types::Rule;
+
+        // Realistic Open-Meteo forecast — `body` is the raw response TEXT.
+        let body = serde_json::json!({
+            "current": {
+                "temperature_2m": 72.4,
+                "apparent_temperature": 70.1,
+                "wind_speed_10m": 6.3
+            }
+        })
+        .to_string();
+
+        let recipe = get("weather-briefing").expect("weather recipe");
+        let mut inputs = RecipeInputs::empty();
+        inputs.insert("city", serde_json::json!("Sacramento, CA"));
+        inputs.insert("schedule", serde_json::json!("0 8 * * *"));
+        inputs.insert("location", serde_json::json!("latitude=38&longitude=-121"));
+
+        let toml = substitute_template_public(&recipe.blueprint.rules[0].toml, &inputs);
+        let rule: Rule = toml::from_str(&toml).expect("rule parses");
+        let Action::Chain { steps } = &rule.actions[0] else {
+            panic!("expected a Chain action");
+        };
+
+        let mut chain = ChainContext::new(serde_json::Value::Null);
+        chain.last_connector_output =
+            Some(serde_json::json!({ "status": 200, "headers": {}, "body": body }));
+
+        let mut final_msg = String::new();
+        for step in steps {
+            match step {
+                Action::Extract { source, kind } => {
+                    assert_eq!(source, "last_connector_output.body");
+                    let src = chain
+                        .last_connector_output
+                        .as_ref()
+                        .and_then(|v| v.get("body"))
+                        .cloned()
+                        .expect("connector body");
+                    let out = extract(&src, kind, None).await.expect("extract ok");
+                    chain.last_extract_output = Some(out);
+                }
+                Action::Notify { body, .. } => {
+                    final_msg = resolve_chain_template(body, &chain, None);
+                }
+                _ => {}
+            }
+        }
+
+        // The user sees a sentence — not JSON, not placeholders, not null.
+        assert!(final_msg.contains("°F"), "no temperature unit: {final_msg}");
+        assert!(final_msg.contains("72.4"), "temp not rendered: {final_msg}");
+        assert!(
+            final_msg.contains("Sacramento, CA"),
+            "city not rendered: {final_msg}"
+        );
+        assert!(
+            !final_msg.contains("${"),
+            "unresolved placeholder: {final_msg}"
+        );
+        assert!(!final_msg.contains("{\""), "raw JSON leaked: {final_msg}");
+        assert!(!final_msg.contains("null"), "null in output: {final_msg}");
     }
 }

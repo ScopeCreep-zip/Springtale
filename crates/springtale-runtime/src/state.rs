@@ -79,6 +79,25 @@ pub struct RuntimeState {
     pub canvas: Arc<RwLock<CanvasState>>,
     /// Broadcast channel for canvas updates.
     pub canvas_tx: broadcast::Sender<CanvasUpdate>,
+    /// Delivery fan-out for fired `Notify` / `SendMessage` steps
+    /// (`crate::notification`). The embedded job consumer walks each
+    /// finished chain and broadcasts every user-facing delivery step
+    /// here; subscribers forward to the in-app chat stream (daemon SSE
+    /// / desktop Tauri event) and a best-effort OS notification.
+    /// Mirror of the `canvas_tx` pattern. Without this a scheduled
+    /// `Notify`/`SendMessage` recipe fires and the user receives
+    /// nothing.
+    pub notification_tx: broadcast::Sender<crate::notification::NotificationEvent>,
+    /// ConnectorEvent subscription registry (`crate::triggers`). Empty
+    /// until `bootstrap_embedded` runs — it owns the `trigger_tx` the
+    /// registry needs, so it builds the registry, wires every enabled
+    /// ConnectorEvent rule at boot, and `set`s it here. Every deploy
+    /// surface (recipe-library apply, chat `RuntimeRecipeDeployer`, rule
+    /// CRUD) reaches the SAME registry through this, so a messaging bot
+    /// deployed by ANY path attaches its connector-event handler and
+    /// actually fires. `OnceLock` because it's written exactly once, at
+    /// boot, then read concurrently.
+    pub trigger_registry: Arc<std::sync::OnceLock<crate::triggers::TriggerRegistry>>,
     /// Broadcast channel for cooperation events (Phase H1/H2). Each
     /// internal-state cooperation change (intervention fired, sacrifice
     /// yielded, vote opened, role transformed, member marked down,

@@ -19,17 +19,16 @@ pub mod authoring;
 pub mod builtin;
 pub mod library;
 pub mod pieces;
+pub mod resolver;
 pub mod types;
 
-pub use apply::{apply_recipe, render_blueprint_toml, ApplyError};
+pub use apply::{ApplyError, apply_recipe, render_blueprint_toml};
 pub use authoring::{
-    delete_user_recipe, export_recipe_toml, fork_recipe, import_recipe_toml,
-    load_user_recipes, save_user_recipe, AuthoringError,
+    AuthoringError, delete_user_recipe, export_recipe_toml, fork_recipe, import_recipe_toml,
+    load_user_recipes, save_user_recipe,
 };
-pub use library::{
-    get_recipe, list_categories, list_recipes, record_recent, toggle_favorite,
-};
-pub use pieces::{list_pieces, RecipePiece, RecipePieceSummary};
+pub use library::{get_recipe, list_categories, list_recipes, record_recent, toggle_favorite};
+pub use pieces::{RecipePiece, RecipePieceSummary, list_pieces};
 
 /// Re-export of [`crate::operations::preview::preview_blueprint`] under
 /// the name the W2.B authoring Clear Check expects. Keeps the call
@@ -41,8 +40,9 @@ pub fn preview_via_clear_check(
 ) -> crate::operations::preview::PreviewReport {
     crate::operations::preview::preview_blueprint(recipe, inputs)
 }
+pub use resolver::ResolverError;
 pub use types::{
-    ApplyReport, ConnectorConfigStep, Difficulty, FieldKind, FieldVisibility, InputField,
-    Recipe, RecipeBlueprint, RecipeCategory, RecipeFilter, RecipeInputs, RecipeSort,
+    ApplyReport, ConnectorConfigStep, DerivedInputResolver, Difficulty, FieldKind, FieldVisibility,
+    InputField, Recipe, RecipeBlueprint, RecipeCategory, RecipeFilter, RecipeInputs, RecipeSort,
     RecipeSource, RecipeSourceFilter, RuleStep, SelectOption,
 };

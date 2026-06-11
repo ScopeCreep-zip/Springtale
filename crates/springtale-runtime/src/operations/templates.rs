@@ -15,8 +15,8 @@
 //!     the vault UI, per the product model rule "don't tell users to edit
 //!     a TOML file."
 
-use std::io;
 use specta::Type;
+use std::io;
 use std::path::{Path, PathBuf};
 
 use chrono::Utc;
@@ -80,11 +80,7 @@ pub fn write_to(name: &str) -> Result<WriteReport, TemplateError> {
     let projects_dir = springtale_store::paths::data_dir().join("projects");
     std::fs::create_dir_all(&projects_dir)?;
 
-    let slug = format!(
-        "{}-{}",
-        name,
-        Utc::now().format("%Y%m%d-%H%M%S")
-    );
+    let slug = format!("{}-{}", name, Utc::now().format("%Y%m%d-%H%M%S"));
     let dest = projects_dir.join(&slug);
     if dest.exists() {
         return Err(TemplateError::DestinationNotEmpty(dest));

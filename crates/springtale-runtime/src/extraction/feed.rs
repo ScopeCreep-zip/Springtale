@@ -20,14 +20,13 @@
 //! for the "alert me on new posts" pattern.
 
 use feed_rs::parser;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use super::{source_as_str, ExtractError};
+use super::{ExtractError, source_as_str};
 
 pub fn extract(source: &Value) -> Result<Value, ExtractError> {
     let body = source_as_str(source)?;
-    let feed = parser::parse(body.as_bytes())
-        .map_err(|e| ExtractError::Feed(e.to_string()))?;
+    let feed = parser::parse(body.as_bytes()).map_err(|e| ExtractError::Feed(e.to_string()))?;
 
     let entries: Vec<Value> = feed
         .entries
@@ -41,10 +40,7 @@ pub fn extract(source: &Value) -> Result<Value, ExtractError> {
                 .as_ref()
                 .map(|s| s.content.clone())
                 .or_else(|| entry.content.as_ref().and_then(|c| c.body.clone()));
-            let published = entry
-                .published
-                .or(entry.updated)
-                .map(|dt| dt.to_rfc3339());
+            let published = entry.published.or(entry.updated).map(|dt| dt.to_rfc3339());
             json!({
                 "id": id,
                 "title": title,

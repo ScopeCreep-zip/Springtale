@@ -93,7 +93,7 @@ fn signal_relay() -> Recipe {
 [trigger]
 type = "ConnectorEvent"
 connector = "connector-signal"
-event = "message"
+event = "message_received"
 
 [[actions]]
 type = "RunConnector"
@@ -110,6 +110,7 @@ text = "${reply_text}"
             summary: Some(
                 "Auto-replies to incoming Signal messages with a fixed text. Runs locally.".into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -235,9 +236,10 @@ text = "${alert_text}"
             ],
             ai_config: None,
             summary: Some(
-                "Two rules: a webhook refreshes the heartbeat file's mtime each time you ping; a 30-minute cron checks the file's age and Signals your trusted contact when silence crosses the threshold."
+                "Two rules: a webhook refreshes the heartbeat file's mtime each time you ping; a 30-minute cron checks the file's age and Signals your trusted contact when silence crosses the threshold. The check-in and age-check use system commands, so Springtale asks you to approve them the first time they run."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -337,9 +339,10 @@ text = "${alert_text}"
             }],
             ai_config: None,
             summary: Some(
-                "Variant of dead-man's-switch for users who can't expose a public webhook. Refresh the heartbeat with `touch ${checkin_file}` from cron / a desktop shortcut / a pre-commit hook."
+                "Variant of dead-man's-switch for users who can't expose a public webhook. Refresh the heartbeat with `touch ${checkin_file}` from cron / a desktop shortcut / a pre-commit hook. The age-check runs a system command, so Springtale asks you to approve it the first time it fires."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -426,7 +429,7 @@ num_results = 10
 
 [[actions]]
 type = "AiComplete"
-prompt = "You are a doxxing risk classifier. Look at these search results and reply with one of: SAFE (none of the matches expose personal info), WATCH (mention of name but no PII), ALERT (address/phone/aliases visible). Reply with ONLY the single word and one sentence of detail.\n\n${last_connector_output}"
+prompt = "You are a doxxing risk classifier. Look at these search results and reply with one of: SAFE (none of the matches expose personal info), WATCH (mention of name but no PII), ALERT (address/phone/aliases visible). Reply with ONLY the single word and one sentence of detail.\n\n${last_connector_output.body}"
 
 [[actions]]
 type = "RunConnector"
@@ -444,6 +447,7 @@ text = "🔍 Doxxing watch: ${last_ai_output}"
                 "Every 6 hours: search your name + aliases, AI risk-rates the results, Signal pings with the verdict. Tune ${watch_terms} carefully — these get searched on the public web."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -559,6 +563,7 @@ text = "${panic_text}"
                 "One bookmarkable URL fires panic comms to multiple channels. Composes with the existing G5 quick-hide + vault-lock chain — hit panic, then close the app."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -625,7 +630,7 @@ fn evidence_archive_signal() -> Recipe {
 [trigger]
 type = "ConnectorEvent"
 connector = "connector-signal"
-event = "message"
+event = "message_received"
 
 [[conditions]]
 type = "FieldEquals"
@@ -644,6 +649,7 @@ content = "${trigger.message}"
                 "Every incoming Signal message from the watched sender is written to a per-sender, per-timestamp file. Append-only by filename — nothing overwritten."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -654,9 +660,7 @@ fn evidence_archive_telegram() -> Recipe {
     Recipe {
         id: "evidence-archive-telegram".into(),
         name: "Telegram Evidence Archive".into(),
-        description:
-            "Same shape as the Signal archive recipe but for Telegram chats."
-                .into(),
+        description: "Same shape as the Signal archive recipe but for Telegram chats.".into(),
         icon_id: "shield".into(),
         category: RecipeCategory::SafetyPrivacy,
         tags: vec!["telegram".into(), "archive".into(), "evidence".into()],
@@ -723,9 +727,9 @@ content = "${trigger.text}"
             }],
             ai_config: None,
             summary: Some(
-                "Append-only archive of every message in the watched Telegram chat."
-                    .into(),
+                "Append-only archive of every message in the watched Telegram chat.".into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -792,6 +796,7 @@ text = "🛡 Monthly review: which connectors / hosts / contacts have access? Dr
                 "First of the month at 10am: nudge to audit your own allow-lists. Pure reminder; the audit happens in your UI."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -808,7 +813,7 @@ fn comms_audit_weekly() -> Recipe {
         icon_id: "newspaper".into(),
         category: RecipeCategory::SafetyPrivacy,
         tags: vec!["audit".into(), "transparency".into(), "telegram".into()],
-        connectors_used: vec!["connector-shell".into(), "connector-telegram".into()],
+        connectors_used: vec!["connector-telegram".into()],
         ai_required: false,
         difficulty: Difficulty::Standard,
         source: RecipeSource::Builtin,
@@ -843,17 +848,13 @@ type = "Cron"
 expression = "0 11 * * 0"
 
 [[actions]]
-type = "RunShell"
-command = "springtale config list | head -n 50"
-
-[[actions]]
 type = "RunConnector"
 connector = "connector-telegram"
 action = "send_message"
 
 [actions.params]
 chat_id = "${chat_id}"
-text = "📋 Weekly comms audit\n${last_shell_output}"
+text = "📋 Weekly comms audit — time to review your connectors, paired devices, and access list in Settings → Safety. Look for anything you don't recognize and revoke it."
 "#
                 .into(),
             }],
@@ -862,6 +863,7 @@ text = "📋 Weekly comms audit\n${last_shell_output}"
                 "Sunday 11am: enumerate your configured connectors, summarise into one Telegram message. Transparency about your own footprint."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -939,6 +941,7 @@ seconds = "${ttl_seconds}"
                 "1st of the month at 4am: re-apply the disappearing-message TTL on the target Signal thread. Pushes drift back to safe defaults."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -1042,6 +1045,7 @@ message_id = "${trigger.message_id}"
                 "Auto-deletes messages on a watched channel that contain the configured keyword. Bot needs Manage Messages."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -1139,6 +1143,7 @@ message = "${warning_text}"
                 "AI classifies every chat message; when the classifier says WARN, the bot posts a public warning. Off by default — start in dry-run by setting warning_text to a private channel first."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -1221,7 +1226,7 @@ action = "send_message"
 
 [actions.params]
 chat_id = "${chat_id}"
-text = "🔐 VPN ${tun_interface}: ${last_shell_output}"
+text = "🔐 VPN monitor ran for ${tun_interface}. Live up/down status needs shell access — approve it in Settings → Safety to enable real alerts."
 "#
                 .into(),
             }],
@@ -1230,6 +1235,7 @@ text = "🔐 VPN ${tun_interface}: ${last_shell_output}"
                 "Cron polls the tunnel interface every minute; Telegram message reflects state. Future enhancement: only ping on state-change once the rule engine exposes conditional outputs."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -1292,6 +1298,7 @@ body = "Restart Tor / rotate identity if you've been on long-running sessions."
                 "Per Tor Project guidance: rotate circuits regularly. This is the reminder side; the actual rotation is yours to do."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -1334,6 +1341,7 @@ body = "Lock vault • set disguise • test panic-tap • travel kit checklist.
                 "Pre-weekend nudge that lines up with the existing G5 safety surface (disguise, panic-tap, content protection). Compose with travel-prepare CLI for the actual switch."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -1400,6 +1408,7 @@ text = "🔑 Quarterly key rotation: Signal safety numbers • Nostr keys • Bl
                 "Quarterly Telegram nudge to rotate long-lived secrets. Per EFF hygiene guidance."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -1469,9 +1478,10 @@ command = "echo '${trigger.body}' | gpg --batch --yes --encrypt --recipient ${gp
             }],
             ai_config: None,
             summary: Some(
-                "POST a payload to your webhook; the recipe GPG-encrypts it to a timestamped file on local disk. Re-encrypt later with `gpg --decrypt`. Useful for ephemeral leakage / evidence pipes."
+                "POST a payload to your webhook; the recipe GPG-encrypts it to a timestamped file on local disk. Re-encrypt later with `gpg --decrypt`. Useful for ephemeral leakage / evidence pipes. Encryption runs a system command (gpg), so Springtale asks you to approve it the first time it fires."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }

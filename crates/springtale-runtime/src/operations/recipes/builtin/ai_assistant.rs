@@ -5,8 +5,8 @@
 use serde_json::json;
 
 use super::super::types::{
-    AiConfigStep, ConnectorConfigStep, Difficulty, FieldKind, FieldVisibility, InputField,
-    Recipe, RecipeBlueprint, RecipeCategory, RecipeSource, RuleStep, SelectOption,
+    AiConfigStep, ConnectorConfigStep, Difficulty, FieldKind, FieldVisibility, InputField, Recipe,
+    RecipeBlueprint, RecipeCategory, RecipeSource, RuleStep, SelectOption,
 };
 
 pub fn all() -> Vec<Recipe> {
@@ -42,7 +42,10 @@ fn llm_assistant() -> Recipe {
                             value: "ollama".into(),
                             label: "Ollama (local, no network)".into(),
                         },
-                        SelectOption { value: "openai".into(), label: "OpenAI".into() },
+                        SelectOption {
+                            value: "openai".into(),
+                            label: "OpenAI".into(),
+                        },
                         SelectOption {
                             value: "anthropic".into(),
                             label: "Anthropic".into(),
@@ -91,9 +94,9 @@ fn llm_assistant() -> Recipe {
                 }),
             }),
             summary: Some(
-                "Configures an AI provider so any bot can use it. Ollama runs locally."
-                    .into(),
+                "Configures an AI provider so any bot can use it. Ollama runs locally.".into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -165,6 +168,7 @@ text = "${last_ai_output}"
                 "AI translates incoming Telegram messages into your target language and replies inline. Useful for multilingual community chats."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -243,6 +247,7 @@ text = "🌙 ${last_ai_output}"
                 "7pm every day: the LLM drafts one short, varying check-in question and Signal delivers it. Off-by-default; deliberately small."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -342,6 +347,7 @@ emoji = "${cw_emoji}"
                 "AI reads each posted message and (when the classifier says YES) adds a CW emoji reaction. Heads-up for readers without surfacing or quoting the offending content."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }

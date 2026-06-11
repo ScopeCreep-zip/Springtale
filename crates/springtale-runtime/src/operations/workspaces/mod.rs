@@ -12,7 +12,7 @@ pub mod stream;
 
 pub use harvester::harvest_event;
 pub use query::{
-    delete_workspace, list_workspaces, preview_onboard_url, scan_workspaces,
-    upsert_workspace_manual, WorkspaceInfo,
+    WorkspaceInfo, delete_workspace, list_workspaces, preview_onboard_url, scan_workspaces,
+    upsert_workspace_manual,
 };
-pub use stream::{start_onboard_stream, OnDiscoveryCallback};
+pub use stream::{OnDiscoveryCallback, start_onboard_stream};

@@ -77,14 +77,12 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
     use serde_json::json;
-    use springtale_ai::adapter::{
-        AiOptions, AiRequest, AiResponse, AiStream, ConnectorInfo,
-    };
+    use springtale_ai::adapter::{AiOptions, AiRequest, AiResponse, AiStream, ConnectorInfo};
     use springtale_ai::{
         AiError, ExtractOptions, ExtractOutcome, NoopAdapter, StructuredExtractor,
     };
-    use std::collections::BTreeMap;
     use springtale_core::rule::types::Rule;
+    use std::collections::BTreeMap;
 
     /// Test adapter that returns a fixed structured response.
     struct FakeExtractAdapter {

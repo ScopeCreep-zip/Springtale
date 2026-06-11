@@ -46,16 +46,14 @@
 
 use std::sync::Arc;
 
-use springtale_core::rule::action::Action;
-use springtale_core::rule::{ChainContext, ChainError, StepOutput};
-use springtale_core::rule::template_resolve::{resolve_chain_template, resolve_chain_value};
-use springtale_cooperation::execution::ExecutionContext;
 use springtale_ai::{AiOptions, AiRequest};
+use springtale_cooperation::execution::ExecutionContext;
+use springtale_core::rule::action::Action;
+use springtale_core::rule::template_resolve::{resolve_chain_template, resolve_chain_value};
+use springtale_core::rule::{ChainContext, ChainError, StepOutput};
 use springtale_sentinel::{Sentinel, Verdict};
 
-use crate::cooperation::{
-    momentum_to_throttle_tier, momentum_to_wasm_tier, CapabilityBridge,
-};
+use crate::cooperation::{CapabilityBridge, momentum_to_throttle_tier, momentum_to_wasm_tier};
 
 /// Maximum size for WriteFile action content (10 MiB).
 const MAX_WRITE_FILE_BYTES: usize = 10 * 1024 * 1024;
@@ -106,18 +104,14 @@ pub fn dispatch_actions<'a>(
         // Best-effort recorder.begin — failures fall through to
         // dispatch so the chain still runs. The privacy invariant
         // is about NOT writing content; missing rows are fine.
-        if let Err(e) = recorder
-            .begin(&execution, &trigger_summary, None)
-            .await
-        {
+        if let Err(e) = recorder.begin(&execution, &trigger_summary, None).await {
             tracing::warn!(error = %e, "executions recorder.begin failed");
         }
 
         let execution_id = execution.execution_id.to_string();
         let mut chain = ChainContext::new(trigger_payload);
         let mut steps_emitted = 0usize;
-        let mut final_status =
-            springtale_store::schema::executions::ExecutionStatus::Succeeded;
+        let mut final_status = springtale_store::schema::executions::ExecutionStatus::Succeeded;
         let mut error_kind: Option<&'static str> = None;
         let mut chain_outcome: Result<(), ChainError> = Ok(());
 
@@ -130,9 +124,7 @@ pub fn dispatch_actions<'a>(
                     // `steps_emitted`.
                     while steps_emitted < chain.steps.len() {
                         let step = &chain.steps[steps_emitted];
-                        if let Err(e) =
-                            recorder.record_step(&execution_id, step).await
-                        {
+                        if let Err(e) = recorder.record_step(&execution_id, step).await {
                             tracing::warn!(error = %e, "executions recorder.record_step failed");
                         }
                         steps_emitted += 1;
@@ -142,30 +134,24 @@ pub fn dispatch_actions<'a>(
                     // Flush any steps that did run (dedupe step itself).
                     while steps_emitted < chain.steps.len() {
                         let step = &chain.steps[steps_emitted];
-                        if let Err(e) =
-                            recorder.record_step(&execution_id, step).await
-                        {
+                        if let Err(e) = recorder.record_step(&execution_id, step).await {
                             tracing::warn!(error = %e, "executions recorder.record_step failed");
                         }
                         steps_emitted += 1;
                     }
-                    final_status =
-                        springtale_store::schema::executions::ExecutionStatus::Empty;
+                    final_status = springtale_store::schema::executions::ExecutionStatus::Empty;
                     chain_outcome = Ok(());
                     break;
                 }
                 Err(e) => {
                     while steps_emitted < chain.steps.len() {
                         let step = &chain.steps[steps_emitted];
-                        if let Err(rec_err) =
-                            recorder.record_step(&execution_id, step).await
-                        {
+                        if let Err(rec_err) = recorder.record_step(&execution_id, step).await {
                             tracing::warn!(error = %rec_err, "executions recorder.record_step failed");
                         }
                         steps_emitted += 1;
                     }
-                    final_status =
-                        springtale_store::schema::executions::ExecutionStatus::Failed;
+                    final_status = springtale_store::schema::executions::ExecutionStatus::Failed;
                     error_kind = Some(classify_chain_error(&e));
                     chain_outcome = Err(e);
                     break;
@@ -240,7 +226,9 @@ fn run_step<'a>(
     chain: &'a mut ChainContext,
     depth: u32,
 ) -> std::pin::Pin<Box<dyn std::future::Future<Output = Result<(), ChainError>> + Send + 'a>> {
-    Box::pin(run_step_inner(action, bridge, sentinel, execution, chain, depth))
+    Box::pin(run_step_inner(
+        action, bridge, sentinel, execution, chain, depth,
+    ))
 }
 
 async fn run_step_inner(
@@ -325,29 +313,28 @@ async fn run_step_inner(
                     action = %action_name,
                     "DRY RUN — side-effecting connector action stubbed"
                 );
-                return Ok({
-                    let step = StepOutput {
-                        index: chain.next_step_index(),
-                        kind: kind.into(),
-                        name: None,
-                        output: serde_json::json!({
-                            "success": true,
-                            "message": format!(
-                                "dry-run: would call {connector}.{action_name}"
-                            ),
-                            "output": {
-                                "connector": connector,
-                                "action": action_name,
-                                "params": input,
-                            },
-                            "dry_run": true,
-                        }),
-                        duration_ms: started.elapsed().as_millis() as u64,
-                        error: None,
-                    };
-                    chain.record_step(step);
-                    sentinel.report_success(connector_name);
-                });
+                let step = StepOutput {
+                    index: chain.next_step_index(),
+                    kind: kind.into(),
+                    name: None,
+                    output: serde_json::json!({
+                        "success": true,
+                        "message": format!(
+                            "dry-run: would call {connector}.{action_name}"
+                        ),
+                        "output": {
+                            "connector": connector,
+                            "action": action_name,
+                            "params": input,
+                        },
+                        "dry_run": true,
+                    }),
+                    duration_ms: started.elapsed().as_millis() as u64,
+                    error: None,
+                };
+                chain.record_step(step);
+                sentinel.report_success(connector_name);
+                return Ok(());
             }
 
             let effective_tier = momentum_to_wasm_tier(execution.momentum);
@@ -427,10 +414,7 @@ async fn run_step_inner(
         Action::SendMessage { text } => {
             let resolved = resolve_chain_template(text, chain, Some(&run_id));
             if dry_run {
-                tracing::info!(
-                    text_len = resolved.len(),
-                    "DRY RUN — SendMessage stubbed"
-                );
+                tracing::info!(text_len = resolved.len(), "DRY RUN — SendMessage stubbed");
             } else {
                 tracing::info!(text = %resolved, "SendMessage (no destination context)");
             }
@@ -495,9 +479,7 @@ async fn run_step_inner(
                     .map_err(|e| ChainError::StepFailed {
                         index: chain.next_step_index(),
                         kind: kind.into(),
-                        message: format!(
-                            "failed to write file {resolved_destination}: {e}"
-                        ),
+                        message: format!("failed to write file {resolved_destination}: {e}"),
                     })?;
                 tracing::info!(path = %resolved_destination, "file written");
             }
@@ -615,14 +597,33 @@ async fn run_step_inner(
             // model sees it. Critical: this is how `${last_connector_output}`
             // ends up in the prompt for "summarize this fetched
             // body" recipes.
-            let resolved_prompt = resolve_chain_template(prompt, chain, Some(&run_id));
+            //
+            // OWASP LLM01:2025 indirect-injection guard: every
+            // substituted value is wrapped in `<external_context>` tags
+            // by the AI-specific resolver, and the rule explaining the
+            // tags is prepended to the system prompt. The model
+            // therefore sees both (a) explicit instructions that the
+            // tagged content is untrusted data, and (b) the tagged
+            // values themselves.
+            let resolved_user_prompt =
+                springtale_core::rule::template_resolve::resolve_chain_template_for_ai(
+                    prompt,
+                    chain,
+                    Some(&run_id),
+                );
+            let resolved_prompt = format!(
+                "{rule}\n\n{prompt}",
+                rule = springtale_core::rule::template_resolve::AI_EXTERNAL_CONTEXT_RULE,
+                prompt = resolved_user_prompt,
+            );
 
             // Route through the bridge — falls back to NoopAdapter
             // when no adapter is wired. NoopAdapter returns
             // `AiError::Disabled`, which we surface as a step error
             // (not a silent stub).
-            let adapter_arc =
-                bridge.ai_adapter_for(execution.agent_id.as_ref(), adapter.as_deref());
+            let adapter_arc = bridge
+                .ai_adapter_for(execution.agent_id.as_ref(), adapter.as_deref())
+                .await;
             let request = AiRequest::Complete {
                 prompt: resolved_prompt.clone(),
             };
@@ -659,7 +660,10 @@ async fn run_step_inner(
             }
         }
 
-        Action::Extract { source, kind: extract_kind } => {
+        Action::Extract {
+            source,
+            kind: extract_kind,
+        } => {
             // Resolve `source` as a path against the chain — e.g.
             // `"last_connector_output.body"` → the HTTP body string,
             // or `"trigger.payload"` → the trigger event JSON.
@@ -672,16 +676,13 @@ async fn run_step_inner(
             // The AI adapter for LlmSchema extraction. We pass it
             // through opt-in — Phase A only fires non-LLM tiers;
             // Phase B activates LlmSchema and the adapter is read.
-            let adapter_arc =
-                bridge.ai_adapter_for(execution.agent_id.as_ref(), None);
+            let adapter_arc = bridge
+                .ai_adapter_for(execution.agent_id.as_ref(), None)
+                .await;
             let ai_ref: Option<&dyn springtale_ai::AiAdapter> = Some(&*adapter_arc);
 
-            let extracted = crate::extraction::extract(
-                &resolved_source,
-                extract_kind,
-                ai_ref,
-            )
-            .await;
+            let extracted =
+                crate::extraction::extract(&resolved_source, extract_kind, ai_ref).await;
             match extracted {
                 Ok(value) => Ok(StepOutput {
                     index: chain.next_step_index(),
@@ -699,7 +700,11 @@ async fn run_step_inner(
             }
         }
 
-        Action::Dedupe { key, bucket, history } => {
+        Action::Dedupe {
+            key,
+            bucket,
+            history,
+        } => {
             // Resolve key + bucket templates against the chain.
             let resolved_key = resolve_chain_template(key, chain, Some(&run_id));
             let resolved_bucket = resolve_chain_template(bucket, chain, Some(&run_id));
@@ -719,22 +724,20 @@ async fn run_step_inner(
                 springtale_store::schema::dedupe::DedupeOutcome::Fresh
             } else {
                 match bridge.store() {
-                    Some(store) => {
-                        crate::dedupe::check_and_record(
-                            store,
-                            formation_id.as_deref(),
-                            &rule_id,
-                            &resolved_bucket,
-                            &resolved_key,
-                            *history,
-                        )
-                        .await
-                        .map_err(|e| ChainError::StepFailed {
-                            index: chain.next_step_index(),
-                            kind: kind.into(),
-                            message: e.to_string(),
-                        })?
-                    }
+                    Some(store) => crate::dedupe::check_and_record(
+                        store,
+                        formation_id.as_deref(),
+                        &rule_id,
+                        &resolved_bucket,
+                        &resolved_key,
+                        *history,
+                    )
+                    .await
+                    .map_err(|e| ChainError::StepFailed {
+                        index: chain.next_step_index(),
+                        kind: kind.into(),
+                        message: e.to_string(),
+                    })?,
                     None => springtale_store::schema::dedupe::DedupeOutcome::Fresh,
                 }
             };
@@ -862,7 +865,7 @@ fn is_side_effecting_action(name: &str) -> bool {
         "kick",
         "mute",
     ];
-    if WRITE_EXACT.iter().any(|w| *w == name) {
+    if WRITE_EXACT.contains(&name) {
         return true;
     }
     WRITE_PREFIXES.iter().any(|p| name.starts_with(p))
@@ -925,21 +928,19 @@ mod tests {
     use springtale_cooperation::execution::{
         ExecutionContext as CoopExecutionContext, ExecutionMode as CoopExecutionMode,
     };
+    use springtale_store::SqliteBackend;
     use springtale_store::backend::StorageBackend;
     use springtale_store::schema::executions::ExecutionFilter;
-    use springtale_store::SqliteBackend;
     use std::sync::Arc;
 
     /// Build a bridge wired against an in-memory SqliteBackend with
     /// a real StoreRecorder — used by tests that assert on
     /// executions-log rows after a chain runs.
     fn bridge_with_recorded_store() -> (CapabilityBridge, Arc<dyn StorageBackend>) {
-        let store: Arc<dyn StorageBackend> =
-            Arc::new(SqliteBackend::open_in_memory().unwrap());
-        let recorder: Arc<dyn crate::operations::executions::ExecutionRecorder> =
-            Arc::new(crate::operations::executions::StoreRecorder::new(
-                store.clone(),
-            ));
+        let store: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open_in_memory().unwrap());
+        let recorder: Arc<dyn crate::operations::executions::ExecutionRecorder> = Arc::new(
+            crate::operations::executions::StoreRecorder::new(store.clone()),
+        );
         let registry = Arc::new(tokio::sync::RwLock::new(
             springtale_connector::registry::store::ConnectorRegistry::default(),
         ));
@@ -992,7 +993,10 @@ mod tests {
             list[0].status,
             springtale_store::schema::executions::ExecutionStatus::Succeeded
         );
-        assert_eq!(list[0].mode, springtale_store::schema::executions::ExecutionMode::Manual);
+        assert_eq!(
+            list[0].mode,
+            springtale_store::schema::executions::ExecutionMode::Manual
+        );
 
         // execution_steps row recorded with sizes only.
         let steps = store.get_execution_steps(&exec_id).await.unwrap();
@@ -1000,8 +1004,7 @@ mod tests {
         assert_eq!(steps[0].step_kind, "send_message");
         assert!(steps[0].output_bytes > 0, "output_bytes captured size");
         assert!(
-            steps[0].input_blob_ref.is_none()
-                && steps[0].output_blob_ref.is_none(),
+            steps[0].input_blob_ref.is_none() && steps[0].output_blob_ref.is_none(),
             "privacy default: no content retained"
         );
     }
@@ -1034,7 +1037,10 @@ mod tests {
         assert_eq!(chain.steps.len(), 1);
         let step = &chain.steps[0];
         assert_eq!(step.kind, "send_message");
-        assert_eq!(step.output.get("dry_run").and_then(|v| v.as_bool()), Some(true));
+        assert_eq!(
+            step.output.get("dry_run").and_then(|v| v.as_bool()),
+            Some(true)
+        );
 
         // Executions log captured the run in DryRun mode.
         let runs = store
@@ -1089,4 +1095,3 @@ mod tests {
         let _ = exec_id; // unused but kept for parallel-with-success test
     }
 }
-

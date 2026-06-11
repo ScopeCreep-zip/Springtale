@@ -8,8 +8,8 @@
 
 use std::path::{Path, PathBuf};
 
-use specta::Type;
 use serde::Serialize;
+use specta::Type;
 
 /// Severity of a diagnostic finding.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
@@ -148,19 +148,20 @@ pub async fn run_checks(paths: &DiagnosticPaths, context: CallerContext) -> Repo
 /// Returns the config file text on success so later checks can reuse it.
 fn check_config(path: &Path, checks: &mut Vec<Check>) -> Option<String> {
     if !path.exists() {
-        checks.push(
-            Check::fail(
-                "config.exists",
-                format!("Config file not found: {}", path.display()),
-                "Run: springtale init",
-            ),
-        );
+        checks.push(Check::fail(
+            "config.exists",
+            format!("Config file not found: {}", path.display()),
+            "Run: springtale init",
+        ));
         return None;
     }
 
     match std::fs::read_to_string(path) {
         Ok(text) => {
-            checks.push(Check::ok("config.exists", format!("Config file: {}", path.display())));
+            checks.push(Check::ok(
+                "config.exists",
+                format!("Config file: {}", path.display()),
+            ));
             // Detect plaintext secrets — heuristic: any `*_token`/`*_key`/`*secret*`
             // assignment whose value isn't a placeholder.
             if contains_plaintext_secret(&text) {
@@ -200,7 +201,10 @@ fn check_vault(path: &Path, checks: &mut Vec<Check>) {
         ));
         return;
     }
-    checks.push(Check::ok("vault.exists", format!("Vault: {}", path.display())));
+    checks.push(Check::ok(
+        "vault.exists",
+        format!("Vault: {}", path.display()),
+    ));
 
     #[cfg(unix)]
     {
@@ -235,7 +239,10 @@ fn check_database(path: &Path, checks: &mut Vec<Check>) {
         ));
         return;
     }
-    checks.push(Check::ok("db.exists", format!("Database: {}", path.display())));
+    checks.push(Check::ok(
+        "db.exists",
+        format!("Database: {}", path.display()),
+    ));
 
     match springtale_store::backend::sqlite::SqliteBackend::open(path) {
         Ok(_) => checks.push(Check::ok("db.integrity", "Database integrity: valid")),

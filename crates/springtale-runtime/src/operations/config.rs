@@ -57,7 +57,57 @@ pub async fn list_config(
     Ok(entries)
 }
 
-/// Set the AI adapter config and hot-swap the runtime adapter.
+/// Build an `AiAdapter` from a config JSON `{ "type": "ollama"|"openai"|"anthropic"|"noop", ... }`.
+///
+/// **Single source of truth for adapter construction** — reused by every layer
+/// of the AI command hierarchy (unit `ai:{agent_id}`, squad `ai:formation:{id}`,
+/// colony `ai:colony`) and the global hot-swap. Async because the Ollama branch
+/// verifies the model pin (OWASP LLM03 / LLM10 — training-data /
+/// model-supply-chain poisoning; network-free when no digest is pinned).
+pub async fn build_adapter(
+    config: &Value,
+) -> Result<Arc<dyn springtale_ai::AiAdapter>, OperationError> {
+    let adapter_type = config
+        .get("type")
+        .and_then(|v| v.as_str())
+        .unwrap_or("noop");
+    let adapter: Arc<dyn springtale_ai::AiAdapter> = match adapter_type {
+        "ollama" => {
+            let cfg: springtale_ai::OllamaConfig = serde_json::from_value(config.clone())
+                .map_err(|e| OperationError::Validation(format!("invalid ollama config: {e}")))?;
+            springtale_ai::verify_model_pin(Some(&cfg))
+                .await
+                .map_err(|e| {
+                    OperationError::Validation(format!("ollama model pin verification failed: {e}"))
+                })?;
+            springtale_ai::create_adapter(Some(&cfg), None, None).map_err(|e| {
+                OperationError::Validation(format!("failed to create ollama adapter: {e}"))
+            })?
+        }
+        "openai" => {
+            let cfg: springtale_ai::OpenAiConfig = serde_json::from_value(config.clone())
+                .map_err(|e| OperationError::Validation(format!("invalid openai config: {e}")))?;
+            springtale_ai::create_adapter(None, Some(&cfg), None).map_err(|e| {
+                OperationError::Validation(format!("failed to create openai adapter: {e}"))
+            })?
+        }
+        "anthropic" => {
+            let cfg: springtale_ai::AnthropicConfig = serde_json::from_value(config.clone())
+                .map_err(|e| {
+                    OperationError::Validation(format!("invalid anthropic config: {e}"))
+                })?;
+            springtale_ai::create_adapter(None, None, Some(&cfg)).map_err(|e| {
+                OperationError::Validation(format!("failed to create anthropic adapter: {e}"))
+            })?
+        }
+        _ => springtale_ai::create_adapter(None, None, None).map_err(|e| {
+            OperationError::Validation(format!("failed to create noop adapter: {e}"))
+        })?,
+    };
+    Ok(adapter)
+}
+
+/// Set the AI adapter config and hot-swap the runtime (global) adapter.
 ///
 /// Config JSON must have a "type" field: "noop", "ollama", "openai", "anthropic".
 /// On success, the new adapter is atomically swapped into RuntimeState.
@@ -71,37 +121,8 @@ pub async fn set_ai_adapter(state: &RuntimeState, config: Value) -> Result<(), O
     // Persist to config store
     set_config(&*state.store, "ai_adapter", config.clone()).await?;
 
-    // Create the new adapter
-    let new_adapter: Arc<dyn springtale_ai::AiAdapter> = match adapter_type.as_str() {
-        "ollama" => {
-            let cfg: springtale_ai::OllamaConfig = serde_json::from_value(config)
-                .map_err(|e| OperationError::Validation(format!("invalid ollama config: {e}")))?;
-            springtale_ai::create_adapter(Some(&cfg), None, None).map_err(|e| {
-                OperationError::Validation(format!("failed to create ollama adapter: {e}"))
-            })?
-        }
-        "openai" => {
-            let cfg: springtale_ai::OpenAiConfig = serde_json::from_value(config)
-                .map_err(|e| OperationError::Validation(format!("invalid openai config: {e}")))?;
-            springtale_ai::create_adapter(None, Some(&cfg), None).map_err(|e| {
-                OperationError::Validation(format!("failed to create openai adapter: {e}"))
-            })?
-        }
-        "anthropic" => {
-            let cfg: springtale_ai::AnthropicConfig =
-                serde_json::from_value(config).map_err(|e| {
-                    OperationError::Validation(format!("invalid anthropic config: {e}"))
-                })?;
-            springtale_ai::create_adapter(None, None, Some(&cfg)).map_err(|e| {
-                OperationError::Validation(format!("failed to create anthropic adapter: {e}"))
-            })?
-        }
-        _ => springtale_ai::create_adapter(None, None, None).map_err(|e| {
-            OperationError::Validation(format!("failed to create noop adapter: {e}"))
-        })?,
-    };
-
-    // Hot-swap: atomic, lock-free
+    // Build via the shared factory and hot-swap (atomic, lock-free).
+    let new_adapter = build_adapter(&config).await?;
     state.ai_adapter.store(Arc::new(new_adapter));
     tracing::info!(adapter = adapter_type, "AI adapter hot-swapped");
 

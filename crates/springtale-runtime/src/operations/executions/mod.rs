@@ -20,11 +20,11 @@ pub mod query;
 pub mod recorder;
 
 pub use drift::{
-    recipe_drift, rule_drift, DriftClass, DriftFilter, DriftReport, LatencyDrift, RateDrift,
+    DriftClass, DriftFilter, DriftReport, LatencyDrift, RateDrift, recipe_drift, rule_drift,
 };
 pub use query::{
+    ExecutionFilterIpc, ExecutionInfo, ExecutionStepInfo, GetStepsError, ListExecutionsError,
     get_execution_steps, get_execution_steps_ipc, list_executions, list_executions_ipc,
-    vacuum_executions, ExecutionFilterIpc, ExecutionInfo, ExecutionStepInfo, GetStepsError,
-    ListExecutionsError,
+    vacuum_executions,
 };
-pub use recorder::{ExecutionRecorder, NoopRecorder, StoreRecorder, DEFAULT_RETENTION_MS};
+pub use recorder::{DEFAULT_RETENTION_MS, ExecutionRecorder, NoopRecorder, StoreRecorder};

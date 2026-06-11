@@ -26,8 +26,8 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use specta::Type;
 use serde_json::json;
+use specta::Type;
 use tokio::sync::RwLock;
 
 use springtale_connector::registry::store::ConnectorRegistry;
@@ -100,10 +100,7 @@ pub async fn send_via_registry(
 }
 
 /// Convenience wrapper for callers that already hold a `RuntimeState`.
-pub async fn send(
-    state: &RuntimeState,
-    req: SendRequest,
-) -> Result<SendOutcome, OperationError> {
+pub async fn send(state: &RuntimeState, req: SendRequest) -> Result<SendOutcome, OperationError> {
     send_via_registry(&state.registry, req).await
 }
 

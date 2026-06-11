@@ -50,13 +50,15 @@ pub enum ApplyError {
     ScheduleTooFast { expr: String },
     #[error("backend operation failed: {0}")]
     Operation(#[from] OperationError),
+    #[error(transparent)]
+    Derive(#[from] super::resolver::ResolverError),
 }
 
 /// Apply a built-in or user recipe to the runtime.
 pub async fn apply_recipe(
     state: &RuntimeState,
     recipe_id: &str,
-    inputs: RecipeInputs,
+    mut inputs: RecipeInputs,
 ) -> Result<ApplyReport, ApplyError> {
     let recipe = library::get_recipe(&*state.store, recipe_id)
         .await?
@@ -65,6 +67,12 @@ pub async fn apply_recipe(
     ensure_required_inputs_present(&recipe, &inputs)?;
     ensure_placeholders_resolve(&recipe, &inputs)?;
     ensure_schedule_safe(&recipe, &inputs)?;
+
+    // Resolve derived inputs (e.g. geocode a free-text city into
+    // `latitude=..&longitude=..`) BEFORE substitution, so the universal
+    // recipe takes any target instead of a hardcoded enum. Fails the
+    // deploy before any side effect if a target can't be resolved.
+    super::resolver::apply_derived_inputs(&recipe, &mut inputs).await?;
 
     apply_blueprint(state, &recipe, &inputs).await
 }
@@ -81,10 +89,7 @@ pub async fn apply_recipe(
 /// (yellow chip in the deploy form). The hard block here only catches
 /// obviously broken authoring (e.g. `* * * * * *` 6-field cron with
 /// seconds).
-pub fn ensure_schedule_safe(
-    recipe: &Recipe,
-    inputs: &RecipeInputs,
-) -> Result<(), ApplyError> {
+pub fn ensure_schedule_safe(recipe: &Recipe, inputs: &RecipeInputs) -> Result<(), ApplyError> {
     for step in &recipe.blueprint.rules {
         // Substitute inputs into the TOML so we see the actual cron
         // expression the deploy would use (the author may have
@@ -111,10 +116,7 @@ fn extract_cron_expressions(toml: &str) -> Vec<String> {
         let trimmed = line.trim();
         if let Some(rest) = trimmed.strip_prefix("expression") {
             let rest = rest.trim_start_matches(' ').trim_start_matches('=').trim();
-            if let Some(stripped) = rest
-                .strip_prefix('"')
-                .and_then(|s| s.strip_suffix('"'))
-            {
+            if let Some(stripped) = rest.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
                 out.push(stripped.to_owned());
             }
         }
@@ -136,12 +138,11 @@ fn is_subminute(expr: &str) -> bool {
         if sec == "*" {
             return true;
         }
-        if let Some(rest) = sec.strip_prefix("*/") {
-            if let Ok(n) = rest.parse::<u32>() {
-                if n < 60 {
-                    return true;
-                }
-            }
+        if let Some(rest) = sec.strip_prefix("*/")
+            && let Ok(n) = rest.parse::<u32>()
+            && n < 60
+        {
+            return true;
         }
     }
     // 5-field cron has no seconds — minute granularity is the cap.
@@ -170,11 +171,9 @@ fn ensure_required_inputs_present(
     for field in recipe.required_inputs() {
         match inputs.get(&field.id) {
             None => return Err(ApplyError::MissingRequiredInput(field.id.clone())),
-            Some(Value::Null) => {
-                return Err(ApplyError::MissingRequiredInput(field.id.clone()))
-            }
+            Some(Value::Null) => return Err(ApplyError::MissingRequiredInput(field.id.clone())),
             Some(Value::String(s)) if s.is_empty() => {
-                return Err(ApplyError::MissingRequiredInput(field.id.clone()))
+                return Err(ApplyError::MissingRequiredInput(field.id.clone()));
             }
             _ => {}
         }
@@ -192,15 +191,20 @@ fn ensure_required_inputs_present(
 /// at execution time per
 /// `springtale_core::transform::format::resolve_template`, so we let
 /// them through.
-fn ensure_placeholders_resolve(
-    recipe: &Recipe,
-    _inputs: &RecipeInputs,
-) -> Result<(), ApplyError> {
-    let known_ids: HashSet<&str> = recipe
-        .inputs
-        .iter()
-        .map(|f| f.id.as_str())
-        .collect();
+fn ensure_placeholders_resolve(recipe: &Recipe, _inputs: &RecipeInputs) -> Result<(), ApplyError> {
+    let mut known_ids: HashSet<&str> = recipe.inputs.iter().map(|f| f.id.as_str()).collect();
+    // Derived-input targets (e.g. `location` from `geocode(city)`) are
+    // populated at deploy time, so they're valid placeholders even though
+    // they're not author-declared `InputField`s.
+    for resolver in &recipe.blueprint.derived_inputs {
+        match resolver {
+            super::types::DerivedInputResolver::Geocode {
+                target_input_id, ..
+            } => {
+                known_ids.insert(target_input_id.as_str());
+            }
+        }
+    }
     let mut found = HashSet::new();
     collect_placeholders_value(
         &serde_json::to_value(&recipe.blueprint).unwrap_or(Value::Null),
@@ -212,11 +216,37 @@ fn ensure_placeholders_resolve(
             // against the trigger payload. Skip apply-time validation.
             continue;
         }
+        if is_runtime_reference(&id) {
+            // BARE runtime references (`${last_connector_output}`, `${now}`,
+            // `${stepN}`) are resolved by the chain context at fire time,
+            // not from recipe inputs — they're valid even without a dot.
+            continue;
+        }
         if !known_ids.contains(id.as_str()) {
             return Err(ApplyError::UnknownPlaceholder(id));
         }
     }
     Ok(())
+}
+
+/// Whole-value runtime references the chain context resolves at fire time
+/// (mirrors `crate::rule::template_resolve` + the builtin recipe test's
+/// allowed roots). `stepN` is positional (1-indexed step output).
+fn is_runtime_reference(id: &str) -> bool {
+    const RUNTIME_ROOTS: &[&str] = &[
+        "trigger",
+        "last_ai_output",
+        "last_connector_output",
+        "last_connector_message",
+        "last_extract_output",
+        "last_dedupe_output",
+        "last_shell_output",
+        "now",
+        "run_id",
+        "bot",
+    ];
+    RUNTIME_ROOTS.contains(&id)
+        || (id.len() > 4 && id.starts_with("step") && id[4..].bytes().all(|b| b.is_ascii_digit()))
 }
 
 fn collect_placeholders_value(value: &Value, out: &mut HashSet<String>) {
@@ -235,15 +265,16 @@ fn collect_placeholders_str(s: &str, out: &mut HashSet<String>) {
     let bytes = s.as_bytes();
     let mut i = 0;
     while i + 1 < bytes.len() {
-        if bytes[i] == b'$' && bytes[i + 1] == b'{' {
-            if let Some(end) = bytes[i + 2..].iter().position(|&b| b == b'}') {
-                let id = &s[i + 2..i + 2 + end];
-                if !id.is_empty() {
-                    out.insert(id.to_owned());
-                }
-                i += end + 3;
-                continue;
+        if bytes[i] == b'$'
+            && bytes[i + 1] == b'{'
+            && let Some(end) = bytes[i + 2..].iter().position(|&b| b == b'}')
+        {
+            let id = &s[i + 2..i + 2 + end];
+            if !id.is_empty() {
+                out.insert(id.to_owned());
             }
+            i += end + 3;
+            continue;
         }
         i += 1;
     }
@@ -261,12 +292,8 @@ async fn apply_blueprint(
 
     for step in &blueprint.connector_configs {
         let resolved = substitute_value(&step.config, inputs);
-        crate::operations::config::upsert_connector_config(
-            state,
-            &step.connector_name,
-            resolved,
-        )
-        .await?;
+        crate::operations::config::upsert_connector_config(state, &step.connector_name, resolved)
+            .await?;
         connectors_configured.push(step.connector_name.clone());
     }
 
@@ -316,10 +343,10 @@ fn substitute_value(value: &Value, inputs: &RecipeInputs) -> Value {
             // If the whole string is a single `${id}`, swap in the
             // typed value (preserves numbers, booleans, arrays as-is
             // rather than coercing to strings).
-            if let Some(id) = whole_string_placeholder(s) {
-                if let Some(v) = inputs.get(&id) {
-                    return v.clone();
-                }
+            if let Some(id) = whole_string_placeholder(s)
+                && let Some(v) = inputs.get(&id)
+            {
+                return v.clone();
             }
             Value::String(substitute_template(s, inputs))
         }
@@ -363,22 +390,25 @@ fn substitute_template(s: &str, inputs: &RecipeInputs) -> String {
     let bytes = s.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
-        if i + 1 < bytes.len() && bytes[i] == b'$' && bytes[i + 1] == b'{' {
-            if let Some(end) = bytes[i + 2..].iter().position(|&b| b == b'}') {
-                let id = &s[i + 2..i + 2 + end];
-                if !id.is_empty() && !id.contains('.') {
-                    if let Some(v) = inputs.get(id) {
-                        out.push_str(&json_to_display_string(v));
-                        i += end + 3;
-                        continue;
-                    }
-                }
-                // Dotted or unknown bare → preserve literal for the
-                // rule-engine evaluator (or for a downstream system).
-                out.push_str(&s[i..i + end + 3]);
+        if i + 1 < bytes.len()
+            && bytes[i] == b'$'
+            && bytes[i + 1] == b'{'
+            && let Some(end) = bytes[i + 2..].iter().position(|&b| b == b'}')
+        {
+            let id = &s[i + 2..i + 2 + end];
+            if !id.is_empty()
+                && !id.contains('.')
+                && let Some(v) = inputs.get(id)
+            {
+                out.push_str(&json_to_display_string(v));
                 i += end + 3;
                 continue;
             }
+            // Dotted or unknown bare → preserve literal for the
+            // rule-engine evaluator (or for a downstream system).
+            out.push_str(&s[i..i + end + 3]);
+            i += end + 3;
+            continue;
         }
         out.push(bytes[i] as char);
         i += 1;
@@ -404,7 +434,10 @@ fn render_toml(blueprint: &RecipeBlueprint, inputs: &RecipeInputs) -> String {
         out.push('\n');
     }
     for step in &blueprint.connector_configs {
-        out.push_str(&format!("# ── Connector config: {} ──\n", step.connector_name));
+        out.push_str(&format!(
+            "# ── Connector config: {} ──\n",
+            step.connector_name
+        ));
         let resolved = substitute_value(&step.config, inputs);
         out.push_str(&serde_json::to_string_pretty(&resolved).unwrap_or_else(|_| "{}".into()));
         out.push_str("\n\n");
@@ -470,6 +503,7 @@ mod tests {
                 rules: vec![],
                 ai_config: None,
                 summary: None,
+                derived_inputs: vec![],
             },
         }
     }
@@ -521,5 +555,27 @@ mod tests {
         let rendered = render_toml(&recipe.blueprint, &inputs);
         assert!(rendered.contains("secret-123"));
         assert!(rendered.contains("10"));
+    }
+
+    /// DEPLOY VALIDATION for EVERY builtin. Runs the three pre-side-effect
+    /// gates `apply_recipe` runs — the ones that REJECTED
+    /// `${last_connector_output}` and would reject any undeclared
+    /// placeholder, missing required input, or sub-minute schedule. Pure +
+    /// hermetic (no RuntimeState, no network — geocoding runs after these
+    /// gates). This is the regression net for the deploy-class bug.
+    #[test]
+    fn every_builtin_passes_deploy_validation() {
+        for recipe in crate::operations::recipes::builtin::all() {
+            let mut inputs = RecipeInputs::empty();
+            for f in recipe.required_inputs() {
+                inputs.insert(f.id.clone(), json!("placeholder-value"));
+            }
+            ensure_required_inputs_present(&recipe, &inputs)
+                .unwrap_or_else(|e| panic!("{} fails required-inputs gate: {e}", recipe.id));
+            ensure_placeholders_resolve(&recipe, &inputs)
+                .unwrap_or_else(|e| panic!("{} fails placeholder gate: {e}", recipe.id));
+            ensure_schedule_safe(&recipe, &inputs)
+                .unwrap_or_else(|e| panic!("{} fails schedule gate: {e}", recipe.id));
+        }
     }
 }

@@ -19,14 +19,14 @@
 //! `${last_extract_output.byline}` into messaging templates.
 
 use dom_smoothie::Readability;
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use super::{source_as_str, ExtractError};
+use super::{ExtractError, source_as_str};
 
 pub fn extract(source: &Value) -> Result<Value, ExtractError> {
     let html = source_as_str(source)?;
-    let mut reader = Readability::new(html, None, None)
-        .map_err(|e| ExtractError::Readability(e.to_string()))?;
+    let mut reader =
+        Readability::new(html, None, None).map_err(|e| ExtractError::Readability(e.to_string()))?;
     let article = reader
         .parse()
         .map_err(|e| ExtractError::Readability(e.to_string()))?;

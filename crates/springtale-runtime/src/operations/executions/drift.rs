@@ -21,9 +21,7 @@ use std::sync::Arc;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 use springtale_store::backend::StorageBackend;
-use springtale_store::schema::executions::{
-    ExecutionFilter, ExecutionStatus, ExecutionSummary,
-};
+use springtale_store::schema::executions::{ExecutionFilter, ExecutionStatus, ExecutionSummary};
 
 use crate::error::OperationError;
 
@@ -194,10 +192,10 @@ pub async fn recipe_drift(
     Ok(build_report(recent, baseline, refusal))
 }
 
-fn split_at<'a>(
-    runs: &'a [ExecutionSummary],
+fn split_at(
+    runs: &[ExecutionSummary],
     recent_n: usize,
-) -> (&'a [ExecutionSummary], &'a [ExecutionSummary]) {
+) -> (&[ExecutionSummary], &[ExecutionSummary]) {
     let split = runs.len().min(recent_n);
     let (recent, baseline) = runs.split_at(split);
     (recent, baseline)
@@ -229,10 +227,7 @@ fn compute_latency_drift(
     baseline: &[ExecutionSummary],
 ) -> LatencyDrift {
     let recent_ms: Vec<i64> = recent.iter().filter_map(|r| r.duration_ms).collect();
-    let baseline_ms: Vec<i64> = baseline
-        .iter()
-        .filter_map(|r| r.duration_ms)
-        .collect();
+    let baseline_ms: Vec<i64> = baseline.iter().filter_map(|r| r.duration_ms).collect();
     let recent_median = median(&recent_ms);
     let recent_p95 = percentile(&recent_ms, 95);
     let baseline_median = median(&baseline_ms);
@@ -252,10 +247,7 @@ fn compute_latency_drift(
     }
 }
 
-fn compute_success_drift(
-    recent: &[ExecutionSummary],
-    baseline: &[ExecutionSummary],
-) -> RateDrift {
+fn compute_success_drift(recent: &[ExecutionSummary], baseline: &[ExecutionSummary]) -> RateDrift {
     let recent_rate = success_rate(recent);
     let baseline_rate = success_rate(baseline);
     let delta = match (recent_rate, baseline_rate) {
@@ -343,7 +335,7 @@ fn median(values: &[i64]) -> Option<i64> {
     let mut sorted = values.to_vec();
     sorted.sort_unstable();
     let mid = sorted.len() / 2;
-    if sorted.len() % 2 == 0 {
+    if sorted.len().is_multiple_of(2) {
         Some((sorted[mid - 1] + sorted[mid]) / 2)
     } else {
         Some(sorted[mid])
@@ -360,11 +352,7 @@ fn percentile(values: &[i64], p: u8) -> Option<i64> {
     Some(sorted[rank.min(sorted.len() - 1)])
 }
 
-fn classify_latency(
-    total: usize,
-    delta: Option<i64>,
-    baseline_median: Option<i64>,
-) -> DriftClass {
+fn classify_latency(total: usize, delta: Option<i64>, baseline_median: Option<i64>) -> DriftClass {
     if total < MIN_TOTAL_RUNS_FOR_DELTA {
         return DriftClass::NotEnoughData;
     }
@@ -433,7 +421,7 @@ mod tests {
             rule_id: Some("rule".into()),
             recipe_id: Some("recipe".into()),
             started_at: 0,
-            finished_at: duration.map(|d| d),
+            finished_at: duration,
             mode: ExecutionMode::Manual,
             status,
             momentum: Some(MomentumTag::Warming),
@@ -547,22 +535,10 @@ mod tests {
     #[test]
     fn build_report_aggregates_classes() {
         let recent: Vec<ExecutionSummary> = (0..5)
-            .map(|i| {
-                summary(
-                    &format!("r{i}"),
-                    Some(1000),
-                    ExecutionStatus::Succeeded,
-                )
-            })
+            .map(|i| summary(&format!("r{i}"), Some(1000), ExecutionStatus::Succeeded))
             .collect();
         let baseline: Vec<ExecutionSummary> = (0..5)
-            .map(|i| {
-                summary(
-                    &format!("b{i}"),
-                    Some(1100),
-                    ExecutionStatus::Succeeded,
-                )
-            })
+            .map(|i| summary(&format!("b{i}"), Some(1100), ExecutionStatus::Succeeded))
             .collect();
         let refusal = RateDrift {
             recent: Some(0.0),
@@ -581,12 +557,10 @@ mod tests {
     #[tokio::test]
     async fn recipe_drift_handles_empty_store() {
         use springtale_store::SqliteBackend;
-        let store: Arc<dyn StorageBackend> =
-            Arc::new(SqliteBackend::open_in_memory().unwrap());
-        let report =
-            recipe_drift(&store, "missing-recipe", DriftFilter::default())
-                .await
-                .unwrap();
+        let store: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open_in_memory().unwrap());
+        let report = recipe_drift(&store, "missing-recipe", DriftFilter::default())
+            .await
+            .unwrap();
         assert_eq!(report.recent_runs, 0);
         assert_eq!(report.baseline_runs, 0);
         assert_eq!(report.overall, DriftClass::NotEnoughData);

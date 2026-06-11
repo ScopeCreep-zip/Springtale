@@ -33,9 +33,9 @@
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+use springtale_cooperation::execution::{ExecutionContext, ExecutionMode};
 use springtale_core::rule::types::Rule;
 use springtale_core::rule::{ChainError, StepOutput, Trigger};
-use springtale_cooperation::execution::{ExecutionContext, ExecutionMode};
 
 use crate::operations::recipes::apply::ApplyError;
 use crate::operations::recipes::library;
@@ -124,18 +124,20 @@ pub async fn test_recipe_step(
         .ok_or_else(|| TestStepError::Apply(ApplyError::RecipeNotFound(recipe_id.to_owned())))?;
 
     let rule_count = recipe.blueprint.rules.len();
-    let rule_step = recipe.blueprint.rules.get(rule_index).ok_or(
-        TestStepError::RuleIndexOutOfRange {
-            requested: rule_index,
-            available: rule_count,
-        },
-    )?;
+    let rule_step =
+        recipe
+            .blueprint
+            .rules
+            .get(rule_index)
+            .ok_or(TestStepError::RuleIndexOutOfRange {
+                requested: rule_index,
+                available: rule_count,
+            })?;
 
     let resolved_toml =
         crate::operations::recipes::apply::substitute_template_public(&rule_step.toml, &inputs);
-    let rule: Rule = toml::from_str(&resolved_toml).map_err(|e| {
-        TestStepError::Apply(ApplyError::InvalidRuleToml(e.to_string()))
-    })?;
+    let rule: Rule = toml::from_str(&resolved_toml)
+        .map_err(|e| TestStepError::Apply(ApplyError::InvalidRuleToml(e.to_string())))?;
 
     let actions = rule.actions.as_slice();
     if step_index >= actions.len() {
@@ -151,8 +153,7 @@ pub async fn test_recipe_step(
 
     let trigger_payload = synthetic_trigger_payload(&rule.trigger);
 
-    let execution =
-        ExecutionContext::for_global(rule.id, ExecutionMode::DryRun);
+    let execution = ExecutionContext::for_global(rule.id, ExecutionMode::DryRun);
 
     let sentinel = state.sentinel.clone();
     let chain_result = crate::dispatch::dispatch_actions(
@@ -167,11 +168,8 @@ pub async fn test_recipe_step(
     let (ran, step, upstream, error) = match chain_result {
         Ok(chain) => {
             let targeted = chain.steps.last().map(TestStepOutput::from);
-            let upstream: Vec<TestStepOutput> = chain
-                .steps
-                .iter()
-                .map(TestStepOutput::from)
-                .collect();
+            let upstream: Vec<TestStepOutput> =
+                chain.steps.iter().map(TestStepOutput::from).collect();
             (true, targeted, upstream, None)
         }
         Err(ChainError::Suppressed) => (

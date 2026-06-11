@@ -139,9 +139,8 @@ pub async fn record_recent(
     recent.retain(|id| id != recipe_id);
     recent.insert(0, recipe_id.to_owned());
     recent.truncate(12);
-    let value = serde_json::Value::Array(
-        recent.into_iter().map(serde_json::Value::String).collect(),
-    );
+    let value =
+        serde_json::Value::Array(recent.into_iter().map(serde_json::Value::String).collect());
     crate::operations::config::set_config(store, "recipes:recent", value).await?;
     Ok(())
 }
@@ -169,13 +168,15 @@ fn matches_sources(recipe: &Recipe, filters: &[RecipeSourceFilter]) -> bool {
         RecipeSource::User => RecipeSourceFilter::User,
         RecipeSource::Community { .. } => RecipeSourceFilter::Community,
     };
-    filters.iter().any(|f| *f == recipe_kind)
+    filters.contains(&recipe_kind)
 }
 
 fn recipe_matches_query(r: &Recipe, q: &str) -> bool {
     r.name.to_lowercase().contains(q)
         || r.description.to_lowercase().contains(q)
-        || r.connectors_used.iter().any(|c| c.to_lowercase().contains(q))
+        || r.connectors_used
+            .iter()
+            .any(|c| c.to_lowercase().contains(q))
         || r.tags.iter().any(|t| t.to_lowercase().contains(q))
 }
 
@@ -249,8 +250,14 @@ mod tests {
     #[tokio::test]
     async fn list_returns_all_builtins_by_default() {
         let store = test_store();
-        let recipes = list_recipes(&*store, RecipeFilter::default()).await.unwrap();
-        assert!(recipes.len() >= 50, "expected ≥50 built-in recipes, got {}", recipes.len());
+        let recipes = list_recipes(&*store, RecipeFilter::default())
+            .await
+            .unwrap();
+        assert!(
+            recipes.len() >= 50,
+            "expected ≥50 built-in recipes, got {}",
+            recipes.len()
+        );
     }
 
     #[tokio::test]
@@ -280,14 +287,20 @@ mod tests {
             let matches = r.name.to_lowercase().contains("telegram")
                 || r.tags.iter().any(|t| t.contains("telegram"))
                 || r.connectors_used.iter().any(|c| c.contains("telegram"));
-            assert!(matches, "{} matched query 'telegram' but no field contains it", r.name);
+            assert!(
+                matches,
+                "{} matched query 'telegram' but no field contains it",
+                r.name
+            );
         }
     }
 
     #[tokio::test]
     async fn recommended_sort_puts_quick_first() {
         let store = test_store();
-        let recipes = list_recipes(&*store, RecipeFilter::default()).await.unwrap();
+        let recipes = list_recipes(&*store, RecipeFilter::default())
+            .await
+            .unwrap();
         // Find first Power-difficulty index — must be after the last Quick index.
         let last_quick = recipes
             .iter()
@@ -296,7 +309,10 @@ mod tests {
             .iter()
             .position(|r| matches!(r.difficulty, Difficulty::Power));
         if let (Some(lq), Some(fp)) = (last_quick, first_power) {
-            assert!(lq < fp, "Power-difficulty appeared before a Quick-difficulty in recommended sort");
+            assert!(
+                lq < fp,
+                "Power-difficulty appeared before a Quick-difficulty in recommended sort"
+            );
         }
     }
 
@@ -328,10 +344,13 @@ mod tests {
     async fn record_recent_caps_at_12() {
         let store = test_store();
         for i in 0..20 {
-            record_recent(&*store, &format!("recipe-{i}")).await.unwrap();
+            record_recent(&*store, &format!("recipe-{i}"))
+                .await
+                .unwrap();
         }
-        let raw =
-            crate::operations::config::get_config(&*store, "recipes:recent").await.unwrap();
+        let raw = crate::operations::config::get_config(&*store, "recipes:recent")
+            .await
+            .unwrap();
         let recent = raw.as_array().unwrap();
         assert_eq!(recent.len(), 12);
         assert_eq!(recent[0].as_str().unwrap(), "recipe-19");

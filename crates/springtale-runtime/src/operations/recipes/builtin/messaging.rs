@@ -97,6 +97,7 @@ text = "${reply_prefix}${trigger.text}"
             summary: Some(
                 "Listens for new Telegram messages and replies with the same text.".into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -107,9 +108,8 @@ fn nostr_bluesky_relay() -> Recipe {
     Recipe {
         id: "nostr-bluesky-relay".into(),
         name: "Nostr → Bluesky Mirror".into(),
-        description:
-            "Republish every Nostr note you write onto Bluesky, with an optional prefix."
-                .into(),
+        description: "Republish every Nostr note you write onto Bluesky, with an optional prefix."
+            .into(),
         icon_id: "globe".into(),
         category: RecipeCategory::Messaging,
         tags: vec!["nostr".into(), "bluesky".into(), "crosspost".into()],
@@ -201,6 +201,7 @@ text = "${prefix}${trigger.content}"
             summary: Some(
                 "Mirrors every note from your Nostr relays onto Bluesky in near-real-time.".into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -293,6 +294,7 @@ content = "${trigger.text}"
                 "Mirrors your Bluesky posts onto your configured Nostr relays. Useful when a platform might suddenly become hostile."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -386,6 +388,7 @@ text = "[tg] ${trigger.text}"
                 "One-way relay from a Telegram chat into a Signal recipient. Useful for keeping a Signal-side copy of a community chat for personal records."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -396,8 +399,7 @@ fn discord_welcome_dm() -> Recipe {
     Recipe {
         id: "discord-welcome-dm".into(),
         name: "Discord Welcome DM".into(),
-        description: "Send a welcome message + rules link when someone joins your server."
-            .into(),
+        description: "Send a welcome message + rules link when someone joins your server.".into(),
         icon_id: "robot".into(),
         category: RecipeCategory::Messaging,
         tags: vec!["discord".into(), "community".into(), "welcome".into()],
@@ -463,10 +465,8 @@ content = "${welcome_text}"
                 .into(),
             }],
             ai_config: None,
-            summary: Some(
-                "DMs a configurable welcome message to every new server member."
-                    .into(),
-            ),
+            summary: Some("DMs a configurable welcome message to every new server member.".into()),
+            derived_inputs: vec![],
         },
     }
 }
@@ -477,8 +477,7 @@ fn discord_mention_ai_reply() -> Recipe {
     Recipe {
         id: "discord-mention-ai-reply".into(),
         name: "Discord Mention → AI Reply".into(),
-        description: "When the bot is @-mentioned, the LLM responds with a short answer."
-            .into(),
+        description: "When the bot is @-mentioned, the LLM responds with a short answer.".into(),
         icon_id: "robot".into(),
         category: RecipeCategory::Messaging,
         tags: vec!["discord".into(), "ai".into(), "mention".into()],
@@ -508,9 +507,18 @@ fn discord_mention_ai_reply() -> Recipe {
                 label: "Bot persona".into(),
                 kind: FieldKind::Select {
                     options: vec![
-                        SelectOption { value: "helpful".into(), label: "Helpful assistant".into() },
-                        SelectOption { value: "concise".into(), label: "Concise expert".into() },
-                        SelectOption { value: "warm".into(), label: "Warm + supportive".into() },
+                        SelectOption {
+                            value: "helpful".into(),
+                            label: "Helpful assistant".into(),
+                        },
+                        SelectOption {
+                            value: "concise".into(),
+                            label: "Concise expert".into(),
+                        },
+                        SelectOption {
+                            value: "warm".into(),
+                            label: "Warm + supportive".into(),
+                        },
                     ],
                 },
                 visibility: FieldVisibility::Optional,
@@ -555,6 +563,7 @@ content = "${last_ai_output}"
                 "AI-backed Discord mention bot. Tunable persona; needs an AI adapter configured."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -636,10 +645,8 @@ text = "${prompt}"
                 .into(),
             }],
             ai_config: None,
-            summary: Some(
-                "Weekday 9am standup prompt to the channel of your choice."
-                    .into(),
-            ),
+            summary: Some("Weekday 9am standup prompt to the channel of your choice.".into()),
+            derived_inputs: vec![],
         },
     }
 }
@@ -740,6 +747,7 @@ text = "${trigger.nick}: ${greeting}"
             summary: Some(
                 "Greets new joiners on a channel with a configurable welcome line.".into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -754,7 +762,12 @@ fn kick_stream_multipost() -> Recipe {
             .into(),
         icon_id: "globe".into(),
         category: RecipeCategory::Messaging,
-        tags: vec!["kick".into(), "bluesky".into(), "nostr".into(), "streamer".into()],
+        tags: vec![
+            "kick".into(),
+            "bluesky".into(),
+            "nostr".into(),
+            "streamer".into(),
+        ],
         connectors_used: vec![
             "connector-kick".into(),
             "connector-bluesky".into(),
@@ -867,6 +880,7 @@ content = "🔴 LIVE on Kick: ${trigger.title} — https://kick.com/${channel_sl
             summary: Some(
                 "Cross-posts your Kick go-live announcement to Bluesky + Nostr in one move.".into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -877,8 +891,7 @@ fn bluesky_mention_auto_ack() -> Recipe {
     Recipe {
         id: "bluesky-mention-auto-ack".into(),
         name: "Bluesky Mention Auto-Reply".into(),
-        description: "Short polite AI reply to every mention. Off by default; opt-in tone."
-            .into(),
+        description: "Short polite AI reply to every mention. Off by default; opt-in tone.".into(),
         icon_id: "robot".into(),
         category: RecipeCategory::Messaging,
         tags: vec!["bluesky".into(), "ai".into(), "mention".into()],
@@ -908,9 +921,18 @@ fn bluesky_mention_auto_ack() -> Recipe {
                 label: "Reply tone".into(),
                 kind: FieldKind::Select {
                     options: vec![
-                        SelectOption { value: "minimal".into(), label: "Minimal (✓)".into() },
-                        SelectOption { value: "warm".into(), label: "Warm".into() },
-                        SelectOption { value: "formal".into(), label: "Formal".into() },
+                        SelectOption {
+                            value: "minimal".into(),
+                            label: "Minimal (✓)".into(),
+                        },
+                        SelectOption {
+                            value: "warm".into(),
+                            label: "Warm".into(),
+                        },
+                        SelectOption {
+                            value: "formal".into(),
+                            label: "Formal".into(),
+                        },
                     ],
                 },
                 visibility: FieldVisibility::Optional,
@@ -952,9 +974,9 @@ text = "${last_ai_output}"
             }],
             ai_config: None,
             summary: Some(
-                "Bot replies to mentions on Bluesky with an AI-drafted short note."
-                    .into(),
+                "Bot replies to mentions on Bluesky with an AI-drafted short note.".into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -1038,6 +1060,7 @@ content = "${trigger.content}"
                 "Every incoming Nostr DM is decrypted in-process and written to a per-message JSON file you can grep / back up."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -1181,6 +1204,7 @@ content = "${trigger.args}"
                 "Use Telegram as your control plane. `/broadcast Landed safely.` fans the message out to Signal + Discord."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -1265,9 +1289,10 @@ command = "sed -i '1d' ${queue_file}"
             }],
             ai_config: None,
             summary: Some(
-                "Every 15 minutes, the recipe pops the next line from your queue file and posts it to Bluesky. Stop the rule to pause the queue."
+                "Every 15 minutes, the recipe pops the next line from your queue file and posts it to Bluesky. Stop the rule to pause the queue. It reads and trims the queue with a system command, so Springtale asks you to approve it the first time it runs."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }

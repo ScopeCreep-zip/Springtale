@@ -69,7 +69,10 @@ pub async fn import_data(
 ) -> Result<ImportStats, OperationError> {
     let mut stats = ImportStats::default();
     for rule in &export.rules {
-        store.insert_rule(rule).await.map_err(OperationError::Store)?;
+        store
+            .insert_rule(rule)
+            .await
+            .map_err(OperationError::Store)?;
         stats.rules_inserted += 1;
     }
     for connector in &export.connectors {
@@ -80,7 +83,10 @@ pub async fn import_data(
         stats.connectors_inserted += 1;
     }
     for event in &export.events {
-        store.log_event(event).await.map_err(OperationError::Store)?;
+        store
+            .log_event(event)
+            .await
+            .map_err(OperationError::Store)?;
         stats.events_inserted += 1;
     }
     Ok(stats)
@@ -230,10 +236,7 @@ mod tests {
 
         let rules = dest.list_rules().await.unwrap();
         let connectors = dest.list_connectors().await.unwrap();
-        let events = dest
-            .list_events(&EventFilter::default())
-            .await
-            .unwrap();
+        let events = dest.list_events(&EventFilter::default()).await.unwrap();
         assert_eq!(rules.len(), 1);
         assert_eq!(rules[0].name, "exported-rule");
         assert_eq!(connectors.len(), 1);

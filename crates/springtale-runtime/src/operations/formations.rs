@@ -6,7 +6,11 @@
 use serde::{Deserialize, Serialize};
 
 use specta::Type;
-use springtale_core::rule::{Action, Rule, RuleId, RuleStatus, RuleVersion, Trigger};
+use springtale_core::rule::RuleId;
+
+use crate::operations::formation_synthesis::{
+    MemberAutomation, regenerate_formation_rules, store_formation_automation,
+};
 
 use crate::error::OperationError;
 use crate::state::RuntimeState;
@@ -136,8 +140,14 @@ fn tier_capabilities(tier: &str) -> Vec<String> {
         "Warming" => vec!["read env", "neighbors", "chain"],
         "Hot" => vec!["read env", "neighbors", "chain", "write env", "commit"],
         "Fever" => vec![
-            "read env", "neighbors", "chain", "write env", "commit",
-            "consensus", "AI", "recruit",
+            "read env",
+            "neighbors",
+            "chain",
+            "write env",
+            "commit",
+            "consensus",
+            "AI",
+            "recruit",
         ],
         _ => vec!["read env"],
     }
@@ -199,9 +209,7 @@ pub async fn deploy_formation(state: &RuntimeState, id: &str) -> Result<(), Oper
         .map_err(|e| OperationError::Validation(format!("invalid formation id: {e}")))?;
     let _ = state
         .formation_cmd_tx
-        .send(springtale_cooperation::command::FormationCommand::Deploy {
-            formation_id: fid,
-        })
+        .send(springtale_cooperation::command::FormationCommand::Deploy { formation_id: fid })
         .await;
     Ok(())
 }
@@ -213,9 +221,7 @@ pub async fn pause_formation(state: &RuntimeState, id: &str) -> Result<(), Opera
         .map_err(|e| OperationError::Validation(format!("invalid formation id: {e}")))?;
     let _ = state
         .formation_cmd_tx
-        .send(springtale_cooperation::command::FormationCommand::Pause {
-            formation_id: fid,
-        })
+        .send(springtale_cooperation::command::FormationCommand::Pause { formation_id: fid })
         .await;
     Ok(())
 }
@@ -227,24 +233,30 @@ pub async fn resume_formation(state: &RuntimeState, id: &str) -> Result<(), Oper
         .map_err(|e| OperationError::Validation(format!("invalid formation id: {e}")))?;
     let _ = state
         .formation_cmd_tx
-        .send(springtale_cooperation::command::FormationCommand::Resume {
-            formation_id: fid,
-        })
+        .send(springtale_cooperation::command::FormationCommand::Resume { formation_id: fid })
         .await;
     Ok(())
 }
 
 /// Dissolve a formation — removes from DB and notifies bot event loop.
 pub async fn dissolve_formation(state: &RuntimeState, id: &str) -> Result<(), OperationError> {
-    state.store.delete_formation(id).await?;
     let fid = springtale_cooperation::types::FormationId::parse(id)
         .map_err(|e| OperationError::Validation(format!("invalid formation id: {e}")))?;
+
+    // Tear down the synthesised rules and the automation config so a dissolved
+    // formation leaves no orphaned automation behind.
+    crate::operations::formation_synthesis::delete_formation_rules(state, fid.0).await?;
+    crate::operations::formation_synthesis::clear_formation_automation(state, id).await?;
+
+    state.store.delete_formation(id).await?;
     let _ = state
         .formation_cmd_tx
-        .send(springtale_cooperation::command::FormationCommand::Dissolve {
-            formation_id: fid,
-            reason: "user requested".to_owned(),
-        })
+        .send(
+            springtale_cooperation::command::FormationCommand::Dissolve {
+                formation_id: fid,
+                reason: "user requested".to_owned(),
+            },
+        )
         .await;
     Ok(())
 }
@@ -261,12 +273,35 @@ pub async fn update_intent(
     let parsed = springtale_cooperation::command::parse_intent(intent);
     let _ = state
         .formation_cmd_tx
-        .send(springtale_cooperation::command::FormationCommand::ChangeIntent {
-            formation_id: fid,
-            intent: parsed,
-        })
+        .send(
+            springtale_cooperation::command::FormationCommand::ChangeIntent {
+                formation_id: fid,
+                intent: parsed,
+            },
+        )
         .await;
+
+    // Re-synthesise the formation's persistent rules for the new intent so the
+    // outward behaviour actually changes (Reconnoiter → observe, Execute → act),
+    // not just the coordination-layer intent. See `formation_synthesis`.
+    let name = formation_name(state, id).await;
+    regenerate_formation_rules(state, id, &name, intent, false).await?;
     Ok(())
+}
+
+/// Look up a formation's display name, falling back to the id if absent.
+/// Guard mode is sourced as `false` for rule synthesis: connector actions are
+/// `Reversible` (never `Destructive`) so the guard's destructive-downgrade path
+/// never changes the synthesised rule set — the live guard toggle continues to
+/// gate destructive *coordination* actions in the bot runtime.
+async fn formation_name(state: &RuntimeState, id: &str) -> String {
+    state
+        .store
+        .list_formations()
+        .await
+        .ok()
+        .and_then(|fs| fs.into_iter().find(|f| f.id == id).map(|f| f.name))
+        .unwrap_or_else(|| id.to_owned())
 }
 
 /// Manually trigger a self-rally for a formation.
@@ -278,8 +313,28 @@ pub async fn rally_formation(state: &RuntimeState, id: &str) -> Result<(), Opera
         .map_err(|e| OperationError::Validation(format!("invalid formation id: {e}")))?;
     let _ = state
         .formation_cmd_tx
-        .send(springtale_cooperation::command::FormationCommand::Rally {
+        .send(springtale_cooperation::command::FormationCommand::Rally { formation_id: fid })
+        .await;
+    Ok(())
+}
+
+/// Recruit a new member into a formation — the §7 Fever-tier momentum unlock.
+///
+/// Unlike [`add_member`], this does NOT persist a member row up front: it is the
+/// formation's own earned capability. The bot event loop honors it only when the
+/// formation is at Fever and guard mode is off (`MomentumState::can_recruit`).
+pub async fn recruit_member(
+    state: &RuntimeState,
+    formation_id: &str,
+    connector_name: &str,
+) -> Result<(), OperationError> {
+    let fid = springtale_cooperation::types::FormationId::parse(formation_id)
+        .map_err(|e| OperationError::Validation(format!("invalid formation id: {e}")))?;
+    let _ = state
+        .formation_cmd_tx
+        .send(springtale_cooperation::command::FormationCommand::Recruit {
             formation_id: fid,
+            connector_name: connector_name.to_owned(),
         })
         .await;
     Ok(())
@@ -302,10 +357,12 @@ pub async fn add_member(
         .map_err(|e| OperationError::Validation(format!("invalid formation id: {e}")))?;
     let _ = state
         .formation_cmd_tx
-        .send(springtale_cooperation::command::FormationCommand::AddMember {
-            formation_id: fid,
-            connector_name: connector_name.to_owned(),
-        })
+        .send(
+            springtale_cooperation::command::FormationCommand::AddMember {
+                formation_id: fid,
+                connector_name: connector_name.to_owned(),
+            },
+        )
         .await;
     Ok(())
 }
@@ -324,10 +381,12 @@ pub async fn remove_member(
         .map_err(|e| OperationError::Validation(format!("invalid formation id: {e}")))?;
     let _ = state
         .formation_cmd_tx
-        .send(springtale_cooperation::command::FormationCommand::RemoveMember {
-            formation_id: fid,
-            connector_name: connector_name.to_owned(),
-        })
+        .send(
+            springtale_cooperation::command::FormationCommand::RemoveMember {
+                formation_id: fid,
+                connector_name: connector_name.to_owned(),
+            },
+        )
         .await;
     Ok(())
 }
@@ -387,7 +446,12 @@ pub async fn list_formations(state: &RuntimeState) -> Result<Vec<FormationInfo>,
         let member_names: Vec<String> = members.iter().map(|m| m.connector_name.clone()).collect();
 
         // Read persisted momentum from dedicated table (written by bot event loop).
-        let momentum_row = state.store.get_formation_momentum(&f.id).await.ok().flatten();
+        let momentum_row = state
+            .store
+            .get_formation_momentum(&f.id)
+            .await
+            .ok()
+            .flatten();
         let (momentum_tier, momentum_consecutive_successes, momentum_interference_count) =
             match momentum_row.as_ref() {
                 Some(r) => (
@@ -429,8 +493,7 @@ pub async fn list_formations(state: &RuntimeState) -> Result<Vec<FormationInfo>,
                         .filter(|d| {
                             matches!(
                                 d.health,
-                                AgentHealthDetail::Operational
-                                    | AgentHealthDetail::Degraded { .. }
+                                AgentHealthDetail::Operational | AgentHealthDetail::Degraded { .. }
                             )
                         })
                         .count()
@@ -509,58 +572,23 @@ pub async fn deploy_team(
         ));
     }
 
-    // 1. Create rules (with rollback on failure)
-    let mut created_rule_ids: Vec<RuleId> = Vec::new();
+    // 1. Per-member automation config — the durable source of truth the
+    //    formation's rules are derived from. Persisted so intent cycling can
+    //    re-synthesise rules non-lossily (see `formation_synthesis`).
+    let automations: Vec<MemberAutomation> = team
+        .agents
+        .iter()
+        .filter(|a| !a.connector_name.is_empty() && !a.trigger_name.is_empty())
+        .map(|a| MemberAutomation {
+            connector_name: a.connector_name.clone(),
+            trigger_name: a.trigger_name.clone(),
+            action_connector: a.action_connector.clone(),
+            action_name: a.action_name.clone(),
+            params: serde_json::Map::new(),
+        })
+        .collect();
 
-    for agent in &team.agents {
-        if agent.connector_name.is_empty() || agent.trigger_name.is_empty() {
-            continue;
-        }
-
-        let mut actions = Vec::new();
-        if !agent.action_name.is_empty() {
-            actions.push(Action::RunConnector {
-                connector: agent.action_connector.clone(),
-                action: agent.action_name.clone(),
-                params: serde_json::Map::new(),
-            });
-        }
-
-        let rule = Rule {
-            id: RuleId::new(),
-            name: format!("{} — {}", team.name, agent.trigger_name),
-            description: String::new(),
-            status: RuleStatus::Enabled,
-            version: RuleVersion(1),
-            trigger: Trigger::ConnectorEvent {
-                connector: agent.connector_name.clone(),
-                event: agent.trigger_name.clone(),
-            },
-            conditions: Vec::new(),
-            actions,
-            // Team-formation rules ship Global today; the rule fires
-            // wherever the formation is active and the trigger
-            // matches. Per-formation scoping wiring lands when the
-            // formation builder threads the formation_id (Phase A+).
-            owner: springtale_core::rule::types::RuleOwner::Global,
-        };
-
-        match super::rules::create_rule(state, rule).await {
-            Ok(id) => created_rule_ids.push(id),
-            Err(e) => {
-                // Rollback all previously created rules
-                for rid in &created_rule_ids {
-                    let _ = super::rules::delete_rule(state, rid).await;
-                }
-                return Err(OperationError::Rule(format!(
-                    "failed to create rule for {}: {e}",
-                    agent.trigger_name
-                )));
-            }
-        }
-    }
-
-    // 2. Derive unique connector names
+    // 2. Derive unique connector names (formation members).
     let connector_names: Vec<String> = {
         let mut seen = std::collections::HashSet::new();
         team.agents
@@ -576,11 +604,36 @@ pub async fn deploy_team(
             .collect()
     };
 
-    // 3. Create and deploy formation
-    let formation_id = create_formation(state, team.name, team.intent, connector_names).await?;
-    deploy_formation(state, &formation_id).await?;
+    // 3. Create the formation first — its id owns the synthesised rules.
+    let formation_id = create_formation(
+        state,
+        team.name.clone(),
+        team.intent.clone(),
+        connector_names,
+    )
+    .await?;
 
-    // 4. Mark onboarding complete
+    // 4. Persist automation, then synthesise formation-scoped rules for the
+    //    initial intent. On failure, roll back the formation we just created.
+    store_formation_automation(state, &formation_id, &automations).await?;
+    let created_rule_ids: Vec<RuleId> = match regenerate_formation_rules(
+        state,
+        &formation_id,
+        &team.name,
+        &team.intent,
+        team.guard_mode,
+    )
+    .await
+    {
+        Ok(ids) => ids,
+        Err(e) => {
+            let _ = dissolve_formation(state, &formation_id).await;
+            return Err(e);
+        }
+    };
+
+    // 5. Deploy and mark onboarding complete.
+    deploy_formation(state, &formation_id).await?;
     super::config::set_config(
         &*state.store,
         "onboarding:completed",
@@ -656,11 +709,17 @@ pub async fn cycle_intent(
     let parsed = springtale_cooperation::command::parse_intent(next);
     let _ = state
         .formation_cmd_tx
-        .send(springtale_cooperation::command::FormationCommand::ChangeIntent {
-            formation_id: fid,
-            intent: parsed,
-        })
+        .send(
+            springtale_cooperation::command::FormationCommand::ChangeIntent {
+                formation_id: fid,
+                intent: parsed,
+            },
+        )
         .await;
+
+    // Re-synthesise persistent rules for the new intent (non-lossy via the
+    // stored automation config).
+    regenerate_formation_rules(state, formation_id, &formation.name, next, false).await?;
 
     Ok(next.to_owned())
 }
@@ -783,8 +842,7 @@ mod tests {
         let op = serde_json::to_value(AgentHealthDetail::Operational).unwrap();
         assert_eq!(op, serde_json::json!({"type": "Operational"}));
 
-        let dead =
-            serde_json::to_value(AgentHealthDetail::Dead { recoverable: false }).unwrap();
+        let dead = serde_json::to_value(AgentHealthDetail::Dead { recoverable: false }).unwrap();
         assert_eq!(
             dead,
             serde_json::json!({"type": "Dead", "recoverable": false})

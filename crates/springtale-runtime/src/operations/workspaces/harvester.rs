@@ -116,15 +116,17 @@ pub async fn harvest_event(
             .list_formation_members(&formation.id)
             .await
             .map_err(OperationError::Store)?;
-        let member_of = members
-            .iter()
-            .any(|m| m.connector_name == connector_name);
+        let member_of = members.iter().any(|m| m.connector_name == connector_name);
         if !member_of {
             continue;
         }
         for destination in &destinations {
             let metadata_json = if destination.metadata.is_null()
-                || destination.metadata.as_object().map(|o| o.is_empty()).unwrap_or(false)
+                || destination
+                    .metadata
+                    .as_object()
+                    .map(|o| o.is_empty())
+                    .unwrap_or(false)
             {
                 None
             } else {

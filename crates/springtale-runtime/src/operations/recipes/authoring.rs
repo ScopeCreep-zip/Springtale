@@ -107,9 +107,7 @@ pub async fn delete_user_recipe(
 /// Read every user recipe back. Used by `library::load_user_recipes`
 /// so the standard list/filter path surfaces user recipes alongside
 /// built-ins.
-pub async fn load_user_recipes(
-    store: &dyn StorageBackend,
-) -> Result<Vec<Recipe>, OperationError> {
+pub async fn load_user_recipes(store: &dyn StorageBackend) -> Result<Vec<Recipe>, OperationError> {
     load_all(store).await
 }
 
@@ -150,18 +148,12 @@ async fn load_all(store: &dyn StorageBackend) -> Result<Vec<Recipe>, OperationEr
     }
 }
 
-async fn write_all(
-    store: &dyn StorageBackend,
-    recipes: &[Recipe],
-) -> Result<(), OperationError> {
+async fn write_all(store: &dyn StorageBackend, recipes: &[Recipe]) -> Result<(), OperationError> {
     let value = serde_json::to_value(recipes).unwrap_or(Value::Array(Vec::new()));
     crate::operations::config::set_config(store, RECIPES_USER_KEY, value).await
 }
 
-async fn persist(
-    store: &dyn StorageBackend,
-    recipe: &Recipe,
-) -> Result<(), OperationError> {
+async fn persist(store: &dyn StorageBackend, recipe: &Recipe) -> Result<(), OperationError> {
     let mut list = load_all(store).await?;
     list.retain(|r| r.id != recipe.id); // overwrite-by-id semantics
     list.push(recipe.clone());
@@ -236,6 +228,7 @@ text = "hello"
                 }],
                 ai_config: None,
                 summary: None,
+                derived_inputs: vec![],
             },
         }
     }
@@ -267,7 +260,9 @@ text = "hello"
         let store: std::sync::Arc<dyn StorageBackend> =
             std::sync::Arc::new(springtale_store::SqliteBackend::open_in_memory().unwrap());
         let original = super::super::builtin::get("telegram-echo").unwrap();
-        let forked = fork_recipe(&*store, &original, "My Echo".into()).await.unwrap();
+        let forked = fork_recipe(&*store, &original, "My Echo".into())
+            .await
+            .unwrap();
         assert_ne!(forked.id, original.id);
         assert_eq!(forked.name, "My Echo");
         assert!(matches!(forked.source, RecipeSource::User));

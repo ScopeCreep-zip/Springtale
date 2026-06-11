@@ -15,6 +15,9 @@ springtale-ai = { workspace = true }
 springtale-sentinel     = { workspace = true }
 springtale-cooperation  = { workspace = true }
 springtale-scheduler    = { workspace = true }
+# rustls-only HTTP client factory (safe_http) for deploy-time derived-input
+# resolvers (e.g. geocoding a free-text city). Never a raw reqwest client.
+springtale-transport    = { workspace = true }
 
 # Connector crates — linked so their inventory::submit! registrations are
 # discovered by init_registry(). The crates are not called directly;
@@ -26,6 +29,7 @@ connector-github = { workspace = true }
 connector-filesystem = { workspace = true }
 connector-shell = { workspace = true }
 connector-http = { workspace = true }
+connector-opencode = { workspace = true }
 connector-telegram = { workspace = true }
 connector-nostr = { workspace = true }
 connector-irc = { workspace = true }
@@ -53,6 +57,10 @@ rand = { workspace = true }
 regex = { workspace = true }
 uuid = { workspace = true }
 chrono = { workspace = true }
+# Lock-free pending-approval table for `approval::DefaultDenyApprovalGate`.
+# We hold a `oneshot::Sender` per outstanding request; DashMap lets the
+# management API's resolve path land without serialising every check.
+dashmap = { workspace = true }
 
 # ── Extraction ladder (Phase A) ────────────────────────────────────────────
 # Powers `Action::Extract` per-kind handlers in `crate::extraction`.
@@ -69,3 +77,8 @@ similar = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 tempfile = { workspace = true }
+# Phase-7 audit Finding #1 — wasm_reverify integration test signs a
+# manifest at install time and tampers it to prove the boot-time
+# re-verifier rejects the tampered bundle.
+ed25519-dalek = { workspace = true }
+sha2 = { workspace = true }

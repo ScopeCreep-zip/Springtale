@@ -45,6 +45,9 @@ pub async fn preflight_recipe(
     items.extend(checks::check_optional_format(&recipe, &inputs));
     items.extend(checks::check_schedule_frequency(&recipe, &inputs));
     items.extend(checks::check_connectors(state, &recipe).await);
+    if let Some(item) = checks::check_browser_runtime(&recipe) {
+        items.push(item);
+    }
     if let Some(item) = checks::check_ai_required(state, &recipe).await {
         items.push(item);
     }

@@ -4,8 +4,8 @@
 //! fields (api bind, transport, connector configs, heartbeat interval).
 //! Desktop uses this directly.
 
-use std::collections::HashMap;
 use specta::Type;
+use std::collections::HashMap;
 use std::path::PathBuf;
 
 use serde::Deserialize;

@@ -16,9 +16,9 @@
 
 use std::collections::HashSet;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
-use super::{source_as_str, ExtractError};
+use super::{ExtractError, source_as_str};
 
 /// Produce `{ hash: "<blake3 hex>", normalised_len: N }` for the
 /// source. Recipe authors feed this output into an
@@ -116,12 +116,8 @@ mod tests {
     fn script_tags_are_stripped_before_hashing() {
         // Two pages that differ only in their analytics script should
         // hash to the same value.
-        let with_script = Value::String(
-            "<p>real content</p><script>track('a')</script>".into(),
-        );
-        let without_script = Value::String(
-            "<p>real content</p><script>track('b')</script>".into(),
-        );
+        let with_script = Value::String("<p>real content</p><script>track('a')</script>".into());
+        let without_script = Value::String("<p>real content</p><script>track('b')</script>".into());
         let h_a = hash(&with_script).unwrap();
         let h_b = hash(&without_script).unwrap();
         assert_eq!(h_a["hash"], h_b["hash"]);

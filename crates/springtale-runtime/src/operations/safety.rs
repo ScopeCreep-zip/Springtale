@@ -63,10 +63,7 @@ pub async fn set_disguise_profile(
 /// taps that trigger panic-wipe). `count = 0` disables the gesture.
 /// Bounded `[0, 10]` so the user can't accidentally make panic-wipe
 /// unreachable in a real emergency.
-pub async fn set_panic_tap_count(
-    state: &RuntimeState,
-    count: u32,
-) -> Result<u32, OperationError> {
+pub async fn set_panic_tap_count(state: &RuntimeState, count: u32) -> Result<u32, OperationError> {
     if count > 10 {
         return Err(OperationError::Validation(format!(
             "panic_tap_count {count} exceeds safe upper bound of 10 — survivors need the gesture to fire reliably under duress"

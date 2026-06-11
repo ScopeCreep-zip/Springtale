@@ -5,12 +5,13 @@
 use serde_json::json;
 
 use super::super::types::{
-    ConnectorConfigStep, Difficulty, FieldKind, FieldVisibility, InputField, Recipe,
-    RecipeBlueprint, RecipeCategory, RecipeSource, RuleStep, SelectOption,
+    ConnectorConfigStep, DerivedInputResolver, Difficulty, FieldKind, FieldVisibility, InputField,
+    Recipe, RecipeBlueprint, RecipeCategory, RecipeSource, RuleStep, SelectOption,
 };
 
 pub fn all() -> Vec<Recipe> {
     vec![
+        weather_briefing(),
         daily_summary(),
         cron_runner(),
         morning_briefing(),
@@ -21,6 +22,113 @@ pub fn all() -> Vec<Recipe> {
         weekly_screen_digest(),
         daily_shutdown_checklist(),
     ]
+}
+
+// ── Weather briefing (W4 — zero-key OpenClaw parity) ───────────
+
+/// Morning weather, no API key: Open-Meteo's free forecast endpoint over
+/// `connector-http`. Deterministic (`ai_required: false`) — the Notify body
+/// carries the raw current conditions; an attached AI adapter can be layered
+/// later for prose summaries. Read-only end to end, so the same HTTP `get`
+/// is also chat-callable out of the box ("what's the weather?" → W1 tools).
+fn weather_briefing() -> Recipe {
+    Recipe {
+        id: "weather-briefing".into(),
+        name: "Morning Weather".into(),
+        description: "Today's weather every morning — no account, no API key.".into(),
+        icon_id: "cloud-sun".into(),
+        category: RecipeCategory::Daily,
+        tags: vec!["cron".into(), "weather".into(), "zero-key".into()],
+        connectors_used: vec!["connector-http".into()],
+        ai_required: false,
+        difficulty: Difficulty::Quick,
+        source: RecipeSource::Builtin,
+        inputs: vec![
+            // Universal target: ANY city, not a hardcoded dropdown. The
+            // free-text `city` is geocoded into `${location}` at deploy
+            // time (see `blueprint.derived_inputs`).
+            InputField {
+                id: "city".into(),
+                label: "City".into(),
+                kind: FieldKind::Text,
+                visibility: FieldVisibility::Required,
+                default: None,
+                hint: Some("Any city — e.g. \"Sacramento, CA\" or \"London\".".into()),
+            },
+            InputField {
+                id: "schedule".into(),
+                label: "Time of day".into(),
+                kind: FieldKind::Select {
+                    options: vec![
+                        SelectOption {
+                            value: "0 7 * * *".into(),
+                            label: "7:00 AM".into(),
+                        },
+                        SelectOption {
+                            value: "0 8 * * *".into(),
+                            label: "8:00 AM".into(),
+                        },
+                        SelectOption {
+                            value: "0 9 * * *".into(),
+                            label: "9:00 AM".into(),
+                        },
+                    ],
+                },
+                visibility: FieldVisibility::Required,
+                default: Some(json!("0 8 * * *")),
+                hint: Some("When the briefing should arrive.".into()),
+            },
+        ],
+        blueprint: RecipeBlueprint {
+            connector_configs: vec![ConnectorConfigStep {
+                connector_name: "connector-http".into(),
+                config: json!({}),
+            }],
+            rules: vec![RuleStep {
+                toml: r#"name = "weather-briefing"
+
+[trigger]
+type = "Cron"
+expression = "${schedule}"
+
+[[actions]]
+type = "Chain"
+
+[[actions.steps]]
+type = "RunConnector"
+connector = "connector-http"
+action = "get"
+
+[actions.steps.params]
+url = "https://api.open-meteo.com/v1/forecast?${location}&current=temperature_2m,apparent_temperature,precipitation,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph"
+
+[[actions.steps]]
+type = "Extract"
+source = "last_connector_output.body"
+
+[actions.steps.kind]
+kind = "json_path"
+
+[actions.steps.kind.schema]
+temp = "$.current.temperature_2m"
+feels = "$.current.apparent_temperature"
+wind = "$.current.wind_speed_10m"
+
+[[actions.steps]]
+type = "Notify"
+title = "Weather for ${city}"
+body = "It's ${last_extract_output.temp}°F in ${city} right now (feels like ${last_extract_output.feels}°F), wind ${last_extract_output.wind} mph."
+"#
+                .into(),
+            }],
+            ai_config: None,
+            summary: Some("Cron → geocode city → Open-Meteo (keyless) → notification.".into()),
+            derived_inputs: vec![DerivedInputResolver::Geocode {
+                source_input_id: "city".into(),
+                target_input_id: "location".into(),
+            }],
+        },
+    }
 }
 
 // ── Daily summary (existing) ───────────────────────────────────
@@ -43,10 +151,22 @@ fn daily_summary() -> Recipe {
                 label: "Time of day".into(),
                 kind: FieldKind::Select {
                     options: vec![
-                        SelectOption { value: "0 8 * * *".into(), label: "8:00 AM".into() },
-                        SelectOption { value: "0 9 * * *".into(), label: "9:00 AM".into() },
-                        SelectOption { value: "0 18 * * *".into(), label: "6:00 PM".into() },
-                        SelectOption { value: "0 22 * * *".into(), label: "10:00 PM".into() },
+                        SelectOption {
+                            value: "0 8 * * *".into(),
+                            label: "8:00 AM".into(),
+                        },
+                        SelectOption {
+                            value: "0 9 * * *".into(),
+                            label: "9:00 AM".into(),
+                        },
+                        SelectOption {
+                            value: "0 18 * * *".into(),
+                            label: "6:00 PM".into(),
+                        },
+                        SelectOption {
+                            value: "0 22 * * *".into(),
+                            label: "10:00 PM".into(),
+                        },
                     ],
                 },
                 visibility: FieldVisibility::Required,
@@ -79,6 +199,7 @@ prompt = "Summarise ${topic} in 5 bullet points."
             }],
             ai_config: None,
             summary: Some("Runs an AI summary on a schedule.".into()),
+            derived_inputs: vec![],
         },
     }
 }
@@ -111,8 +232,14 @@ fn cron_runner() -> Recipe {
                 label: "Schedule".into(),
                 kind: FieldKind::Select {
                     options: vec![
-                        SelectOption { value: "0 9 * * *".into(), label: "Daily at 9 AM".into() },
-                        SelectOption { value: "0 12 * * *".into(), label: "Daily at noon".into() },
+                        SelectOption {
+                            value: "0 9 * * *".into(),
+                            label: "Daily at 9 AM".into(),
+                        },
+                        SelectOption {
+                            value: "0 12 * * *".into(),
+                            label: "Daily at noon".into(),
+                        },
                         SelectOption {
                             value: "0 17 * * 5".into(),
                             label: "Fridays at 5 PM".into(),
@@ -141,6 +268,7 @@ text = "${message}"
             }],
             ai_config: None,
             summary: Some("Fires a reminder on the schedule you pick.".into()),
+            derived_inputs: vec![],
         },
     }
 }
@@ -154,7 +282,12 @@ fn morning_briefing() -> Recipe {
         description: "Today's plan + weather + news in 3 bullets, delivered to Telegram.".into(),
         icon_id: "newspaper".into(),
         category: RecipeCategory::Daily,
-        tags: vec!["cron".into(), "telegram".into(), "ai".into(), "briefing".into()],
+        tags: vec![
+            "cron".into(),
+            "telegram".into(),
+            "ai".into(),
+            "briefing".into(),
+        ],
         connectors_used: vec!["connector-telegram".into()],
         ai_required: true,
         difficulty: Difficulty::Standard,
@@ -216,6 +349,7 @@ text = "☀️ ${last_ai_output}"
             }],
             ai_config: None,
             summary: Some("8am: AI drafts a 3-bullet day plan and sends to Telegram.".into()),
+            derived_inputs: vec![],
         },
     }
 }
@@ -287,6 +421,7 @@ text = "${message}"
             }],
             ai_config: None,
             summary: Some("Mondays 10am: Telegram nudge to plan the week.".into()),
+            derived_inputs: vec![],
         },
     }
 }
@@ -352,6 +487,7 @@ text = "📓 ${last_ai_output}"
             }],
             ai_config: None,
             summary: Some("9pm: AI-drafted journaling question delivered to Signal.".into()),
+            derived_inputs: vec![],
         },
     }
 }
@@ -370,27 +506,25 @@ fn hydration_reminder() -> Recipe {
         ai_required: false,
         difficulty: Difficulty::Quick,
         source: RecipeSource::Builtin,
-        inputs: vec![
-            InputField {
-                id: "schedule".into(),
-                label: "Schedule".into(),
-                kind: FieldKind::Select {
-                    options: vec![
-                        SelectOption {
-                            value: "0 8-20/2 * * *".into(),
-                            label: "Every 2h, 8am–8pm".into(),
-                        },
-                        SelectOption {
-                            value: "0 9-18/3 * * *".into(),
-                            label: "Every 3h, 9am–6pm".into(),
-                        },
-                    ],
-                },
-                visibility: FieldVisibility::Optional,
-                default: Some(json!("0 8-20/2 * * *")),
-                hint: None,
+        inputs: vec![InputField {
+            id: "schedule".into(),
+            label: "Schedule".into(),
+            kind: FieldKind::Select {
+                options: vec![
+                    SelectOption {
+                        value: "0 8-20/2 * * *".into(),
+                        label: "Every 2h, 8am–8pm".into(),
+                    },
+                    SelectOption {
+                        value: "0 9-18/3 * * *".into(),
+                        label: "Every 3h, 9am–6pm".into(),
+                    },
+                ],
             },
-        ],
+            visibility: FieldVisibility::Optional,
+            default: Some(json!("0 8-20/2 * * *")),
+            hint: None,
+        }],
         blueprint: RecipeBlueprint {
             connector_configs: vec![],
             rules: vec![RuleStep {
@@ -409,6 +543,7 @@ body = "Drink something."
             }],
             ai_config: None,
             summary: Some("Gentle desktop pings to drink water.".into()),
+            derived_inputs: vec![],
         },
     }
 }
@@ -480,6 +615,7 @@ text = "${message}"
             }],
             ai_config: None,
             summary: Some("1st + 15th of each month at 9am: bills check-in.".into()),
+            derived_inputs: vec![],
         },
     }
 }
@@ -495,8 +631,8 @@ fn weekly_screen_digest() -> Recipe {
                 .into(),
         icon_id: "newspaper".into(),
         category: RecipeCategory::Daily,
-        tags: vec!["cron".into(), "shell".into(), "telegram".into(), "weekly".into()],
-        connectors_used: vec!["connector-shell".into(), "connector-telegram".into()],
+        tags: vec!["cron".into(), "filesystem".into(), "telegram".into(), "weekly".into()],
+        connectors_used: vec!["connector-filesystem".into(), "connector-telegram".into()],
         ai_required: true,
         difficulty: Difficulty::Standard,
         source: RecipeSource::Builtin,
@@ -530,10 +666,18 @@ fn weekly_screen_digest() -> Recipe {
             },
         ],
         blueprint: RecipeBlueprint {
-            connector_configs: vec![ConnectorConfigStep {
-                connector_name: "connector-telegram".into(),
-                config: json!({ "bot_token": "${bot_token}" }),
-            }],
+            connector_configs: vec![
+                ConnectorConfigStep {
+                    connector_name: "connector-telegram".into(),
+                    config: json!({ "bot_token": "${bot_token}" }),
+                },
+                // Read-only access scoped to exactly the log file the user
+                // named — no shell, no broader filesystem reach.
+                ConnectorConfigStep {
+                    connector_name: "connector-filesystem".into(),
+                    config: json!({ "read_paths": ["${usage_log}"] }),
+                },
+            ],
             rules: vec![RuleStep {
                 toml: r#"name = "weekly-screen-digest"
 
@@ -542,12 +686,16 @@ type = "Cron"
 expression = "0 10 * * 0"
 
 [[actions]]
-type = "RunShell"
-command = "tail -n 200 ${usage_log}"
+type = "RunConnector"
+connector = "connector-filesystem"
+action = "read_file"
+
+[actions.params]
+path = "${usage_log}"
 
 [[actions]]
 type = "AiComplete"
-prompt = "Summarise this week's usage log in 3 short bullets — total hours, dominant categories, one observation:\n${last_shell_output}"
+prompt = "Summarise this week's usage log in 3 short bullets — total hours, dominant categories, one observation:\n${last_connector_output.content}"
 
 [[actions]]
 type = "RunConnector"
@@ -565,6 +713,7 @@ text = "📊 Weekly screen digest\n${last_ai_output}"
                 "Sunday 10am: tails your usage log, AI-summarises the week, Telegram pings you."
                     .into(),
             ),
+            derived_inputs: vec![],
         },
     }
 }
@@ -583,31 +732,29 @@ fn daily_shutdown_checklist() -> Recipe {
         ai_required: false,
         difficulty: Difficulty::Quick,
         source: RecipeSource::Builtin,
-        inputs: vec![
-            InputField {
-                id: "schedule".into(),
-                label: "Schedule".into(),
-                kind: FieldKind::Select {
-                    options: vec![
-                        SelectOption {
-                            value: "0 18 * * 1-5".into(),
-                            label: "Weekdays at 6pm".into(),
-                        },
-                        SelectOption {
-                            value: "0 19 * * 1-5".into(),
-                            label: "Weekdays at 7pm".into(),
-                        },
-                        SelectOption {
-                            value: "0 17 * * 1-5".into(),
-                            label: "Weekdays at 5pm".into(),
-                        },
-                    ],
-                },
-                visibility: FieldVisibility::Optional,
-                default: Some(json!("0 18 * * 1-5")),
-                hint: None,
+        inputs: vec![InputField {
+            id: "schedule".into(),
+            label: "Schedule".into(),
+            kind: FieldKind::Select {
+                options: vec![
+                    SelectOption {
+                        value: "0 18 * * 1-5".into(),
+                        label: "Weekdays at 6pm".into(),
+                    },
+                    SelectOption {
+                        value: "0 19 * * 1-5".into(),
+                        label: "Weekdays at 7pm".into(),
+                    },
+                    SelectOption {
+                        value: "0 17 * * 1-5".into(),
+                        label: "Weekdays at 5pm".into(),
+                    },
+                ],
             },
-        ],
+            visibility: FieldVisibility::Optional,
+            default: Some(json!("0 18 * * 1-5")),
+            hint: None,
+        }],
         blueprint: RecipeBlueprint {
             connector_configs: vec![],
             rules: vec![RuleStep {
@@ -626,6 +773,7 @@ body = "Save work • close tabs • set away • lock vault."
             }],
             ai_config: None,
             summary: Some("Weekday evenings: gentle shutdown ritual nudge.".into()),
+            derived_inputs: vec![],
         },
     }
 }

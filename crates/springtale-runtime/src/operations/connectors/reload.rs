@@ -35,10 +35,7 @@ use springtale_connector::factory::FactoryEntry;
 use crate::error::OperationError;
 use crate::state::RuntimeState;
 
-pub async fn reload_connector(
-    state: &RuntimeState,
-    name: &str,
-) -> Result<(), OperationError> {
+pub async fn reload_connector(state: &RuntimeState, name: &str) -> Result<(), OperationError> {
     // 1. Verify the connector is actually installed + snapshot its
     //    current enabled state. Fail before we burn cycles on a
     //    factory rebuild for a missing target.

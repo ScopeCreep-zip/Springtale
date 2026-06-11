@@ -86,7 +86,12 @@ pub async fn scan_workspaces(
     let tier = crate::cooperation::momentum_to_wasm_tier(momentum);
     let exec = state
         .capability_bridge
-        .execute(connector_name, "discover_destinations", serde_json::json!({}), tier)
+        .execute(
+            connector_name,
+            "discover_destinations",
+            serde_json::json!({}),
+            tier,
+        )
         .await;
     let now_ms = Utc::now().timestamp_millis();
     let provenance = WorkspaceProvenance::ActiveDiscovery {
@@ -123,7 +128,10 @@ pub async fn scan_workspaces(
                     .and_then(|v| v.as_str())
                     .unwrap_or("unknown")
                     .to_owned();
-                let metadata = dest.get("metadata").cloned().unwrap_or(serde_json::Value::Null);
+                let metadata = dest
+                    .get("metadata")
+                    .cloned()
+                    .unwrap_or(serde_json::Value::Null);
                 let metadata_json = if metadata.is_null()
                     || metadata.as_object().map(|o| o.is_empty()).unwrap_or(false)
                 {
@@ -208,27 +216,20 @@ pub async fn preview_onboard_url(
         .into_iter()
         .find(|e| e.factory.name() == connector_name)
         .ok_or_else(|| {
-            OperationError::Connector(format!(
-                "no factory registered for {connector_name}"
-            ))
+            OperationError::Connector(format!("no factory registered for {connector_name}"))
         })?
         .factory;
 
-    let connector = factory.create(config).await.map_err(|e| {
-        OperationError::Connector(format!(
-            "{connector_name} factory.create: {e}"
-        ))
-    })?;
+    let connector = factory
+        .create(config)
+        .await
+        .map_err(|e| OperationError::Connector(format!("{connector_name} factory.create: {e}")))?;
 
     let input = serde_json::json!({ "payload": payload });
     let result = connector
         .execute("onboard_url", input)
         .await
-        .map_err(|e| {
-            OperationError::Connector(format!(
-                "{connector_name} onboard_url: {e}"
-            ))
-        })?;
+        .map_err(|e| OperationError::Connector(format!("{connector_name} onboard_url: {e}")))?;
 
     let url = result
         .output

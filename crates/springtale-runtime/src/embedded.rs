@@ -20,17 +20,17 @@
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
-use tokio::sync::{mpsc, Mutex};
+use tokio::sync::{Mutex, mpsc};
 
+use springtale_core::rule::Trigger;
 use springtale_core::rule::action::Action;
 use springtale_core::rule::engine::TriggerEvent;
 use springtale_core::rule::types::Rule;
-use springtale_core::rule::Trigger;
+use springtale_scheduler::HeartbeatMonitor;
 use springtale_scheduler::cron::executor::CronExecutor;
 use springtale_scheduler::queue::consumer::JobConsumer;
 use springtale_scheduler::queue::producer::JobProducer;
 use springtale_scheduler::watcher::fs_watcher::FsWatcher;
-use springtale_scheduler::HeartbeatMonitor;
 
 use crate::state::RuntimeState;
 
@@ -55,9 +55,7 @@ struct ChainJob {
     actions: Vec<Action>,
 }
 
-fn trigger_type_to_mode(
-    trigger_type: &str,
-) -> springtale_cooperation::execution::ExecutionMode {
+fn trigger_type_to_mode(trigger_type: &str) -> springtale_cooperation::execution::ExecutionMode {
     use springtale_cooperation::execution::ExecutionMode;
     match trigger_type {
         "Cron" => ExecutionMode::Cron,
@@ -195,8 +193,7 @@ pub async fn bootstrap(
         }
     }
 
-    let mut heartbeat_monitor =
-        HeartbeatMonitor::new(heartbeat_interval_secs, trigger_tx.clone());
+    let mut heartbeat_monitor = HeartbeatMonitor::new(heartbeat_interval_secs, trigger_tx.clone());
     if heartbeat_interval_secs > 0 {
         heartbeat_monitor.start();
         tracing::info!(
@@ -226,9 +223,11 @@ pub async fn bootstrap(
 
     let dispatch_bridge = runtime.capability_bridge.clone();
     let dispatch_sentinel = runtime.sentinel.clone();
+    let dispatch_notify = runtime.notification_tx.clone();
     consumer.set_handler(Arc::new(move |job| {
         let bridge = dispatch_bridge.clone();
         let sent = dispatch_sentinel.clone();
+        let notify_tx = dispatch_notify.clone();
         Box::pin(async move {
             let chain_job: ChainJob = serde_json::from_value(job.payload)
                 .map_err(|e| format!("failed to deserialize chain job: {e}"))?;
@@ -239,12 +238,11 @@ pub async fn bootstrap(
                 .as_deref()
                 .and_then(|s| s.parse::<uuid::Uuid>().ok())
                 .map(springtale_core::rule::RuleId)
-                .unwrap_or_else(springtale_core::rule::RuleId::new);
-            let exec = springtale_cooperation::execution::ExecutionContext::for_global(
-                rule_id, mode,
-            );
+                .unwrap_or_default();
+            let exec =
+                springtale_cooperation::execution::ExecutionContext::for_global(rule_id, mode);
 
-            crate::dispatch::dispatch_actions(
+            let chain = crate::dispatch::dispatch_actions(
                 &chain_job.actions,
                 &bridge,
                 &sent,
@@ -252,8 +250,19 @@ pub async fn bootstrap(
                 chain_job.trigger_payload,
             )
             .await
-            .map(|_| ())
-            .map_err(|e| e.to_string())
+            .map_err(|e| e.to_string())?;
+
+            // Delivery: fan out every user-facing Notify/SendMessage
+            // step to the chat stream + OS notification. A send error
+            // means no subscriber is currently attached (e.g. desktop
+            // chat panel closed) — best-effort, so we trace and move
+            // on rather than fail the job.
+            for event in crate::notification::NotificationEvent::from_chain(&chain) {
+                if let Err(e) = notify_tx.send(event) {
+                    tracing::trace!(error = %e, "no notification subscribers — delivery dropped");
+                }
+            }
+            Ok(())
         })
     }));
     tokio::spawn(async move {
@@ -268,10 +277,27 @@ pub async fn bootstrap(
     // executes with shared `ChainContext` and `${last_*_output.*}`
     // references resolve correctly.
     let engine = runtime.engine.clone();
+    let normalize_registry = runtime.registry.clone();
     let event_producer = producer.clone();
     tokio::spawn(async move {
         let mut rx = trigger_rx;
-        while let Some(event) = rx.recv().await {
+        while let Some(mut event) = rx.recv().await {
+            // Anti-corruption boundary: every ConnectorEvent entering the
+            // rule engine — from the webhook ingress OR a polling gateway,
+            // both of which feed this one `trigger_rx` — is normalized to
+            // the connector's declared flat trigger schema HERE, the single
+            // chokepoint. Recipes therefore resolve `${trigger.*}` against
+            // canonical fields (e.g. GitHub `pusher` → a username) rather
+            // than a raw nested provider blob or a missing-field placeholder.
+            if event.trigger_type == "ConnectorEvent"
+                && let Some(connector_name) = event.connector.clone()
+            {
+                let reg = normalize_registry.read().await;
+                if let Some(entry) = reg.get(&connector_name) {
+                    let trigger = event.event.clone().unwrap_or_default();
+                    event.payload = entry.host.normalize_event(&trigger, event.payload);
+                }
+            }
             let engine = engine.read().await;
             let matches = springtale_core::router::dispatch::dispatch_event(&engine, &event);
             for rule_match in &matches {
@@ -308,6 +334,22 @@ pub async fn bootstrap(
         }
         tracing::info!("trigger event loop terminated");
     });
+
+    // Wire ConnectorEvent handlers for every enabled ConnectorEvent rule
+    // and publish the registry on RuntimeState so every deploy surface
+    // (recipe apply, chat deployer, rule CRUD) attaches/detaches through
+    // the SAME instance. Both the daemon and desktop call bootstrap, so
+    // this is the single place connector-event triggers come up.
+    let registry = crate::triggers::wire_connector_events(
+        &runtime.registry,
+        &runtime.engine,
+        trigger_tx.clone(),
+        runtime.store.clone(),
+    )
+    .await;
+    if runtime.trigger_registry.set(registry).is_err() {
+        tracing::warn!("trigger_registry already initialised — bootstrap ran twice?");
+    }
 
     let scheduler = EmbeddedScheduler {
         cron: Arc::new(Mutex::new(cron_executor)),

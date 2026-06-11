@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
-#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)
+)]
 
 //! Shared runtime for springtaled and the desktop app.
 //!
@@ -24,12 +27,14 @@ extern crate connector_http;
 extern crate connector_irc;
 extern crate connector_kick;
 extern crate connector_nostr;
+extern crate connector_opencode;
 extern crate connector_presearch;
 extern crate connector_shell;
 extern crate connector_signal;
 extern crate connector_slack;
 extern crate connector_telegram;
 
+pub mod approval;
 pub mod client_config;
 pub mod config;
 pub mod cooperation;
@@ -39,14 +44,24 @@ pub mod embedded;
 pub mod error;
 pub mod extraction;
 pub mod init;
+pub mod notification;
 pub mod operations;
+pub mod quota;
 pub mod state;
+pub mod triggers;
 
+pub use approval::{
+    ApprovalDecision, ApprovalError, ApprovalGate, ApprovalRequest, ApprovalRequestId,
+    DEFAULT_APPROVAL_TIMEOUT, DefaultDenyApprovalGate,
+};
 pub use client_config::{ClientConfig, ClientConfigError};
 pub use config::{RuntimeConfig, StoreConfig};
-pub use cooperation::{momentum_to_wasm_tier, BridgeError, CapabilityBridge};
-pub use embedded::{bootstrap as bootstrap_embedded, EmbeddedBootHandle, EmbeddedScheduler};
-pub use extraction::ExtractError;
+pub use cooperation::{BridgeError, CapabilityBridge, momentum_to_wasm_tier};
+pub use embedded::{EmbeddedBootHandle, EmbeddedScheduler, bootstrap as bootstrap_embedded};
 pub use error::OperationError;
+pub use extraction::ExtractError;
 pub use init::init;
+pub use notification::NotificationEvent;
+pub use quota::SqliteTokenQuota;
 pub use state::{LiveFormationReader, RuntimeState};
+pub use triggers::{TriggerRegistry, activate_rule, deactivate_rule, wire_connector_events};

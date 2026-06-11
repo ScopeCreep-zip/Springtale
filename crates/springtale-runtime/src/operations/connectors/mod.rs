@@ -11,9 +11,9 @@ mod store;
 
 use serde::Serialize;
 
-use specta::Type;
 use crate::error::OperationError;
 use crate::state::RuntimeState;
+use specta::Type;
 
 // Re-export everything public from submodules
 pub use install::{install_connector, install_wasm_connector};
@@ -107,9 +107,9 @@ async fn deregister_manifest_roles_for(state: &RuntimeState, name: &str) {
     let Some(row) = rows.into_iter().find(|r| r.name == name) else {
         return;
     };
-    if let Ok(manifest) = serde_json::from_str::<springtale_connector::ConnectorManifest>(
-        &row.manifest_json,
-    ) {
+    if let Ok(manifest) =
+        serde_json::from_str::<springtale_connector::ConnectorManifest>(&row.manifest_json)
+    {
         crate::cooperation::unregister_manifest_roles(&state.role_registry, &manifest);
     }
 }

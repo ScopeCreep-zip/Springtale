@@ -30,7 +30,10 @@ pub fn check_optional_format(recipe: &Recipe, inputs: &RecipeInputs) -> Vec<Pref
     for f in recipe.optional_inputs().chain(recipe.advanced_inputs()) {
         let v = inputs.get(&f.id);
         // Optional → skip the "present" leg, only run format validation.
-        if v.is_none() || matches!(v, Some(Value::Null)) || matches!(v, Some(Value::String(s)) if s.is_empty()) {
+        if v.is_none()
+            || matches!(v, Some(Value::Null))
+            || matches!(v, Some(Value::String(s)) if s.is_empty())
+        {
             continue;
         }
         let item = check_input(f, v, false);
@@ -74,18 +77,18 @@ fn check_input(field: &InputField, value: Option<&Value>, required: bool) -> Pre
         };
     }
     // Present — format validation for the typed kinds.
-    if let Some(v) = value {
-        if let Err(detail) = validate_kind(&field.kind, v) {
-            return PreflightItem {
-                id,
-                label,
-                status: PreflightStatus::Blocking,
-                detail: Some(detail),
-                fix_hint: Some(PreflightFix::FocusInput {
-                    input_id: field.id.clone(),
-                }),
-            };
-        }
+    if let Some(v) = value
+        && let Err(detail) = validate_kind(&field.kind, v)
+    {
+        return PreflightItem {
+            id,
+            label,
+            status: PreflightStatus::Blocking,
+            detail: Some(detail),
+            fix_hint: Some(PreflightFix::FocusInput {
+                input_id: field.id.clone(),
+            }),
+        };
     }
     PreflightItem {
         id,
@@ -96,7 +99,14 @@ fn check_input(field: &InputField, value: Option<&Value>, required: bool) -> Pre
     }
 }
 
-fn validate_kind(kind: &FieldKind, value: &Value) -> Result<(), String> {
+/// Validate a single value against an [`InputField`]'s [`FieldKind`].
+///
+/// Pure, no I/O — the same rules the preflight checklist enforces
+/// (URL scheme, number parse, `Select` membership, `Cron` arity,
+/// non-empty `Secret`). Re-used by the conversational task-setup
+/// engine in `springtale-bot` to accept or reject a slot value it
+/// extracted from a chat message before storing it.
+pub fn validate_kind(kind: &FieldKind, value: &Value) -> Result<(), String> {
     match kind {
         FieldKind::Url => match value {
             Value::String(s) => {
@@ -140,9 +150,9 @@ fn validate_kind(kind: &FieldKind, value: &Value) -> Result<(), String> {
         // sanity is the only thing this layer enforces.
         FieldKind::Cron => match value {
             Value::String(s) if !s.is_empty() && s.split_whitespace().count() >= 5 => Ok(()),
-            Value::String(_) => Err(
-                "Expected a 5- or 6-field cron expression (min hour dom month dow).".into(),
-            ),
+            Value::String(_) => {
+                Err("Expected a 5- or 6-field cron expression (min hour dom month dow).".into())
+            }
             _ => Err("Expected a cron expression string.".into()),
         },
         // CSS-selector inputs are validated at the picker layer
@@ -191,7 +201,7 @@ pub async fn check_connectors(state: &RuntimeState, recipe: &Recipe) -> Vec<Pref
         .iter()
         .map(|name| {
             let id = format!("connector_loaded:{name}");
-            let label = format!("{name}");
+            let label = name.clone();
             if registry.get(name).is_some() {
                 PreflightItem {
                     id,
@@ -215,6 +225,77 @@ pub async fn check_connectors(state: &RuntimeState, recipe: &Recipe) -> Vec<Pref
         .collect()
 }
 
+/// W4 — browser-runtime check. A recipe that drives `connector-browser`
+/// needs a Chromium/Chrome binary on the host (chromiumoxide launches the
+/// system browser when no `chrome_path` is configured). We mirror
+/// chromiumoxide's own resolution: the `CHROME` env var, then the standard
+/// per-OS install locations. Advisory (`Warning`, never `Blocking`) — the
+/// user may set an explicit `chrome_path`, or install before the first run.
+pub fn check_browser_runtime(recipe: &Recipe) -> Option<PreflightItem> {
+    if !recipe
+        .connectors_used
+        .iter()
+        .any(|c| c == "connector-browser")
+    {
+        return None;
+    }
+
+    let found = chromium_binary_path();
+    Some(if let Some(path) = found {
+        PreflightItem {
+            id: "browser_runtime".into(),
+            label: "Headless browser".into(),
+            status: PreflightStatus::Verified,
+            detail: Some(format!("Chromium/Chrome found at {path}.")),
+            fix_hint: None,
+        }
+    } else {
+        PreflightItem {
+            id: "browser_runtime".into(),
+            label: "Headless browser".into(),
+            status: PreflightStatus::Warning,
+            detail: Some(
+                "This recipe scrapes the web, which needs Chromium or Chrome. \
+                 None was found in the usual places. Install Chromium (or set the \
+                 connector's chrome_path) before the first run."
+                    .into(),
+            ),
+            fix_hint: Some(PreflightFix::Note {
+                message: "Install Chromium: macOS `brew install --cask chromium`, \
+                          Debian/Ubuntu `apt install chromium`, Fedora \
+                          `dnf install chromium`."
+                    .into(),
+            }),
+        }
+    })
+}
+
+/// Resolve a Chromium/Chrome executable the same way chromiumoxide does:
+/// the `CHROME` env var first, then the standard per-OS install paths.
+fn chromium_binary_path() -> Option<String> {
+    if let Ok(env_path) = std::env::var("CHROME")
+        && !env_path.is_empty()
+        && std::path::Path::new(&env_path).exists()
+    {
+        return Some(env_path);
+    }
+    const CANDIDATES: &[&str] = &[
+        // macOS
+        "/Applications/Chromium.app/Contents/MacOS/Chromium",
+        "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome",
+        // Linux
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+        "/snap/bin/chromium",
+    ];
+    CANDIDATES
+        .iter()
+        .find(|p| std::path::Path::new(p).exists())
+        .map(|p| (*p).to_owned())
+}
+
 /// Cron-frequency check (Phase 0.5 / Phase A.5). Scans the recipe's
 /// rule TOML for `Cron` triggers and classifies the schedule:
 ///
@@ -227,10 +308,7 @@ pub async fn check_connectors(state: &RuntimeState, recipe: &Recipe) -> Vec<Pref
 ///
 /// Returns one row per cron-triggered rule step in the recipe.
 /// Recipes without `Cron` triggers produce no rows.
-pub fn check_schedule_frequency(
-    recipe: &Recipe,
-    inputs: &RecipeInputs,
-) -> Vec<PreflightItem> {
+pub fn check_schedule_frequency(recipe: &Recipe, inputs: &RecipeInputs) -> Vec<PreflightItem> {
     use crate::operations::recipes::apply::substitute_template_public;
     let mut out = Vec::new();
     for (idx, step) in recipe.blueprint.rules.iter().enumerate() {
@@ -252,9 +330,7 @@ fn classify_schedule(expr: &str, id: String, label: String) -> PreflightItem {
             id,
             label,
             status: PreflightStatus::Blocking,
-            detail: Some(format!(
-                "`{expr}` is not a valid cron expression."
-            )),
+            detail: Some(format!("`{expr}` is not a valid cron expression.")),
             fix_hint: Some(PreflightFix::Note {
                 message: "Use a 5-field cron expression (min hour dom month dow).".into(),
             }),
@@ -310,12 +386,11 @@ impl ScheduleBucket {
             if sec == "*" {
                 return ScheduleBucket::SubMinute;
             }
-            if let Some(rest) = sec.strip_prefix("*/") {
-                if let Ok(n) = rest.parse::<u32>() {
-                    if n < 60 {
-                        return ScheduleBucket::SubMinute;
-                    }
-                }
+            if let Some(rest) = sec.strip_prefix("*/")
+                && let Ok(n) = rest.parse::<u32>()
+                && n < 60
+            {
+                return ScheduleBucket::SubMinute;
             }
             // SEC is fixed (e.g. "0") or `*/60+` — fall through to
             // minute-level analysis on the next field.
@@ -359,10 +434,7 @@ fn extract_cron_expressions_from_toml(toml: &str) -> Vec<String> {
         let trimmed = line.trim();
         if let Some(rest) = trimmed.strip_prefix("expression") {
             let rest = rest.trim_start_matches(' ').trim_start_matches('=').trim();
-            if let Some(stripped) = rest
-                .strip_prefix('"')
-                .and_then(|s| s.strip_suffix('"'))
-            {
+            if let Some(stripped) = rest.strip_prefix('"').and_then(|s| s.strip_suffix('"')) {
                 out.push(stripped.to_owned());
             }
         }
@@ -401,19 +473,16 @@ pub async fn check_structured_extraction_capability(
     }
 
     // Resolve the same adapter the dispatcher will use at runtime.
-    // `ai_adapter_for(None, None)` returns the global adapter or
-    // NoopAdapter — matches the dispatcher's lookup path when an
-    // agent's per-bot adapter isn't yet wired (which is the case
-    // today; per-agent storage lands later).
-    let adapter = state.capability_bridge.ai_adapter_for(None, None);
+    // `ai_adapter_for(None, None)` returns the global adapter or NoopAdapter —
+    // the colony/global default. Per-agent adapters (unit layer) resolve from
+    // `ai:{agent_id}` when a firing agent id is present at dispatch.
+    let adapter = state.capability_bridge.ai_adapter_for(None, None).await;
     if adapter.structured_extractor().is_some() {
         return Some(PreflightItem {
             id: "ai_structured_extraction".into(),
             label: "AI structured extraction".into(),
             status: PreflightStatus::Verified,
-            detail: Some(
-                "Configured AI adapter supports schema-constrained extraction.".into(),
-            ),
+            detail: Some("Configured AI adapter supports schema-constrained extraction.".into()),
             fix_hint: None,
         });
     }
@@ -474,17 +543,17 @@ pub async fn check_ai_required(state: &RuntimeState, recipe: &Recipe) -> Option<
     }
     // Otherwise check whether the runtime already has an AI:global
     // config set.
-    let raw =
-        crate::operations::config::get_config(&*state.store, "ai:global")
-            .await
-            .unwrap_or(Value::Null);
+    let raw = crate::operations::config::get_config(&*state.store, "ai:global")
+        .await
+        .unwrap_or(Value::Null);
     if matches!(raw, Value::Null) {
         Some(PreflightItem {
             id: "ai_config:global".into(),
             label: "AI provider".into(),
             status: PreflightStatus::Blocking,
             detail: Some(
-                "This recipe uses AI. Configure a provider (Ollama / OpenAI / Anthropic) first.".into(),
+                "This recipe uses AI. Configure a provider (Ollama / OpenAI / Anthropic) first."
+                    .into(),
             ),
             fix_hint: Some(PreflightFix::OpenAiConfig),
         })
@@ -513,8 +582,7 @@ mod tests {
             id: id.into(),
             label: id.to_owned(),
             kind,
-            visibility:
-                super::super::super::recipes::types::FieldVisibility::Required,
+            visibility: super::super::super::recipes::types::FieldVisibility::Required,
             default: None,
             hint: None,
         }
@@ -538,6 +606,7 @@ mod tests {
                 rules: vec![],
                 ai_config: None,
                 summary: None,
+                derived_inputs: vec![],
             },
         }
     }
@@ -618,10 +687,7 @@ mod tests {
 
     #[test]
     fn cron_invalid_classifies_as_invalid() {
-        assert_eq!(
-            ScheduleBucket::from_cron(""),
-            ScheduleBucket::Invalid
-        );
+        assert_eq!(ScheduleBucket::from_cron(""), ScheduleBucket::Invalid);
         assert_eq!(
             ScheduleBucket::from_cron("not a cron"),
             ScheduleBucket::Invalid
@@ -636,8 +702,10 @@ mod tests {
     #[test]
     fn check_schedule_frequency_finds_cron_in_recipe_toml() {
         let mut recipe = recipe_with(vec![]);
-        recipe.blueprint.rules.push(
-            super::super::super::recipes::types::RuleStep {
+        recipe
+            .blueprint
+            .rules
+            .push(super::super::super::recipes::types::RuleStep {
                 toml: r#"name = "test"
 
 [trigger]
@@ -649,8 +717,7 @@ type = "SendMessage"
 text = "hi"
 "#
                 .into(),
-            },
-        );
+            });
         let items = check_schedule_frequency(&recipe, &RecipeInputs::empty());
         assert_eq!(items.len(), 1);
         assert!(matches!(items[0].status, PreflightStatus::Verified));
@@ -659,8 +726,10 @@ text = "hi"
     #[test]
     fn check_schedule_frequency_warns_on_every_minute() {
         let mut recipe = recipe_with(vec![]);
-        recipe.blueprint.rules.push(
-            super::super::super::recipes::types::RuleStep {
+        recipe
+            .blueprint
+            .rules
+            .push(super::super::super::recipes::types::RuleStep {
                 toml: r#"name = "test"
 
 [trigger]
@@ -672,8 +741,7 @@ type = "SendMessage"
 text = "hi"
 "#
                 .into(),
-            },
-        );
+            });
         let items = check_schedule_frequency(&recipe, &RecipeInputs::empty());
         assert_eq!(items.len(), 1);
         assert!(
@@ -686,8 +754,10 @@ text = "hi"
     #[test]
     fn check_schedule_frequency_blocks_subminute() {
         let mut recipe = recipe_with(vec![]);
-        recipe.blueprint.rules.push(
-            super::super::super::recipes::types::RuleStep {
+        recipe
+            .blueprint
+            .rules
+            .push(super::super::super::recipes::types::RuleStep {
                 toml: r#"name = "test"
 
 [trigger]
@@ -699,8 +769,7 @@ type = "SendMessage"
 text = "hi"
 "#
                 .into(),
-            },
-        );
+            });
         let items = check_schedule_frequency(&recipe, &RecipeInputs::empty());
         assert_eq!(items.len(), 1);
         assert!(matches!(items[0].status, PreflightStatus::Blocking));
@@ -710,8 +779,10 @@ text = "hi"
     fn check_schedule_frequency_no_cron_no_rows() {
         // Recipe with no Cron trigger produces no schedule rows.
         let mut recipe = recipe_with(vec![]);
-        recipe.blueprint.rules.push(
-            super::super::super::recipes::types::RuleStep {
+        recipe
+            .blueprint
+            .rules
+            .push(super::super::super::recipes::types::RuleStep {
                 toml: r#"name = "test"
 
 [trigger]
@@ -724,8 +795,7 @@ type = "SendMessage"
 text = "hi"
 "#
                 .into(),
-            },
-        );
+            });
         let items = check_schedule_frequency(&recipe, &RecipeInputs::empty());
         assert!(items.is_empty(), "got: {items:?}");
     }
