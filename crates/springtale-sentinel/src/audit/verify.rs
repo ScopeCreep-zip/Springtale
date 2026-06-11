@@ -90,11 +90,11 @@ pub async fn verify_chain(
     }
 
     let mut expected_prev = genesis_anchor.to_owned();
-    let mut expected_seq: i64 = 1;
     let mut last_hash = String::new();
 
-    for row in &rows {
-        // chain_seq must be strictly monotonic +1.
+    for (i, row) in rows.iter().enumerate() {
+        // chain_seq must be strictly monotonic +1 (1-based).
+        let expected_seq = i as i64 + 1;
         if row.chain_seq != expected_seq {
             return Err(VerifyError::ChainBroken(ChainBroken {
                 row_id: row.id,
@@ -136,7 +136,6 @@ pub async fn verify_chain(
         }
 
         expected_prev = row.row_hash.clone();
-        expected_seq += 1;
         last_hash = row.row_hash.clone();
     }
 
