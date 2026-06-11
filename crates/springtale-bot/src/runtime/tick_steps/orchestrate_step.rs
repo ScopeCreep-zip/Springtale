@@ -1,12 +1,21 @@
-//! Step 14 — orchestrate at Fever tier (Patapon-style AI intent decomposition).
+//! Orchestrate step — decompose the formation's intent into per-member subtasks.
 //!
-//! When a formation reaches Fever and has an AI adapter attached, the
-//! orchestrator decomposes the current intent into per-member subtasks and
-//! posts them to the cooperative blackboard. Members pull from the
-//! blackboard via `agent/step/scan_and_claim` (RimWorld pattern).
+//! Two paths, selected inside [`orchestrate::orchestrate_formation`]:
 //!
-//! Failure to orchestrate is recorded as a momentum failure so the formation
-//! drops back below Fever rather than spinning forever.
+//! - **AI augmentation** (Patapon Fever mechanic): when an AI adapter is
+//!   attached *and* the formation has earned Fever momentum, an LLM decomposes
+//!   the intent into rich, parameterised subtasks.
+//! - **Deterministic default**: otherwise, subtasks are derived mechanically
+//!   from member connector capabilities + the `IntentPattern`. This is what
+//!   gives a `NoopAdapter` formation outward effect, and it runs across tiers
+//!   (gated by the momentum × layer authority matrix), not only at Fever.
+//!
+//! Either way the subtasks land on the cooperative blackboard under the
+//! `task:*` prefix; members pull them via `agent/step/scan_and_claim` (RimWorld
+//! pattern) and execute through `dispatch_action` (sentinel + autonomy gating).
+//!
+//! Failure to orchestrate via the AI path is recorded as a momentum failure so
+//! the formation drops back below Fever rather than spinning forever.
 
 use std::sync::Arc;
 
@@ -18,11 +27,15 @@ use crate::orchestrator::orchestrate;
 use springtale_connector::registry::store::ConnectorRegistry;
 
 pub async fn run(formation: &mut Formation, registry: &Arc<RwLock<ConnectorRegistry>>) {
-    if !formation.can_orchestrate() {
+    // No operational members → nothing to orchestrate.
+    if !formation.is_viable() {
         return;
     }
     match orchestrate::orchestrate_formation(formation, registry).await {
         Ok(subtasks) => {
+            if subtasks.is_empty() {
+                return;
+            }
             tracing::info!(
                 formation = %formation.id.0,
                 subtasks = subtasks.len(),
@@ -30,6 +43,8 @@ pub async fn run(formation: &mut Formation, registry: &Arc<RwLock<ConnectorRegis
             );
             // Post subtasks to blackboard for members to pull (RimWorld
             // pattern). Key prefix `task:` enables `scan_tasks()` to find them.
+            // Deterministic subtasks carry stable ids, so re-posting the same
+            // poll each tick overwrites rather than accumulating.
             let trace_id = uuid::Uuid::new_v4();
             for task in &subtasks {
                 let task_key = format!("task:{}", task.id);

@@ -23,9 +23,9 @@ use springtale_cooperation::attention::AttentionBroker;
 use springtale_cooperation::cadence::{AgentId, IntentPattern, Tick};
 use springtale_cooperation::capability::CapabilityDecl;
 use springtale_cooperation::context::FormationContext;
+use springtale_cooperation::contract_net::ParticipantHandle;
 use springtale_cooperation::contract_net::bid::evaluate;
 use springtale_cooperation::contract_net::types::{Bid, CallForProposals};
-use springtale_cooperation::contract_net::ParticipantHandle;
 use springtale_cooperation::momentum::MomentumState;
 
 /// Spawn one runner task per member. Returns the `JoinHandle` so the
@@ -133,7 +133,7 @@ fn on_cfp(
 
 fn synthetic_tick(intent: &IntentPattern) -> Tick {
     Tick {
-        sequence: 0,
+        sequence: springtale_cooperation::TickId::ZERO,
         timestamp: Instant::now(),
         intent: intent.clone(),
         window: Duration::from_millis(33),
@@ -156,6 +156,7 @@ mod tests {
             params: serde_json::json!({}),
             priority: 5,
             description: "test".into(),
+            depends_on: Vec::new(),
             assigned_to: None,
         }
     }
@@ -204,7 +205,7 @@ mod tests {
     #[tokio::test]
     async fn cfp_round_picks_best_bidder_among_three() {
         use springtale_cooperation::attention::AttentionEconomy;
-        use springtale_cooperation::contract_net::coordinator::{run_round, RoundOutcome};
+        use springtale_cooperation::contract_net::coordinator::{RoundOutcome, run_round};
         use springtale_cooperation::momentum::MomentumTier;
 
         let (channels, mut initiator) = CfpChannels::new();
@@ -219,9 +220,9 @@ mod tests {
         let mut econ = AttentionEconomy::new(&[agent_a, agent_b, agent_c]);
         econ.shift_toward(&agent_a, 0.5); // heavy load on A
         econ.shift_toward(&agent_b, 0.2); // medium load on B
-        let attention = Arc::new(
-            springtale_cooperation::attention::AttentionBroker::new(econ),
-        );
+        let attention = Arc::new(springtale_cooperation::attention::AttentionBroker::new(
+            econ,
+        ));
 
         // L4 unlocks at Hot.
         let ctx = FormationContext {
@@ -230,9 +231,27 @@ mod tests {
         };
         let (ctx_tx, ctx_rx) = watch::channel(ctx);
 
-        let h_a = spawn(agent_a, caps.clone(), channels.participant(), attention.clone(), ctx_rx.clone());
-        let h_b = spawn(agent_b, caps.clone(), channels.participant(), attention.clone(), ctx_rx.clone());
-        let h_c = spawn(agent_c, caps.clone(), channels.participant(), attention.clone(), ctx_rx.clone());
+        let h_a = spawn(
+            agent_a,
+            caps.clone(),
+            channels.participant(),
+            attention.clone(),
+            ctx_rx.clone(),
+        );
+        let h_b = spawn(
+            agent_b,
+            caps.clone(),
+            channels.participant(),
+            attention.clone(),
+            ctx_rx.clone(),
+        );
+        let h_c = spawn(
+            agent_c,
+            caps.clone(),
+            channels.participant(),
+            attention.clone(),
+            ctx_rx.clone(),
+        );
 
         // Give all three runners a moment to subscribe to cfp_rx.
         tokio::task::yield_now().await;

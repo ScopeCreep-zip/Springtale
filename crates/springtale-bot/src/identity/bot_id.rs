@@ -28,8 +28,7 @@ impl BotId {
             }
             None => {
                 let keypair = Keypair::generate()?;
-                // SECURITY: expose needed to persist bot identity key material
-                vault.set("bot_identity", keypair.expose_secret_bytes().to_vec())?;
+                vault.set("bot_identity", keypair.with_secret_bytes(|b| b.to_vec()))?;
                 vault.save()?;
                 keypair
             }

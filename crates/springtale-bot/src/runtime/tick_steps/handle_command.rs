@@ -38,7 +38,10 @@ pub async fn handle_formation_command(bot: &mut Bot, cmd: FormationCommand) {
                 }
             }
         }
-        FormationCommand::Dissolve { formation_id, reason } => {
+        FormationCommand::Dissolve {
+            formation_id,
+            reason,
+        } => {
             let mut formations = bot.formations.write().await;
             // Persist mental-model state BEFORE dropping the formation so
             // accumulated conventions / patterns / vocabulary survive the
@@ -122,7 +125,10 @@ pub async fn handle_formation_command(bot: &mut Bot, cmd: FormationCommand) {
                 tracing::warn!(id = %formation_id, "formation not found for resume");
             }
         }
-        FormationCommand::ChangeIntent { formation_id, intent } => {
+        FormationCommand::ChangeIntent {
+            formation_id,
+            intent,
+        } => {
             let mut formations = bot.formations.write().await;
             if let Some(formation) = formations.iter_mut().find(|f| f.id == formation_id) {
                 formation.intent = intent;
@@ -131,7 +137,10 @@ pub async fn handle_formation_command(bot: &mut Bot, cmd: FormationCommand) {
                 tracing::warn!(id = %formation_id, "formation not found for intent change");
             }
         }
-        FormationCommand::AddMember { formation_id, connector_name } => {
+        FormationCommand::AddMember {
+            formation_id,
+            connector_name,
+        } => {
             let mut formations = bot.formations.write().await;
             if let Some(formation) = formations.iter_mut().find(|f| f.id == formation_id) {
                 let agent_id = AgentId::new();
@@ -154,7 +163,44 @@ pub async fn handle_formation_command(bot: &mut Bot, cmd: FormationCommand) {
                 tracing::warn!(id = %formation_id, "formation not found for AddMember");
             }
         }
-        FormationCommand::RemoveMember { formation_id, connector_name } => {
+        FormationCommand::Recruit {
+            formation_id,
+            connector_name,
+        } => {
+            let mut formations = bot.formations.write().await;
+            if let Some(formation) = formations.iter_mut().find(|f| f.id == formation_id) {
+                // §7 momentum unlock: recruit is only available once the
+                // formation has earned Fever. Guard mode vetoes it.
+                if !formation.momentum.can_recruit() {
+                    tracing::info!(
+                        id = %formation_id,
+                        tier = ?formation.momentum.tier,
+                        "recruit denied — formation has not earned Fever tier"
+                    );
+                } else if formation.constraints.guard_mode {
+                    tracing::info!(id = %formation_id, "recruit denied — guard mode engaged");
+                } else {
+                    let member = crate::cooperation::formation::FormationMember::from_strings(
+                        AgentId::new(),
+                        vec![connector_name.clone()],
+                    );
+                    let new_id = member.agent_id;
+                    formation.join(member);
+                    formation.start_runner_for(new_id);
+                    tracing::info!(
+                        id = %formation_id,
+                        connector = %connector_name,
+                        "formation recruited a new member at Fever tier"
+                    );
+                }
+            } else {
+                tracing::warn!(id = %formation_id, "formation not found for Recruit");
+            }
+        }
+        FormationCommand::RemoveMember {
+            formation_id,
+            connector_name,
+        } => {
             let mut formations = bot.formations.write().await;
             if let Some(formation) = formations.iter_mut().find(|f| f.id == formation_id) {
                 if let Some(agent_id) = formation
@@ -217,9 +263,7 @@ pub async fn handle_formation_command(bot: &mut Bot, cmd: FormationCommand) {
                                 tokens_remaining: formation.rally.tokens.remaining() as i64,
                                 max_tokens: formation.rally.tokens.max() as i64,
                             };
-                            if let Err(e) =
-                                bot.store.upsert_formation_rally(&rally_row).await
-                            {
+                            if let Err(e) = bot.store.upsert_formation_rally(&rally_row).await {
                                 tracing::warn!(error = %e, "failed to persist rally state");
                             }
                         }

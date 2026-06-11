@@ -19,9 +19,10 @@ pub fn run(
     tick_window: Duration,
     cooperation_tx: Option<&broadcast::Sender<CooperationEventEnvelope>>,
 ) {
-    if let Some(transition) = formation
-        .pacing
-        .evaluate_transition(result, &formation.momentum, tick_window)
+    if let Some(transition) =
+        formation
+            .pacing
+            .evaluate_transition(result, &formation.momentum, tick_window)
     {
         tracing::info!(
             formation = %formation.id.0,

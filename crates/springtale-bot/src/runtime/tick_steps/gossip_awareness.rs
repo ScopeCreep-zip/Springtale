@@ -67,5 +67,9 @@ pub async fn run(formation: &mut Formation, result: &FormationTickResult) {
             .cloned()
             .collect();
         m.awareness.record_tick_reports(neighbor_reports);
+        // §A.4: lerp morale toward its bounded-contagion target now that this
+        // member's neighbor view is refreshed. cascade detection (step 9) reads
+        // the lerped value, so routing is gradual, not instantaneous.
+        m.awareness.tick_morale();
     }
 }

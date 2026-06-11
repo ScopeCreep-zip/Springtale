@@ -104,7 +104,7 @@ fn execute(
             tracing::warn!(
                 formation = formation_id,
                 agent = %agent.0,
-                since_tick,
+                since_tick = since_tick.0,
                 "supervisor: marked down + AgentDown broadcast"
             );
             // Phase H5: high-severity event surfaces in the EventRibbon.

@@ -16,6 +16,8 @@ use springtale_cooperation::handoff::FlexibleChainPool;
 use springtale_cooperation::types::FormationConstraints;
 use springtale_store::StorageBackend;
 
+use springtale_runtime::operations::config::{build_adapter, get_config};
+
 use crate::cooperation::formation::{Formation, FormationDeps, FormationMember};
 use crate::error::BotError;
 
@@ -35,12 +37,8 @@ pub async fn spawn_formation(
     registry: &Arc<RwLock<ConnectorRegistry>>,
     cadence: &Arc<CadenceBus>,
     gossip_store: &Arc<dyn GossipStore>,
-    formation_gossip: Option<
-        &Arc<dyn springtale_cooperation::gossip::FormationGossipBus>,
-    >,
-    knowledge_store: Option<
-        &Arc<dyn springtale_cooperation::memory::GlobalKnowledgeStore>,
-    >,
+    formation_gossip: Option<&Arc<dyn springtale_cooperation::gossip::FormationGossipBus>>,
+    knowledge_store: Option<&Arc<dyn springtale_cooperation::memory::GlobalKnowledgeStore>>,
 ) -> Result<Formation, BotError> {
     // Read formation from database
     let row = store
@@ -48,18 +46,21 @@ pub async fn spawn_formation(
         .await?
         .ok_or_else(|| BotError::Handler(format!("formation not found: {formation_id}")))?;
 
-    let member_rows = store
-        .list_formation_members(formation_id)
-        .await?;
+    let member_rows = store.list_formation_members(formation_id).await?;
 
     // Build members from database rows.
     // Each member gets the connector name as a capability — the connector's
     // action list is resolved at dispatch time by the orchestrator, not here.
+    // Build capability specs synchronously while holding the registry guard;
+    // async adapter resolution happens after the guard drops. A member's stable
+    // identity for AI config is the FormationMemberRow id (`mr.id`) — the runtime
+    // AgentId is freshly generated each spawn and is not a persistence key.
     let reg = registry.read().await;
     let members: Vec<FormationMember> = member_rows
         .iter()
         .map(|mr| {
-            let mut caps: Vec<CapabilityDecl> = vec![CapabilityDecl::new(mr.connector_name.clone())];
+            let mut caps: Vec<CapabilityDecl> =
+                vec![CapabilityDecl::new(mr.connector_name.clone())];
             // Add action names from registry if connector is loaded
             if let Some(entry) = reg.get(&mr.connector_name) {
                 for action in entry.host.actions() {
@@ -69,7 +70,17 @@ pub async fn spawn_formation(
                     ));
                 }
             }
-            FormationMember::new(AgentId::new(), caps)
+            // Stable AgentId derived from the persistent member-row id, so a
+            // member keeps its identity across pause/resume and the unit layer's
+            // per-agent AI config (`ai:{agent_id}`) is keyable at dispatch time.
+            // The adapter itself is resolved + cached lazily by
+            // `CapabilityBridge::ai_adapter_for` (single source of truth), not
+            // copied onto each member here.
+            let agent_id = match uuid::Uuid::parse_str(&mr.id) {
+                Ok(uuid) => AgentId(uuid),
+                Err(_) => AgentId::new(),
+            };
+            FormationMember::new(agent_id, caps)
         })
         .collect();
     drop(reg);
@@ -84,16 +95,26 @@ pub async fn spawn_formation(
         flex_chain_pool: Arc::new(FlexibleChainPool::new()),
         formation_gossip: formation_gossip.cloned(),
     };
-    let (mut formation, proto_dispatch, ack_dispatch) = Formation::new(
-        members,
-        intent,
-        FormationConstraints::default(),
-        deps,
-    );
+    let (mut formation, proto_dispatch, ack_dispatch) =
+        Formation::new(members, intent, FormationConstraints::default(), deps);
 
     // Override the auto-generated ID with the stored one
     if let Ok(uuid) = uuid::Uuid::parse_str(&row.id) {
         formation.id = springtale_cooperation::types::FormationId(uuid);
+    }
+
+    // Squad layer of the AI command hierarchy: attach the formation's OWN
+    // orchestrator adapter from `ai:formation:{id}` (NoopAdapter default when
+    // unset). This lights up `orchestrator::orchestrate_formation`'s AI path;
+    // the deterministic decomposer stays the default when no adapter is set.
+    let f_cfg = get_config(store.as_ref(), &format!("ai:formation:{}", row.id))
+        .await
+        .map_err(|e| BotError::Handler(format!("formation ai config: {e}")))?;
+    if !f_cfg.is_null() {
+        let adapter = build_adapter(&f_cfg)
+            .await
+            .map_err(|e| BotError::Handler(format!("formation ai adapter: {e}")))?;
+        formation = formation.with_orchestrator(adapter);
     }
 
     // Spawn the bus dispatcher tasks. Protocol dispatcher fans out
@@ -103,27 +124,26 @@ pub async fn spawn_formation(
     // 18. For now the ack handler records the interpretation at debug
     // level so the mpsc router doesn't fill.
     let formation_id = formation.id;
-    let proto_handle = tokio::spawn(
-        springtale_cooperation::comms::dispatcher::protocol::run(
-            proto_dispatch,
-            // Nearest-capable resolver: currently unused (no routing data
-            // plumbed through lifecycle yet). Formation-level capability
-            // index arrives with §20 flex_chain integration; for now we
-            // return None so NearestCapable messages are dropped, and the
-            // spec-canonical Specific+Formation targets always route.
-            |_cap| None,
-        ),
-    );
-    let ack_handle = tokio::spawn(
-        springtale_cooperation::comms::dispatcher::ack::run(ack_dispatch, move |ack| {
+    let proto_handle = tokio::spawn(springtale_cooperation::comms::dispatcher::protocol::run(
+        proto_dispatch,
+        // Nearest-capable resolver: currently unused (no routing data
+        // plumbed through lifecycle yet). Formation-level capability
+        // index arrives with §20 flex_chain integration; for now we
+        // return None so NearestCapable messages are dropped, and the
+        // spec-canonical Specific+Formation targets always route.
+        |_cap| None,
+    ));
+    let ack_handle = tokio::spawn(springtale_cooperation::comms::dispatcher::ack::run(
+        ack_dispatch,
+        move |ack| {
             tracing::debug!(
                 formation_id = %formation_id.0,
                 source = ?ack.source,
                 interpretation = %ack.interpretation,
                 "intent acknowledged"
             );
-        }),
-    );
+        },
+    ));
     formation.protocol_dispatcher = Some(proto_handle);
     formation.ack_dispatcher = Some(ack_handle);
 
@@ -157,11 +177,8 @@ pub async fn spawn_formation(
     // conventions so the recovered formation behaves as if it hadn't
     // restarted.
     let mm_store = springtale_cooperation::mental_model::BackendStore::new(store.clone());
-    match springtale_cooperation::mental_model::Store::load(
-        &mm_store,
-        &formation.id.0.to_string(),
-    )
-    .await
+    match springtale_cooperation::mental_model::Store::load(&mm_store, &formation.id.0.to_string())
+        .await
     {
         Ok(model) => formation.mental_model = model,
         Err(e) => tracing::warn!(
@@ -244,8 +261,7 @@ pub async fn persist_mental_model(
     formation: &crate::cooperation::formation::Formation,
     store: &Arc<dyn StorageBackend>,
 ) -> Result<(), BotError> {
-    let mm_store =
-        springtale_cooperation::mental_model::BackendStore::new(store.clone());
+    let mm_store = springtale_cooperation::mental_model::BackendStore::new(store.clone());
     springtale_cooperation::mental_model::Store::save(
         &mm_store,
         &formation.id.0.to_string(),

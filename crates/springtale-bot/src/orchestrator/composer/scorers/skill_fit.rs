@@ -48,7 +48,10 @@ mod tests {
     fn cand(caps: &[&str]) -> AgentCandidate {
         AgentCandidate {
             agent_id: AgentId::new(),
-            capabilities: caps.iter().map(|s| crate::cooperation::capability::CapabilityDecl::new(*s)).collect(),
+            capabilities: caps
+                .iter()
+                .map(|s| crate::cooperation::capability::CapabilityDecl::new(*s))
+                .collect(),
             health: AgentHealth::Operational,
             momentum: MomentumTier::Warming,
             attention_load: 0.0,
@@ -58,7 +61,10 @@ mod tests {
 
     fn spec(req: &[&str]) -> FormationSpec {
         FormationSpec {
-            required_capabilities: req.iter().map(|s| crate::cooperation::capability::CapabilityDecl::new(*s)).collect(),
+            required_capabilities: req
+                .iter()
+                .map(|s| crate::cooperation::capability::CapabilityDecl::new(*s))
+                .collect(),
             intent: IntentPattern::Execute { plan_id: None },
             constraints: FormationConstraints::default(),
             min_members: 1,

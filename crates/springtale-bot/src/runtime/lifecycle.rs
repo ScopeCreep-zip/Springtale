@@ -152,9 +152,14 @@ pub struct Bot {
     /// state cooperation event publishes a `CooperationEventEnvelope` here.
     /// `None` in tests / headless builds; production wires it from
     /// `RuntimeState::cooperation_tx`.
-    pub(crate) cooperation_tx: Option<
-        tokio::sync::broadcast::Sender<springtale_cooperation::CooperationEventEnvelope>,
-    >,
+    pub(crate) cooperation_tx:
+        Option<tokio::sync::broadcast::Sender<springtale_cooperation::CooperationEventEnvelope>>,
+    /// Conversational task-setup deploy port. `Some` in the daemon /
+    /// desktop (where a `RuntimeState` exists to apply + schedule a
+    /// recipe); `None` in headless / CLI / test builds, where the
+    /// engine degrades to a graceful "can't deploy here". See
+    /// `crate::conversation::deploy`.
+    pub(crate) recipe_deployer: Option<crate::conversation::deploy::SharedDeployer>,
 }
 
 impl Bot {
@@ -185,13 +190,11 @@ pub struct BotBuilder {
     /// G6 cross-formation gossip bus — optional, no default. Daemon
     /// production wires the shared `InMemoryFormationGossipBus`; tests
     /// and CLI runs leave it unset.
-    formation_gossip:
-        Option<Arc<dyn springtale_cooperation::gossip::FormationGossipBus>>,
+    formation_gossip: Option<Arc<dyn springtale_cooperation::gossip::FormationGossipBus>>,
     /// G2 cross-formation global knowledge store — optional, no default.
     /// Daemon production wires the persistent (SQLite-backed)
     /// `PersistentKnowledgeStore`; tests and CLI runs leave unset.
-    knowledge_store:
-        Option<Arc<dyn springtale_cooperation::memory::GlobalKnowledgeStore>>,
+    knowledge_store: Option<Arc<dyn springtale_cooperation::memory::GlobalKnowledgeStore>>,
     /// Injected role registry — REQUIRED. Callers must pass the
     /// process-wide `RuntimeState::role_registry` so there is exactly
     /// one registry holding built-ins plus community roles declared in
@@ -211,9 +214,11 @@ pub struct BotBuilder {
     canvas_tx: Option<tokio::sync::broadcast::Sender<springtale_core::canvas::CanvasUpdate>>,
     /// Phase H2: optional cooperation events broadcast sender. The daemon
     /// plumbs in `RuntimeState::cooperation_tx`; tests + headless leave None.
-    cooperation_tx: Option<
-        tokio::sync::broadcast::Sender<springtale_cooperation::CooperationEventEnvelope>,
-    >,
+    cooperation_tx:
+        Option<tokio::sync::broadcast::Sender<springtale_cooperation::CooperationEventEnvelope>>,
+    /// Optional conversational-setup deploy port (daemon / desktop wire
+    /// a `RuntimeState`-backed impl; tests + headless leave None).
+    recipe_deployer: Option<crate::conversation::deploy::SharedDeployer>,
 }
 
 impl BotBuilder {
@@ -237,7 +242,19 @@ impl BotBuilder {
             capability_bridge: None,
             canvas_tx: None,
             cooperation_tx: None,
+            recipe_deployer: None,
         }
+    }
+
+    /// Inject the conversational-setup deploy port. The daemon / desktop
+    /// pass an impl that holds their `RuntimeState` so the chat bot can
+    /// apply + schedule a recipe the user configured by chatting.
+    pub fn recipe_deployer(
+        mut self,
+        deployer: crate::conversation::deploy::SharedDeployer,
+    ) -> Self {
+        self.recipe_deployer = Some(deployer);
+        self
     }
 
     /// F4: inject the runtime's canvas broadcast sender so the bot tick
@@ -310,10 +327,7 @@ impl BotBuilder {
     /// Inject the shared capability bridge. The daemon should pass
     /// `RuntimeState.capability_bridge` so every connector invocation
     /// across this bot flows through the same dispatch point.
-    pub fn capability_bridge(
-        mut self,
-        bridge: springtale_runtime::CapabilityBridge,
-    ) -> Self {
+    pub fn capability_bridge(mut self, bridge: springtale_runtime::CapabilityBridge) -> Self {
         self.capability_bridge = Some(bridge);
         self
     }
@@ -500,12 +514,9 @@ impl BotBuilder {
         // Gossip substrate: default to in-memory if the builder didn't
         // inject one. Single-process deployments never need more than
         // this; cross-process deployments inject a chitchat-backed store.
-        let gossip_store: Arc<dyn springtale_cooperation::awareness::GossipStore> = self
-            .gossip_store
-            .unwrap_or_else(|| {
-                Arc::new(
-                    springtale_cooperation::awareness::InMemoryGossipStore::new(),
-                )
+        let gossip_store: Arc<dyn springtale_cooperation::awareness::GossipStore> =
+            self.gossip_store.unwrap_or_else(|| {
+                Arc::new(springtale_cooperation::awareness::InMemoryGossipStore::new())
             });
 
         // Role registry and capability bridge are required — the daemon
@@ -558,6 +569,7 @@ impl BotBuilder {
             cooperation_tx: self.cooperation_tx,
             formation_gossip: self.formation_gossip,
             knowledge_store: self.knowledge_store,
+            recipe_deployer: self.recipe_deployer,
         })
     }
 }

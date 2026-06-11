@@ -148,17 +148,18 @@ pub fn run(
 /// returns logical assignments; the blackboard owns the claim ledger.
 /// Re-posting the task with `assigned_to: Some(agent)` lets the agent's
 /// next `scan_and_claim` see the directed work.
-fn apply_assignments(formation: &Formation, assignment: &std::collections::HashMap<TaskId, AgentId>) {
+fn apply_assignments(
+    formation: &Formation,
+    assignment: &std::collections::HashMap<TaskId, AgentId>,
+) {
     use springtale_cooperation::action::SubTask;
 
     // Index existing blackboard tasks by their own id so we can rewrite
     // assigned_to in place. `TaskId` is a `uuid::Uuid` type alias so the
     // assignment keys match SubTask::id directly.
     let current = formation.blackboard.scan_tasks(&[]);
-    let by_id: std::collections::HashMap<uuid::Uuid, SubTask> = current
-        .into_iter()
-        .map(|t| (t.id, t))
-        .collect();
+    let by_id: std::collections::HashMap<uuid::Uuid, SubTask> =
+        current.into_iter().map(|t| (t.id, t)).collect();
 
     let trace_id = uuid::Uuid::new_v4();
     for (task_id, agent_id) in assignment {
@@ -198,6 +199,7 @@ mod tests {
             params: serde_json::json!({}),
             priority: 5,
             description: "task".into(),
+            depends_on: Vec::new(),
             assigned_to: None,
         }
     }

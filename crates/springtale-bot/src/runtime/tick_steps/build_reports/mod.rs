@@ -67,9 +67,10 @@ pub async fn run(
     // 5. Tick processor — slice the shared-env write log so ActionNegation
     // gets the right history/records split.
     let snapshot = formation.shared_env.snapshot();
-    let cursor = formation.last_tick_write_count.min(snapshot.write_log.len());
-    let action_records =
-        tick_processor::action_records_from_writes(&snapshot.write_log[cursor..]);
+    let cursor = formation
+        .last_tick_write_count
+        .min(snapshot.write_log.len());
+    let action_records = tick_processor::action_records_from_writes(&snapshot.write_log[cursor..]);
     let result = tick_processor::process_tick_with_context(
         member_reports,
         action_records,

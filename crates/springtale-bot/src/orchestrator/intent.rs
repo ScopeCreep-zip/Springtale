@@ -41,14 +41,17 @@ mod tests {
 
         // Verify reports channel is functional (not just created)
         let sender = bus.reports_sender();
-        sender.send(springtale_cooperation::cadence::TickReport {
-            agent_id: springtale_cooperation::cadence::AgentId::new(),
-            tick_sequence: 0,
-            action_taken: None,
-            latency: Duration::from_millis(0),
-            intent_alignment: 1.0,
-            interference_with: vec![],
-        }).await.expect("report send");
+        sender
+            .send(springtale_cooperation::cadence::TickReport {
+                agent_id: springtale_cooperation::cadence::AgentId::new(),
+                tick_sequence: springtale_cooperation::TickId::ZERO,
+                action_taken: None,
+                latency: Duration::from_millis(0),
+                intent_alignment: 1.0,
+                interference_with: vec![],
+            })
+            .await
+            .expect("report send");
         let report = reports_rx.recv().await.expect("report recv");
         assert!((report.intent_alignment - 1.0).abs() < f32::EPSILON);
     }

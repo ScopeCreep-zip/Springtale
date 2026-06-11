@@ -7,8 +7,6 @@
 // Existing modules (Phase 1b)
 pub mod error;
 pub mod fuel;
-pub mod recursive;
-pub mod subagent;
 
 // Orchestration boundary (§3)
 pub mod composer;
@@ -19,4 +17,3 @@ pub mod orchestrate;
 pub use crate::cooperation::blackboard::CooperativeBlackboard;
 pub use error::OrchestratorError;
 pub use fuel::FuelBudget;
-pub use recursive::{ChildResult, ChildTask, Orchestrator, OrchestratorConfig};

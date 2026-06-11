@@ -22,13 +22,13 @@
 
 use std::sync::Arc;
 
+use springtale_cooperation::AutonomyLevel;
+use springtale_cooperation::MomentumTier;
 use springtale_cooperation::action_state::ActiveTask;
 use springtale_cooperation::cadence::{ActionDescriptor, Tick};
 use springtale_cooperation::sacrifice::SacrificeAction;
 use springtale_cooperation::stigmergy::types::SurfaceType;
 use springtale_cooperation::types::ApprovalPolicy;
-use springtale_cooperation::AutonomyLevel;
-use springtale_cooperation::MomentumTier;
 
 use crate::cooperation::blackboard::cooperative::CooperativeBlackboard;
 use crate::cooperation::blackboard::trait_::Blackboard;
@@ -51,19 +51,29 @@ pub struct ExecuteCtx<'a> {
     pub autonomy: AutonomyLevel,
     pub bridge: &'a springtale_runtime::CapabilityBridge,
     pub sentinel: &'a Arc<springtale_sentinel::Sentinel>,
+    /// W3 push handoff (§20.1): when this member's result unblocks a
+    /// dependent task that carries an `assigned_to` hint, the task is
+    /// pushed straight to that agent's inbox (the inbox step preempts
+    /// scan) instead of waiting for the next routine scan.
+    pub direct_inbox: &'a springtale_cooperation::routing::direct::DirectInbox,
     /// B9: per-agent sacrifice action returned by `agent::step::sacrifice`.
     /// When `Some`, the executor short-circuits the claim/dispatch path
     /// and applies the sacrifice instead — for `Yield`, that means
     /// emitting a "yield" tick descriptor without claiming or dispatching.
     pub sacrifice: Option<SacrificeAction>,
+    /// B7 guard: task ids with an open consensus vote. A task in this set
+    /// is skipped (no claim, no second proposal) until the vote resolves.
+    pub awaiting_consensus: &'a std::collections::HashMap<uuid::Uuid, uuid::Uuid>,
+    /// B7 permits: one-shot execution approvals minted by an approving
+    /// vote resolution. `remove` on claim — an approval authorizes
+    /// exactly one execution.
+    pub consensus_approved: &'a mut std::collections::HashSet<uuid::Uuid>,
     /// Phase H5: cooperation events broadcast sender. Optional so headless
     /// / test paths short-circuit. Used to emit `SacrificeYield`,
     /// `SurfaceDeposited`, and `ConsensusVoteOpened` envelopes from inside
     /// the executor where the relevant context lives.
     pub cooperation_tx: Option<
-        &'a tokio::sync::broadcast::Sender<
-            springtale_cooperation::CooperationEventEnvelope,
-        >,
+        &'a tokio::sync::broadcast::Sender<springtale_cooperation::CooperationEventEnvelope>,
     >,
 }
 
@@ -197,11 +207,20 @@ pub async fn execute(ctx: ExecuteCtx<'_>) -> ExecuteOutcome {
             ctx.formation_momentum,
             springtale_cooperation::layer::LayerId::L4Contested,
         );
-    if auto_execute && needs_consensus {
-        // Release the claim so a different agent can pick up after the
-        // vote resolves.
+    if auto_execute && needs_consensus && !ctx.consensus_approved.remove(&task.id) {
+        // No one-shot approval permit for this task. Release the claim so
+        // the task stays available, then either wait on the open vote or
+        // open one.
         ctx.blackboard.release_task(&task.id.to_string());
         ctx.member.active_task = None;
+        if ctx.awaiting_consensus.contains_key(&task.id) {
+            // Vote already open — guard against re-proposing every tick.
+            return ExecuteOutcome {
+                action_descriptor: None,
+                alignment: 0.8,
+                consensus_task: None,
+            };
+        }
         return ExecuteOutcome {
             action_descriptor: Some(descriptor),
             alignment: 0.8,
@@ -226,6 +245,12 @@ pub async fn execute(ctx: ExecuteCtx<'_>) -> ExecuteOutcome {
         active.request();
         active.begin_execution();
     }
+
+    // W3 cross-agent data pipe: materialize upstream results into this
+    // task's params (`${result:<uuid>...}`) before building the action.
+    // The scan-side dependency gate guarantees the results exist.
+    let mut task = task;
+    crate::cooperation::task_dispatch::resolve_result_params(&mut task, ctx.blackboard);
 
     let action = crate::cooperation::task_dispatch::subtask_to_action(&task);
     let exec_start = std::time::Instant::now();
@@ -284,15 +309,36 @@ pub async fn execute(ctx: ExecuteCtx<'_>) -> ExecuteOutcome {
     };
     let _ = ctx.blackboard.post_result(&sub_result, ctx.fuel);
 
+    // W3 push handoff: this result may have unblocked dependents. Any
+    // now-claimable task that (a) depended on this one and (b) carries an
+    // `assigned_to` hint is pushed to that agent's inbox so the L3 inbox
+    // step picks it up next tick, preempting the routine scan (§20.1).
+    if success {
+        for dep in ctx.blackboard.scan_tasks(&[]) {
+            if dep.depends_on.contains(&task.id)
+                && let Some(target) = dep.assigned_to
+            {
+                springtale_cooperation::routing::direct::assignment::assign(
+                    ctx.direct_inbox,
+                    target,
+                    dep,
+                );
+            }
+        }
+    }
+
     // §13 audit-log entry — feeds next tick's
     // `detect_from_records_with_history` so ActionNegation has real
     // history. `shared_env.write` (non-CAS) because this is an ordered
     // audit log, not a conflict probe.
-    if let (true, springtale_core::rule::action::Action::RunConnector {
-        connector,
-        action: action_name,
-        ..
-    }) = (success, &action)
+    if let (
+        true,
+        springtale_core::rule::action::Action::RunConnector {
+            connector,
+            action: action_name,
+            ..
+        },
+    ) = (success, &action)
     {
         {
             let key = format!(
@@ -319,7 +365,9 @@ pub async fn execute(ctx: ExecuteCtx<'_>) -> ExecuteOutcome {
                     "tick": ctx.tick.sequence,
                 }),
                 Some(std::time::Duration::from_secs(60)),
-                Some(springtale_cooperation::capability::CapabilityDecl::new(connector)),
+                Some(springtale_cooperation::capability::CapabilityDecl::new(
+                    connector,
+                )),
             );
             // Phase H5: surface deposit visible to user — drives the
             // stigmergy-trail UI marker on the colony canvas.
@@ -375,4 +423,3 @@ fn continue_active_task(ctx: &ExecuteCtx<'_>) -> Option<ExecuteOutcome> {
         consensus_task: None,
     })
 }
-

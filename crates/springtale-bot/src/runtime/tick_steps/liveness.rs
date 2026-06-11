@@ -19,9 +19,9 @@ pub fn run(formation: &mut Formation, tick: &Tick, result: &FormationTickResult)
         }
     }
     for member in &mut formation.members {
-        if member.last_report_tick + 3 < tick.sequence && member.is_operational() {
+        if tick.sequence.delta(member.last_report_tick) > 3 && member.is_operational() {
             member.liveness = Liveness::Suspect {
-                missed_ticks: (tick.sequence - member.last_report_tick) as u32,
+                missed_ticks: tick.sequence.delta(member.last_report_tick) as u32,
             };
         }
     }

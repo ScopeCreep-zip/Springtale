@@ -10,7 +10,9 @@ use springtale_cooperation::tick_processor::FormationTickResult;
 pub fn run(formation: &Formation, result: &FormationTickResult) {
     for report in &result.reports {
         if let Some(action) = &report.action_taken {
-            formation.bus.update_implicit(report.agent_id, action.clone());
+            formation
+                .bus
+                .update_implicit(report.agent_id, action.clone());
         }
     }
 }

@@ -31,6 +31,15 @@ impl HeadlessBot {
 
     /// Create a headless bot with a custom config.
     pub async fn with_config(config: BotConfig) -> Result<Self, BotError> {
+        Self::with_config_and_deployer(config, None).await
+    }
+
+    /// Create a headless bot, optionally wiring a conversational-setup
+    /// deploy port (tests use a mock to observe what would be deployed).
+    pub async fn with_config_and_deployer(
+        config: BotConfig,
+        deployer: Option<crate::conversation::deploy::SharedDeployer>,
+    ) -> Result<Self, BotError> {
         let store: Arc<dyn springtale_store::StorageBackend> = Arc::new(
             SqliteBackend::open_in_memory().map_err(|e| BotError::NotInitialized(e.to_string()))?,
         );
@@ -62,13 +71,11 @@ impl HeadlessBot {
         // the Bot builder (no fallbacks). In headless tests we spin up
         // a private instance of each — production daemon shares the
         // `RuntimeState` copies.
-        let role_registry = std::sync::Arc::new(
-            springtale_cooperation::role::RoleRegistry::with_builtins(),
-        );
-        let capability_bridge =
-            springtale_runtime::CapabilityBridge::new(registry.clone());
+        let role_registry =
+            std::sync::Arc::new(springtale_cooperation::role::RoleRegistry::with_builtins());
+        let capability_bridge = springtale_runtime::CapabilityBridge::new(registry.clone());
 
-        let bot = BotBuilder::new()
+        let mut builder = BotBuilder::new()
             .store(store.clone())
             .registry(registry)
             .engine(engine)
@@ -79,9 +86,11 @@ impl HeadlessBot {
             .response_tx(response_tx)
             .formation_cmd_rx(formation_cmd_rx)
             .role_registry(role_registry)
-            .capability_bridge(capability_bridge)
-            .build()
-            .await?;
+            .capability_bridge(capability_bridge);
+        if let Some(deployer) = deployer {
+            builder = builder.recipe_deployer(deployer);
+        }
+        let bot = builder.build().await?;
 
         let handle = tokio::spawn(async move {
             bot.start().await;
@@ -128,6 +137,190 @@ impl HeadlessBot {
 mod tests {
     use super::*;
 
+    /// Records what a conversational setup would deploy, so a test can
+    /// assert the chat flow produced the right recipe + extracted inputs
+    /// WITHOUT standing up a full `RuntimeState`.
+    #[derive(Clone, Default)]
+    struct RecordingDeployer {
+        last: Arc<
+            std::sync::Mutex<
+                Option<(
+                    String,
+                    springtale_runtime::operations::recipes::types::RecipeInputs,
+                )>,
+            >,
+        >,
+    }
+
+    #[async_trait::async_trait]
+    impl crate::conversation::deploy::RecipeDeployer for RecordingDeployer {
+        async fn preflight(
+            &self,
+            recipe_id: &str,
+            _inputs: &springtale_runtime::operations::recipes::types::RecipeInputs,
+        ) -> Result<
+            springtale_runtime::operations::preflight::types::PreflightReport,
+            crate::conversation::deploy::DeployError,
+        > {
+            Ok(
+                springtale_runtime::operations::preflight::types::PreflightReport::from_items(
+                    recipe_id.to_owned(),
+                    Vec::new(),
+                ),
+            )
+        }
+
+        async fn deploy(
+            &self,
+            recipe_id: &str,
+            inputs: springtale_runtime::operations::recipes::types::RecipeInputs,
+        ) -> Result<
+            springtale_runtime::operations::recipes::types::ApplyReport,
+            crate::conversation::deploy::DeployError,
+        > {
+            *self.last.lock().unwrap() = Some((recipe_id.to_owned(), inputs));
+            Ok(
+                springtale_runtime::operations::recipes::types::ApplyReport {
+                    recipe_id: recipe_id.to_owned(),
+                    connectors_configured: vec!["connector-http".into()],
+                    rules_created: vec!["rule-1".into()],
+                    ai_configured: false,
+                    summary: "your Tucson briefing will arrive every morning".into(),
+                },
+            )
+        }
+    }
+
+    /// THE ACCEPTANCE GATE: the commander's free-text order, no AI, ANY
+    /// city → one confirm → "yes" → deploys with the free target extracted
+    /// from the sentence (city = "Sacramento, CA", time = 8 AM from "every
+    /// morning"). Geocoding of the city happens inside the real
+    /// `apply_recipe`; the mock deployer records the user's target verbatim.
+    #[tokio::test]
+    async fn test_conversational_weather_setup_no_ai_end_to_end() {
+        let deployer = RecordingDeployer::default();
+        let recorded = deployer.last.clone();
+        let mut bot =
+            HeadlessBot::with_config_and_deployer(BotConfig::default(), Some(Arc::new(deployer)))
+                .await
+                .unwrap();
+
+        // The exact order the user reported — a city NOT in any list.
+        let r1 = bot
+            .ask(
+                "user1",
+                "send me the weather for Sacramento, CA every morning",
+            )
+            .await
+            .expect("a reply");
+        assert!(
+            r1.to_lowercase().contains("weather") || r1.contains("Sacramento") || r1.contains("?"),
+            "expected an acknowledgement + confirm, got: {r1}"
+        );
+        // Nothing deployed until the user confirms.
+        assert!(recorded.lock().unwrap().is_none());
+
+        // Confirm.
+        let r2 = bot.ask("user1", "yes").await.expect("a reply");
+        let r2l = r2.to_lowercase();
+        assert!(
+            r2l.contains("done")
+                || r2l.contains("all set")
+                || r2l.contains("live")
+                || r2.contains("🎉"),
+            "expected a success message, got: {r2}"
+        );
+
+        // The deploy fired with the recipe + the free target extracted from
+        // the sentence — NOT a silently-substituted default.
+        let (recipe_id, inputs) = recorded.lock().unwrap().clone().expect("deploy was called");
+        assert_eq!(recipe_id, "weather-briefing");
+        assert_eq!(
+            inputs.get("city").and_then(|v| v.as_str()),
+            Some("Sacramento, CA"),
+        );
+        assert_eq!(
+            inputs.get("schedule").and_then(|v| v.as_str()),
+            Some("0 8 * * *"), // "every morning" → 8 AM preset
+        );
+    }
+
+    /// Mid-flow correction works without AI: change the city before confirming.
+    #[tokio::test]
+    async fn test_conversational_correction_before_deploy() {
+        let deployer = RecordingDeployer::default();
+        let recorded = deployer.last.clone();
+        let mut bot =
+            HeadlessBot::with_config_and_deployer(BotConfig::default(), Some(Arc::new(deployer)))
+                .await
+                .unwrap();
+
+        let _ = bot.ask("user1", "morning weather for Phoenix").await;
+        let _ = bot.ask("user1", "actually make it Tucson").await;
+        let _ = bot.ask("user1", "yes").await;
+
+        let (_, inputs) = recorded.lock().unwrap().clone().expect("deploy was called");
+        assert_eq!(
+            inputs.get("city").and_then(|v| v.as_str()),
+            Some("Tucson"), // corrected target
+        );
+    }
+
+    /// Cancelling drops the setup — nothing deploys.
+    #[tokio::test]
+    async fn test_conversational_cancel_deploys_nothing() {
+        let deployer = RecordingDeployer::default();
+        let recorded = deployer.last.clone();
+        let mut bot =
+            HeadlessBot::with_config_and_deployer(BotConfig::default(), Some(Arc::new(deployer)))
+                .await
+                .unwrap();
+
+        let _ = bot.ask("user1", "set up the morning weather").await;
+        let _ = bot.ask("user1", "never mind").await;
+        assert!(recorded.lock().unwrap().is_none());
+    }
+
+    /// SECURITY: a recipe needing a credential is handed off to the secure
+    /// setup flow — the bot never asks for the token in chat, and a token
+    /// the user volunteers never lands in the (unencrypted) session store.
+    #[tokio::test]
+    async fn test_secret_recipe_handed_off_and_no_token_in_session_store() {
+        let deployer = RecordingDeployer::default();
+        let recorded = deployer.last.clone();
+        let mut bot =
+            HeadlessBot::with_config_and_deployer(BotConfig::default(), Some(Arc::new(deployer)))
+                .await
+                .unwrap();
+
+        let r = bot
+            .ask("user1", "set up a telegram echo bot")
+            .await
+            .expect("a reply");
+        let lower = r.to_lowercase();
+        assert!(
+            lower.contains("library") || lower.contains("vault") || lower.contains("securely"),
+            "expected a secure-setup handoff, got: {r}"
+        );
+
+        // The user volunteers a token anyway — it must NOT be collected,
+        // deployed, or persisted in plaintext.
+        let secret = "12345:AAH-very-secret-token";
+        let _ = bot.ask("user1", &format!("my bot token is {secret}")).await;
+        assert!(
+            recorded.lock().unwrap().is_none(),
+            "no deploy should have happened"
+        );
+        let session = bot.store.get_session("user1", "default").await.unwrap();
+        if let Some(row) = session {
+            assert!(
+                !row.state_data.contains(secret),
+                "credential leaked into session state_data: {}",
+                row.state_data
+            );
+        }
+    }
+
     #[tokio::test]
     async fn test_help_command() {
         let mut bot = HeadlessBot::new().await.unwrap();
@@ -158,10 +351,19 @@ mod tests {
 
     #[tokio::test]
     async fn test_plain_text_fallback() {
+        // Plain text that matches no recipe and no command, with no AI
+        // adapter, now gets the deterministic capability reply (bimbo-mode
+        // "here's what I can do") rather than a terse "Unknown command".
         let mut bot = HeadlessBot::new().await.unwrap();
-        let response = bot.ask("user1", "just some text").await;
+        let response = bot.ask("user1", "zxqwv plok florble").await;
         assert!(response.is_some());
-        assert!(response.unwrap().contains("Unknown command"));
+        let text = response.unwrap().to_lowercase();
+        assert!(
+            text.contains("automations")
+                || text.contains("set it up")
+                || text.contains("plain words"),
+            "expected a capability reply, got: {text}"
+        );
     }
 
     #[tokio::test]

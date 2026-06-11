@@ -58,8 +58,8 @@ impl Handler for ConnectorHandler {
             springtale_cooperation::execution::ExecutionMode::Manual,
         );
         if let Some(tier) = ctx.formation_tier {
-            use springtale_cooperation::momentum::MomentumTier;
             use springtale_connector::tier::WasmTier;
+            use springtale_cooperation::momentum::MomentumTier;
             execution.momentum = match tier {
                 WasmTier::Cold => MomentumTier::Cold,
                 WasmTier::Warming => MomentumTier::Warming,

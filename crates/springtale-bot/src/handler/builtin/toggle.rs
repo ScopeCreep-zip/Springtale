@@ -22,12 +22,11 @@ impl Handler for ToggleHandler {
         let rule = rules.iter().find(|r| r.name == name);
         match rule {
             Some(r) => {
-                let new_status =
-                    if r.status == springtale_core::rule::types::RuleStatus::Enabled {
-                        springtale_core::rule::types::RuleStatus::Disabled
-                    } else {
-                        springtale_core::rule::types::RuleStatus::Enabled
-                    };
+                let new_status = if r.status == springtale_core::rule::types::RuleStatus::Enabled {
+                    springtale_core::rule::types::RuleStatus::Disabled
+                } else {
+                    springtale_core::rule::types::RuleStatus::Enabled
+                };
                 let id = r.id;
                 let enabled = new_status == springtale_core::rule::types::RuleStatus::Enabled;
                 let label = if enabled { "enabled" } else { "disabled" };

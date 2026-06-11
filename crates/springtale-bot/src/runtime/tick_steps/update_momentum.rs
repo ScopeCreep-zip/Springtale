@@ -26,10 +26,7 @@ pub fn run(formation: &mut Formation, result: &FormationTickResult) {
     // Step 4a — record real activity (only when agents actually acted).
     // Decay tracks real work, not tick heartbeats; idle ticks should not
     // refresh the activity timer.
-    let had_real_actions = result
-        .reports
-        .iter()
-        .any(|r| r.action_taken.is_some());
+    let had_real_actions = result.reports.iter().any(|r| r.action_taken.is_some());
     if had_real_actions {
         formation.momentum.record_activity();
     }

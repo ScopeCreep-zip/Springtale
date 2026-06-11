@@ -11,8 +11,8 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
-use springtale_core::canvas::CanvasUpdate;
 use springtale_cooperation::cadence::{CadenceBus, TickReport};
+use springtale_core::canvas::CanvasUpdate;
 use tokio::sync::broadcast;
 
 use crate::orchestrator::intervention::{
@@ -33,7 +33,7 @@ pub mod handle_command;
 pub mod implicit_signals;
 pub mod liveness;
 pub mod log_interference;
-pub mod orchestrate_fever;
+pub mod orchestrate_step;
 pub mod persist_momentum;
 pub mod publish_context;
 pub mod publish_formation_view;
@@ -56,11 +56,7 @@ use crate::cooperation::formation::Formation;
 
 /// One formation's full 14-step pipeline. Order matches `docs/ROADMAP.md
 /// §3.2`. Each step is one named module under `tick_steps/`.
-pub async fn run_tick(
-    formation: &mut Formation,
-    tick: &Tick,
-    deps: &mut TickDeps<'_>,
-) {
+pub async fn run_tick(formation: &mut Formation, tick: &Tick, deps: &mut TickDeps<'_>) {
     let result = build_reports::run(formation, tick, deps).await;
     formation.momentum.check_decay();
     update_momentum::run(formation, &result);
@@ -83,7 +79,7 @@ pub async fn run_tick(
     tick_commits::run(formation, deps.cooperation_tx);
     expire_commits::run(formation, deps.cooperation_tx);
     update_mental_model::run(formation, &result);
-    orchestrate_fever::run(formation, deps.registry).await;
+    orchestrate_step::run(formation, deps.registry).await;
     // G6 — broadcast this formation's view on the cross-formation
     // gossip bus. No-op when `formation_gossip` is None (CLI / test).
     publish_formation_view::run(formation);
@@ -105,7 +101,8 @@ pub struct TickDeps<'a> {
     pub bridge: &'a springtale_runtime::CapabilityBridge,
     pub sentinel: &'a Arc<springtale_sentinel::Sentinel>,
     pub store: &'a Arc<dyn springtale_store::StorageBackend>,
-    pub registry: &'a Arc<tokio::sync::RwLock<springtale_connector::registry::store::ConnectorRegistry>>,
+    pub registry:
+        &'a Arc<tokio::sync::RwLock<springtale_connector::registry::store::ConnectorRegistry>>,
     pub role_registry: &'a Arc<springtale_cooperation::role::RoleRegistry>,
     pub cadence: &'a Arc<CadenceBus>,
     pub cadence_reports_rx: &'a mut mpsc::Receiver<TickReport>,

@@ -137,7 +137,10 @@ impl TaskRouter for BlackboardRouter {
         // Lowest raw priority value wins (1 is more urgent than 5). The
         // existing PriorityTask Ord inverts so BinaryHeap pops smallest;
         // here we just use min_by_key for simplicity.
-        candidates.into_iter().min_by_key(|t| t.priority).map(PriorityTask::new)
+        candidates
+            .into_iter()
+            .min_by_key(|t| t.priority)
+            .map(PriorityTask::new)
     }
 
     async fn claim(&self, task_id: TaskId, agent: AgentId) -> Result<TaskClaim, RoutingError> {
@@ -215,6 +218,7 @@ fn subtask_from_chain_payload(
         priority: 3,
         assigned_to: Some(receiver),
         description: format!("flex-chain step on capability {}", capability.name),
+        depends_on: Vec::new(),
     }
 }
 
@@ -234,6 +238,7 @@ mod tests {
             priority,
             assigned_to: None,
             description: "task".into(),
+            depends_on: Vec::new(),
         }
     }
 
@@ -312,7 +317,7 @@ mod tests {
         let mut aw = LocalAwareness::default();
         aw.record_tick_reports(vec![TickReport {
             agent_id: AgentId::new(),
-            tick_sequence: 1,
+            tick_sequence: springtale_cooperation::TickId(1),
             action_taken: Some(ActionDescriptor {
                 kind: "task_claimed".into(),
                 target: Some("github".into()),

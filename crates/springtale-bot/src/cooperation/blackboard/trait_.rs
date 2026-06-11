@@ -41,4 +41,14 @@ pub trait Blackboard: Send + Sync {
         result: &SubTaskResult,
         fuel: &FuelBudget,
     ) -> Result<(), OrchestratorError>;
+
+    /// W3 cross-agent data pipe: read a completed task's result (written by
+    /// [`Self::post_result`] under `result:{task_id}`). This is how a
+    /// dependent task consumes an upstream member's output — the read half
+    /// the pipe was missing. Default rides [`Self::read`] so every impl
+    /// (including test mocks) gets it for free.
+    fn read_result(&self, task_id: Uuid) -> Option<SubTaskResult> {
+        self.read(&format!("result:{task_id}"), Uuid::nil())
+            .and_then(|v| serde_json::from_value(v).ok())
+    }
 }

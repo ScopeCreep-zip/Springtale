@@ -104,10 +104,7 @@ async fn change_intent_rewrites_formation_intent() {
         reason: "cooling down".into(),
     };
     action
-        .execute(
-            &Intervention::ChangeIntent(new_intent),
-            &mut formation,
-        )
+        .execute(&Intervention::ChangeIntent(new_intent), &mut formation)
         .await
         .expect("apply");
     let IntentPattern::Stabilize { reason } = &formation.intent else {

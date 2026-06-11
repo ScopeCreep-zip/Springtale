@@ -17,6 +17,21 @@ use crate::runtime::trigger_dispatch::handle_trigger_event;
 use super::handlers::handle_incoming_message;
 
 pub async fn run_event_loop(bot: &mut Bot) {
+    // W2 — replay chat threads paused behind an approval across the restart
+    // (durable resume). Owned clones so the task is independent of the loop.
+    {
+        let deps = crate::tool_runner::ResumerDeps {
+            store: bot.store.clone(),
+            registry: bot.registry.clone(),
+            bridge: bot.capability_bridge.clone(),
+            sentinel: bot.sentinel.clone(),
+            adapter: bot.ai_adapter.clone(),
+            response_tx: bot.response_tx.clone(),
+            policy: bot.config.tool_policy.clone(),
+        };
+        tokio::spawn(crate::tool_runner::resume_orphaned_loops(deps));
+    }
+
     loop {
         tokio::select! {
             // Source 1: incoming chat messages from connectors.
@@ -37,7 +52,15 @@ pub async fn run_event_loop(bot: &mut Bot) {
             }
             // Source 3: cadence ticks from the cooperation module (§5).
             result = bot.cadence_rx.recv() => match result {
-                Ok(tick) => handle_cadence_tick(bot, &tick).await,
+                Ok(tick) => {
+                    handle_cadence_tick(bot, &tick).await;
+                    // Strategic (colony) layer: review the whole colony every
+                    // COLONY_INTERVAL ticks. Runs AFTER the per-formation tick so
+                    // it never holds the formation lock during an LLM call.
+                    if tick.sequence.0 % crate::colony::COLONY_INTERVAL == 0 {
+                        crate::colony::commander::run(bot).await;
+                    }
+                }
                 Err(tokio::sync::broadcast::error::RecvError::Lagged(count)) => {
                     tracing::warn!(skipped = count, "cadence receiver lagged — skipping ticks");
                 }
@@ -69,7 +92,7 @@ async fn handle_cadence_tick(bot: &mut Bot, tick: &Tick) {
         return;
     }
     tracing::trace!(
-        tick = tick.sequence,
+        tick = tick.sequence.0,
         formations = formation_count,
         "cadence tick processing"
     );

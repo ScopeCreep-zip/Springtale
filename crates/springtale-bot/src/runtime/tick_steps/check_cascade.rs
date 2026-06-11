@@ -16,9 +16,7 @@ use tokio::sync::broadcast;
 use crate::cooperation::formation::Formation;
 use springtale_cooperation::awareness::LocalAwareness;
 use springtale_cooperation::cadence::AgentId;
-use springtale_cooperation::contract_net::{
-    coordinator, types::CallForProposals, RoundOutcome,
-};
+use springtale_cooperation::contract_net::{RoundOutcome, coordinator, types::CallForProposals};
 use springtale_cooperation::events::{self, CooperationEvent, CooperationEventEnvelope};
 use springtale_cooperation::rally::{RallyResult, cascade};
 use springtale_cooperation::tick_processor::FormationTickResult;
@@ -121,8 +119,12 @@ async fn run_takeover_cfp(
 ) {
     // Snapshot what we need without holding any locks across the round.
     let (task, initiator_agent) = {
-        let Some(member) = formation.member(&failing_agent) else { return };
-        let Some(active) = member.active_task.as_ref() else { return };
+        let Some(member) = formation.member(&failing_agent) else {
+            return;
+        };
+        let Some(active) = member.active_task.as_ref() else {
+            return;
+        };
         (active.task.clone(), failing_agent)
     };
     let capability = task.target_connector.name.clone();
@@ -196,7 +198,11 @@ async fn run_takeover_cfp(
 fn log_rally_result(formation_id: &str, result: &RallyResult) {
     match result {
         RallyResult::StabilizedWithCost { tokens_remaining } => {
-            tracing::info!(formation = formation_id, tokens_remaining, "formation self-rallied");
+            tracing::info!(
+                formation = formation_id,
+                tokens_remaining,
+                "formation self-rallied"
+            );
         }
         RallyResult::EscalateToOrchestrator { reason } => {
             tracing::error!(

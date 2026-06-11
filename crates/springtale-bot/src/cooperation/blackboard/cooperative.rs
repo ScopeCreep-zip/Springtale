@@ -122,6 +122,14 @@ impl Blackboard for CooperativeBlackboard {
                 }
                 agent_capabilities.contains(&task.target_connector)
             })
+            // W3 dependency gate: a task whose upstream results haven't
+            // landed yet is invisible to scanners — it becomes claimable
+            // the tick after its last dependency posts `result:{id}`.
+            .filter(|task: &SubTask| {
+                task.depends_on
+                    .iter()
+                    .all(|dep| self.entries.contains_key(&format!("result:{dep}")))
+            })
             .collect();
 
         tasks.sort_by_key(|t| t.priority);

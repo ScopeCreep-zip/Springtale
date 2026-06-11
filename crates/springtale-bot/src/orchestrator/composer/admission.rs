@@ -82,10 +82,18 @@ mod tests {
     use crate::cooperation::momentum::MomentumTier;
     use crate::cooperation::types::{AgentHealth, AutonomyLevel};
 
-    fn candidate(caps: &[&str], health: AgentHealth, tier: MomentumTier, load: f32) -> AgentCandidate {
+    fn candidate(
+        caps: &[&str],
+        health: AgentHealth,
+        tier: MomentumTier,
+        load: f32,
+    ) -> AgentCandidate {
         AgentCandidate {
             agent_id: AgentId::new(),
-            capabilities: caps.iter().map(|s| springtale_cooperation::capability::CapabilityDecl::new(*s)).collect(),
+            capabilities: caps
+                .iter()
+                .map(|s| springtale_cooperation::capability::CapabilityDecl::new(*s))
+                .collect(),
             health,
             momentum: tier,
             attention_load: load,
@@ -95,7 +103,10 @@ mod tests {
 
     fn spec(req: &[&str], min: usize, max: usize) -> FormationSpec {
         FormationSpec {
-            required_capabilities: req.iter().map(|s| springtale_cooperation::capability::CapabilityDecl::new(*s)).collect(),
+            required_capabilities: req
+                .iter()
+                .map(|s| springtale_cooperation::capability::CapabilityDecl::new(*s))
+                .collect(),
             intent: IntentPattern::Execute { plan_id: None },
             constraints: FormationConstraints::default(),
             min_members: min,
@@ -120,8 +131,18 @@ mod tests {
     #[test]
     fn admits_capable_agents_above_minimum() {
         let cands = vec![
-            candidate(&["github"], AgentHealth::Operational, MomentumTier::Hot, 0.2),
-            candidate(&["github"], AgentHealth::Operational, MomentumTier::Warming, 0.3),
+            candidate(
+                &["github"],
+                AgentHealth::Operational,
+                MomentumTier::Hot,
+                0.2,
+            ),
+            candidate(
+                &["github"],
+                AgentHealth::Operational,
+                MomentumTier::Warming,
+                0.3,
+            ),
         ];
         let s = spec(&["github"], 1, 3);
         assert!(compose_formation(&cands, &s, &default_filters(), &default_scorers()).is_ok());
@@ -129,16 +150,29 @@ mod tests {
 
     #[test]
     fn rejects_when_below_minimum_feasible() {
-        let cands = vec![candidate(&["slack"], AgentHealth::Operational, MomentumTier::Hot, 0.0)];
+        let cands = vec![candidate(
+            &["slack"],
+            AgentHealth::Operational,
+            MomentumTier::Hot,
+            0.0,
+        )];
         let s = spec(&["github"], 1, 3);
-        let err = compose_formation(&cands, &s, &default_filters(), &default_scorers()).unwrap_err();
+        let err =
+            compose_formation(&cands, &s, &default_filters(), &default_scorers()).unwrap_err();
         assert!(matches!(err, ComposeError::Empty));
     }
 
     #[test]
     fn caps_members_to_max() {
         let cands: Vec<AgentCandidate> = (0..6)
-            .map(|_| candidate(&["github"], AgentHealth::Operational, MomentumTier::Hot, 0.1))
+            .map(|_| {
+                candidate(
+                    &["github"],
+                    AgentHealth::Operational,
+                    MomentumTier::Hot,
+                    0.1,
+                )
+            })
             .collect();
         let s = spec(&["github"], 1, 3);
         let comp = compose_formation(&cands, &s, &default_filters(), &default_scorers()).unwrap();
@@ -147,13 +181,26 @@ mod tests {
 
     #[test]
     fn ranks_by_scorer_weight() {
-        let low_load_high_momentum = candidate(&["github"], AgentHealth::Operational, MomentumTier::Fever, 0.1);
-        let high_load_low_momentum = candidate(&["github"], AgentHealth::Operational, MomentumTier::Cold, 0.9);
+        let low_load_high_momentum = candidate(
+            &["github"],
+            AgentHealth::Operational,
+            MomentumTier::Fever,
+            0.1,
+        );
+        let high_load_low_momentum = candidate(
+            &["github"],
+            AgentHealth::Operational,
+            MomentumTier::Cold,
+            0.9,
+        );
         let target = low_load_high_momentum.agent_id;
         let cands = vec![high_load_low_momentum, low_load_high_momentum];
         let s = spec(&["github"], 1, 1);
         let comp = compose_formation(&cands, &s, &default_filters(), &default_scorers()).unwrap();
         assert_eq!(comp.members.len(), 1);
-        assert_eq!(comp.members[0].agent_id, target, "low-load high-momentum agent should win");
+        assert_eq!(
+            comp.members[0].agent_id, target,
+            "low-load high-momentum agent should win"
+        );
     }
 }

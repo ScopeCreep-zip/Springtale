@@ -86,10 +86,7 @@ impl MemoryStore {
     /// `content_encrypted` is **plaintext**; the row is mutated in
     /// place to encrypt before insert. Used by paths that already
     /// assemble a row (compaction summaries, migration fixtures).
-    pub async fn store_row(
-        &self,
-        mut row: springtale_store::MemoryRow,
-    ) -> Result<(), BotError> {
+    pub async fn store_row(&self, mut row: springtale_store::MemoryRow) -> Result<(), BotError> {
         let mut nonce = [0u8; 24];
         rand::thread_rng().fill_bytes(&mut nonce);
         let ciphertext = springtale_crypto::message::encrypt_message(
@@ -191,14 +188,13 @@ mod tests {
             .await
             .unwrap();
         // Read raw rows via the backend bypassing recall's decrypt.
-        let raw = store
-            .store
-            .get_memory("u1", "c1", 10)
-            .await
-            .unwrap();
+        let raw = store.store.get_memory("u1", "c1", 10).await.unwrap();
         assert_eq!(raw.len(), 1);
         assert!(
-            !raw[0].content_encrypted.windows(16).any(|w| w == b"plaintext-marker"),
+            !raw[0]
+                .content_encrypted
+                .windows(16)
+                .any(|w| w == b"plaintext-marker"),
             "plaintext leaked into encrypted-at-rest field"
         );
         assert_eq!(raw[0].nonce.len(), 24, "missing per-entry nonce");

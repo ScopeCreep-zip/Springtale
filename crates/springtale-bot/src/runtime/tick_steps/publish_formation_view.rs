@@ -16,9 +16,7 @@
 use std::sync::Arc;
 
 use crate::cooperation::formation::Formation;
-use springtale_cooperation::gossip::{
-    FormationGossipBus, FormationStatus, FormationView,
-};
+use springtale_cooperation::gossip::{FormationGossipBus, FormationStatus, FormationView};
 
 pub fn run(formation: &Formation) {
     let Some(bus) = formation.formation_gossip.clone() else {

@@ -1,7 +1,12 @@
 #![forbid(unsafe_code)]
-#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)
+)]
 
 pub mod bridge;
+pub mod colony;
+pub mod conversation;
 pub mod cooperation;
 pub mod error;
 pub mod handler;

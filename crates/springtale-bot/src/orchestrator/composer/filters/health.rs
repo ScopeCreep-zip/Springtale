@@ -70,9 +70,6 @@ mod tests {
 
     #[test]
     fn dead_rejected() {
-        assert!(!HealthFilter.accept(
-            &cand_at(AgentHealth::Dead { recoverable: false }),
-            &spec()
-        ));
+        assert!(!HealthFilter.accept(&cand_at(AgentHealth::Dead { recoverable: false }), &spec()));
     }
 }

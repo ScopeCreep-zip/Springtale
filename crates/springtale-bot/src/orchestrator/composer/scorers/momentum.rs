@@ -65,14 +65,25 @@ mod tests {
     #[test]
     fn higher_tier_scores_higher() {
         let s = MomentumScorer::new(1.0);
-        assert!(s.score(&cand(MomentumTier::Fever), &spec()) > s.score(&cand(MomentumTier::Warming), &spec()));
-        assert!(s.score(&cand(MomentumTier::Warming), &spec()) > s.score(&cand(MomentumTier::Cold), &spec()));
+        assert!(
+            s.score(&cand(MomentumTier::Fever), &spec())
+                > s.score(&cand(MomentumTier::Warming), &spec())
+        );
+        assert!(
+            s.score(&cand(MomentumTier::Warming), &spec())
+                > s.score(&cand(MomentumTier::Cold), &spec())
+        );
     }
 
     #[test]
     fn all_scores_in_unit_range() {
         let s = MomentumScorer::new(1.0);
-        for t in [MomentumTier::Cold, MomentumTier::Warming, MomentumTier::Hot, MomentumTier::Fever] {
+        for t in [
+            MomentumTier::Cold,
+            MomentumTier::Warming,
+            MomentumTier::Hot,
+            MomentumTier::Fever,
+        ] {
             let v = s.score(&cand(t), &spec());
             assert!((0.0..=1.0).contains(&v));
         }

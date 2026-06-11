@@ -41,6 +41,17 @@ async fn check_access(
 ) -> Result<bool, crate::error::BotError> {
     let user_id = &msg.user_id;
 
+    // In-app chat (the desktop/web/PWA panel) is always the LOCAL operator:
+    // reaching it required unlocking the vault (desktop Tauri command) or an
+    // HMAC bearer token on the 127.0.0.1 management API (`POST /chat`). The
+    // `source_connector` is stamped by that ingress, never by message
+    // content, so a remote connector can't spoof it. There is no stranger to
+    // race the owner here, so skip the owner/pairing gate entirely. That gate
+    // exists for REMOTE connectors (Telegram, Discord, …), which keep it.
+    if msg.source_connector == "in-app" {
+        return Ok(true);
+    }
+
     // Check if pairing is disabled (open access mode)
     if let Ok(Some(mode)) = bot.store.get_config("bot:access_mode").await
         && mode.trim_matches('"') == "open"
@@ -83,11 +94,14 @@ async fn check_access(
             }
 
             // Preconfigured mode: no owner set → deny everyone.
-            tracing::warn!("bot:owner_id not set and access_mode != tofu — denying all messages. Run `springtale init` or set bot:owner_id via API.");
+            tracing::warn!(
+                "bot:owner_id not set and access_mode != tofu — denying all messages. Run `springtale init` or set bot:owner_id via API."
+            );
             send_response(
                 &bot.response_tx,
                 &msg.channel_id,
-                "This bot has no owner configured. Ask the server admin to run `springtale init`.".into(),
+                "This bot has no owner configured. Ask the server admin to run `springtale init`."
+                    .into(),
                 &msg.source_connector,
             )
             .await;
@@ -114,46 +128,44 @@ async fn check_access(
         if let Ok(Some(val)) = bot.store.get_config(&code_key).await
             && let Ok(data) = serde_json::from_str::<serde_json::Value>(&val)
         {
-                // Check 10-minute TTL
-                let expired = data["created_at"]
-                    .as_str()
-                    .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
-                    .map(|t| {
-                        (chrono::Utc::now() - t.with_timezone(&chrono::Utc)).num_minutes() > 10
-                    })
-                    .unwrap_or(true);
+            // Check 10-minute TTL
+            let expired = data["created_at"]
+                .as_str()
+                .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                .map(|t| (chrono::Utc::now() - t.with_timezone(&chrono::Utc)).num_minutes() > 10)
+                .unwrap_or(true);
 
-                // Single-use: delete immediately regardless of outcome
-                let _ = bot.store.delete_config(&code_key).await;
+            // Single-use: delete immediately regardless of outcome
+            let _ = bot.store.delete_config(&code_key).await;
 
-                if expired {
-                    send_response(
-                        &bot.response_tx,
-                        &msg.channel_id,
-                        "Pairing code expired. Ask the bot admin for a new one.".into(),
-                        &msg.source_connector,
-                    )
-                    .await;
-                    return Ok(false);
-                }
-
-                // Pair the user
-                let paired_key = format!("paired:{user_id}");
-                let paired_val = serde_json::json!({
-                    "approved_at": chrono::Utc::now().to_rfc3339(),
-                    "approved_via": "code",
-                })
-                .to_string();
-                let _ = bot.store.set_config(&paired_key, &paired_val).await;
-
+            if expired {
                 send_response(
                     &bot.response_tx,
                     &msg.channel_id,
-                    "Paired successfully. You now have access to this bot.".into(),
+                    "Pairing code expired. Ask the bot admin for a new one.".into(),
                     &msg.source_connector,
                 )
                 .await;
-                return Ok(true);
+                return Ok(false);
+            }
+
+            // Pair the user
+            let paired_key = format!("paired:{user_id}");
+            let paired_val = serde_json::json!({
+                "approved_at": chrono::Utc::now().to_rfc3339(),
+                "approved_via": "code",
+            })
+            .to_string();
+            let _ = bot.store.set_config(&paired_key, &paired_val).await;
+
+            send_response(
+                &bot.response_tx,
+                &msg.channel_id,
+                "Paired successfully. You now have access to this bot.".into(),
+                &msg.source_connector,
+            )
+            .await;
+            return Ok(true);
         }
     }
 
@@ -198,8 +210,79 @@ pub(super) async fn handle_incoming_message(
         channel_id: msg.channel_id.clone(),
     };
 
+    // W2 — remember the operator's most recent channel so approval cards
+    // (ChatApprovalGate notifier) land wherever they last talked to the bot.
+    // Allowed senders only (we just passed check_access).
+    let origin = serde_json::json!({
+        "connector": msg.source_connector,
+        "channel_id": msg.channel_id,
+    })
+    .to_string();
+    let _ = bot.store.set_config("approval:origin", &origin).await;
+
     // Store in conversation context
     let _ = bot.context.push(&session_key, "user", &msg.text).await;
+
+    // W2 — typed-reply approval fallback for connectors without inline
+    // keyboards: a bare `apr:<id>:y|n` message resolves the pending gate.
+    if let Some((id, approved)) =
+        crate::runtime::trigger_dispatch::parse_approval_callback(msg.text.trim())
+    {
+        if let Some(gate) = bot.capability_bridge.approval_gate() {
+            let decision = if approved {
+                springtale_runtime::approval::ApprovalDecision::Approved {
+                    approver: format!("owner ({})", msg.user_id),
+                    approved_at: chrono::Utc::now(),
+                }
+            } else {
+                springtale_runtime::approval::ApprovalDecision::Denied {
+                    reason: "denied from chat".to_owned(),
+                    denied_at: chrono::Utc::now(),
+                }
+            };
+            let reply = match gate
+                .resolve(
+                    springtale_runtime::approval::ApprovalRequestId(id),
+                    decision,
+                )
+                .await
+            {
+                Ok(()) if approved => "✅ Approved — running it now.",
+                Ok(()) => "❌ Denied — nothing was run.",
+                Err(_) => "That approval already closed (or expired).",
+            };
+            send_response(
+                &bot.response_tx,
+                &msg.channel_id,
+                reply.to_owned(),
+                &msg.source_connector,
+            )
+            .await;
+        }
+        return Ok(());
+    }
+
+    // Deterministic conversational task-setup (no AI). If a setup
+    // dialogue is already active for this session, THIS message is a turn
+    // in it — a slot answer ("Tucson"), a correction ("actually 9am"), a
+    // yes/no — never a command. Runs BEFORE the router so those replies
+    // aren't misrouted. See `crate::conversation`.
+    match crate::conversation::continue_active(bot, &session_key, &msg.text).await {
+        Ok(Some(reply)) => {
+            let _ = bot.context.push(&session_key, "assistant", &reply).await;
+            send_response(
+                &bot.response_tx,
+                &msg.channel_id,
+                reply,
+                &msg.source_connector,
+            )
+            .await;
+            let _ = bot.context.compact(&session_key).await;
+            return Ok(());
+        }
+        Ok(None) => {}
+        Err(e) => tracing::warn!(error = %e, "conversation continuation failed"),
+    }
 
     // Route the message
     let route = bot.router.route(&msg.text, bot.config.persona.prefix);
@@ -269,25 +352,51 @@ pub(super) async fn handle_incoming_message(
             }
         }
         crate::router::RouteResult::NoMatch { suggestion } => {
-            // Phase 2a: try AI fallback before static suggestion
-            if let Some(response) = ai_fallback(bot, &session_key, &msg.text).await {
-                let _ = bot.context.push(&session_key, "assistant", &response).await;
-                send_response(
-                    &bot.response_tx,
-                    &msg.channel_id,
-                    response,
-                    &msg.source_connector,
-                )
-                .await;
+            // An explicit but unknown `/command` is a typo, not a setup
+            // request — keep the router's "unknown command" suggestion.
+            // PLAIN text flows through the conversational engine instead.
+            let is_command_attempt = msg.text.trim_start().starts_with(bot.config.persona.prefix);
+
+            let response = if is_command_attempt {
+                suggestion
             } else {
-                send_response(
-                    &bot.response_tx,
-                    &msg.channel_id,
-                    suggestion,
-                    &msg.source_connector,
-                )
-                .await;
-            }
+                // Resolve plain text in priority order:
+                //   1. Deterministic intent → start a recipe setup dialogue (no AI).
+                //   2. Optional AI assist → map a fuzzy request onto a recipe,
+                //      then hand back to the SAME deterministic slot-filling.
+                //   3. Existing AI free-form fallback (only if an adapter is live).
+                //   4. Deterministic capability reply — always works, no AI.
+                match crate::conversation::try_start(bot, &session_key, &msg.text).await {
+                    Ok(Some(reply)) => reply,
+                    Ok(None) | Err(_) => {
+                        if let Ok(Some(reply)) = crate::conversation::augment::ai_assisted_start(
+                            bot,
+                            &session_key,
+                            &msg.text,
+                        )
+                        .await
+                        {
+                            reply
+                        } else if let Some(reply) =
+                            ai_fallback(bot, &session_key, &msg.text, &msg.source_connector).await
+                        {
+                            reply
+                        } else {
+                            crate::conversation::capability_reply(bot)
+                                .await
+                                .unwrap_or(suggestion)
+                        }
+                    }
+                }
+            };
+            let _ = bot.context.push(&session_key, "assistant", &response).await;
+            send_response(
+                &bot.response_tx,
+                &msg.channel_id,
+                response,
+                &msg.source_connector,
+            )
+            .await;
         }
     }
 
@@ -306,6 +415,7 @@ async fn ai_fallback(
     bot: &mut Bot,
     session_key: &crate::state::session::SessionKey,
     user_text: &str,
+    source_connector: &str,
 ) -> Option<String> {
     // Check if AI is available (NoopAdapter returns false → skip)
     if !bot.ai_adapter.is_available().await {
@@ -330,7 +440,15 @@ async fn ai_fallback(
         format!(
             "You are {}, a helpful bot. The user sent a message that didn't match any command. \
              Respond conversationally. If they seem to want a command, suggest the right one. \
-             You may also call connector tools to take actions on the user's behalf.\n\n\
+             You may also call connector tools to take actions on the user's behalf. \
+             Read-only tools (get/search/fetch) are free to use; tools that change \
+             anything will ask the user for approval first, so never hesitate to \
+             propose them when the user asked for the change.\n\
+             For research questions, work in rounds: search first, fetch/scrape the \
+             most promising sources, then answer with short citations (source name + \
+             URL). For weather, call the Open-Meteo forecast endpoint via the HTTP \
+             get tool (https://api.open-meteo.com/v1/forecast?latitude=..&longitude=..\
+             &current=temperature_2m,weather_code — no API key needed).\n\n\
              Available commands:\n{}",
             bot.config.persona.name, command_list
         ),
@@ -345,7 +463,10 @@ async fn ai_fallback(
     }
 
     // Add the current user message
-    messages.push(springtale_ai::ChatMessage::text("user", user_text.to_owned()));
+    messages.push(springtale_ai::ChatMessage::text(
+        "user",
+        user_text.to_owned(),
+    ));
 
     let options = springtale_ai::AiOptions {
         max_tokens: 512,
@@ -373,9 +494,15 @@ async fn ai_fallback(
         policy: &bot.config.tool_policy,
         // Chat-fallback path is not formation-scoped.
         formation_tier: None,
+        // W2 durable resume: thread id + origin so a loop paused behind an
+        // approval survives restart and its outcome returns to this chat.
+        checkpoint: Some(crate::tool_runner::CheckpointCtx {
+            session_key: format!("{}:{}", session_key.user_id, session_key.channel_id),
+            origin_connector: source_connector.to_owned(),
+            origin_channel: session_key.channel_id.clone(),
+        }),
     };
-    match crate::tool_runner::run_with_tools(tool_deps, messages, tool_call).await
-    {
+    match crate::tool_runner::run_with_tools(tool_deps, messages, tool_call).await {
         Ok(response) if !response.content.is_empty() => Some(response.content),
         Ok(_) => {
             tracing::debug!("AI fallback returned empty response");

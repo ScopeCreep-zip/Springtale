@@ -24,9 +24,7 @@ impl InterventionAction for DefaultInterventionAction {
             Intervention::ChangeIntent(intent) => change_intent::apply(formation, intent.clone()),
             Intervention::InjectFuel(budget) => inject_fuel::apply(formation, budget),
             Intervention::ForcedDissolve { reason } => dissolve::apply(formation, reason.clone()),
-            Intervention::EscalateToUser { summary } => {
-                escalate::apply(formation, summary.clone())
-            }
+            Intervention::EscalateToUser { summary } => escalate::apply(formation, summary.clone()),
         }
     }
 }

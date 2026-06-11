@@ -16,9 +16,7 @@ use tokio::sync::broadcast;
 
 use crate::cooperation::formation::Formation;
 use springtale_cooperation::cadence::AgentId;
-use springtale_cooperation::comms::{
-    BroadcastTrigger, StateBroadcastMsg, StateMessage,
-};
+use springtale_cooperation::comms::{BroadcastTrigger, StateBroadcastMsg, StateMessage};
 use springtale_cooperation::events::{self, CooperationEvent, CooperationEventEnvelope};
 use springtale_cooperation::recovery::{DistressSignal, RecoveryAction, executor as recovery_exec};
 use springtale_cooperation::sacrifice::scorer::FormationSnapshot;
@@ -273,8 +271,7 @@ mod tests {
 
     #[tokio::test]
     async fn apply_recovery_ignores_unknown_target() {
-        let (mut formation, target_id) =
-            setup_formation_with_member(AgentHealth::Operational);
+        let (mut formation, target_id) = setup_formation_with_member(AgentHealth::Operational);
         let ghost_id = AgentId::new();
         let action = RecoveryAction::PeerRevive {
             healer: AgentId::new(),

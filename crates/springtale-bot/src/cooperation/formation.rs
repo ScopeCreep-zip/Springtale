@@ -20,22 +20,22 @@ use springtale_cooperation::attention::AttentionBroker;
 use springtale_cooperation::awareness::{GossipStore, InMemoryGossipStore, LocalAwareness};
 use springtale_cooperation::cadence::{AgentId, CadenceBus, IntentPattern};
 use springtale_cooperation::capability::CapabilityDecl;
+use springtale_cooperation::commit::CommitBarrier;
 use springtale_cooperation::comms::{
     AckDispatch, FormationBus, FormationBusSubscription, ProtocolDispatch,
 };
-use springtale_cooperation::commit::CommitBarrier;
 use springtale_cooperation::consensus::ConsensusEngine;
 use springtale_cooperation::context::FormationContext;
 use springtale_cooperation::handoff::{
-    dispatch_handoff_durable, FlexibleChainPool, HandoffResult, HandoffType,
+    FlexibleChainPool, HandoffResult, HandoffType, dispatch_handoff_durable,
 };
-use springtale_cooperation::routing::direct::DirectInbox;
 use springtale_cooperation::mental_model::SharedMentalModel;
 use springtale_cooperation::momentum::{MomentumState, MomentumTier};
 use springtale_cooperation::pacing::PacingManager;
 use springtale_cooperation::peer::PeerMsg;
 use springtale_cooperation::rally::FormationRally;
 use springtale_cooperation::role::{DynamicRoleTrait, GeneralAgent};
+use springtale_cooperation::routing::direct::DirectInbox;
 use springtale_cooperation::state::SharedEnvironment;
 use springtale_cooperation::supervision::{FormationSupervisor, Liveness};
 use springtale_cooperation::types::{AgentHealth, FormationConstraints, FormationId};
@@ -51,7 +51,7 @@ pub struct FormationMember {
     pub health: AgentHealth,
     pub liveness: Liveness,
     pub fuel_remaining: FuelBudget,
-    pub last_report_tick: u64,
+    pub last_report_tick: springtale_cooperation::TickId,
     /// Consecutive tick failures for this member. Used by transformation
     /// trigger (§14) — 5+ failures → ToSupportAgent.
     pub consecutive_failures: usize,
@@ -89,7 +89,7 @@ impl FormationMember {
             health: AgentHealth::default(),
             liveness: Liveness::Alive,
             fuel_remaining: FuelBudget::new(1000),
-            last_report_tick: 0,
+            last_report_tick: springtale_cooperation::TickId::ZERO,
             consecutive_failures: 0,
             active_task: None,
             ai_adapter: None,
@@ -98,7 +98,8 @@ impl FormationMember {
 
     /// Create with string capabilities (convenience for backward compat).
     pub fn from_strings(agent_id: AgentId, capabilities: Vec<String>) -> Self {
-        let caps: Vec<CapabilityDecl> = capabilities.into_iter().map(CapabilityDecl::from).collect();
+        let caps: Vec<CapabilityDecl> =
+            capabilities.into_iter().map(CapabilityDecl::from).collect();
         Self::new(agent_id, caps)
     }
 
@@ -216,6 +217,16 @@ pub struct Formation {
     pub mental_model: SharedMentalModel,
     /// Active consensus votes (§11, As Dusk Falls voting).
     pub consensus: ConsensusEngine,
+    /// Tasks with an open consensus vote, keyed by task id → vote id
+    /// (B7 guard). The executor skips proposing for a task already here,
+    /// so a released-but-unresolved destructive task can't re-open a new
+    /// vote every tick. Entries move to `consensus_approved` (approve) or
+    /// are dropped (deny/timeout) by `tick_steps/resolve_consensus`.
+    pub awaiting_consensus: std::collections::HashMap<uuid::Uuid, uuid::Uuid>,
+    /// One-shot execution permits minted by an approving vote resolution.
+    /// Consumed (removed) by the executor when the task is claimed, so an
+    /// approval authorizes exactly one execution.
+    pub consensus_approved: std::collections::HashSet<uuid::Uuid>,
     /// Active synchronized commit barriers (§12, Splinter Cell dual breach).
     pub active_commits: Vec<CommitBarrier>,
 
@@ -251,9 +262,7 @@ pub struct Formation {
     /// publish_formation_view` broadcasts this formation's running
     /// state every tick and `lifecycle::dissolve` publishes a terminal
     /// `FormationOutcome`.
-    pub formation_gossip: Option<
-        Arc<dyn springtale_cooperation::gossip::FormationGossipBus>,
-    >,
+    pub formation_gossip: Option<Arc<dyn springtale_cooperation::gossip::FormationGossipBus>>,
     /// §20 FlexibleChain work-stealing pool — per-capability crossbeam
     /// deques. One instance per formation so the capability scope is
     /// bounded and steal-miss iteration stays cheap at RTS scale.
@@ -270,9 +279,7 @@ pub struct Formation {
     /// `std::sync::Mutex` because `FormationBusSubscription` contains
     /// an `mpsc::Receiver` which is `Send` but not `Clone` — removal
     /// must be atomic w.r.t. concurrent member churn.
-    pub member_subs: std::sync::Mutex<
-        std::collections::HashMap<AgentId, FormationBusSubscription>,
-    >,
+    pub member_subs: std::sync::Mutex<std::collections::HashMap<AgentId, FormationBusSubscription>>,
 
     /// Cursor into `shared_env.snapshot().write_log` — number of entries
     /// consumed by the last tick's interference pass. Writes at index
@@ -314,16 +321,14 @@ pub struct Formation {
     /// Initiator end of the CFP channels — owns the bid receiver.
     /// Wrapped in `tokio::Mutex` because `coordinator::run_round` borrows
     /// it `&mut` and CFP rounds may be initiated from any tick step.
-    pub cfp_initiator: Arc<tokio::sync::Mutex<
-        springtale_cooperation::contract_net::InitiatorHandle,
-    >>,
+    pub cfp_initiator:
+        Arc<tokio::sync::Mutex<springtale_cooperation::contract_net::InitiatorHandle>>,
     /// Per-member runner task handles. Spawned at `Formation::new`/`join`,
     /// aborted at `leave`/`Drop`. Each runner owns its agent's
     /// `ParticipantHandle` + bus subscription and evaluates incoming CFPs
     /// via `UtilityBidder` (`cooperation/member_runner.rs`).
-    pub member_runners: Arc<std::sync::Mutex<
-        std::collections::HashMap<AgentId, tokio::task::JoinHandle<()>>,
-    >>,
+    pub member_runners:
+        Arc<std::sync::Mutex<std::collections::HashMap<AgentId, tokio::task::JoinHandle<()>>>>,
 
     /// L0 stigmergy substrate (`COOPERATION.md §10`). Trait-object so the
     /// concrete backend (production `SurfaceStore`, in-test mocks) is
@@ -355,9 +360,7 @@ pub struct FormationDeps {
     /// G6 — cross-formation gossip bus. `None` for tests / dry-runs that
     /// don't need cross-formation visibility; production wires the
     /// shared `InMemoryFormationGossipBus` (or chitchat-backed) here.
-    pub formation_gossip: Option<
-        Arc<dyn springtale_cooperation::gossip::FormationGossipBus>,
-    >,
+    pub formation_gossip: Option<Arc<dyn springtale_cooperation::gossip::FormationGossipBus>>,
 }
 
 impl FormationDeps {
@@ -469,6 +472,8 @@ impl Formation {
             supervisor: FormationSupervisor::default(),
             mental_model: SharedMentalModel::default(),
             consensus: ConsensusEngine::new(),
+            awaiting_consensus: std::collections::HashMap::new(),
+            consensus_approved: std::collections::HashSet::new(),
             active_commits: Vec::new(),
             bus,
             protocol_dispatcher: None,
@@ -489,12 +494,9 @@ impl Formation {
             escalation_pending: None,
             cfp_channels,
             cfp_initiator,
-            member_runners: Arc::new(std::sync::Mutex::new(
-                std::collections::HashMap::new(),
-            )),
-            surfaces: Arc::new(
-                springtale_cooperation::stigmergy::deposit::SurfaceStore::new(),
-            ) as Arc<dyn springtale_cooperation::stigmergy::SurfaceSubstrate>,
+            member_runners: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            surfaces: Arc::new(springtale_cooperation::stigmergy::deposit::SurfaceStore::new())
+                as Arc<dyn springtale_cooperation::stigmergy::SurfaceSubstrate>,
             task_router,
             needs_replan: false,
         };
@@ -650,11 +652,7 @@ impl Formation {
         agent: AgentId,
         result: springtale_cooperation::SubTaskResult,
     ) {
-        if let Some(barrier) = self
-            .active_commits
-            .iter_mut()
-            .find(|b| b.id == barrier_id)
-        {
+        if let Some(barrier) = self.active_commits.iter_mut().find(|b| b.id == barrier_id) {
             barrier.collect_result(agent, result);
         }
     }
@@ -801,7 +799,10 @@ impl Formation {
     /// agent — subsequent calls for the same agent return `None` until a
     /// new `join` repopulates.
     pub fn take_subscription(&self, agent_id: AgentId) -> Option<FormationBusSubscription> {
-        self.member_subs.lock().ok().and_then(|mut g| g.remove(&agent_id))
+        self.member_subs
+            .lock()
+            .ok()
+            .and_then(|mut g| g.remove(&agent_id))
     }
 
     /// Drain any pending bus messages that have accumulated in each
@@ -893,9 +894,7 @@ impl Formation {
     /// process, so all formations see the same tick sequence.
     pub fn subscribe_cadence(
         &self,
-    ) -> tokio::sync::broadcast::Receiver<
-        springtale_cooperation::cadence::Tick,
-    > {
+    ) -> tokio::sync::broadcast::Receiver<springtale_cooperation::cadence::Tick> {
         self.cadence.subscribe()
     }
 
@@ -1232,7 +1231,10 @@ mod tests {
         let found = formation
             .flex_chain_pool
             .find_task(&"consumer".into(), receiver);
-        assert!(found.is_some(), "registered worker should find the posted payload");
+        assert!(
+            found.is_some(),
+            "registered worker should find the posted payload"
+        );
     }
 
     #[test]
@@ -1249,11 +1251,7 @@ mod tests {
         );
         assert_eq!(formation.active_commit_count(), 0);
 
-        let id = formation.begin_commit(
-            &[a, b],
-            std::time::Duration::from_secs(5),
-            a,
-        );
+        let id = formation.begin_commit(&[a, b], std::time::Duration::from_secs(5), a);
         assert_eq!(formation.active_commit_count(), 1);
         assert!(formation.active_commits.iter().any(|c| c.id == id));
     }
@@ -1270,11 +1268,7 @@ mod tests {
             IntentPattern::Execute { plan_id: None },
             constraints_with_fuel(1000),
         );
-        let id = formation.begin_commit(
-            &[a, b],
-            std::time::Duration::from_secs(5),
-            a,
-        );
+        let id = formation.begin_commit(&[a, b], std::time::Duration::from_secs(5), a);
         formation.signal_commit_ready(id, a).unwrap();
         formation.signal_commit_ready(id, b).unwrap();
 

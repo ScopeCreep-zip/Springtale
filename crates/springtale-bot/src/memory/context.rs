@@ -172,10 +172,10 @@ impl ConversationContext {
                 user_id: &key.user_id,
                 channel_id: &key.channel_id,
                 category: "conversation",
-                author: "agent",       // per spec MemoryAuthor::Agent
-                source: "compacted",   // per spec MemorySource::Compacted
+                author: "agent",     // per spec MemoryAuthor::Agent
+                source: "compacted", // per spec MemorySource::Compacted
                 content: &response.content,
-                trust_score: 0.5, // per spec §15.5: AI-generated = 0.5
+                trust_score: 0.5,     // per spec §15.5: AI-generated = 0.5
                 parent_id: oldest_id, // compaction chain tracking
                 expires_at: None,
             })

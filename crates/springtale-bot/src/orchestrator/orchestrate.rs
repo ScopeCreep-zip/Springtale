@@ -39,10 +39,16 @@ pub async fn orchestrate_formation(
     formation: &Formation,
     registry: &Arc<RwLock<ConnectorRegistry>>,
 ) -> Result<Vec<SubTask>, BotError> {
-    let orchestrator = formation
-        .orchestrator
-        .as_ref()
-        .ok_or_else(|| BotError::NotInitialized("no orchestrator adapter".into()))?;
+    // AI orchestration is the augmentation path: it only runs when an adapter
+    // is attached AND the formation has earned Fever momentum. Without it we
+    // fall back to deterministic decomposition so that a formation with
+    // `NoopAdapter` (the product-model default) still produces outward work.
+    // This is the "AI is optional augmentation" invariant: everything works
+    // without AI, AI makes it better.
+    let orchestrator = match formation.orchestrator.as_ref() {
+        Some(adapter) if formation.momentum.can_ai_orchestrate() => adapter,
+        _ => return Ok(decompose_intent_deterministic(formation, registry).await),
+    };
 
     // Build member capability summary for the AI
     let member_summary = build_member_summary(formation, registry).await;
@@ -54,15 +60,20 @@ pub async fn orchestrate_formation(
          Momentum tier: {:?}\n\
          Members ({} operational):\n{}\n\n\
          Decompose the intent into concrete subtasks. Each subtask targets a specific connector action.\n\
+         Subtasks may form a pipeline: give a subtask an `id` (any unique string), list upstream ids in\n\
+         `depends_on`, and reference upstream output in params as \"${{result:<id>}}\" or\n\
+         \"${{result:<id>.field.path}}\" — dependent tasks run only after their upstreams complete.\n\
          Respond with a JSON array of subtasks:\n\
          ```json\n\
          [\n\
            {{\n\
+             \"id\": \"t1\",\n\
              \"target_connector\": \"connector-name\",\n\
              \"action_name\": \"action-name\",\n\
              \"params\": {{}},\n\
              \"priority\": 1,\n\
-             \"description\": \"what this subtask does\"\n\
+             \"description\": \"what this subtask does\",\n\
+             \"depends_on\": []\n\
            }}\n\
          ]\n\
          ```\n\
@@ -107,7 +118,11 @@ async fn build_member_summary(
             continue;
         }
 
-        let cap_names: Vec<&str> = member.capabilities.iter().map(|c| c.name.as_str()).collect();
+        let cap_names: Vec<&str> = member
+            .capabilities
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect();
         let caps = cap_names.join(", ");
         let role = member.role.name().to_owned();
 
@@ -174,6 +189,14 @@ fn parse_subtasks(content: &str, formation: &Formation) -> Result<Vec<SubTask>, 
         .flat_map(|m| m.capabilities.iter().map(|c| c.name.as_str()))
         .collect();
 
+    // W3 pass 1: assign every entry a real Uuid and map the AI's free-form
+    // `id` strings ("t1") onto them so `depends_on` references resolve.
+    let id_map: std::collections::HashMap<String, Uuid> = parsed
+        .iter()
+        .filter_map(|v| v.get("id").and_then(|s| s.as_str()))
+        .map(|ai_id| (ai_id.to_owned(), Uuid::new_v4()))
+        .collect();
+
     for val in parsed {
         let target = val
             .get("target_connector")
@@ -209,26 +232,220 @@ fn parse_subtasks(content: &str, formation: &Formation) -> Result<Vec<SubTask>, 
             .unwrap_or("")
             .to_owned();
 
+        // W3: the squad AI may emit dependent-task DAGs. `depends_on`
+        // entries are the AI's own `id` strings, mapped to real Uuids via
+        // pass 1; raw UUIDs are accepted too. Unknown references are
+        // dropped (the dep gate would otherwise block the task forever).
+        let depends_on: Vec<Uuid> = val
+            .get("depends_on")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|s| s.as_str())
+                    .filter_map(|s| id_map.get(s).copied().or_else(|| Uuid::parse_str(s).ok()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Rewrite `${result:t1...}` placeholders in params to the mapped
+        // Uuids so the executor's resolver finds the blackboard entries.
+        let mut params = params;
+        rewrite_result_refs(&mut params, &id_map);
+
+        let task_id = val
+            .get("id")
+            .and_then(|s| s.as_str())
+            .and_then(|s| id_map.get(s).copied())
+            .unwrap_or_else(Uuid::new_v4);
+
         subtasks.push(SubTask {
-            id: Uuid::new_v4(),
+            id: task_id,
             target_connector: springtale_cooperation::capability::CapabilityDecl::new(target),
             action_name,
             params,
             priority,
             assigned_to: None,
             description,
+            depends_on,
         });
     }
 
     Ok(subtasks)
 }
 
+/// Rewrite `${result:<ai-id>...}` placeholders to `${result:<uuid>...}`
+/// using the pass-1 id map, so the executor's resolver matches the real
+/// blackboard keys. Strings without a mapped prefix pass through unchanged.
+fn rewrite_result_refs(
+    value: &mut serde_json::Value,
+    id_map: &std::collections::HashMap<String, Uuid>,
+) {
+    match value {
+        serde_json::Value::String(s) if s.starts_with("${result:") && s.ends_with('}') => {
+            let inner = &s["${result:".len()..s.len() - 1];
+            let (id_part, path) = match inner.split_once('.') {
+                Some((id, p)) => (id, Some(p)),
+                None => (inner, None),
+            };
+            if let Some(uuid) = id_map.get(id_part) {
+                *s = match path {
+                    Some(p) => format!("${{result:{uuid}.{p}}}"),
+                    None => format!("${{result:{uuid}}}"),
+                };
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for v in map.values_mut() {
+                rewrite_result_refs(v, id_map);
+            }
+        }
+        serde_json::Value::Array(arr) => {
+            for v in arr.iter_mut() {
+                rewrite_result_refs(v, id_map);
+            }
+        }
+        _ => {}
+    }
+}
+
+/// Deterministic (no-AI) intent decomposition.
+///
+/// Mirrors the AI path's output shape (`Vec<SubTask>` posted to the blackboard)
+/// but derives subtasks mechanically from member connector capabilities + the
+/// formation's `IntentPattern`, with zero LLM involvement. This is what gives a
+/// `NoopAdapter` formation outward effect.
+///
+/// Scope, by design (honest bounds — the richer, parameterised work lives in
+/// the event-driven formation rule synthesiser, `springtale-runtime`
+/// `operations::formation_synthesis`, where params come from the trigger
+/// payload rather than being invented):
+///
+/// - Only actions whose inputs are fully optional (no required params) are
+///   emitted — we never fabricate parameters for an action that requires them.
+/// - Under `Reconnoiter` (monitor, read-only) only actions the connector
+///   declares as `read_only` (the MCP `readOnlyHint` on `ActionDecl`) are
+///   emitted — precise read/poll selection rather than a name heuristic. Under
+///   `Execute` / `Surge` any no-param action is fair game. `Stabilize` and
+///   `Dissolve` emit nothing. `Surge` raises subtask priority.
+/// - Subtask ids are stable (hash over agent+connector+action) so re-posting
+///   the same poll each tick overwrites rather than accumulating.
+/// - Gated by the momentum × layer authority matrix (L1 routine routing) so the
+///   path respects the same tier discipline as the rest of the tick.
+pub async fn decompose_intent_deterministic(
+    formation: &Formation,
+    registry: &Arc<RwLock<ConnectorRegistry>>,
+) -> Vec<SubTask> {
+    use crate::cooperation::IntentPattern;
+
+    // (priority, restrict-to-read-only). Stabilize/Dissolve emit nothing.
+    let (priority, read_only_only) = match &formation.intent {
+        IntentPattern::Surge { .. } => (1, false), // max commitment → highest priority
+        IntentPattern::Execute { .. } => (5, false),
+        IntentPattern::Reconnoiter { .. } => (5, true), // monitor → reads only
+        IntentPattern::Stabilize { .. } | IntentPattern::Dissolve { .. } => return Vec::new(),
+    };
+
+    // Read-poll subtasks are L1 routine routing — available at every tier, so
+    // a Cold/Warming formation can still monitor. The mutating differentiation
+    // is enforced downstream (synthesised rules + sentinel + autonomy gate).
+    if !springtale_cooperation::authority::allows(
+        formation.momentum.tier,
+        springtale_cooperation::layer::LayerId::L1Routine,
+    ) {
+        return Vec::new();
+    }
+
+    let registry = registry.read().await;
+    let mut subtasks = Vec::new();
+
+    for member in &formation.members {
+        if !member.is_operational() {
+            continue;
+        }
+        for cap in &member.capabilities {
+            let Some(entry) = registry.get(&cap.name) else {
+                continue;
+            };
+            for decl in entry.host.actions() {
+                if read_only_only && !decl.read_only {
+                    continue; // Reconnoiter: monitor with read-only actions only
+                }
+                if action_requires_params(decl) {
+                    continue; // we never invent required parameters
+                }
+                // Stable (deterministic) subtask id over agent+connector+action
+                // so re-posting the same poll each tick overwrites rather than
+                // accumulating on the blackboard.
+                let stable = stable_task_id(member.agent_id.0, &cap.name, &decl.name);
+                subtasks.push(SubTask {
+                    id: stable,
+                    target_connector: springtale_cooperation::capability::CapabilityDecl::new(
+                        cap.name.clone(),
+                    ),
+                    action_name: decl.name.clone(),
+                    params: serde_json::Value::Object(serde_json::Map::new()),
+                    priority,
+                    assigned_to: None,
+                    description: format!(
+                        "deterministic {:?} poll: {}:{}",
+                        intent_label(&formation.intent),
+                        cap.name,
+                        decl.name
+                    ),
+                    // Deterministic polls are independent reads — no deps.
+                    depends_on: Vec::new(),
+                });
+            }
+        }
+    }
+
+    subtasks
+}
+
+/// Deterministic subtask id derived from agent + connector + action. Stable
+/// within a running daemon so re-posts dedup on the blackboard. Uses a hash
+/// (not UUIDv5) to avoid pulling in the uuid `v5` feature.
+fn stable_task_id(agent: uuid::Uuid, connector: &str, action: &str) -> uuid::Uuid {
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    (agent, connector, action).hash(&mut hasher);
+    let hi = hasher.finish();
+    action.hash(&mut hasher);
+    let lo = hasher.finish();
+    uuid::Uuid::from_u128(((hi as u128) << 64) | lo as u128)
+}
+
+/// Short label for an intent, used in subtask descriptions.
+fn intent_label(intent: &crate::cooperation::IntentPattern) -> &'static str {
+    use crate::cooperation::IntentPattern;
+    match intent {
+        IntentPattern::Reconnoiter { .. } => "Reconnoiter",
+        IntentPattern::Execute { .. } => "Execute",
+        IntentPattern::Stabilize { .. } => "Stabilize",
+        IntentPattern::Surge { .. } => "Surge",
+        IntentPattern::Dissolve { .. } => "Dissolve",
+    }
+}
+
+/// Whether an action declares any *required* input parameters. We only emit
+/// deterministic subtasks for actions that require none, so we never fabricate
+/// argument values. An absent input schema means "no inputs" → no requirements.
+fn action_requires_params(decl: &springtale_connector::manifest::types::ActionDecl) -> bool {
+    match decl.input_schema.as_ref() {
+        None => false,
+        Some(schema) => schema
+            .get("required")
+            .and_then(|r| r.as_array())
+            .is_some_and(|reqs| !reqs.is_empty()),
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::cooperation::{AgentId, IntentPattern, FormationConstraints};
     use crate::cooperation::formation::FormationMember;
+    use crate::cooperation::{AgentId, FormationConstraints, IntentPattern};
 
     fn test_formation() -> Formation {
         Formation::new_disconnected(

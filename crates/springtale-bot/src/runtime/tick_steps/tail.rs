@@ -33,7 +33,10 @@ pub fn reclaim_dead(formations: &mut [Formation]) {
 pub fn drain_member_subs(formations: &mut [Formation]) {
     for formation in formations.iter_mut() {
         let counts = formation.drain_member_subs();
-        let total: u32 = counts.iter().map(|c| c.state + c.cohesion + c.protocol).sum();
+        let total: u32 = counts
+            .iter()
+            .map(|c| c.state + c.cohesion + c.protocol)
+            .sum();
         if total > 0 {
             tracing::trace!(
                 formation = %formation.id.0,

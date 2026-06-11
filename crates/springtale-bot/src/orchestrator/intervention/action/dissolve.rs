@@ -7,10 +7,7 @@ use super::super::types::InterventionError;
 /// Apply a `ForcedDissolve`. Rewrites intent to `Dissolve` so the runtime
 /// lifecycle layer removes the formation on its next sweep and every watcher
 /// observes the shutdown reason.
-pub fn apply(
-    formation: &mut Formation,
-    reason: DissolveReason,
-) -> Result<(), InterventionError> {
+pub fn apply(formation: &mut Formation, reason: DissolveReason) -> Result<(), InterventionError> {
     let logged_reason = reason.0.clone();
     formation.intent = IntentPattern::Dissolve { reason };
     formation.broadcast_context();

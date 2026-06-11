@@ -1,5 +1,5 @@
-use crate::cooperation::{FormationConstraints, FormationId};
 use crate::cooperation::cadence::{AgentId, IntentPattern};
+use crate::cooperation::{FormationConstraints, FormationId};
 
 /// Final composition result — which agents were admitted to the formation.
 ///

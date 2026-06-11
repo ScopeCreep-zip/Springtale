@@ -25,11 +25,9 @@ pub fn run(
             momentum_unlocked: vec![],
             transformed_capabilities: vec![],
         };
-        if let Some(transformation) = trigger::evaluate_transformation(
-            &member.health,
-            &caps,
-            member.consecutive_failures,
-        ) {
+        if let Some(transformation) =
+            trigger::evaluate_transformation(&member.health, &caps, member.consecutive_failures)
+        {
             let from_role = member.role.name().to_owned();
             member.role = apply_transformation_via_registry(
                 role_registry,

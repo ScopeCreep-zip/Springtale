@@ -5,10 +5,7 @@ use super::super::types::InterventionError;
 
 /// Apply an `EscalateToUser`. Logs a high-severity event; the UI layer
 /// surfaces the summary through existing diagnostic channels.
-pub fn apply(
-    formation: &Formation,
-    summary: ActionSummary,
-) -> Result<(), InterventionError> {
+pub fn apply(formation: &Formation, summary: ActionSummary) -> Result<(), InterventionError> {
     tracing::error!(
         formation_id = %formation.id.0,
         summary = %summary,

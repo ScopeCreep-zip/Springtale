@@ -32,8 +32,8 @@ use std::sync::Arc;
 
 use tokio::sync::mpsc;
 
-use springtale_cooperation::agent::step;
 use springtale_cooperation::agent::AgentContext;
+use springtale_cooperation::agent::step;
 use springtale_cooperation::cadence::{Tick, TickReport};
 use springtale_cooperation::dissemination::BufferedStateSubscriber;
 
@@ -83,12 +83,10 @@ pub async fn run(
         }
 
         let agent_name = member.agent_id.0.to_string();
-        let autonomy_str = springtale_runtime::operations::agent::get_autonomy(
-            store.as_ref(),
-            &agent_name,
-        )
-        .await
-        .unwrap_or_else(|_| "suggest".to_owned());
+        let autonomy_str =
+            springtale_runtime::operations::agent::get_autonomy(store.as_ref(), &agent_name)
+                .await
+                .unwrap_or_else(|_| "suggest".to_owned());
         let autonomy = springtale_cooperation::AutonomyLevel::parse(&autonomy_str);
 
         // Plan §A2 layer order: L0 sense → L3 inbox → L2 react → L1 scan.
@@ -116,9 +114,7 @@ pub async fn run(
                 tick_action = r.action;
                 chosen_task = r.task_claimed; // None for surface_reaction
                 needs_scan = false;
-            } else if let Some(r) =
-                step::inbox::run(task_router.as_ref(), &agent_ctx).await
-            {
+            } else if let Some(r) = step::inbox::run(task_router.as_ref(), &agent_ctx).await {
                 tick_action = r.action;
                 chosen_task = r.task_claimed;
                 needs_scan = false;
@@ -178,6 +174,7 @@ pub async fn run(
             autonomy,
             bridge,
             sentinel,
+            direct_inbox: formation.direct_inbox.as_ref(),
             sacrifice: sacrifice_action,
             cooperation_tx,
         })
