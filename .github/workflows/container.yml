@@ -86,7 +86,13 @@ jobs:
           output: trivy.sarif
           severity: HIGH,CRITICAL
           exit-code: '1'
+          # Only fail on FIXABLE vulnerabilities — un-actionable upstream
+          # base-OS CVEs (debian "wont-fix") can't be patched from here and are
+          # picked up automatically when the distroless base is rebuilt.
           ignore-unfixed: true
+          # vuln-only: secret scanning is owned by secrets.yml (gitleaks +
+          # trufflehog) and false-positives on compiled-binary strings here.
+          scanners: vuln
       - uses: github/codeql-action/upload-sarif@v3
         if: always()
         with:
@@ -120,6 +126,11 @@ jobs:
           image: springtale-local:ci
           fail-build: true
           severity-cutoff: high
+          # Only fail on vulnerabilities with an available fix — mirrors
+          # Trivy's ignore-unfixed. The base's libc6 HIGH/CRITICAL CVEs are all
+          # debian "wont-fix" (CVE-2026-5450/5435/5928 + the disputed glibc
+          # set), so they're un-actionable until distroless rebuilds.
+          only-fixed: true
           output-format: sarif
           output-file: grype.sarif
       - uses: github/codeql-action/upload-sarif@v3

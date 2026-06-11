@@ -92,7 +92,6 @@ pub async fn verify_chain(
     let mut expected_prev = genesis_anchor.to_owned();
     let mut expected_seq: i64 = 1;
     let mut last_hash = String::new();
-    let mut verified: u64 = 0;
 
     for row in &rows {
         // chain_seq must be strictly monotonic +1.
@@ -139,11 +138,11 @@ pub async fn verify_chain(
         expected_prev = row.row_hash.clone();
         expected_seq += 1;
         last_hash = row.row_hash.clone();
-        verified += 1;
     }
 
+    // Every row reaching here passed; a failed row returns Err above.
     Ok(ChainOk {
-        rows_verified: verified,
+        rows_verified: rows.len() as u64,
         tip_hash: last_hash,
     })
 }
