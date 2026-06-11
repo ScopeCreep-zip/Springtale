@@ -35,6 +35,34 @@ pub const MORALE_MIN_STEP: f32 = 0.01;
 /// analog in a cooperative (non-adversarial) formation, so only this cap applies.
 pub const MAX_CONTAGION_DISTRESSED: usize = 4;
 
+/// §A.4 rally falloff (decisions §11 #6), non-spatial analog. WH3's rally
+/// aura is full-strength out to `general_aura_radius = 70` units, then
+/// linear to zero at `70 × inspiration_radius_max_effect_range_modifier
+/// (1.5) = 105`. Springtale formations have no spatial geometry; the
+/// "distance" between agents is the **Age of Information** of the
+/// neighbor's gossip snapshot (the AoI temporal-decay model from the
+/// gossip-network literature). A snapshot fresher than `AOI_FULL_EFFECT`
+/// contributes at full weight; influence falls linearly to zero at
+/// `AOI_FULL_EFFECT × AOI_ZERO_FACTOR` — the same 1.0→1.5 falloff shape
+/// as the WH3 aura.
+pub const AOI_FULL_EFFECT: std::time::Duration = std::time::Duration::from_secs(2);
+/// Falloff endpoint multiplier — mirrors WH3's
+/// `inspiration_radius_max_effect_range_modifier = 1.5`.
+pub const AOI_ZERO_FACTOR: f32 = 1.5;
+
+/// Linear AoI influence weight: 1.0 while fresh (≤ [`AOI_FULL_EFFECT`]),
+/// falling linearly to 0.0 at `AOI_FULL_EFFECT × AOI_ZERO_FACTOR`.
+pub fn aoi_weight(age: std::time::Duration) -> f32 {
+    let full = AOI_FULL_EFFECT.as_secs_f32();
+    let zero = full * AOI_ZERO_FACTOR;
+    let age = age.as_secs_f32();
+    if age <= full {
+        1.0
+    } else {
+        ((zero - age) / (zero - full)).clamp(0.0, 1.0)
+    }
+}
+
 /// Role identity as surfaced across gossip and the canvas UI.
 ///
 /// Per COOPERATION.md §14 we deliberately keep `Box<dyn DynamicRoleTrait>`
@@ -197,14 +225,38 @@ impl LocalAwareness {
         }
 
         let total = self.neighbor_states.len() as f32;
-        let healthy = self.healthy_neighbor_count() as f32;
-        // Bounded contagion: only the first MAX_CONTAGION_DISTRESSED distressed
-        // neighbors pull morale down (WH3 friends cap).
-        let distressed = self
-            .distressed_neighbor_count()
-            .min(MAX_CONTAGION_DISTRESSED) as f32;
+        // §A.4 rally falloff (decisions §11 #6): every neighbor's influence
+        // is weighted by the Age of Information of its snapshot — fresh
+        // gossip counts fully, stale gossip fades out linearly (the WH3
+        // 70/×1.5 aura shape mapped onto snapshot staleness).
+        let healthy: f32 = self
+            .neighbor_states
+            .values()
+            .filter(|n| {
+                matches!(
+                    n.health,
+                    AgentHealth::Operational | AgentHealth::Degraded { .. }
+                )
+            })
+            .map(|n| aoi_weight(n.last_updated.elapsed()))
+            .sum();
+        // Bounded contagion: the weighted distressed influence is capped at
+        // MAX_CONTAGION_DISTRESSED (WH3 friends cap) so panic can't spread
+        // unboundedly even in a large formation.
+        let distressed: f32 = self
+            .neighbor_states
+            .values()
+            .filter(|n| {
+                matches!(
+                    n.health,
+                    AgentHealth::Incapacitated | AgentHealth::Dead { .. }
+                )
+            })
+            .map(|n| aoi_weight(n.last_updated.elapsed()))
+            .sum::<f32>()
+            .min(MAX_CONTAGION_DISTRESSED as f32);
 
-        // Base morale from neighbor health ratio.
+        // Base morale from (AoI-weighted) neighbor health ratio.
         let health_factor = healthy / total;
         // Penalty for distressed neighbors (cascade risk).
         let distress_penalty = distressed / total * 0.3;
@@ -377,6 +429,44 @@ mod tests {
 
         awareness.remove_neighbor(&id);
         assert_eq!(awareness.healthy_neighbor_count(), 0);
+    }
+
+    #[test]
+    fn aoi_weight_full_then_linear_to_zero() {
+        use std::time::Duration;
+        assert!((aoi_weight(Duration::ZERO) - 1.0).abs() < f32::EPSILON);
+        assert!((aoi_weight(AOI_FULL_EFFECT) - 1.0).abs() < f32::EPSILON);
+        // Midpoint of the falloff band (2s..3s at the defaults) ≈ 0.5.
+        let mid = AOI_FULL_EFFECT + Duration::from_millis(500);
+        assert!((aoi_weight(mid) - 0.5).abs() < 0.01);
+        // At and beyond the zero point: no influence.
+        let zero_point = Duration::from_secs_f32(AOI_FULL_EFFECT.as_secs_f32() * AOI_ZERO_FACTOR);
+        assert!(aoi_weight(zero_point) <= f32::EPSILON);
+        assert!(aoi_weight(zero_point + Duration::from_secs(10)) <= f32::EPSILON);
+    }
+
+    #[test]
+    fn stale_distressed_neighbor_pulls_morale_less_than_fresh() {
+        use std::time::Duration;
+        // Fresh distressed neighbor: full contagion weight.
+        let mut fresh = LocalAwareness::default();
+        fresh.update_neighbor(make_snapshot(AgentId::new(), AgentHealth::Operational));
+        fresh.update_neighbor(make_snapshot(AgentId::new(), AgentHealth::Incapacitated));
+        let fresh_target = fresh.morale_target();
+
+        // Same shape, but the distressed snapshot is past the AoI zero
+        // point — its influence (healthy AND panic) has faded out.
+        let mut stale = LocalAwareness::default();
+        stale.update_neighbor(make_snapshot(AgentId::new(), AgentHealth::Operational));
+        let mut old = make_snapshot(AgentId::new(), AgentHealth::Incapacitated);
+        old.last_updated = Instant::now() - Duration::from_secs(10);
+        stale.update_neighbor(old);
+        let stale_target = stale.morale_target();
+
+        assert!(
+            stale_target > fresh_target,
+            "stale distress ({stale_target}) must weigh less than fresh ({fresh_target})"
+        );
     }
 
     #[test]

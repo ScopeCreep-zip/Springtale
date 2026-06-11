@@ -246,7 +246,9 @@ pub fn foca_state_to_liveness(alive: bool, suspect: bool) -> Liveness {
     } else if alive {
         Liveness::Alive
     } else {
-        Liveness::Down { since_tick: crate::tick::TickId::ZERO }
+        Liveness::Down {
+            since_tick: crate::tick::TickId::ZERO,
+        }
     }
 }
 
