@@ -1,14 +1,28 @@
 use ed25519_dalek::{Signature, VerifyingKey};
+use springtale_crypto::signature::SignatureAlgorithm;
 
 use super::types::ConnectorManifest;
 use crate::error::ConnectorError;
 
-/// Verify a manifest's Ed25519 signature.
+/// Verify a manifest's signature, dispatching on `manifest.signature_alg`.
 ///
 /// The signature covers the canonical JSON of all manifest fields EXCEPT
 /// the signature field itself. This ensures that the manifest has not been
 /// tampered with since the author signed it.
+///
+/// Today only `SignatureAlgorithm::Ed25519` is implemented. The dispatch
+/// indirection is the crypto-agility hook for the 2030 deadline (NIST
+/// IR 8547) — see `docs/security/CRYPTO-INVENTORY.md`.
 pub fn verify_manifest_signature(
+    manifest: &ConnectorManifest,
+    author_public_key: &VerifyingKey,
+) -> Result<(), ConnectorError> {
+    match manifest.signature_alg {
+        SignatureAlgorithm::Ed25519 => verify_ed25519(manifest, author_public_key),
+    }
+}
+
+fn verify_ed25519(
     manifest: &ConnectorManifest,
     author_public_key: &VerifyingKey,
 ) -> Result<(), ConnectorError> {
@@ -107,6 +121,7 @@ mod tests {
             data_disclosure: vec![],
             roles: vec![],
             wasm_hash: None,
+            signature_alg: SignatureAlgorithm::default(),
             signature: None,
         }
     }

@@ -42,7 +42,7 @@ pub fn verify_webhook(
         _ => {
             return Err(KickError::RequestFailed(
                 "public key PEM must contain a SubjectPublicKeyInfo block".to_owned(),
-            ))
+            ));
         }
     };
 

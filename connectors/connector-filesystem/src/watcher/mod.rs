@@ -179,16 +179,17 @@ mod tests {
         let received = Arc::new(Mutex::new(Vec::<(String, serde_json::Value)>::new()));
         let received_clone = received.clone();
 
-        let callbacks: Arc<Mutex<Vec<(SubscriptionId, String, TriggerCallback)>>> = Arc::new(Mutex::new(vec![(
-            SubscriptionId(1),
-            "file_created".to_owned(),
-            Box::new(move |trigger: &str, payload: serde_json::Value| {
-                // Use try_lock since we're in a sync callback
-                if let Ok(mut v) = received_clone.try_lock() {
-                    v.push((trigger.to_owned(), payload));
-                }
-            }),
-        )]));
+        let callbacks: Arc<Mutex<Vec<(SubscriptionId, String, TriggerCallback)>>> =
+            Arc::new(Mutex::new(vec![(
+                SubscriptionId(1),
+                "file_created".to_owned(),
+                Box::new(move |trigger: &str, payload: serde_json::Value| {
+                    // Use try_lock since we're in a sync callback
+                    if let Ok(mut v) = received_clone.try_lock() {
+                        v.push((trigger.to_owned(), payload));
+                    }
+                }),
+            )]));
 
         let mut watcher = FsConnectorWatcher::new(&config, callbacks).unwrap();
         watcher.watch(&dir, &config).unwrap();
@@ -225,7 +226,8 @@ mod tests {
             debounce_ms: 100,
         };
 
-        let callbacks: Arc<Mutex<Vec<(SubscriptionId, String, TriggerCallback)>>> = Arc::new(Mutex::new(vec![]));
+        let callbacks: Arc<Mutex<Vec<(SubscriptionId, String, TriggerCallback)>>> =
+            Arc::new(Mutex::new(vec![]));
         let mut watcher = FsConnectorWatcher::new(&config, callbacks).unwrap();
 
         // Should succeed for allowed path
@@ -249,7 +251,8 @@ mod tests {
         fs::create_dir_all(&dir).ok();
 
         let config = test_config(&dir);
-        let callbacks: Arc<Mutex<Vec<(SubscriptionId, String, TriggerCallback)>>> = Arc::new(Mutex::new(vec![]));
+        let callbacks: Arc<Mutex<Vec<(SubscriptionId, String, TriggerCallback)>>> =
+            Arc::new(Mutex::new(vec![]));
         let mut watcher = FsConnectorWatcher::new(&config, callbacks).unwrap();
 
         watcher.watch(&dir, &config).unwrap();

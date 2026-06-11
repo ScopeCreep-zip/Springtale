@@ -6,6 +6,7 @@ use crate::error::IrcError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: false,
         name: "send_message".to_owned(),
         description: "Send a message to a channel or user via PRIVMSG.".to_owned(),
         input_schema: Some(serde_json::json!({
@@ -35,11 +36,9 @@ pub async fn execute(
     // D1 — accept raw `#channel` / nick OR an `irc://network/.../channel/#name`
     // URI. The parser's last-segment extraction returns the
     // channel name or nick.
-    let target = springtale_connector::workspace_key::extract_id_for_scheme(
-        raw_target,
-        "connector-irc",
-    )
-    .map_err(|e| IrcError::InvalidInput(e.to_string()))?;
+    let target =
+        springtale_connector::workspace_key::extract_id_for_scheme(raw_target, "connector-irc")
+            .map_err(|e| IrcError::InvalidInput(e.to_string()))?;
     let message = input
         .get("message")
         .or_else(|| input.get("text")) // bot response compat

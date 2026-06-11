@@ -14,6 +14,7 @@ use crate::actions;
 use crate::client::NostrClient;
 use crate::config::NostrConfig;
 use crate::triggers;
+use springtale_connector::manifest::SignatureAlgorithm;
 
 /// Nostr connector.
 ///
@@ -94,6 +95,7 @@ impl NostrConnector {
             ],
             roles: vec![],
             wasm_hash: None,
+            signature_alg: SignatureAlgorithm::default(),
             signature: None,
         };
 
@@ -193,9 +195,7 @@ impl Connector for NostrConnector {
         &self.manifest
     }
 
-    fn mention_extractor(
-        &self,
-    ) -> Option<&dyn springtale_connector::mention::MentionExtractor> {
+    fn mention_extractor(&self) -> Option<&dyn springtale_connector::mention::MentionExtractor> {
         Some(&crate::mention::NOSTR_MENTION_EXTRACTOR)
     }
 }

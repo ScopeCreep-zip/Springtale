@@ -1,5 +1,4 @@
 use rand::Rng;
-use secrecy::ExposeSecret;
 use sha2::{Digest, Sha256};
 use springtale_connector::encoding::{base64url_encode, urlencoded};
 
@@ -71,16 +70,20 @@ pub async fn exchange_code(
     code: &str,
     pkce_verifier: &str,
 ) -> Result<TokenResponse, KickError> {
-    // Build URL-encoded form body
-    // SECURITY: expose needed for OAuth token exchange
-    let form_body = format!(
-        "grant_type=authorization_code&client_id={}&client_secret={}&redirect_uri={}&code={}&code_verifier={}",
-        urlencoded(&config.client_id, false),
-        urlencoded(config.client_secret.expose_secret(), false),
-        urlencoded(&config.redirect_uri, false),
-        urlencoded(code, false),
-        urlencoded(pkce_verifier, false),
-    );
+    // Build URL-encoded form body. The client_secret is exposed only
+    // inside the with_str closure; the assembled body string is the
+    // closure's return value and the secret stays out of the surrounding
+    // function's stack frame.
+    let form_body = springtale_crypto::secret_use::with_str(&config.client_secret, |sec| {
+        format!(
+            "grant_type=authorization_code&client_id={}&client_secret={}&redirect_uri={}&code={}&code_verifier={}",
+            urlencoded(&config.client_id, false),
+            urlencoded(sec, false),
+            urlencoded(&config.redirect_uri, false),
+            urlencoded(code, false),
+            urlencoded(pkce_verifier, false),
+        )
+    });
 
     // Delegate HTTP call to client module (no raw reqwest in auth/)
     let body = crate::client::KickClient::exchange_token(&config.oauth_base, form_body).await?;
@@ -137,19 +140,18 @@ impl std::fmt::Debug for TokenResponse {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use secrecy::ExposeSecret;
 
     #[test]
     fn test_generate_pkce() {
         let pkce = generate_pkce();
-        let verifier = pkce.verifier.expose_secret();
-        // Verifier should be base64url without padding
-        assert!(!verifier.is_empty());
+        springtale_crypto::secret_use::with_str(&pkce.verifier, |verifier| {
+            // Verifier should be base64url without padding.
+            assert!(!verifier.is_empty());
+            assert!(!verifier.contains('='));
+            assert_ne!(verifier, pkce.challenge.as_str());
+        });
         assert!(!pkce.challenge.is_empty());
-        assert!(!verifier.contains('='));
         assert!(!pkce.challenge.contains('='));
-        // Verifier and challenge should be different
-        assert_ne!(verifier, &pkce.challenge);
     }
 
     #[test]

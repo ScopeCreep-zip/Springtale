@@ -9,6 +9,7 @@ use crate::error::FilesystemError;
 /// Action declaration for `write_file`.
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: false,
         name: "write_file".to_owned(),
         description: "Write content to a file. Path must be within the write allow-list."
             .to_owned(),

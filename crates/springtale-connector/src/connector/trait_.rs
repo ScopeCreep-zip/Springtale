@@ -94,6 +94,26 @@ pub trait Connector: Send + Sync + 'static {
         ))
     }
 
+    /// Normalize a raw provider event payload for `trigger` into this
+    /// connector's declared trigger schema — the canonical flat shape
+    /// recipes consume via `${trigger.*}`.
+    ///
+    /// This is the anti-corruption boundary (per the canonical-event /
+    /// ATP webhook pattern): each provider's idiosyncratic raw payload
+    /// (GitHub's nested webhook JSON, a raw Telegram `Update`, …) is
+    /// mapped ONCE, here, to the fields declared in
+    /// [`Connector::triggers`]. EVERY place a provider event becomes a
+    /// rule-engine `TriggerEvent` — the webhook ingress and the polling
+    /// gateways — calls this first, so recipes only ever see the
+    /// connector's declared schema and never a raw nested blob.
+    ///
+    /// Default: identity. Correct for connectors whose emitted events
+    /// already match their declared schema, and for generic passthrough
+    /// (e.g. an arbitrary webhook body the recipe consumes whole).
+    fn normalize_event(&self, _trigger: &str, raw: serde_json::Value) -> serde_json::Value {
+        raw
+    }
+
     /// Per-connector mention extractor (D1). Connectors that emit
     /// chat-like events (Telegram / Discord / Slack / Signal / IRC
     /// / Nostr) override this to teach the universal harvester how

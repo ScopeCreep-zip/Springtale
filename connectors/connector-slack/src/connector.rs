@@ -14,6 +14,7 @@ use crate::actions;
 use crate::client::SlackClient;
 use crate::config::SlackConfig;
 use crate::triggers;
+use springtale_connector::manifest::SignatureAlgorithm;
 
 /// Slack connector — Socket Mode, slash commands, Block Kit, threads.
 ///
@@ -112,6 +113,7 @@ impl SlackConnector {
             ],
             roles: vec![],
             wasm_hash: None,
+            signature_alg: SignatureAlgorithm::default(),
             signature: None,
         };
 
@@ -157,9 +159,11 @@ impl Connector for SlackConnector {
             "add_reaction" => actions::add_reaction::execute(&self.client, &input)
                 .await
                 .map_err(ConnectorError::from),
-            "discover_destinations" => actions::discover_destinations::execute(&self.client, &input)
-                .await
-                .map_err(ConnectorError::from),
+            "discover_destinations" => {
+                actions::discover_destinations::execute(&self.client, &input)
+                    .await
+                    .map_err(ConnectorError::from)
+            }
             unknown => Err(ConnectorError::ExecutionFailed(format!(
                 "unknown action: {unknown}"
             ))),
@@ -205,9 +209,7 @@ impl Connector for SlackConnector {
         &self.manifest
     }
 
-    fn mention_extractor(
-        &self,
-    ) -> Option<&dyn springtale_connector::mention::MentionExtractor> {
+    fn mention_extractor(&self) -> Option<&dyn springtale_connector::mention::MentionExtractor> {
         Some(&crate::mention::SLACK_MENTION_EXTRACTOR)
     }
 }

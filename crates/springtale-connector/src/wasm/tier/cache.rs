@@ -26,7 +26,7 @@ use wasmtime::{InstancePre, Linker, Module, Store};
 
 use super::super::connector::HostState;
 use super::super::runtime::WasmEngine;
-use super::primitives::{register_tier_primitives, WasmTier};
+use super::primitives::{WasmTier, register_tier_primitives};
 use crate::error::ConnectorError;
 
 /// One `InstancePre` per tier for a single module. Stored behind `Arc`
@@ -96,37 +96,32 @@ impl WasmTierCache {
     ///
     /// If the module is already registered, the previous entry is
     /// replaced.
-    pub fn register_module(
-        &self,
-        name: &str,
-        module: &Module,
-    ) -> Result<(), ConnectorError> {
-        let instantiate_at = |tier: WasmTier| -> Result<Option<Arc<InstancePre<HostState>>>, ConnectorError> {
-            let linker = &self.linkers[tier.index()];
-            match linker.instantiate_pre(module) {
-                Ok(pre) => Ok(Some(Arc::new(pre))),
-                Err(e) => {
-                    // A link error at Cold is expected for modules that
-                    // import `http_request`. Log at debug and return
-                    // None so the module is unavailable at Cold — not
-                    // an error condition.
-                    let msg = e.to_string();
-                    if matches!(tier, WasmTier::Cold)
-                        && msg.contains("http_request")
-                    {
-                        tracing::debug!(
-                            module = %name,
-                            "module requires http_request; not available at Cold tier"
-                        );
-                        Ok(None)
-                    } else {
-                        Err(ConnectorError::Sandbox(format!(
-                            "pre-instantiate {name} at {tier:?}: {e}"
-                        )))
+    pub fn register_module(&self, name: &str, module: &Module) -> Result<(), ConnectorError> {
+        let instantiate_at =
+            |tier: WasmTier| -> Result<Option<Arc<InstancePre<HostState>>>, ConnectorError> {
+                let linker = &self.linkers[tier.index()];
+                match linker.instantiate_pre(module) {
+                    Ok(pre) => Ok(Some(Arc::new(pre))),
+                    Err(e) => {
+                        // A link error at Cold is expected for modules that
+                        // import `http_request`. Log at debug and return
+                        // None so the module is unavailable at Cold — not
+                        // an error condition.
+                        let msg = e.to_string();
+                        if matches!(tier, WasmTier::Cold) && msg.contains("http_request") {
+                            tracing::debug!(
+                                module = %name,
+                                "module requires http_request; not available at Cold tier"
+                            );
+                            Ok(None)
+                        } else {
+                            Err(ConnectorError::Sandbox(format!(
+                                "pre-instantiate {name} at {tier:?}: {e}"
+                            )))
+                        }
                     }
                 }
-            }
-        };
+            };
 
         // Cold may be None — build a Dummy InstancePre by falling back to
         // the Warming one wrapped in a trap. Actually simpler: require
@@ -194,10 +189,9 @@ impl WasmTierCache {
         tier: WasmTier,
         store: &mut Store<HostState>,
     ) -> Result<wasmtime::Instance, ConnectorError> {
-        let entry = self
-            .modules
-            .get(module_name)
-            .ok_or_else(|| ConnectorError::Sandbox(format!("tier cache: unknown module {module_name}")))?;
+        let entry = self.modules.get(module_name).ok_or_else(|| {
+            ConnectorError::Sandbox(format!("tier cache: unknown module {module_name}"))
+        })?;
         entry
             .value()
             .get(tier)
@@ -298,10 +292,7 @@ mod tests {
         let module = Module::new(engine.engine(), empty_module_wat()).unwrap();
         cache.register_module("plain", &module).unwrap();
 
-        let mut store = Store::new(
-            engine.engine(),
-            test_host_state("plain", engine.as_ref()),
-        );
+        let mut store = Store::new(engine.engine(), test_host_state("plain", engine.as_ref()));
         let instance = cache
             .instantiate_at_tier("plain", WasmTier::Cold, &mut store)
             .unwrap();
@@ -319,10 +310,7 @@ mod tests {
 
         // Warming/Hot/Fever all instantiate http-importing module successfully.
         for tier in [WasmTier::Warming, WasmTier::Hot, WasmTier::Fever] {
-            let mut store = Store::new(
-                engine.engine(),
-                test_host_state("http", engine.as_ref()),
-            );
+            let mut store = Store::new(engine.engine(), test_host_state("http", engine.as_ref()));
             cache
                 .instantiate_at_tier("http", tier, &mut store)
                 .unwrap_or_else(|e| panic!("{tier:?}: {e}"));
@@ -333,10 +321,7 @@ mod tests {
     fn instantiate_at_tier_unknown_module_errors() {
         let engine = Arc::new(WasmEngine::new(SandboxLimits::default()).unwrap());
         let cache = WasmTierCache::new(engine.clone()).unwrap();
-        let mut store = Store::new(
-            engine.engine(),
-            test_host_state("missing", engine.as_ref()),
-        );
+        let mut store = Store::new(engine.engine(), test_host_state("missing", engine.as_ref()));
         let err = cache
             .instantiate_at_tier("missing", WasmTier::Warming, &mut store)
             .unwrap_err();

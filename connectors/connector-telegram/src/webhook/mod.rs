@@ -1,6 +1,3 @@
-use secrecy::ExposeSecret;
-use subtle::ConstantTimeEq;
-
 use crate::error::TelegramError;
 
 /// Verify a Telegram webhook request by checking the secret_token header.
@@ -12,11 +9,7 @@ pub fn verify_webhook_secret(
     expected: &secrecy::SecretBox<String>,
     received_header: &str,
 ) -> Result<(), TelegramError> {
-    // SECURITY: expose needed for webhook secret verification
-    let expected_bytes = expected.expose_secret().as_bytes();
-    let received_bytes = received_header.as_bytes();
-
-    if expected_bytes.ct_eq(received_bytes).into() {
+    if springtale_crypto::secret_use::secret_eq_str(expected, received_header) {
         Ok(())
     } else {
         Err(TelegramError::WebhookVerificationFailed)

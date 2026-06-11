@@ -18,6 +18,7 @@ reqwest = { workspace = true }
 futures-util = { workspace = true }
 secrecy = { workspace = true }
 springtale-connector = { workspace = true }
+springtale-transport = { workspace = true }
 inventory = { workspace = true }
 
 [dev-dependencies]

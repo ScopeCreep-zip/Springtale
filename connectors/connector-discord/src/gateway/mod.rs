@@ -43,7 +43,7 @@ pub async fn gateway_loop(
                             defer_interaction(&http_client, app_id, interaction).await;
                         }
 
-                        if let Some(payload) = route_event(&event) {
+                        if let Some(payload) = route_event(&event, application_id) {
                             dispatcher(payload);
                         }
                     }
@@ -96,11 +96,14 @@ async fn defer_interaction(
 
 /// Route a gateway event to its trigger payload.
 ///
+/// `app_id` is the bot's application id (== its user id for bots), used
+/// to detect when the bot itself is @mentioned.
+///
 /// Returns None for events we don't route.
-fn route_event(event: &Event) -> Option<serde_json::Value> {
+fn route_event(event: &Event, app_id: u64) -> Option<serde_json::Value> {
     match event {
         // All these variants are Box<T> in the Event enum
-        Event::MessageCreate(msg) => Some(route_message_create(msg)),
+        Event::MessageCreate(msg) => Some(route_message_create(msg, app_id)),
         Event::InteractionCreate(interaction) => Some(route_interaction(interaction)),
         Event::ReactionAdd(reaction) => Some(route_reaction_add(reaction)),
         Event::MemberAdd(member) => Some(route_member_add(member)),
@@ -110,10 +113,16 @@ fn route_event(event: &Event) -> Option<serde_json::Value> {
 
 fn route_message_create(
     msg: &twilight_model::gateway::payload::incoming::MessageCreate,
+    app_id: u64,
 ) -> serde_json::Value {
     // MessageCreate derefs to Message.
-    // Determine if this is a DM or guild message.
-    let trigger = if msg.guild_id.is_some() {
+    // A message that @mentions the bot fires `app_mentioned` (the
+    // discord-mention-ai-reply recipe's trigger); otherwise a guild
+    // message is `message_received` and a DM is `dm_received`.
+    let mentions_bot = msg.mentions.iter().any(|m| m.id.get() == app_id);
+    let trigger = if mentions_bot {
+        "app_mentioned"
+    } else if msg.guild_id.is_some() {
         "message_received"
     } else {
         "dm_received"
@@ -227,6 +236,6 @@ mod tests {
     #[test]
     fn test_route_event_returns_none_for_unhandled() {
         let event = Event::GatewayHeartbeatAck;
-        assert!(route_event(&event).is_none());
+        assert!(route_event(&event, 0).is_none());
     }
 }

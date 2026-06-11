@@ -6,6 +6,7 @@ use crate::error::DiscordError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: false,
         name: "edit_message".to_owned(),
         description: "Edit an existing Discord message.".to_owned(),
         input_schema: Some(serde_json::json!({

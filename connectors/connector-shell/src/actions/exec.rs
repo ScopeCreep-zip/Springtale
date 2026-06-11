@@ -9,6 +9,7 @@ use crate::sandbox;
 /// Action declaration for `exec`.
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: false,
         name: "exec".to_owned(),
         description: "Execute an allow-listed shell command with a timeout. Requires ShellExec capability approval.".to_owned(),
         input_schema: Some(serde_json::json!({

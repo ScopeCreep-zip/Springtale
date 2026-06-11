@@ -16,6 +16,7 @@ pub async fn wire_signal(
     config: &connector_signal::SignalConfig,
     registry: &Arc<RwLock<ConnectorRegistry>>,
     bot_msg_tx: mpsc::Sender<springtale_bot::IncomingMessage>,
+    trigger_tx: mpsc::Sender<springtale_core::rule::engine::TriggerEvent>,
 ) -> anyhow::Result<tokio::sync::watch::Sender<bool>> {
     // Verify connector was registered by factory
     {
@@ -28,8 +29,12 @@ pub async fn wire_signal(
     let daemon_url = config.daemon_url.clone();
 
     // 2. Dispatcher: Signal events → IncomingMessage
+    let evt_tx = trigger_tx.clone();
     let dispatcher: Arc<dyn Fn(serde_json::Value) + Send + Sync> =
         Arc::new(move |payload: serde_json::Value| {
+            // Rule path: emit the gateway-classified ConnectorEvent so Signal
+            // event recipes fire, not just the bot chat path.
+            super::events::emit_classified(&evt_tx, "connector-signal", &payload);
             let tx = bot_msg_tx.clone();
             let raw = payload.clone();
             tokio::spawn(async move {

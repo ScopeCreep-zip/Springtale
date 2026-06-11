@@ -6,6 +6,7 @@ use crate::error::GithubError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: false,
         name: "post_comment".to_owned(),
         description: "Post a comment on a GitHub issue or pull request.".to_owned(),
         input_schema: Some(serde_json::json!({

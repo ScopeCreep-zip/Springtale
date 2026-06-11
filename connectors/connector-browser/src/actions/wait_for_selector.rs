@@ -16,12 +16,12 @@ const DEFAULT_TIMEOUT_MS: u32 = 5_000;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: true,
         name: "wait_for_selector".to_owned(),
-        description:
-            "Wait for a CSS selector to appear in the DOM, up to `timeout_ms` \
+        description: "Wait for a CSS selector to appear in the DOM, up to `timeout_ms` \
              (default 5000). Returns `{ found: bool }`. Does not error on \
              timeout — recipes check the boolean explicitly."
-                .to_owned(),
+            .to_owned(),
         input_schema: Some(serde_json::json!({
             "type": "object",
             "properties": {

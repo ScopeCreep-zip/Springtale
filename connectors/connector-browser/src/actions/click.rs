@@ -6,6 +6,7 @@ use crate::error::BrowserError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: false,
         name: "click".to_owned(),
         description: "Click an element by CSS selector.".to_owned(),
         input_schema: Some(serde_json::json!({

@@ -67,4 +67,14 @@ pub trait ConnectorHost: Send + Sync + 'static {
     fn mention_extractor(&self) -> Option<&dyn crate::mention::MentionExtractor> {
         None
     }
+
+    /// Normalize a raw provider event payload for `trigger` into the
+    /// connector's declared trigger schema (the canonical shape recipes
+    /// consume). The anti-corruption boundary — see
+    /// [`crate::connector::trait_::Connector::normalize_event`]. Native
+    /// hosts delegate to the inner connector; WASM hosts use identity
+    /// (a sandbox-side hook can follow, like `mention_extractor`).
+    fn normalize_event(&self, _trigger: &str, raw: serde_json::Value) -> serde_json::Value {
+        raw
+    }
 }

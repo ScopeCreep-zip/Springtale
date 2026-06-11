@@ -9,6 +9,7 @@ use crate::error::HttpError;
 /// Action declaration for `get`.
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: true,
         name: "get".to_owned(),
         description: "Send an HTTP GET request to an allow-listed host.".to_owned(),
         input_schema: Some(serde_json::json!({

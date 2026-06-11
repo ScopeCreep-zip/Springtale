@@ -14,6 +14,7 @@ use crate::actions;
 use crate::client::GithubClient;
 use crate::config::GithubConfig;
 use crate::triggers;
+use springtale_connector::manifest::SignatureAlgorithm;
 
 /// GitHub connector.
 ///
@@ -95,6 +96,15 @@ impl Connector for GithubConnector {
             "get_diff" => actions::get_diff::execute(&self.client, &input)
                 .await
                 .map_err(ConnectorError::from),
+            "create_branch" => actions::create_branch::execute(&self.client, &input)
+                .await
+                .map_err(ConnectorError::from),
+            "commit_file" => actions::commit_file::execute(&self.client, &input)
+                .await
+                .map_err(ConnectorError::from),
+            "create_pr" => actions::create_pr::execute(&self.client, &input)
+                .await
+                .map_err(ConnectorError::from),
             unknown => Err(ConnectorError::ExecutionFailed(format!(
                 "unknown action: {unknown}"
             ))),
@@ -138,6 +148,10 @@ impl Connector for GithubConnector {
 
     fn manifest(&self) -> &ConnectorManifest {
         &self.manifest
+    }
+
+    fn normalize_event(&self, _trigger: &str, raw: serde_json::Value) -> serde_json::Value {
+        crate::triggers::normalize::normalize(&raw)
     }
 
     async fn verify_webhook(
@@ -187,6 +201,7 @@ fn build_manifest(triggers: &[TriggerDecl], actions: &[ActionDecl]) -> Connector
         ],
         roles: vec![],
         wasm_hash: None,
+        signature_alg: SignatureAlgorithm::default(),
         signature: None,
     }
 }
@@ -229,9 +244,9 @@ mod tests {
     }
 
     #[test]
-    fn test_three_actions() {
+    fn test_action_set() {
         let connector = test_connector();
-        assert_eq!(connector.actions().len(), 3);
+        assert_eq!(connector.actions().len(), 6);
         let names: Vec<&str> = connector
             .actions()
             .iter()
@@ -240,6 +255,9 @@ mod tests {
         assert!(names.contains(&"create_issue"));
         assert!(names.contains(&"post_comment"));
         assert!(names.contains(&"get_diff"));
+        assert!(names.contains(&"create_branch"));
+        assert!(names.contains(&"commit_file"));
+        assert!(names.contains(&"create_pr"));
     }
 
     #[tokio::test]

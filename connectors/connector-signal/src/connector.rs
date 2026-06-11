@@ -14,6 +14,7 @@ use crate::actions;
 use crate::client::SignalClient;
 use crate::config::SignalConfig;
 use crate::triggers;
+use springtale_connector::manifest::SignatureAlgorithm;
 
 /// Signal connector — signal-cli bridge, E2E encrypted messaging.
 ///
@@ -94,6 +95,7 @@ impl SignalConnector {
             ],
             roles: vec![],
             wasm_hash: None,
+            signature_alg: SignatureAlgorithm::default(),
             signature: None,
         };
 
@@ -188,9 +190,7 @@ impl Connector for SignalConnector {
         &self.manifest
     }
 
-    fn mention_extractor(
-        &self,
-    ) -> Option<&dyn springtale_connector::mention::MentionExtractor> {
+    fn mention_extractor(&self) -> Option<&dyn springtale_connector::mention::MentionExtractor> {
         Some(&crate::mention::SIGNAL_MENTION_EXTRACTOR)
     }
 }

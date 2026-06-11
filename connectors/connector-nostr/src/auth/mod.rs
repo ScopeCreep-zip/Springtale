@@ -1,5 +1,4 @@
 use nostr_sdk::prelude::*;
-use secrecy::ExposeSecret;
 
 use crate::error::NostrError;
 
@@ -8,9 +7,9 @@ use crate::error::NostrError;
 /// CRITICAL: Nostr uses secp256k1 Schnorr (BIP-340), NOT Ed25519.
 /// This key is completely separate from Springtale's identity system.
 pub fn parse_keys(private_key: &secrecy::SecretBox<String>) -> Result<Keys, NostrError> {
-    // SECURITY: expose needed for key parsing
-    let key_str = private_key.expose_secret();
-    Keys::parse(key_str).map_err(|e| NostrError::KeyError(format!("invalid nostr key: {e}")))
+    springtale_crypto::secret_use::with_str(private_key, |key_str| {
+        Keys::parse(key_str).map_err(|e| NostrError::KeyError(format!("invalid nostr key: {e}")))
+    })
 }
 
 #[cfg(test)]

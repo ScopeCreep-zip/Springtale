@@ -6,6 +6,7 @@ use crate::error::DiscordError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: false,
         name: "add_reaction".to_owned(),
         description: "Add a reaction emoji to a Discord message.".to_owned(),
         input_schema: Some(serde_json::json!({

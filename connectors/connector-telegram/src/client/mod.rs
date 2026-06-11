@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use secrecy::{ExposeSecret, SecretBox};
+use secrecy::SecretBox;
 
 use crate::error::TelegramError;
 
@@ -85,7 +85,7 @@ pub struct TelegramClient {
 
 impl TelegramClient {
     pub fn new(api_base: &str, bot_token: SecretBox<String>) -> Result<Self, TelegramError> {
-        let inner = reqwest::Client::builder()
+        let inner = springtale_transport::safe_http::builder()
             .timeout(std::time::Duration::from_secs(60))
             .build()
             .map_err(|e| TelegramError::RequestFailed(format!("failed to build client: {e}")))?;
@@ -97,15 +97,12 @@ impl TelegramClient {
         })
     }
 
-    /// Build the full Bot API URL for a method.
+    /// Build the full Bot API URL for a method. The token sits in the
+    /// URL path per Telegram's Bot API; exposed only inside the closure.
     fn method_url(&self, method: &str) -> String {
-        // SECURITY: expose needed for Bot API URL construction
-        format!(
-            "{}/bot{}/{}",
-            self.api_base,
-            self.bot_token.expose_secret(),
-            method
-        )
+        springtale_crypto::secret_use::with_str(&self.bot_token, |tok| {
+            format!("{}/bot{}/{}", self.api_base, tok, method)
+        })
     }
 }
 

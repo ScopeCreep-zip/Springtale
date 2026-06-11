@@ -36,6 +36,13 @@ connectors/connector-{name}/
 5. Typed error enums via `thiserror`. No `anyhow`.
 6. Every action has a `#[cfg(test)]` module with mock client tests.
 7. No raw `reqwest` calls outside the `client/` module.
+8. Every `ActionDecl` sets `read_only` (MCP `readOnlyHint` semantics): `true` only
+   when the action purely retrieves data and never creates/updates/deletes/sends
+   (get/list/search/fetch). Default is `false` (assume mutating). It's an
+   advisory hint the formation intent decomposer uses to pick actions under a
+   `Reconnoiter` (monitor) intent — **not** a security boundary (that stays in
+   `springtale-sentinel`). Be strict: a "search" that also logs analytics is
+   *not* read-only.
 
 ## Connector Trait Implementation
 

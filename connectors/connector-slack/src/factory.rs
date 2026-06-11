@@ -10,8 +10,7 @@ static SLACK_FORM: PlatformForm = PlatformForm {
     config_key: "slack",
     label: "Slack",
     description: "Connect a Slack app (Socket Mode)",
-    setup_help:
-        "Create an app at api.slack.com/apps, enable Socket Mode, generate a Bot token (xoxb-) and App token (xapp-).",
+    setup_help: "Create an app at api.slack.com/apps, enable Socket Mode, generate a Bot token (xoxb-) and App token (xapp-).",
     fields: &[
         FormField {
             name: "bot_token",

@@ -108,7 +108,8 @@ pub async fn gateway_loop(
 
 /// Get a WebSocket URL from Slack's apps.connections.open API.
 async fn get_socket_url(app_token: &str) -> Result<String, crate::error::SlackError> {
-    let client = reqwest::Client::new();
+    let client = springtale_transport::safe_http::client()
+        .map_err(|e| crate::error::SlackError::ConnectionFailed(format!("safe_http: {e}")))?;
     let response = client
         .post("https://slack.com/api/apps.connections.open")
         .header("Authorization", format!("Bearer {app_token}"))

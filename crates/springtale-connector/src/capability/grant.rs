@@ -104,6 +104,22 @@ impl CapabilityChecker {
 
         for cap in declared {
             let cap_str = cap.to_string();
+            // ShellExec is policy-exempt: NO policy (including AllowAll
+            // and AllowList) may auto-approve it. The blocking
+            // ApprovalGate at the runtime layer is the only path from
+            // pending → approved. This makes the rule architectural
+            // rather than policy-conditional and closes the OpenClaw
+            // CVE-2026-25253 1-click-RCE class — see
+            // `docs/security/RISK-REGISTER.md` R-005 and Phase-7
+            // audit Finding A in `~/.claude/plans/mighty-honking-pinwheel.md`.
+            if matches!(cap, Capability::ShellExec) {
+                if matches!(policy, CapabilityPolicy::DenyAll) {
+                    denied.push(cap.clone());
+                } else {
+                    pending.push(cap.clone());
+                }
+                continue;
+            }
             match policy {
                 CapabilityPolicy::AllowAll => {
                     approved.insert(cap_str);
@@ -119,13 +135,9 @@ impl CapabilityChecker {
                     }
                 }
                 CapabilityPolicy::Interactive => {
-                    // ShellExec always requires explicit approval
-                    if matches!(cap, Capability::ShellExec) {
-                        pending.push(cap.clone());
-                    } else {
-                        // Non-dangerous capabilities auto-approved in interactive mode
-                        approved.insert(cap_str);
-                    }
+                    // Non-dangerous capabilities auto-approved in interactive mode.
+                    // (ShellExec already handled by the policy-exempt branch above.)
+                    approved.insert(cap_str);
                 }
             }
         }
@@ -203,8 +215,18 @@ mod tests {
             .register("connector-test", &caps, &CapabilityPolicy::AllowAll)
             .unwrap();
 
-        assert_eq!(grant.approved.len(), 2);
-        assert!(grant.pending_approval.is_empty());
+        // AllowAll approves NetworkOutbound but ShellExec is
+        // policy-exempt — it ALWAYS routes through the blocking
+        // ApprovalGate, even under AllowAll. See the dedicated
+        // `test_shell_exec_always_pending_under_allow_all` regression.
+        assert_eq!(grant.approved.len(), 1);
+        assert!(
+            grant
+                .approved
+                .iter()
+                .any(|c| c.starts_with("NetworkOutbound"))
+        );
+        assert_eq!(grant.pending_approval, vec![Capability::ShellExec]);
         assert!(grant.denied.is_empty());
     }
 
@@ -333,5 +355,77 @@ mod tests {
                 .check("connector-test", &Capability::ShellExec)
                 .is_ok()
         );
+    }
+
+    /// Phase-7 audit Finding A regression. `ShellExec` is the
+    /// OpenClaw CVE-2026-25253 1-click-RCE class — under NO policy
+    /// (not even the documented "not recommended" `AllowAll`) may it
+    /// auto-approve. The blocking `ApprovalGate` at the runtime
+    /// layer is the only path from pending → approved.
+    #[test]
+    fn test_shell_exec_always_pending_under_allow_all() {
+        let mut checker = CapabilityChecker::new();
+        let grant = checker
+            .register(
+                "connector-test",
+                &[Capability::ShellExec],
+                &CapabilityPolicy::AllowAll,
+            )
+            .unwrap();
+        // Must land in pending, NOT approved — even under AllowAll.
+        assert!(
+            !grant.approved.contains(&Capability::ShellExec.to_string()),
+            "ShellExec must NOT be auto-approved under AllowAll"
+        );
+        assert!(
+            grant.pending_approval.contains(&Capability::ShellExec),
+            "ShellExec must land in pending_approval"
+        );
+        // And the check rejects until ApprovalGate moves it.
+        assert!(
+            checker
+                .check("connector-test", &Capability::ShellExec)
+                .is_err()
+        );
+    }
+
+    #[test]
+    fn test_shell_exec_always_pending_under_allow_list() {
+        // Even if the user explicitly allow-lists "ShellExec" by
+        // string, the policy carve-out routes through pending. The
+        // user signalled intent to allow, but the blocking gate
+        // still has to land the actual approval per-invocation.
+        let allowed: HashSet<String> = [Capability::ShellExec.to_string()].into_iter().collect();
+        let mut checker = CapabilityChecker::new();
+        let grant = checker
+            .register(
+                "connector-test",
+                &[Capability::ShellExec],
+                &CapabilityPolicy::AllowList(allowed),
+            )
+            .unwrap();
+        assert!(
+            !grant.approved.contains(&Capability::ShellExec.to_string()),
+            "ShellExec must NOT be auto-approved even when explicitly allow-listed"
+        );
+        assert!(grant.pending_approval.contains(&Capability::ShellExec));
+    }
+
+    #[test]
+    fn test_shell_exec_denied_under_deny_all() {
+        // DenyAll keeps ShellExec denied — the policy carve-out is
+        // only "always go through the gate", not "always pending"
+        // when the user has explicitly denied everything.
+        let mut checker = CapabilityChecker::new();
+        let grant = checker
+            .register(
+                "connector-test",
+                &[Capability::ShellExec],
+                &CapabilityPolicy::DenyAll,
+            )
+            .unwrap();
+        assert!(grant.denied.contains(&Capability::ShellExec));
+        assert!(!grant.pending_approval.contains(&Capability::ShellExec));
+        assert!(!grant.approved.contains(&Capability::ShellExec.to_string()));
     }
 }

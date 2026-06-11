@@ -6,6 +6,7 @@ use crate::error::KickError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: true,
         name: "get_stream".to_owned(),
         description: "Get the livestream status of a Kick channel.".to_owned(),
         input_schema: Some(serde_json::json!({

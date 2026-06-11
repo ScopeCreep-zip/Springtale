@@ -13,6 +13,7 @@ use springtale_connector::{Subscription, SubscriptionCounter, SubscriptionId};
 use crate::actions;
 use crate::client::{AtProtoClient, BlueskyApi};
 use crate::triggers;
+use springtale_connector::manifest::SignatureAlgorithm;
 
 /// Bluesky connector.
 ///
@@ -100,7 +101,7 @@ impl Connector for BlueskyConnector {
         trigger: &str,
         handler: EventHandler,
     ) -> Result<Subscription, ConnectorError> {
-        let valid_triggers = ["mention", "follow", "like", "repost"];
+        let valid_triggers = ["own_post", "mention", "follow", "like", "repost"];
         if !valid_triggers.contains(&trigger) {
             return Err(ConnectorError::ExecutionFailed(format!(
                 "unknown trigger: {trigger}"
@@ -128,9 +129,7 @@ impl Connector for BlueskyConnector {
         &self.manifest
     }
 
-    fn mention_extractor(
-        &self,
-    ) -> Option<&dyn springtale_connector::mention::MentionExtractor> {
+    fn mention_extractor(&self) -> Option<&dyn springtale_connector::mention::MentionExtractor> {
         Some(&crate::mention::BLUESKY_MENTION_EXTRACTOR)
     }
 }
@@ -166,6 +165,7 @@ fn build_manifest(triggers: &[TriggerDecl], actions: &[ActionDecl]) -> Connector
         ],
         roles: vec![],
         wasm_hash: None,
+        signature_alg: SignatureAlgorithm::default(),
         signature: None,
     }
 }

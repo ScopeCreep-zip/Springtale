@@ -13,7 +13,7 @@ pub async fn gateway_loop(
     mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
 ) {
     tracing::info!("Signal gateway loop started");
-    let client = reqwest::Client::new();
+    let client = springtale_transport::safe_http::client().unwrap_or_default();
 
     loop {
         let events_url = format!("{daemon_url}/api/v1/events");

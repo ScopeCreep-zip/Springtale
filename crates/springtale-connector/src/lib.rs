@@ -1,5 +1,8 @@
 #![deny(unsafe_code)]
-#![deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#![cfg_attr(
+    not(test),
+    deny(clippy::unwrap_used, clippy::expect_used, clippy::panic)
+)]
 
 pub mod capability;
 pub mod client;

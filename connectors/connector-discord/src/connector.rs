@@ -14,6 +14,7 @@ use crate::actions;
 use crate::client::DiscordClient;
 use crate::config::DiscordConfig;
 use crate::triggers;
+use springtale_connector::manifest::SignatureAlgorithm;
 
 /// Discord connector.
 ///
@@ -109,6 +110,7 @@ impl DiscordConnector {
             ],
             roles: vec![],
             wasm_hash: None,
+            signature_alg: SignatureAlgorithm::default(),
             signature: None,
         };
 
@@ -159,9 +161,11 @@ impl Connector for DiscordConnector {
             "add_reaction" => actions::add_reaction::execute(&self.client, &input)
                 .await
                 .map_err(ConnectorError::from),
-            "discover_destinations" => actions::discover_destinations::execute(&self.client, &input)
-                .await
-                .map_err(ConnectorError::from),
+            "discover_destinations" => {
+                actions::discover_destinations::execute(&self.client, &input)
+                    .await
+                    .map_err(ConnectorError::from)
+            }
             unknown => Err(ConnectorError::ExecutionFailed(format!(
                 "unknown action: {unknown}"
             ))),
@@ -207,9 +211,7 @@ impl Connector for DiscordConnector {
         &self.manifest
     }
 
-    fn mention_extractor(
-        &self,
-    ) -> Option<&dyn springtale_connector::mention::MentionExtractor> {
+    fn mention_extractor(&self) -> Option<&dyn springtale_connector::mention::MentionExtractor> {
         Some(&crate::mention::DISCORD_MENTION_EXTRACTOR)
     }
 }

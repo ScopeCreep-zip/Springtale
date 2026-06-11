@@ -6,6 +6,7 @@ use crate::error::GithubError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: false,
         name: "create_issue".to_owned(),
         description: "Create a new issue in a GitHub repository.".to_owned(),
         input_schema: Some(serde_json::json!({
@@ -72,44 +73,8 @@ pub async fn execute(
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
+    use crate::actions::test_support::MockGithubClient;
     use crate::client::GithubClient;
-
-    /// Mock client that returns canned responses for testing action logic.
-    struct MockGithubClient {
-        response: serde_json::Value,
-    }
-
-    #[async_trait::async_trait]
-    impl GithubApi for MockGithubClient {
-        async fn create_issue(
-            &self,
-            _owner: &str,
-            _repo: &str,
-            _title: &str,
-            _body: &str,
-        ) -> Result<serde_json::Value, GithubError> {
-            Ok(self.response.clone())
-        }
-
-        async fn post_comment(
-            &self,
-            _owner: &str,
-            _repo: &str,
-            _issue_number: u64,
-            _body: &str,
-        ) -> Result<serde_json::Value, GithubError> {
-            Ok(self.response.clone())
-        }
-
-        async fn get_diff(
-            &self,
-            _owner: &str,
-            _repo: &str,
-            _pull_number: u64,
-        ) -> Result<String, GithubError> {
-            Ok(self.response.to_string())
-        }
-    }
 
     fn real_test_client() -> GithubClient {
         let config = crate::config::GithubConfig {

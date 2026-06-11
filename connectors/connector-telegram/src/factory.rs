@@ -10,8 +10,7 @@ static TELEGRAM_FORM: PlatformForm = PlatformForm {
     config_key: "telegram",
     label: "Telegram",
     description: "Connect a Telegram bot via polling",
-    setup_help:
-        "Create a bot with @BotFather in Telegram. Copy the HTTP API token it returns.",
+    setup_help: "Create a bot with @BotFather in Telegram. Copy the HTTP API token it returns.",
     fields: &[
         FormField {
             name: "bot_token",

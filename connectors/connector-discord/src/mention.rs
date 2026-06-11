@@ -27,8 +27,7 @@ pub struct DiscordMentionExtractor;
 /// Single static instance — `DiscordMentionExtractor` is
 /// zero-sized and stateless, so a static reference is the right
 /// shape for the connector's `mention_extractor()` return.
-pub static DISCORD_MENTION_EXTRACTOR: DiscordMentionExtractor =
-    DiscordMentionExtractor;
+pub static DISCORD_MENTION_EXTRACTOR: DiscordMentionExtractor = DiscordMentionExtractor;
 
 impl MentionExtractor for DiscordMentionExtractor {
     fn extract(&self, _trigger: &str, payload: &Value) -> Vec<HarvestedDestination> {
@@ -49,10 +48,7 @@ impl MentionExtractor for DiscordMentionExtractor {
 
         let (key, kind, display_name) = match guild_id.as_deref() {
             Some(gid) => (
-                workspace_key::build(
-                    "discord",
-                    &["guild", gid, "channel", &channel_id],
-                ),
+                workspace_key::build("discord", &["guild", gid, "channel", &channel_id]),
                 "channel".to_owned(),
                 format!("#{channel_id}"),
             ),

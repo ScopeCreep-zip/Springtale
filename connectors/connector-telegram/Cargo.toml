@@ -17,6 +17,9 @@ tokio = { workspace = true }
 reqwest = { workspace = true }
 subtle = { workspace = true }
 springtale-connector = { workspace = true }
+springtale-transport = { workspace = true }
+# secret_use helpers — bearer_header, with_str, clone_into_box, secret_eq_str.
+springtale-crypto = { workspace = true }
 inventory = { workspace = true }
 
 [dev-dependencies]

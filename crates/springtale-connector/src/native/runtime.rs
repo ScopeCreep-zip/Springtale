@@ -158,4 +158,8 @@ impl ConnectorHost for NativeConnectorHost {
     fn mention_extractor(&self) -> Option<&dyn crate::mention::MentionExtractor> {
         self.inner.mention_extractor()
     }
+
+    fn normalize_event(&self, trigger: &str, raw: serde_json::Value) -> serde_json::Value {
+        self.inner.normalize_event(trigger, raw)
+    }
 }

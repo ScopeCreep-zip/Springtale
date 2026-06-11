@@ -19,6 +19,10 @@ reqwest = { workspace = true }
 tokio-tungstenite = { workspace = true }
 futures-util = { workspace = true }
 springtale-connector = { workspace = true }
+# safe_http factory — gates rustls + PQ KEX + timeout defaults for every
+# reqwest::Client this connector constructs.
+springtale-transport = { workspace = true }
+springtale-crypto = { workspace = true }
 inventory = { workspace = true }
 
 [dev-dependencies]

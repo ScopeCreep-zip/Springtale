@@ -43,7 +43,6 @@ where
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use secrecy::ExposeSecret;
 
     // Test fixture — never crosses the IPC boundary, so no Type
     // derive. (The production AI adapter configs that DO cross IPC
@@ -61,7 +60,10 @@ mod tests {
     fn test_deserialize_secret_from_toml() {
         let toml_str = r#"token = "my_secret_value""#;
         let config: TestConfig = toml::from_str(toml_str).unwrap();
-        assert_eq!(config.token.expose_secret(), "my_secret_value");
+        assert!(springtale_crypto::secret_use::secret_eq_str(
+            &config.token,
+            "my_secret_value"
+        ));
         assert!(config.optional_secret.is_none());
     }
 
@@ -72,10 +74,10 @@ token = "tok"
 optional_secret = "opt_secret"
 "#;
         let config: TestConfig = toml::from_str(toml_str).unwrap();
-        assert_eq!(
-            config.optional_secret.unwrap().expose_secret(),
+        assert!(springtale_crypto::secret_use::secret_eq_str(
+            &config.optional_secret.unwrap(),
             "opt_secret"
-        );
+        ));
     }
 
     #[test]

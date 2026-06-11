@@ -16,9 +16,11 @@ use crate::error::SlackError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: true,
         name: "discover_destinations".to_owned(),
-        description: "Enumerate every conversation this bot has access to via Slack's `conversations.list`."
-            .to_owned(),
+        description:
+            "Enumerate every conversation this bot has access to via Slack's `conversations.list`."
+                .to_owned(),
         input_schema: Some(serde_json::json!({
             "type": "object",
             "properties": {}
@@ -74,7 +76,10 @@ pub async fn execute(
         if let Some(m) = c.num_members {
             metadata.insert("num_members".to_owned(), serde_json::Value::from(m));
         }
-        metadata.insert("is_private".to_owned(), serde_json::Value::Bool(c.is_private));
+        metadata.insert(
+            "is_private".to_owned(),
+            serde_json::Value::Bool(c.is_private),
+        );
         rows.push(serde_json::json!({
             "workspace_key": workspace_key,
             "display_name": display,
@@ -107,10 +112,7 @@ mod tests {
         let result = execute(&mock, &serde_json::json!({})).await.unwrap();
         let arr = result.output["workspaces"].as_array().unwrap();
         assert_eq!(arr.len(), 5);
-        let kinds: Vec<&str> = arr
-            .iter()
-            .map(|r| r["kind"].as_str().unwrap())
-            .collect();
+        let kinds: Vec<&str> = arr.iter().map(|r| r["kind"].as_str().unwrap()).collect();
         assert!(kinds.contains(&"channel"));
         assert!(kinds.contains(&"private_channel"));
         assert!(kinds.contains(&"dm"));

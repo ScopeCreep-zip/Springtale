@@ -321,9 +321,6 @@ mod tests {
             "0 0 0 1 1 * 2030"
         );
         // Whitespace tolerant.
-        assert_eq!(
-            normalize_cron_expression("  * * * * *  "),
-            "0 * * * * *"
-        );
+        assert_eq!(normalize_cron_expression("  * * * * *  "), "0 * * * * *");
     }
 }

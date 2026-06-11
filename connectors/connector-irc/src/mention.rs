@@ -40,20 +40,16 @@ impl MentionExtractor for IrcMentionExtractor {
 
         let (id, kind, key) = match target.as_deref() {
             Some(t) if t.starts_with('#') || t.starts_with('&') => {
-                let key = workspace_key::build(
-                    "irc",
-                    &["network", &network, "channel", t],
-                );
+                let key = workspace_key::build("irc", &["network", &network, "channel", t]);
                 (t.to_owned(), "channel".to_owned(), key)
             }
             _ => {
                 // DM — the addressable party is the sender, not the
                 // target (which was the bot itself).
-                let Some(nick) = nick else { return Vec::new(); };
-                let key = workspace_key::build(
-                    "irc",
-                    &["network", &network, "user", &nick],
-                );
+                let Some(nick) = nick else {
+                    return Vec::new();
+                };
+                let key = workspace_key::build("irc", &["network", &network, "user", &nick]);
                 (nick.clone(), "user".to_owned(), key)
             }
         };
@@ -129,7 +125,10 @@ mod tests {
         });
         let out = ext.extract("user_joined", &payload);
         assert_eq!(out.len(), 1);
-        assert_eq!(out[0].workspace_key, "irc://network/default/channel/#general");
+        assert_eq!(
+            out[0].workspace_key,
+            "irc://network/default/channel/#general"
+        );
     }
 
     #[test]

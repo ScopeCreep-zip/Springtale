@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use secrecy::{ExposeSecret, SecretBox};
+use secrecy::SecretBox;
 use springtale_connector::encoding::urlencoded;
 
 use crate::config::PresearchConfig;
@@ -31,7 +31,7 @@ pub struct PresearchClient {
 impl PresearchClient {
     /// Create a new Presearch API client from config.
     pub fn new(config: &PresearchConfig) -> Result<Self, PresearchError> {
-        let inner = reqwest::Client::builder()
+        let inner = springtale_transport::safe_http::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| PresearchError::QueryFailed(format!("failed to build client: {e}")))?;
@@ -39,8 +39,7 @@ impl PresearchClient {
         Ok(Self {
             inner,
             api_base: config.api_base.clone(),
-            // SECURITY: key stays wrapped, exposed only at HTTP call site
-            api_key: SecretBox::new(Box::new(config.api_key.expose_secret().clone())),
+            api_key: springtale_crypto::secret_use::clone_into_box(&config.api_key),
             allowed_scrape_hosts: config.all_network_hosts(),
         })
     }
@@ -52,8 +51,10 @@ impl PresearchClient {
         let response = self
             .inner
             .get(&url)
-            // SECURITY: expose needed for API key header
-            .header("Presearch-Key", self.api_key.expose_secret().as_str())
+            .header(
+                "Presearch-Key",
+                springtale_crypto::secret_use::header_value(&self.api_key),
+            )
             .header("User-Agent", "Springtale")
             .header("Accept", "application/json")
             .send()

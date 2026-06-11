@@ -6,6 +6,7 @@ use crate::error::SignalError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: false,
         name: "set_disappearing_timer".to_owned(),
         description: "Set the disappearing message timer for a 1:1 Signal conversation. \
                       Set to 0 to disable. Note: group disappearing messages have limited \

@@ -54,6 +54,7 @@ use crate::mention::TELEGRAM_MENTION_EXTRACTOR;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: true,
         name: "discover_destinations".to_owned(),
         description:
             "Stateless poll of Telegram's getUpdates surface. Returns every chat that has \
@@ -131,10 +132,7 @@ pub async fn execute(
         // Telegram echoes the trailing argument verbatim — see
         // core.telegram.org/bots/features#deep-linking.
         if let Some(filter) = payload_filter {
-            let text = message
-                .get("text")
-                .and_then(|v| v.as_str())
-                .unwrap_or("");
+            let text = message.get("text").and_then(|v| v.as_str()).unwrap_or("");
             if !is_start_payload_match(text, filter) {
                 continue;
             }
@@ -150,12 +148,11 @@ pub async fn execute(
             // Format is `telegram://chat/{id}`; strip the prefix and
             // parse. If the format ever changes the dedupe degrades
             // to "by key string" via the seen set below.
-            if let Some(id_str) = h.workspace_key.rsplit('/').next() {
-                if let Ok(id) = id_str.parse::<i64>() {
-                    if !seen.insert(id) {
-                        continue;
-                    }
-                }
+            if let Some(id_str) = h.workspace_key.rsplit('/').next()
+                && let Ok(id) = id_str.parse::<i64>()
+                && !seen.insert(id)
+            {
+                continue;
             }
             rows.push(serde_json::json!({
                 "workspace_key": h.workspace_key,
@@ -224,10 +221,7 @@ mod tests {
 
     #[test]
     fn is_start_payload_match_accepts_group_mention_form() {
-        assert!(is_start_payload_match(
-            "/start@my_bot hello",
-            "hello"
-        ));
+        assert!(is_start_payload_match("/start@my_bot hello", "hello"));
     }
 
     #[test]

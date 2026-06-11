@@ -1,7 +1,13 @@
 use springtale_connector::manifest::types::TriggerDecl;
 
+pub mod normalize;
+
 pub fn trigger_declarations() -> Vec<TriggerDecl> {
-    vec![message_received(), command_received(), callback_query_received()]
+    vec![
+        message_received(),
+        command_received(),
+        callback_query_received(),
+    ]
 }
 
 fn message_received() -> TriggerDecl {
@@ -83,8 +89,8 @@ fn command_received() -> TriggerDecl {
 fn callback_query_received() -> TriggerDecl {
     TriggerDecl {
         name: "callback_query_received".to_owned(),
-        description:
-            "Fires when a user taps an inline keyboard button (Telegram callback_query).".to_owned(),
+        description: "Fires when a user taps an inline keyboard button (Telegram callback_query)."
+            .to_owned(),
         schema: Some(serde_json::json!({
             "type": "object",
             "properties": {

@@ -1,14 +1,15 @@
 use async_trait::async_trait;
 
+use springtale_connector::Subscription;
 use springtale_connector::connector::trait_::{ActionResult, Connector, EventHandler};
 use springtale_connector::error::ConnectorError;
 use springtale_connector::manifest::types::{
     ActionDecl, Capability, ConnectorManifest, DataDisclosure, TriggerDecl,
 };
-use springtale_connector::Subscription;
 
 use crate::actions;
 use crate::config::ShellConfig;
+use springtale_connector::manifest::SignatureAlgorithm;
 
 /// The shell connector.
 ///
@@ -103,6 +104,7 @@ fn build_manifest(actions: &[ActionDecl]) -> ConnectorManifest {
         }],
         roles: vec![],
         wasm_hash: None,
+        signature_alg: SignatureAlgorithm::default(),
         signature: None,
     }
 }

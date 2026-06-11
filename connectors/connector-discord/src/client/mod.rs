@@ -277,14 +277,10 @@ impl DiscordApi for DiscordClient {
             let g_name = g.name.clone();
 
             let channels_resp = self.http.guild_channels(g.id).await.map_err(|e| {
-                DiscordError::ApiError(format!(
-                    "guild_channels failed (guild {g_id}): {e}"
-                ))
+                DiscordError::ApiError(format!("guild_channels failed (guild {g_id}): {e}"))
             })?;
             let channels = channels_resp.models().await.map_err(|e| {
-                DiscordError::ApiError(format!(
-                    "channels.models failed (guild {g_id}): {e}"
-                ))
+                DiscordError::ApiError(format!("channels.models failed (guild {g_id}): {e}"))
             })?;
 
             for c in channels {

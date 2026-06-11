@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use secrecy::{ExposeSecret, SecretBox};
+use secrecy::SecretBox;
 use springtale_connector::client::handle_json_response;
 
 use crate::error::KickError;
@@ -33,7 +33,7 @@ pub struct KickClient {
 impl KickClient {
     /// Create a new Kick API client with the given access token.
     pub fn new(api_base: &str, access_token: SecretBox<String>) -> Result<Self, KickError> {
-        let inner = reqwest::Client::builder()
+        let inner = springtale_transport::safe_http::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| KickError::RequestFailed(format!("failed to build client: {e}")))?;
@@ -50,7 +50,7 @@ impl KickClient {
     /// All reqwest calls must go through client/ — this is the HTTP call
     /// that `auth::exchange_code` delegates to.
     pub async fn exchange_token(oauth_base: &str, form_body: String) -> Result<String, KickError> {
-        let client = reqwest::Client::builder()
+        let client = springtale_transport::safe_http::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| KickError::AuthFailed(format!("failed to build client: {e}")))?;
@@ -95,8 +95,9 @@ impl KickClient {
             let response = self
                 .inner
                 .post(&url)
-                // SECURITY: expose needed for Bearer auth on API call
-                .bearer_auth(self.access_token.expose_secret())
+                .bearer_auth(springtale_crypto::secret_use::header_value(
+                    &self.access_token,
+                ))
                 .header("Accept", "application/json")
                 .json(&serde_json::json!({
                     "type": event_type,
@@ -122,7 +123,7 @@ impl KickClient {
     ///
     /// Returns the PEM-encoded RSA public key.
     pub async fn fetch_public_key(api_base: &str) -> Result<String, KickError> {
-        let client = reqwest::Client::builder()
+        let client = springtale_transport::safe_http::builder()
             .timeout(std::time::Duration::from_secs(10))
             .build()
             .map_err(|e| KickError::RequestFailed(format!("failed to build client: {e}")))?;
@@ -173,8 +174,9 @@ impl KickApi for KickClient {
         let response = self
             .inner
             .post(&url)
-            // SECURITY: expose needed for Bearer auth on API call
-            .bearer_auth(self.access_token.expose_secret())
+            .bearer_auth(springtale_crypto::secret_use::header_value(
+                &self.access_token,
+            ))
             .header("Accept", "application/json")
             .json(&serde_json::json!({
                 "channel_id": channel_id,
@@ -197,8 +199,9 @@ impl KickApi for KickClient {
         let response = self
             .inner
             .get(&url)
-            // SECURITY: expose needed for Bearer auth on API call
-            .bearer_auth(self.access_token.expose_secret())
+            .bearer_auth(springtale_crypto::secret_use::header_value(
+                &self.access_token,
+            ))
             .header("Accept", "application/json")
             .send()
             .await?;
@@ -219,8 +222,9 @@ impl KickApi for KickClient {
         let response = self
             .inner
             .get(&url)
-            // SECURITY: expose needed for Bearer auth on API call
-            .bearer_auth(self.access_token.expose_secret())
+            .bearer_auth(springtale_crypto::secret_use::header_value(
+                &self.access_token,
+            ))
             .header("Accept", "application/json")
             .send()
             .await?;

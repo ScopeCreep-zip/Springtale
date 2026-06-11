@@ -14,6 +14,7 @@ use crate::actions;
 use crate::client::IrcClient;
 use crate::config::IrcConfig;
 use crate::triggers;
+use springtale_connector::manifest::SignatureAlgorithm;
 
 /// IRC connector.
 ///
@@ -99,6 +100,7 @@ impl IrcConnector {
             ],
             roles: vec![],
             wasm_hash: None,
+            signature_alg: SignatureAlgorithm::default(),
             signature: None,
         };
 
@@ -144,9 +146,11 @@ impl Connector for IrcConnector {
             "send_action" => actions::send_action::execute(&self.client, &input)
                 .await
                 .map_err(ConnectorError::from),
-            "discover_destinations" => actions::discover_destinations::execute(&self.client, &input)
-                .await
-                .map_err(ConnectorError::from),
+            "discover_destinations" => {
+                actions::discover_destinations::execute(&self.client, &input)
+                    .await
+                    .map_err(ConnectorError::from)
+            }
             unknown => Err(ConnectorError::ExecutionFailed(format!(
                 "unknown action: {unknown}"
             ))),
@@ -192,9 +196,7 @@ impl Connector for IrcConnector {
         &self.manifest
     }
 
-    fn mention_extractor(
-        &self,
-    ) -> Option<&dyn springtale_connector::mention::MentionExtractor> {
+    fn mention_extractor(&self) -> Option<&dyn springtale_connector::mention::MentionExtractor> {
         Some(&crate::mention::IRC_MENTION_EXTRACTOR)
     }
 }

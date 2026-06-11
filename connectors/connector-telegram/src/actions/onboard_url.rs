@@ -30,13 +30,13 @@ use crate::error::TelegramError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: true,
         name: "onboard_url".to_owned(),
-        description:
-            "Build a `https://t.me/<bot>?start=<payload>` deep link. The user \
+        description: "Build a `https://t.me/<bot>?start=<payload>` deep link. The user \
              taps the link, Telegram sends `/start <payload>` to the bot, and \
              the universal harvester registers the chat in this formation's \
              external-workspace directory."
-                .to_owned(),
+            .to_owned(),
         input_schema: Some(serde_json::json!({
             "type": "object",
             "properties": {
@@ -61,10 +61,7 @@ pub async fn execute(
     client: &dyn TelegramApi,
     input: &serde_json::Value,
 ) -> Result<ActionResult, TelegramError> {
-    let payload = input
-        .get("payload")
-        .and_then(|v| v.as_str())
-        .unwrap_or("");
+    let payload = input.get("payload").and_then(|v| v.as_str()).unwrap_or("");
     let me = client.get_me().await?;
     // Telegram's getMe returns { ok: true, result: { username, ... } }
     // The TelegramApi trait returns the raw response; the action

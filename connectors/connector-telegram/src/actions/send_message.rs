@@ -6,6 +6,7 @@ use crate::error::TelegramError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: false,
         name: "send_message".to_owned(),
         description: "Send a text message to a Telegram chat.".to_owned(),
         input_schema: Some(serde_json::json!({

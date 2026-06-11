@@ -10,8 +10,7 @@ static SIGNAL_FORM: PlatformForm = PlatformForm {
     config_key: "signal",
     label: "Signal",
     description: "Connect via a signal-cli daemon",
-    setup_help:
-        "Install signal-cli and run it in daemon mode. See https://github.com/AsamK/signal-cli.",
+    setup_help: "Install signal-cli and run it in daemon mode. See https://github.com/AsamK/signal-cli.",
     fields: &[
         FormField {
             name: "daemon_url",

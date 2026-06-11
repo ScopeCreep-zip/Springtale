@@ -67,6 +67,7 @@ mod tests {
     use crate::connector::trait_::{ActionResult, Connector, EventHandler};
     use crate::manifest::types::{ActionDecl, Capability, ConnectorManifest, TriggerDecl};
     use async_trait::async_trait;
+    use springtale_crypto::signature::SignatureAlgorithm;
 
     struct TestConnector {
         manifest: ConnectorManifest,
@@ -85,6 +86,7 @@ mod tests {
                     }],
                     triggers: vec![],
                     actions: vec![ActionDecl {
+                        read_only: false,
                         name: "test".into(),
                         description: "test".into(),
                         input_schema: None,
@@ -93,6 +95,7 @@ mod tests {
                     data_disclosure: vec![],
                     roles: vec![],
                     wasm_hash: None,
+                    signature_alg: SignatureAlgorithm::default(),
                     signature: None,
                 },
             }

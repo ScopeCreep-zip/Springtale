@@ -6,8 +6,10 @@ use crate::error::NostrError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: false,
         name: "send_message".to_owned(),
-        description: "Send a message — routes to send_dm (if chat_id is a pubkey) or publish_note.".to_owned(),
+        description: "Send a message — routes to send_dm (if chat_id is a pubkey) or publish_note."
+            .to_owned(),
         input_schema: Some(serde_json::json!({
             "type": "object",
             "properties": {
@@ -46,11 +48,8 @@ pub async fn execute(
     let chat_id: &str = if raw_chat_id.is_empty() {
         ""
     } else {
-        springtale_connector::workspace_key::extract_id_for_scheme(
-            raw_chat_id,
-            "connector-nostr",
-        )
-        .map_err(|e| NostrError::InvalidInput(e.to_string()))?
+        springtale_connector::workspace_key::extract_id_for_scheme(raw_chat_id, "connector-nostr")
+            .map_err(|e| NostrError::InvalidInput(e.to_string()))?
     };
 
     // If chat_id looks like a hex pubkey (64 chars) or npub, route to DM

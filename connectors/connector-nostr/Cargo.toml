@@ -17,6 +17,7 @@ tokio = { workspace = true }
 nostr-sdk = { workspace = true }
 rand = { workspace = true }
 springtale-connector = { workspace = true }
+springtale-crypto = { workspace = true }
 inventory = { workspace = true }
 
 [dev-dependencies]

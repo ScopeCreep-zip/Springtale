@@ -91,6 +91,7 @@ mod tests {
     use rmcp::ServerHandler;
     use springtale_connector::capability::grant::CapabilityPolicy;
     use springtale_connector::connector::trait_::{ActionResult, EventHandler};
+    use springtale_connector::manifest::SignatureAlgorithm;
     use springtale_connector::manifest::types::{
         ActionDecl, Capability, ConnectorManifest, TriggerDecl,
     };
@@ -113,6 +114,7 @@ mod tests {
                     triggers: vec![],
                     actions: vec![
                         ActionDecl {
+                            read_only: false,
                             name: "search".into(),
                             description: "Search something".into(),
                             input_schema: Some(serde_json::json!({
@@ -124,6 +126,7 @@ mod tests {
                             output_schema: None,
                         },
                         ActionDecl {
+                            read_only: false,
                             name: "ping".into(),
                             description: "Ping the service".into(),
                             input_schema: None,
@@ -133,6 +136,7 @@ mod tests {
                     data_disclosure: vec![],
                     roles: vec![],
                     wasm_hash: None,
+                    signature_alg: SignatureAlgorithm::default(),
                     signature: None,
                 },
             }
@@ -162,7 +166,8 @@ mod tests {
             &self,
             _trigger: &str,
             _handler: EventHandler,
-        ) -> Result<springtale_connector::Subscription, springtale_connector::ConnectorError> {
+        ) -> Result<springtale_connector::Subscription, springtale_connector::ConnectorError>
+        {
             Ok(springtale_connector::Subscription {
                 id: springtale_connector::SubscriptionId(0),
                 trigger: String::new(),

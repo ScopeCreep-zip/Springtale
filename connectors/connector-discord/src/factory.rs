@@ -10,8 +10,7 @@ static DISCORD_FORM: PlatformForm = PlatformForm {
     config_key: "discord",
     label: "Discord",
     description: "Connect a Discord bot",
-    setup_help:
-        "Create an application at discord.com/developers, then copy the Bot token and Application ID.",
+    setup_help: "Create an application at discord.com/developers, then copy the Bot token and Application ID.",
     fields: &[
         FormField {
             name: "bot_token",

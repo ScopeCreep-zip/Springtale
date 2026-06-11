@@ -16,11 +16,11 @@ use crate::error::BrowserError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: true,
         name: "query_all".to_owned(),
-        description:
-            "Return every element matching a CSS selector with its text, outer HTML, \
+        description: "Return every element matching a CSS selector with its text, outer HTML, \
              tag name, and full attribute map. Empty array when nothing matches."
-                .to_owned(),
+            .to_owned(),
         input_schema: Some(serde_json::json!({
             "type": "object",
             "properties": {

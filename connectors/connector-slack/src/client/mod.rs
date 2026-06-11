@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use secrecy::{ExposeSecret, SecretBox};
+use secrecy::SecretBox;
 
 use crate::error::SlackError;
 
@@ -84,7 +84,11 @@ impl SlackClient {
     /// `bot_token` stays wrapped in `SecretBox` — only exposed at the
     /// precise HTTP call site (Authorization header).
     pub fn new(bot_token: SecretBox<String>, jitter_secs: u64) -> Self {
-        let http = reqwest::Client::new();
+        // safe_http::client() gives us rustls + PQ KEX + 30s timeout +
+        // limited redirects. Falls back to a fresh client on factory
+        // failure so the Slack connector still constructs even if the
+        // rustls provider has not been installed yet (unit tests).
+        let http = springtale_transport::safe_http::client().unwrap_or_default();
         Self {
             http,
             base_url: "https://slack.com/api".to_owned(),
@@ -111,10 +115,9 @@ impl SlackClient {
         let response = self
             .http
             .post(&url)
-            // SECURITY: expose needed for Slack API Bearer auth
             .header(
                 "Authorization",
-                format!("Bearer {}", self.bot_token.expose_secret()),
+                springtale_crypto::secret_use::bearer_header(&self.bot_token),
             )
             .header("Content-Type", "application/json; charset=utf-8")
             .json(&body)
@@ -233,10 +236,7 @@ impl SlackApi for SlackClient {
                     };
                     out.push(DiscoveredSlackConversation {
                         id,
-                        name: ch
-                            .get("name")
-                            .and_then(|v| v.as_str())
-                            .map(str::to_owned),
+                        name: ch.get("name").and_then(|v| v.as_str()).map(str::to_owned),
                         is_im: ch.get("is_im").and_then(|v| v.as_bool()).unwrap_or(false),
                         is_mpim: ch.get("is_mpim").and_then(|v| v.as_bool()).unwrap_or(false),
                         is_private: ch

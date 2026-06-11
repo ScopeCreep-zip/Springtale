@@ -118,7 +118,14 @@ mod tests {
 
     #[test]
     fn test_gate_shell_exec_approved() {
-        let checker = setup_checker(vec![Capability::ShellExec]);
+        // ShellExec is policy-exempt (Phase-7 Finding A) — even
+        // `AllowAll` registration lands it in pending_approval. The
+        // WASM host-API gate just checks "is this cap approved?";
+        // promotion from pending → approved is the bridge's
+        // ApprovalGate's job. Here we simulate a gate-already-fired
+        // path by manually calling `approve()` before the gate check.
+        let mut checker = setup_checker(vec![Capability::ShellExec]);
+        checker.approve("connector-test", &Capability::ShellExec); // ci-hardening-allow: gated-path test fixture
         assert!(gate_shell_exec(&checker, "connector-test").is_ok());
     }
 

@@ -1,5 +1,4 @@
 use hmac::{Hmac, Mac};
-use secrecy::ExposeSecret;
 use sha2::Sha256;
 
 use crate::error::GithubError;
@@ -27,14 +26,14 @@ pub fn verify_signature(
 
     let expected_sig = hex::decode(hex_sig).map_err(|_| GithubError::WebhookSignatureInvalid)?;
 
-    // SECURITY: expose needed for HMAC key computation
-    let mut mac = HmacSha256::new_from_slice(secret.expose_secret().as_bytes())
-        .map_err(|_| GithubError::WebhookSignatureInvalid)?;
-    mac.update(payload);
-
-    // Constant-time comparison via the `verify_slice` method
-    mac.verify_slice(&expected_sig)
-        .map_err(|_| GithubError::WebhookSignatureInvalid)
+    springtale_crypto::secret_use::with_hmac_key(secret, |key_bytes| {
+        let mut mac = HmacSha256::new_from_slice(key_bytes)
+            .map_err(|_| GithubError::WebhookSignatureInvalid)?;
+        mac.update(payload);
+        // Constant-time comparison via the `verify_slice` method.
+        mac.verify_slice(&expected_sig)
+            .map_err(|_| GithubError::WebhookSignatureInvalid)
+    })
 }
 
 #[cfg(test)]

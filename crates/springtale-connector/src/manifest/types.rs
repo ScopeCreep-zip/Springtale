@@ -2,6 +2,8 @@ use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use specta::Type;
 
+use springtale_crypto::signature::SignatureAlgorithm;
+
 /// A connector's manifest — the declaration of what it is, what it needs,
 /// and what it can do. Parsed from `connector-{name}.toml`.
 ///
@@ -49,8 +51,20 @@ pub struct ConnectorManifest {
     #[serde(default)]
     pub wasm_hash: Option<String>,
 
-    /// Ed25519 signature over the canonical JSON of all other fields.
-    /// Hex-encoded 64-byte signature.
+    /// Algorithm used to compute the `signature` field. Defaults to
+    /// `SignatureAlgorithm::Ed25519` to keep older manifests parsing.
+    /// Per NIST IR 8547 the Ed25519 path is deprecated 2030 /
+    /// disallowed 2035; the enum is the extension point for the
+    /// hybrid Ed25519+ML-DSA-65 successor (see
+    /// `docs/security/CRYPTO-INVENTORY.md`). Unknown algorithm names
+    /// fail closed at parse time.
+    #[serde(default)]
+    pub signature_alg: SignatureAlgorithm,
+
+    /// Signature over the canonical JSON of all other fields (the
+    /// `signature` field itself is excluded). Encoding depends on
+    /// `signature_alg`: for `Ed25519`, hex-encoded 64-byte Ed25519
+    /// signature.
     #[serde(default)]
     pub signature: Option<String>,
 }
@@ -121,6 +135,19 @@ pub struct ActionDecl {
     /// JSON Schema of the action output.
     #[serde(default)]
     pub output_schema: Option<serde_json::Value>,
+
+    /// Whether this action is read-only — it retrieves data and never
+    /// creates, updates, deletes, or sends anything. Modelled on the MCP
+    /// tool annotation `readOnlyHint`: a conservative **advisory** hint
+    /// (default `false` = assume the action may mutate), *not* a security
+    /// boundary. The deterministic safety gate stays in `springtale-sentinel`
+    /// / the capability layer. Consumed by the formation intent decomposer to
+    /// pick read-only actions under a `Reconnoiter` (monitor) intent.
+    ///
+    /// Strict, per MCP guidance: only `true` when the action genuinely cannot
+    /// modify state — a "search" that also logs analytics is *not* read-only.
+    #[serde(default)]
+    pub read_only: bool,
 }
 
 /// What user data a connector accesses (for transparency/Privacy by Design).
@@ -204,6 +231,11 @@ mod tests {
             name = "do_thing"
             description = "Does a thing"
 
+            [[actions]]
+            name = "read_thing"
+            description = "Reads a thing"
+            read_only = true
+
             [[data_disclosure]]
             data_type = "user messages"
             purpose = "formatting responses"
@@ -220,7 +252,12 @@ mod tests {
             }
         );
         assert_eq!(manifest.triggers.len(), 1);
-        assert_eq!(manifest.actions.len(), 1);
+        assert_eq!(manifest.actions.len(), 2);
         assert_eq!(manifest.data_disclosure.len(), 1);
+
+        // `read_only` defaults to false (MCP `readOnlyHint` conservative
+        // default) when the manifest omits it, and parses when present.
+        assert!(!manifest.actions[0].read_only, "do_thing defaults to false");
+        assert!(manifest.actions[1].read_only, "read_thing is read-only");
     }
 }

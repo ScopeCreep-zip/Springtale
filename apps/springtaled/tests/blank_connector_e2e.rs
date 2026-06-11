@@ -30,9 +30,10 @@ use async_trait::async_trait;
 use std::sync::Arc;
 
 use springtale_connector::capability::grant::CapabilityPolicy;
-use springtale_connector::connector::trait_::{ActionResult, Connector, EventHandler};
 use springtale_connector::connector::subscription::{Subscription, SubscriptionId};
+use springtale_connector::connector::trait_::{ActionResult, Connector, EventHandler};
 use springtale_connector::error::ConnectorError;
+use springtale_connector::manifest::SignatureAlgorithm;
 use springtale_connector::manifest::types::{
     ActionDecl, Capability, ConnectorManifest, TriggerDecl,
 };
@@ -62,6 +63,7 @@ impl BlankConnector {
                     schema: None,
                 }],
                 actions: vec![ActionDecl {
+                    read_only: false,
                     name: "echo".into(),
                     description: "blank-echo: returns the input verbatim".into(),
                     input_schema: None,
@@ -70,12 +72,12 @@ impl BlankConnector {
                 data_disclosure: vec![],
                 roles: vec![],
                 wasm_hash: None,
+                signature_alg: SignatureAlgorithm::default(),
                 signature: None,
             },
             invocation_counter: Arc::new(std::sync::atomic::AtomicU32::new(0)),
         }
     }
-
 }
 
 #[async_trait]
@@ -146,7 +148,9 @@ async fn blank_connector_install_list_execute_roundtrip() {
     // list_connectors surfaces the new entry without any name special-casing.
     let listed = registry.list();
     assert!(
-        listed.iter().any(|(name, enabled)| *name == BLANK_NAME && *enabled),
+        listed
+            .iter()
+            .any(|(name, enabled)| *name == BLANK_NAME && *enabled),
         "blank connector should appear in the registry list as enabled"
     );
 
@@ -187,10 +191,10 @@ async fn blank_connector_reload_atomic_swap() {
     // brand-new instance + counter.
     let second = BlankConnector::new();
     let second_counter = second.invocation_counter.clone();
-    let new_host: Arc<dyn springtale_connector::host::ConnectorHost> =
-        Arc::new(springtale_connector::native::runtime::NativeConnectorHost::new(
-            Box::new(second),
-        ).expect("native host wrap"));
+    let new_host: Arc<dyn springtale_connector::host::ConnectorHost> = Arc::new(
+        springtale_connector::native::runtime::NativeConnectorHost::new(Box::new(second))
+            .expect("native host wrap"),
+    );
     let old_host = registry
         .reload(BLANK_NAME, new_host)
         .expect("reload must swap atomically");

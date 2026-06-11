@@ -6,6 +6,7 @@ use crate::error::BlueskyError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: false,
         name: "repost".to_owned(),
         description: "Repost a Bluesky post.".to_owned(),
         input_schema: Some(serde_json::json!({

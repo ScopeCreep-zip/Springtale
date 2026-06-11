@@ -1,16 +1,17 @@
 use async_trait::async_trait;
 
+use springtale_connector::Subscription;
 use springtale_connector::connector::trait_::{ActionResult, Connector, EventHandler};
 use springtale_connector::error::ConnectorError;
 use springtale_connector::manifest::types::{
     ActionDecl, Capability, ConnectorManifest, DataDisclosure, TriggerDecl,
 };
-use springtale_connector::Subscription;
 
 use crate::actions;
 use crate::cache::ResultCache;
 use crate::client::PresearchClient;
 use crate::config::PresearchConfig;
+use springtale_connector::manifest::SignatureAlgorithm;
 
 /// Presearch connector.
 ///
@@ -111,6 +112,7 @@ fn build_manifest(config: &PresearchConfig, actions: &[ActionDecl]) -> Connector
         }],
         roles: vec![],
         wasm_hash: None,
+        signature_alg: SignatureAlgorithm::default(),
         signature: None,
     }
 }

@@ -61,9 +61,5 @@ pub trait MentionExtractor: Send + Sync + 'static {
     /// return for triggers that never carry chat data. `payload`
     /// is the event's JSON body — typically the same shape the
     /// rule engine sees as `${trigger.*}`.
-    fn extract(
-        &self,
-        trigger: &str,
-        payload: &serde_json::Value,
-    ) -> Vec<HarvestedDestination>;
+    fn extract(&self, trigger: &str, payload: &serde_json::Value) -> Vec<HarvestedDestination>;
 }

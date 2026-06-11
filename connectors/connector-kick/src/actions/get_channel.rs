@@ -6,6 +6,7 @@ use crate::error::KickError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: true,
         name: "get_channel".to_owned(),
         description: "Get information about a Kick channel by slug.".to_owned(),
         input_schema: Some(serde_json::json!({

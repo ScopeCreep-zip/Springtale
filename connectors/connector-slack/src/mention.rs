@@ -45,7 +45,10 @@ impl MentionExtractor for SlackMentionExtractor {
         };
         let (segment, key) = match kind {
             "dm" => ("im", workspace_key::build("slack", &["im", &channel])),
-            _ => ("channel", workspace_key::build("slack", &["channel", &channel])),
+            _ => (
+                "channel",
+                workspace_key::build("slack", &["channel", &channel]),
+            ),
         };
         let _ = segment;
 

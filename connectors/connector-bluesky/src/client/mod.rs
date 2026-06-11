@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use secrecy::{ExposeSecret, SecretBox};
+use secrecy::SecretBox;
 use tokio::sync::RwLock;
 
 use crate::config::BlueskyConfig;
@@ -82,7 +82,7 @@ pub struct AtProtoClient {
 impl AtProtoClient {
     /// Create a new ATProto client and authenticate.
     pub async fn new(config: &BlueskyConfig) -> Result<Self, BlueskyError> {
-        let inner = reqwest::Client::builder()
+        let inner = springtale_transport::safe_http::builder()
             .timeout(std::time::Duration::from_secs(30))
             .build()
             .map_err(|e| BlueskyError::AtProtoError(format!("failed to build client: {e}")))?;
@@ -101,17 +101,17 @@ impl AtProtoClient {
     async fn create_session(&self, config: &BlueskyConfig) -> Result<(), BlueskyError> {
         let url = format!("{}/xrpc/com.atproto.server.createSession", self.pds_base);
 
-        // SECURITY: expose needed for ATProto authentication
-        let response = self
-            .inner
-            .post(&url)
-            .json(&serde_json::json!({
-                "identifier": config.identifier,
-                "password": config.password.expose_secret(),
-            }))
-            .send()
-            .await
-            .map_err(|e| BlueskyError::AtProtoError(format!("session creation failed: {e}")))?;
+        let response = springtale_crypto::secret_use::with_str(&config.password, |pw| {
+            self.inner
+                .post(&url)
+                .json(&serde_json::json!({
+                    "identifier": config.identifier,
+                    "password": pw,
+                }))
+                .send()
+        })
+        .await
+        .map_err(|e| BlueskyError::AtProtoError(format!("session creation failed: {e}")))?;
 
         let status = response.status().as_u16();
         let body = response
@@ -146,12 +146,11 @@ impl AtProtoClient {
 
     /// Refresh the current session using the refresh JWT.
     pub async fn refresh_session(&self) -> Result<(), BlueskyError> {
-        // SECURITY: expose needed for Bearer auth on session refresh
         let refresh_jwt = {
             let session = self.session.read().await;
             session
                 .as_ref()
-                .map(|s| s.refresh_jwt.expose_secret().clone())
+                .map(|s| springtale_crypto::secret_use::header_value(&s.refresh_jwt))
                 .ok_or_else(|| BlueskyError::AtProtoError("no active session".to_owned()))?
         };
 
@@ -200,10 +199,9 @@ impl AtProtoClient {
     /// Returns the exposed token string — caller uses it immediately for bearer auth.
     async fn access_jwt(&self) -> Result<String, BlueskyError> {
         let session = self.session.read().await;
-        // SECURITY: expose needed for Bearer auth on API calls
         session
             .as_ref()
-            .map(|s| s.access_jwt.expose_secret().clone())
+            .map(|s| springtale_crypto::secret_use::header_value(&s.access_jwt))
             .ok_or_else(|| BlueskyError::AtProtoError("no active session".to_owned()))
     }
 

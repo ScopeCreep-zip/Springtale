@@ -60,6 +60,7 @@ mod tests {
     #[test]
     fn test_action_to_tool_with_schema() {
         let action = ActionDecl {
+            read_only: false,
             name: "search".into(),
             description: "Search the web".into(),
             input_schema: Some(serde_json::json!({
@@ -85,6 +86,7 @@ mod tests {
     #[test]
     fn test_action_to_tool_no_schema() {
         let action = ActionDecl {
+            read_only: false,
             name: "ping".into(),
             description: "Ping the service".into(),
             input_schema: None,
@@ -104,12 +106,14 @@ mod tests {
     fn test_actions_to_tools() {
         let actions = vec![
             ActionDecl {
+                read_only: false,
                 name: "a".into(),
                 description: "action a".into(),
                 input_schema: None,
                 output_schema: None,
             },
             ActionDecl {
+                read_only: false,
                 name: "b".into(),
                 description: "action b".into(),
                 input_schema: None,

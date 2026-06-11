@@ -15,6 +15,7 @@ pub async fn wire_discord(
     config: &connector_discord::DiscordConfig,
     registry: &Arc<RwLock<ConnectorRegistry>>,
     bot_msg_tx: mpsc::Sender<springtale_bot::IncomingMessage>,
+    trigger_tx: mpsc::Sender<springtale_core::rule::engine::TriggerEvent>,
 ) -> anyhow::Result<tokio::sync::watch::Sender<bool>> {
     // Verify connector was registered by factory
     {
@@ -113,8 +114,12 @@ pub async fn wire_discord(
     tracing::info!("Discord gateway shard created");
 
     // 6. Dispatcher: Discord events → IncomingMessage
+    let evt_tx = trigger_tx.clone();
     let dispatcher: Arc<dyn Fn(serde_json::Value) + Send + Sync> =
         Arc::new(move |payload: serde_json::Value| {
+            // Rule path: emit the gateway-classified ConnectorEvent so Discord
+            // event recipes fire on gateway events, not just the bot chat path.
+            super::events::emit_classified(&evt_tx, "connector-discord", &payload);
             let tx = bot_msg_tx.clone();
             let raw = payload.clone();
             tokio::spawn(async move {

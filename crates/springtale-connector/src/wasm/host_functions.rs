@@ -11,9 +11,7 @@ use crate::error::ConnectorError;
 /// Register only `springtale.http_request`. Tier-aware linkers pull this
 /// in for Warming/Hot/Fever; Cold omits it so Cold-tier guests trap at
 /// instantiation when they import network I/O.
-pub(crate) fn register_http_request(
-    linker: &mut Linker<HostState>,
-) -> Result<(), ConnectorError> {
+pub(crate) fn register_http_request(linker: &mut Linker<HostState>) -> Result<(), ConnectorError> {
     // Network outbound — gated by NetworkOutbound capability.
     // NOTE: When actual HTTP is added (Phase 2), wrap with
     // tokio::time::timeout() — epoch interrupts do NOT interrupt

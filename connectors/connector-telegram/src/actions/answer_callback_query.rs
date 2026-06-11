@@ -11,6 +11,7 @@ use crate::error::TelegramError;
 /// Use this action in any rule that handles a `callback_query_received` trigger.
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: false,
         name: "answer_callback_query".to_owned(),
         description:
             "Acknowledge an inline keyboard callback_query. Must be called within 10 seconds."

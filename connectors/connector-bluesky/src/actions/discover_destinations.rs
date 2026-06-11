@@ -18,6 +18,7 @@ use crate::error::BlueskyError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: true,
         name: "discover_destinations".to_owned(),
         description:
             "Enumerate addressable destinations for this Bluesky session — returns the authenticated account as a single row."
@@ -109,7 +110,10 @@ mod tests {
             .unwrap();
         assert_eq!(arr.len(), 1);
         assert_eq!(
-            arr[0].get("workspace_key").and_then(|v| v.as_str()).unwrap(),
+            arr[0]
+                .get("workspace_key")
+                .and_then(|v| v.as_str())
+                .unwrap(),
             "bluesky://account/did:plc:mocktestaccount"
         );
         assert_eq!(

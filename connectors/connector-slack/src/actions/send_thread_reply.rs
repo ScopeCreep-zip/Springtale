@@ -6,6 +6,7 @@ use crate::error::SlackError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: false,
         name: "send_thread_reply".to_owned(),
         description: "Send a reply in a Slack thread.".to_owned(),
         input_schema: Some(serde_json::json!({

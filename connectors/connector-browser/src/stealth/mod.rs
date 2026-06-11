@@ -14,6 +14,7 @@
 //!   - Authoring own-dashboard automation against tools that detect
 //!     `navigator.webdriver` reflexively (e.g. some SaaS admin
 //!     panels).
+//!
 //! Use cases this is **not** intended for:
 //!   - Bypassing a site's explicit anti-scraping policy.
 //!   - Evading rate limits or fraud detection.
@@ -62,4 +63,4 @@
 
 pub mod patches;
 
-pub use patches::{minimal_patch_script, MINIMAL_LAUNCH_FLAGS};
+pub use patches::{MINIMAL_LAUNCH_FLAGS, minimal_patch_script};

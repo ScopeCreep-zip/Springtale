@@ -52,7 +52,14 @@ fn short_pubkey_label(pubkey: &str) -> String {
         return pubkey.to_owned();
     }
     let prefix: String = pubkey.chars().take(8).collect();
-    let suffix: String = pubkey.chars().rev().take(4).collect::<String>().chars().rev().collect();
+    let suffix: String = pubkey
+        .chars()
+        .rev()
+        .take(4)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect();
     format!("{prefix}…{suffix}")
 }
 

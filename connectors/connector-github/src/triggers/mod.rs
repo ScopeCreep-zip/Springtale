@@ -1,5 +1,7 @@
 use springtale_connector::manifest::types::TriggerDecl;
 
+pub mod normalize;
+
 /// All trigger declarations for the GitHub connector.
 ///
 /// **Transformation contract:** These schemas describe the **transformed**

@@ -59,7 +59,7 @@ impl HttpClient {
             default_headers.insert(header_name, header_value);
         }
 
-        let inner = reqwest::Client::builder()
+        let inner = springtale_transport::safe_http::builder()
             .timeout(config.timeout_duration())
             .default_headers(default_headers)
             .build()

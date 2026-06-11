@@ -1,4 +1,14 @@
-use std::collections::{HashMap, HashSet};
+//! `ConnectorEvent` subscription lifecycle.
+//!
+//! Hoisted from the springtaled binary into the shared runtime so BOTH
+//! surfaces wire connector-event triggers identically. Previously only
+//! the daemon attached connector event handlers; the desktop app never
+//! did, so every messaging bot (Telegram/Discord/Slack/Kick/Nostr/
+//! Bluesky reply/echo) and every webhook→event bot was DEAD on desktop.
+//! The runtime is the single place both `springtaled` and the desktop
+//! shell drive their trigger wiring from.
+
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use tokio::sync::{Mutex, RwLock, mpsc};
@@ -11,9 +21,9 @@ use springtale_core::rule::trigger::Trigger;
 use springtale_core::rule::types::{Rule, RuleId, RuleStatus};
 
 /// Active subscription with the connector name it was registered on.
-pub(crate) struct ActiveSub {
-    pub(crate) connector: String,
-    pub(crate) subscription: Subscription,
+struct ActiveSub {
+    connector: String,
+    subscription: Subscription,
 }
 
 /// Stores active event subscriptions per rule for lifecycle management.
@@ -51,15 +61,17 @@ impl TriggerRegistry {
         }
     }
 
+    /// Number of rules with at least one active subscription. Used by
+    /// boot wiring to log how many handlers were attached.
+    pub async fn active_rule_count(&self) -> usize {
+        self.active.lock().await.len()
+    }
+
     /// Attach event handlers for a single rule's ConnectorEvent trigger.
     ///
     /// Called at boot for all enabled rules, and at runtime when a new
     /// ConnectorEvent rule is created or re-enabled.
-    pub async fn attach_rule(
-        &self,
-        rule: &Rule,
-        registry: &Arc<RwLock<ConnectorRegistry>>,
-    ) {
+    pub async fn attach_rule(&self, rule: &Rule, registry: &Arc<RwLock<ConnectorRegistry>>) {
         let (connector_name, event_name) = match &rule.trigger {
             Trigger::ConnectorEvent {
                 connector, event, ..
@@ -112,14 +124,19 @@ impl TriggerRegistry {
                         ids.push(rule.id);
                     }
                     // Clear any previous activation error
-                    let _ = self.store.set_rule_activation_error(&rule.id, None).await;
+                    if let Err(e) = self.store.set_rule_activation_error(&rule.id, None).await {
+                        tracing::warn!(error = %e, "failed to clear rule activation error");
+                    }
                 }
                 Err(e) => {
                     // Persist activation error so the dashboard can show broken rules
-                    let _ = self
+                    if let Err(store_err) = self
                         .store
                         .set_rule_activation_error(&rule.id, Some(&e.to_string()))
-                        .await;
+                        .await
+                    {
+                        tracing::warn!(error = %store_err, "failed to persist rule activation error");
+                    }
                     tracing::warn!(
                         rule = %rule.name,
                         connector = %connector_name,
@@ -142,11 +159,7 @@ impl TriggerRegistry {
     ///
     /// Called when a rule is disabled, deleted, or about to be updated
     /// (update = detach old + attach new, per HA/n8n pattern).
-    pub async fn detach_rule(
-        &self,
-        rule_id: &RuleId,
-        registry: &Arc<RwLock<ConnectorRegistry>>,
-    ) {
+    pub async fn detach_rule(&self, rule_id: &RuleId, registry: &Arc<RwLock<ConnectorRegistry>>) {
         let subs = {
             let mut active = self.active.lock().await;
             active.remove(rule_id).unwrap_or_default()
@@ -235,61 +248,4 @@ impl TriggerRegistry {
             self.attach_rule(rule, connector_registry).await;
         }
     }
-}
-
-/// Wire connector event handlers for ALL enabled ConnectorEvent rules at boot.
-///
-/// Returns the TriggerRegistry for use in runtime rule management
-/// (create/update/toggle/delete API handlers call attach_rule/detach_rule).
-pub(super) async fn wire_connector_events(
-    registry: &Arc<RwLock<ConnectorRegistry>>,
-    engine: &Arc<RwLock<RuleEngine>>,
-    trigger_tx: mpsc::Sender<TriggerEvent>,
-    store: Arc<dyn springtale_store::StorageBackend>,
-) -> TriggerRegistry {
-    let trigger_registry = TriggerRegistry::new(trigger_tx, store);
-
-    let rules: Vec<Rule> = {
-        let engine_guard = engine.read().await;
-        engine_guard.list_rules().into_iter().cloned().collect()
-    };
-
-    // Collect unique ConnectorEvent rules
-    let connector_rules: Vec<_> = rules
-        .iter()
-        .filter(|r| {
-            matches!(r.trigger, Trigger::ConnectorEvent { .. })
-                && r.status == RuleStatus::Enabled
-        })
-        .collect::<Vec<_>>();
-
-    if connector_rules.is_empty() {
-        tracing::debug!("no ConnectorEvent rules — skipping event handler wiring");
-        return trigger_registry;
-    }
-
-    // Deduplicate by (connector, event) to avoid registering multiple handlers
-    // for the same event. Multiple rules can share one handler — the rule engine
-    // handles matching at evaluation time.
-    let mut seen: HashSet<(String, String)> = HashSet::new();
-    for rule in &connector_rules {
-        if let Trigger::ConnectorEvent {
-            connector, event, ..
-        } = &rule.trigger
-            && seen.insert((connector.clone(), event.clone()))
-        {
-            trigger_registry.attach_rule(rule, registry).await;
-        }
-    }
-
-    let active = trigger_registry.active.lock().await;
-    let wired: usize = active.values().map(|v| v.len()).sum();
-    tracing::info!(
-        wired = wired,
-        rules = connector_rules.len(),
-        "connector event handlers wired at boot"
-    );
-    drop(active);
-
-    trigger_registry
 }

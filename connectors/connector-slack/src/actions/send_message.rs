@@ -6,6 +6,7 @@ use crate::error::SlackError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: false,
         name: "send_message".to_owned(),
         description: "Send a text message to a Slack channel.".to_owned(),
         input_schema: Some(serde_json::json!({
@@ -38,11 +39,9 @@ pub async fn execute(
         .or_else(|| input.get("chat_id"))
         .and_then(|v| v.as_str())
         .ok_or_else(|| SlackError::InvalidInput("missing 'channel' or 'chat_id'".into()))?;
-    let channel = springtale_connector::workspace_key::extract_id_for_scheme(
-        raw_channel,
-        "connector-slack",
-    )
-    .map_err(|e| SlackError::InvalidInput(e.to_string()))?;
+    let channel =
+        springtale_connector::workspace_key::extract_id_for_scheme(raw_channel, "connector-slack")
+            .map_err(|e| SlackError::InvalidInput(e.to_string()))?;
 
     let text = input
         .get("text")

@@ -6,6 +6,7 @@ use crate::error::DiscordError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: false,
         name: "send_embed".to_owned(),
         description: "Send a rich embed to a Discord channel.".to_owned(),
         input_schema: Some(serde_json::json!({

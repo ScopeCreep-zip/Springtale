@@ -346,6 +346,7 @@ impl ConnectorHost for WasmConnectorHost {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
+    use springtale_crypto::signature::SignatureAlgorithm;
 
     #[test]
     fn test_wasm_connector_host_rejects_hash_mismatch() {
@@ -368,6 +369,7 @@ mod tests {
             wasm_hash: Some(
                 "0000000000000000000000000000000000000000000000000000000000000000".into(),
             ),
+            signature_alg: SignatureAlgorithm::default(),
             signature: None,
         };
 
@@ -403,6 +405,7 @@ mod tests {
             data_disclosure: vec![],
             roles: vec![],
             wasm_hash: Some(hash),
+            signature_alg: SignatureAlgorithm::default(),
             signature: None,
         };
 

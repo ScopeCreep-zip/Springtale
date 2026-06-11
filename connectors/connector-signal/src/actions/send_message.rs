@@ -6,6 +6,7 @@ use crate::error::SignalError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: false,
         name: "send_message".to_owned(),
         description: "Send an E2E encrypted Signal message to one or more recipients.".to_owned(),
         input_schema: Some(serde_json::json!({
@@ -45,12 +46,9 @@ pub async fn execute(
     // through the boundary translator which falls back to raw-id
     // semantics when no `://` is present.
     let parse_one = |raw: &str| {
-        springtale_connector::workspace_key::extract_id_for_scheme(
-            raw,
-            "connector-signal",
-        )
-        .map(str::to_owned)
-        .map_err(|e| SignalError::InvalidInput(e.to_string()))
+        springtale_connector::workspace_key::extract_id_for_scheme(raw, "connector-signal")
+            .map(str::to_owned)
+            .map_err(|e| SignalError::InvalidInput(e.to_string()))
     };
     let recipients: Vec<String> =
         if let Some(arr) = input.get("recipients").and_then(|v| v.as_array()) {

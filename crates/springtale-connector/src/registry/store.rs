@@ -110,15 +110,15 @@ impl ConnectorRegistry {
         Ok(old)
     }
 
-    /// Get a reference to the capability checker.
-    pub fn capability_checker(&self) -> &CapabilityChecker {
-        &self.capability_checker
-    }
-
-    /// Get a mutable reference to the capability checker (for approving pending caps).
-    pub fn capability_checker_mut(&mut self) -> &mut CapabilityChecker {
-        &mut self.capability_checker
-    }
+    // NOTE: `capability_checker()` and `capability_checker_mut()`
+    // were deleted in the Phase-7 audit (Finding A hardening). The
+    // mutable accessor was a foot-gun: anyone could reach the
+    // persistent checker and promote a dangerous capability without
+    // the ApprovalGate. The typed-API surface itself now makes the
+    // bypass impossible. Approvals flow exclusively through
+    // `get_for_execute()`'s clone, which the bridge mutates and
+    // then drops. See docs/security/RISK-REGISTER.md R-005 + the
+    // CI `hardening-check` step for the regression guard.
 
     /// Get a connector host and capability checker for out-of-lock execution.
     ///
@@ -181,6 +181,7 @@ mod tests {
     use crate::connector::trait_::{ActionResult, Connector, EventHandler};
     use crate::manifest::types::{ActionDecl, Capability, ConnectorManifest, TriggerDecl};
     use async_trait::async_trait;
+    use springtale_crypto::signature::SignatureAlgorithm;
 
     /// A minimal test connector for registry tests.
     struct TestConnector {
@@ -204,6 +205,7 @@ mod tests {
                         schema: None,
                     }],
                     actions: vec![ActionDecl {
+                        read_only: false,
                         name: "test_action".into(),
                         description: "A test action".into(),
                         input_schema: None,
@@ -212,6 +214,7 @@ mod tests {
                     data_disclosure: vec![],
                     roles: vec![],
                     wasm_hash: None,
+                    signature_alg: SignatureAlgorithm::default(),
                     signature: None,
                 },
             }

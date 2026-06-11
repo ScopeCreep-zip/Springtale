@@ -42,9 +42,7 @@ pub trait SignalApi: Send + Sync {
     /// Enumerate every addressable Signal target — groups via
     /// `listGroups` and 1:1 contacts via `listContacts` (both JSON-RPC
     /// methods on signal-cli).
-    async fn list_destinations(
-        &self,
-    ) -> Result<Vec<DiscoveredSignalRecipient>, SignalError>;
+    async fn list_destinations(&self) -> Result<Vec<DiscoveredSignalRecipient>, SignalError>;
 }
 
 /// Concrete Signal client bridging to signal-cli daemon via HTTP JSON-RPC.
@@ -64,7 +62,10 @@ pub struct SignalClient {
 
 impl SignalClient {
     pub fn new(daemon_url: String, account_id: String, jitter_secs: u64) -> Self {
-        let http = reqwest::Client::new();
+        // safe_http::client gives us rustls + PQ KEX + 30s timeout + redirect cap.
+        // Falls back to a fresh client if the rustls provider isn't installed
+        // (signal-cli runs over localhost HTTP so TLS isn't actually used here).
+        let http = springtale_transport::safe_http::client().unwrap_or_default();
         Self {
             http,
             daemon_url,
@@ -187,9 +188,7 @@ impl SignalApi for SignalClient {
         Ok(())
     }
 
-    async fn list_destinations(
-        &self,
-    ) -> Result<Vec<DiscoveredSignalRecipient>, SignalError> {
+    async fn list_destinations(&self) -> Result<Vec<DiscoveredSignalRecipient>, SignalError> {
         let mut out = Vec::new();
 
         // Groups: signal-cli `listGroups` returns
@@ -282,9 +281,7 @@ pub mod test_helpers {
             Ok(())
         }
 
-        async fn list_destinations(
-            &self,
-        ) -> Result<Vec<DiscoveredSignalRecipient>, SignalError> {
+        async fn list_destinations(&self) -> Result<Vec<DiscoveredSignalRecipient>, SignalError> {
             Ok(vec![
                 DiscoveredSignalRecipient {
                     id: "GROUP_ID_BASE64=".to_owned(),

@@ -1,6 +1,5 @@
 use std::sync::Arc;
 
-use secrecy::ExposeSecret;
 use tokio::sync::{RwLock, mpsc};
 
 use springtale_connector::registry::store::ConnectorRegistry;
@@ -14,6 +13,7 @@ pub async fn wire_irc(
     config: &connector_irc::IrcConfig,
     registry: &Arc<RwLock<ConnectorRegistry>>,
     bot_msg_tx: mpsc::Sender<springtale_bot::IncomingMessage>,
+    trigger_tx: mpsc::Sender<springtale_core::rule::engine::TriggerEvent>,
 ) -> anyhow::Result<tokio::sync::watch::Sender<bool>> {
     // Verify connector was registered by factory
     {
@@ -24,10 +24,10 @@ pub async fn wire_irc(
     }
 
     // Build irc crate config for the gateway
-    let nick_password = config.nickserv_password.as_ref().map(|s| {
-        // SECURITY: expose needed for NickServ auth in gateway reconnect loop
-        s.expose_secret().clone()
-    });
+    let nick_password = config
+        .nickserv_password
+        .as_ref()
+        .map(springtale_crypto::secret_use::header_value);
 
     let gateway_config = irc::client::data::Config {
         nickname: Some(config.nick.clone()),
@@ -44,8 +44,12 @@ pub async fn wire_irc(
 
     // 3. Dispatcher: extract IRC fields → IncomingMessage
     let command_prefix = config.command_prefix.clone();
+    let evt_tx = trigger_tx.clone();
     let dispatcher: Arc<dyn Fn(serde_json::Value) + Send + Sync> =
         Arc::new(move |payload: serde_json::Value| {
+            // Rule path: emit the gateway-classified ConnectorEvent to the
+            // engine so IRC event recipes fire on polling, not just the bot.
+            super::events::emit_classified(&evt_tx, "connector-irc", &payload);
             let tx = bot_msg_tx.clone();
             let raw = payload.clone();
             tokio::spawn(async move {

@@ -20,6 +20,7 @@ use crate::error::BrowserError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: false,
         name: "evaluate".to_owned(),
         description:
             "Run a JavaScript expression in the current page and return the result as JSON. \

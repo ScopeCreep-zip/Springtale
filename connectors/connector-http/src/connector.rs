@@ -1,15 +1,16 @@
 use async_trait::async_trait;
 
+use springtale_connector::Subscription;
 use springtale_connector::connector::trait_::{ActionResult, Connector, EventHandler};
 use springtale_connector::error::ConnectorError;
 use springtale_connector::manifest::types::{
     ActionDecl, Capability, ConnectorManifest, DataDisclosure, TriggerDecl,
 };
-use springtale_connector::Subscription;
 
 use crate::actions;
 use crate::client::HttpClient;
 use crate::config::HttpConfig;
+use springtale_connector::manifest::SignatureAlgorithm;
 
 /// Generic HTTP connector.
 ///
@@ -107,6 +108,7 @@ fn build_manifest(config: &HttpConfig, actions: &[ActionDecl]) -> ConnectorManif
         }],
         roles: vec![],
         wasm_hash: None,
+        signature_alg: SignatureAlgorithm::default(),
         signature: None,
     }
 }

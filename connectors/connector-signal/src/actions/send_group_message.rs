@@ -6,6 +6,7 @@ use crate::error::SignalError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: false,
         name: "send_group_message".to_owned(),
         description: "Send a message to a Signal group.".to_owned(),
         input_schema: Some(serde_json::json!({

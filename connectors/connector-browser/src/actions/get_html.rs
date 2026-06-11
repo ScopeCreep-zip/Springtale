@@ -12,6 +12,7 @@ use crate::error::BrowserError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: true,
         name: "get_html".to_owned(),
         description:
             "Return the full rendered HTML of the current page (post-JavaScript execution). \

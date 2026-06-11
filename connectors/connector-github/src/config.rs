@@ -1,4 +1,4 @@
-use secrecy::{ExposeSecret, SecretBox};
+use secrecy::SecretBox;
 use serde::Deserialize;
 use springtale_connector::config::{deserialize_secret, deserialize_secret_option};
 
@@ -42,8 +42,7 @@ impl GithubConfig {
     /// Clone the token into a new SecretBox for the client to hold.
     /// The token stays wrapped — only exposed at the HTTP call site.
     pub fn token_clone(&self) -> SecretBox<String> {
-        // SECURITY: expose needed to clone into new SecretBox for client
-        SecretBox::new(Box::new(self.token.expose_secret().clone()))
+        springtale_crypto::secret_use::clone_into_box(&self.token)
     }
 }
 
@@ -75,6 +74,8 @@ mod tests {
         };
 
         let cloned = config.token_clone();
-        assert_eq!(cloned.expose_secret(), "ghp_test");
+        assert!(springtale_crypto::secret_use::secret_eq_str(
+            &cloned, "ghp_test"
+        ));
     }
 }

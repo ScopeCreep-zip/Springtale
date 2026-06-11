@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
 use anyhow::Context;
-use secrecy::ExposeSecret;
 use tokio::sync::{RwLock, mpsc, watch};
 
 use connector_telegram::client::TelegramApi;
 use springtale_connector::registry::store::ConnectorRegistry;
+use springtale_core::rule::engine::TriggerEvent;
 
 /// Start the Telegram gateway in polling OR webhook mode.
 ///
@@ -24,6 +24,7 @@ pub async fn wire_telegram(
     config: &connector_telegram::TelegramConfig,
     registry: &Arc<RwLock<ConnectorRegistry>>,
     bot_msg_tx: mpsc::Sender<springtale_bot::IncomingMessage>,
+    trigger_tx: mpsc::Sender<TriggerEvent>,
 ) -> anyhow::Result<Option<watch::Sender<bool>>> {
     // Verify connector was registered by factory
     {
@@ -35,10 +36,51 @@ pub async fn wire_telegram(
 
     match config.update_mode.as_str() {
         "webhook" => start_webhook_mode(config).await.map(|_| None),
-        "polling" => start_polling_mode(config, bot_msg_tx).await.map(Some),
+        "polling" => start_polling_mode(config, bot_msg_tx, trigger_tx)
+            .await
+            .map(Some),
         other => anyhow::bail!(
             "unknown Telegram update_mode '{other}' — expected 'polling' or 'webhook'"
         ),
+    }
+}
+
+/// Emit ConnectorEvent(s) for a raw Telegram update to the rule engine.
+///
+/// A plain message → `message`; a `/command` → additionally
+/// `command_received`; an inline-button press → `callback_query_received`.
+/// The raw `update` is the payload — the trigger event loop normalizes it
+/// to the connector's declared flat schema before rule matching. Spawns
+/// detached sends so the polling dispatcher never blocks.
+fn emit_telegram_events(trigger_tx: &mpsc::Sender<TriggerEvent>, update: &serde_json::Value) {
+    let mut events: Vec<&'static str> = Vec::new();
+    if let Some(message) = update.get("message") {
+        events.push("message");
+        if message
+            .get("text")
+            .and_then(|t| t.as_str())
+            .is_some_and(|t| t.starts_with('/'))
+        {
+            events.push("command_received");
+        }
+    } else if update.get("callback_query").is_some() {
+        events.push("callback_query_received");
+    }
+
+    for event in events {
+        let tx = trigger_tx.clone();
+        let payload = update.clone();
+        tokio::spawn(async move {
+            let evt = TriggerEvent {
+                trigger_type: "ConnectorEvent".to_owned(),
+                connector: Some("connector-telegram".to_owned()),
+                event: Some(event.to_owned()),
+                payload,
+            };
+            if let Err(e) = tx.send(evt).await {
+                tracing::warn!(error = %e, "failed to emit Telegram ConnectorEvent");
+            }
+        });
     }
 }
 
@@ -47,12 +89,11 @@ pub async fn wire_telegram(
 /// The webhook URL must be HTTPS-reachable from Telegram's servers.
 /// The secret token will be included in the `X-Telegram-Bot-Api-Secret-Token`
 /// header on every webhook request for verification (see `verify_webhook`).
-async fn start_webhook_mode(
-    config: &connector_telegram::TelegramConfig,
-) -> anyhow::Result<()> {
-    let webhook_url = config.webhook_url.as_ref().ok_or_else(|| {
-        anyhow::anyhow!("webhook mode requires [telegram] webhook_url in config")
-    })?;
+async fn start_webhook_mode(config: &connector_telegram::TelegramConfig) -> anyhow::Result<()> {
+    let webhook_url = config
+        .webhook_url
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("webhook mode requires [telegram] webhook_url in config"))?;
 
     let secret = config.webhook_secret.as_ref().ok_or_else(|| {
         anyhow::anyhow!(
@@ -61,16 +102,18 @@ async fn start_webhook_mode(
         )
     })?;
 
-    // SECURITY: expose needed to create client with same token
-    let token = secrecy::SecretBox::new(Box::new(config.bot_token.expose_secret().clone()));
+    let token = springtale_crypto::secret_use::clone_into_box(&config.bot_token);
     let client = connector_telegram::TelegramClient::new(&config.api_base, token)
         .context("failed to create Telegram client for webhook setup")?;
 
-    // SECURITY: expose needed to pass secret to Telegram setWebhook call
-    let secret_str = secret.expose_secret().clone();
-
+    // header_value clones the secret out of the SecretBox so the
+    // resulting String lives only for this stack frame; the original
+    // wrapped secret stays zeroize-on-drop. `with_str` can't be used
+    // here because set_webhook is async and the returned Future would
+    // outlive the closure's borrow of the secret bytes.
+    let sec = springtale_crypto::secret_use::header_value(secret);
     client
-        .set_webhook(webhook_url, Some(&secret_str), &[])
+        .set_webhook(webhook_url, Some(&sec), &[])
         .await
         .context("failed to register Telegram webhook")?;
 
@@ -85,9 +128,9 @@ async fn start_webhook_mode(
 async fn start_polling_mode(
     config: &connector_telegram::TelegramConfig,
     bot_msg_tx: mpsc::Sender<springtale_bot::IncomingMessage>,
+    trigger_tx: mpsc::Sender<TriggerEvent>,
 ) -> anyhow::Result<watch::Sender<bool>> {
-    // SECURITY: expose needed to create polling client with same token
-    let poll_token = secrecy::SecretBox::new(Box::new(config.bot_token.expose_secret().clone()));
+    let poll_token = springtale_crypto::secret_use::clone_into_box(&config.bot_token);
     let poll_client = connector_telegram::TelegramClient::new(&config.api_base, poll_token)
         .context("failed to create Telegram polling client")?;
 
@@ -101,9 +144,18 @@ async fn start_polling_mode(
     // because the dispatcher runs inside the polling task and already
     // holds a reference to the same client.
     let ack_client = poll_client.clone();
-    let poll_dispatcher: Arc<dyn Fn(serde_json::Value) + Send + Sync> =
-        Arc::new(move |update: serde_json::Value| {
+    let evt_tx = trigger_tx.clone();
+    let poll_dispatcher: Arc<dyn Fn(serde_json::Value) + Send + Sync> = Arc::new(
+        move |update: serde_json::Value| {
             let ack_client = ack_client.clone();
+
+            // Rule path: emit ConnectorEvent(s) to the engine so
+            // ConnectorEvent recipes (telegram-echo, telegram-cmd-broadcast,
+            // …) actually fire on polling-delivered messages — not just the
+            // bot chat path below. The raw `update` is flattened to the
+            // declared schema centrally, in the trigger event loop.
+            emit_telegram_events(&evt_tx, &update);
+
             if let Some(message) = update.get("message") {
                 let tx = bot_msg_tx.clone();
                 let msg = message.clone();
@@ -196,7 +248,8 @@ async fn start_polling_mode(
                     }
                 });
             }
-        });
+        },
+    );
 
     let (shutdown_tx, poll_shutdown_rx) = watch::channel(false);
 

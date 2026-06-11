@@ -14,6 +14,7 @@ use crate::actions;
 use crate::client::ChromeClient;
 use crate::config::BrowserConfig;
 use crate::triggers;
+use springtale_connector::manifest::SignatureAlgorithm;
 
 /// Browser automation connector — headless Chromium with domain allow-list.
 ///
@@ -99,6 +100,7 @@ impl BrowserConnector {
             ],
             roles: vec![],
             wasm_hash: None,
+            signature_alg: SignatureAlgorithm::default(),
             signature: None,
         };
 

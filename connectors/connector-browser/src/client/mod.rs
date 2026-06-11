@@ -117,7 +117,13 @@ pub struct ChromeClient {
 
 impl ChromeClient {
     pub fn new(allowed_domains: Vec<String>, jitter_secs: u64) -> Self {
-        Self::with_options(allowed_domains, jitter_secs, None, true, StealthProfile::Off)
+        Self::with_options(
+            allowed_domains,
+            jitter_secs,
+            None,
+            true,
+            StealthProfile::Off,
+        )
     }
 
     /// Full-options constructor used by the factory once it reads
@@ -180,7 +186,9 @@ impl ChromeClient {
             // with `--no-default-browser-check` to keep a fresh
             // profile silent.
             builder = builder
-                .arg("--disable-features=AutofillServerCommunication,InterestFeedContentSuggestions")
+                .arg(
+                    "--disable-features=AutofillServerCommunication,InterestFeedContentSuggestions",
+                )
                 .arg("--no-default-browser-check")
                 .arg("--metrics-recording-only=false");
         }
@@ -257,9 +265,7 @@ impl BrowserApi for ChromeClient {
                     run_immediately: Some(true),
                 })
                 .await
-                .map_err(|e| {
-                    BrowserError::NavigationFailed(format!("stealth inject: {e}"))
-                })?;
+                .map_err(|e| BrowserError::NavigationFailed(format!("stealth inject: {e}")))?;
         }
         page.wait_for_navigation()
             .await
@@ -388,19 +394,13 @@ impl BrowserApi for ChromeClient {
         let result = page
             .evaluate(js.as_str())
             .await
-            .map_err(|e| {
-                BrowserError::NavigationFailed(format!("query_all evaluate: {e}"))
-            })?;
+            .map_err(|e| BrowserError::NavigationFailed(format!("query_all evaluate: {e}")))?;
         let value = result
             .value()
             .cloned()
             .unwrap_or(serde_json::Value::Array(Vec::new()));
-        let snapshots: Vec<ElementSnapshot> =
-            serde_json::from_value(value).map_err(|e| {
-                BrowserError::NavigationFailed(format!(
-                    "query_all deserialize: {e}"
-                ))
-            })?;
+        let snapshots: Vec<ElementSnapshot> = serde_json::from_value(value)
+            .map_err(|e| BrowserError::NavigationFailed(format!("query_all deserialize: {e}")))?;
         tracing::info!(
             selector = %selector,
             matches = snapshots.len(),
@@ -447,12 +447,11 @@ impl Drop for ChromeClient {
         // the JoinHandle without blocking. The Browser + TempDir
         // drop in declared field order, closing the CDP socket and
         // wiping the profile directory.
-        if let Some(state) = self.state.get() {
-            if let Ok(mut guard) = state.handler.try_lock() {
-                if let Some(task) = guard.take() {
-                    task.abort();
-                }
-            }
+        if let Some(state) = self.state.get()
+            && let Ok(mut guard) = state.handler.try_lock()
+            && let Some(task) = guard.take()
+        {
+            task.abort();
         }
     }
 }
@@ -493,10 +492,7 @@ pub mod test_helpers {
             Ok("<html><body>mock</body></html>".to_owned())
         }
 
-        async fn query_all(
-            &self,
-            _selector: &str,
-        ) -> Result<Vec<ElementSnapshot>, BrowserError> {
+        async fn query_all(&self, _selector: &str) -> Result<Vec<ElementSnapshot>, BrowserError> {
             Ok(vec![ElementSnapshot {
                 text: "mock text".into(),
                 html: "<div>mock</div>".into(),

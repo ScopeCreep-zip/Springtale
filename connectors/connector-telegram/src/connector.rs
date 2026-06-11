@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use async_trait::async_trait;
-use secrecy::{ExposeSecret, SecretBox};
+use secrecy::SecretBox;
 use tokio::sync::Mutex;
 
 use springtale_connector::connector::trait_::{ActionResult, Connector, EventHandler};
@@ -15,6 +15,7 @@ use crate::actions;
 use crate::client::TelegramClient;
 use crate::config::TelegramConfig;
 use crate::triggers;
+use springtale_connector::manifest::SignatureAlgorithm;
 
 /// Telegram connector.
 /// Provides Telegram Bot API integration with polling or webhook triggers.
@@ -36,14 +37,13 @@ impl TelegramConnector {
         let action_decls = actions::action_declarations();
         let manifest = build_manifest(&trigger_decls, &action_decls);
 
-        // SECURITY: expose needed to clone bot_token into client
-        let token = SecretBox::new(Box::new(config.bot_token.expose_secret().clone()));
+        let token = springtale_crypto::secret_use::clone_into_box(&config.bot_token);
         let client = TelegramClient::new(&config.api_base, token)?;
 
-        // SECURITY: expose needed to clone webhook_secret for later verification
-        let webhook_secret = config.webhook_secret.as_ref().map(|s| {
-            SecretBox::new(Box::new(s.expose_secret().clone()))
-        });
+        let webhook_secret = config
+            .webhook_secret
+            .as_ref()
+            .map(springtale_crypto::secret_use::clone_into_box);
 
         Ok(Self {
             client,
@@ -132,12 +132,11 @@ impl Connector for TelegramConnector {
             "onboard_url" => actions::onboard_url::execute(&self.client, &input)
                 .await
                 .map_err(ConnectorError::from),
-            "discover_destinations" => actions::discover_destinations::execute(
-                &self.client,
-                &input,
-            )
-            .await
-            .map_err(ConnectorError::from),
+            "discover_destinations" => {
+                actions::discover_destinations::execute(&self.client, &input)
+                    .await
+                    .map_err(ConnectorError::from)
+            }
             unknown => Err(ConnectorError::ExecutionFailed(format!(
                 "unknown action: {unknown}"
             ))),
@@ -184,10 +183,12 @@ impl Connector for TelegramConnector {
         &self.manifest
     }
 
-    fn mention_extractor(
-        &self,
-    ) -> Option<&dyn springtale_connector::mention::MentionExtractor> {
+    fn mention_extractor(&self) -> Option<&dyn springtale_connector::mention::MentionExtractor> {
         Some(&crate::mention::TELEGRAM_MENTION_EXTRACTOR)
+    }
+
+    fn normalize_event(&self, trigger: &str, raw: serde_json::Value) -> serde_json::Value {
+        crate::triggers::normalize::normalize(trigger, &raw)
     }
 
     /// Verify an incoming webhook request using the `X-Telegram-Bot-Api-Secret-Token` header.
@@ -240,6 +241,7 @@ fn build_manifest(triggers: &[TriggerDecl], actions: &[ActionDecl]) -> Connector
         }],
         roles: vec![],
         wasm_hash: None,
+        signature_alg: SignatureAlgorithm::default(),
         signature: None,
     }
 }

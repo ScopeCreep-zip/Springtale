@@ -6,6 +6,7 @@ use crate::error::IrcError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: false,
         name: "join_channel".to_owned(),
         description: "Join an IRC channel.".to_owned(),
         input_schema: Some(serde_json::json!({

@@ -91,7 +91,9 @@ pub fn parse(input: &str) -> Option<ParsedWorkspaceKey<'_>> {
 /// [`parse`]. Empty segments are skipped (don't put `/` in the
 /// middle of an id).
 pub fn build(scheme: &str, segments: &[&str]) -> String {
-    let mut s = String::with_capacity(scheme.len() + 3 + segments.iter().map(|seg| seg.len() + 1).sum::<usize>());
+    let mut s = String::with_capacity(
+        scheme.len() + 3 + segments.iter().map(|seg| seg.len() + 1).sum::<usize>(),
+    );
     s.push_str(scheme);
     s.push_str("://");
     let mut first = true;
@@ -111,7 +113,9 @@ pub fn build(scheme: &str, segments: &[&str]) -> String {
 /// returned unchanged (defensive — keeps community connector
 /// naming flexible).
 pub fn scheme_for_connector(connector_name: &str) -> &str {
-    connector_name.strip_prefix("connector-").unwrap_or(connector_name)
+    connector_name
+        .strip_prefix("connector-")
+        .unwrap_or(connector_name)
 }
 
 /// At-boundary translator for connector send-actions. Given a
@@ -247,21 +251,13 @@ mod tests {
 
     #[test]
     fn extract_id_returns_last_segment_for_matching_uri() {
-        let id = extract_id_for_scheme(
-            "telegram://chat/12345",
-            "connector-telegram",
-        )
-        .unwrap();
+        let id = extract_id_for_scheme("telegram://chat/12345", "connector-telegram").unwrap();
         assert_eq!(id, "12345");
     }
 
     #[test]
     fn extract_id_returns_last_segment_for_nested_uri() {
-        let id = extract_id_for_scheme(
-            "discord://guild/G/channel/C",
-            "connector-discord",
-        )
-        .unwrap();
+        let id = extract_id_for_scheme("discord://guild/G/channel/C", "connector-discord").unwrap();
         assert_eq!(id, "C");
     }
 
@@ -279,11 +275,7 @@ mod tests {
 
     #[test]
     fn extract_id_rejects_wrong_scheme() {
-        let err = extract_id_for_scheme(
-            "discord://channel/C1",
-            "connector-telegram",
-        )
-        .unwrap_err();
+        let err = extract_id_for_scheme("discord://channel/C1", "connector-telegram").unwrap_err();
         assert!(matches!(err, ParseError::WrongScheme { .. }));
     }
 

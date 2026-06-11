@@ -15,6 +15,7 @@ use crate::error::IrcError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: true,
         name: "discover_destinations".to_owned(),
         description:
             "Enumerate channels this bot has joined + nicks it has DM'd this session (no network-wide LIST)."
@@ -54,10 +55,7 @@ pub async fn execute(
             "channel" => "channel",
             _ => "user",
         };
-        let workspace_key = workspace_key::build(
-            "irc",
-            &["network", &t.network, segment, &t.id],
-        );
+        let workspace_key = workspace_key::build("irc", &["network", &t.network, segment, &t.id]);
         let mut metadata = serde_json::Map::new();
         metadata.insert(
             "network".to_owned(),
@@ -127,10 +125,7 @@ mod tests {
             .find(|r| r["kind"] == "user")
             .unwrap();
         assert!(
-            user["workspace_key"]
-                .as_str()
-                .unwrap()
-                .contains("/user/"),
+            user["workspace_key"].as_str().unwrap().contains("/user/"),
             "got: {}",
             user["workspace_key"]
         );

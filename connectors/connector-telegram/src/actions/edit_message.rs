@@ -6,6 +6,7 @@ use crate::error::TelegramError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: false,
         name: "edit_message".to_owned(),
         description: "Edit the text of a previously sent message.".to_owned(),
         input_schema: Some(serde_json::json!({

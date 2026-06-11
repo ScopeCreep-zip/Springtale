@@ -45,7 +45,7 @@ pub struct BrowserConfig {
 ///   1. `navigator.webdriver = undefined` (NOT `false` — detectors
 ///      test for the patched-value tell).
 ///   2. `--disable-blink-features=AutomationControlled` launch flag
-///      + `Network.setUserAgentOverride` to strip `HeadlessChrome`
+///      \+ `Network.setUserAgentOverride` to strip `HeadlessChrome`
 ///      from the UA string.
 ///   3. `window.chrome` completion with `loadTimes()` / `csi()`.
 ///

@@ -14,6 +14,7 @@ use crate::error::SignalError;
 
 pub fn declaration() -> ActionDecl {
     ActionDecl {
+        read_only: true,
         name: "discover_destinations".to_owned(),
         description: "Enumerate Signal groups (listGroups) and contacts (listContacts) via the local signal-cli daemon."
             .to_owned(),
@@ -90,10 +91,7 @@ mod tests {
         let result = execute(&mock, &serde_json::json!({})).await.unwrap();
         let arr = result.output["workspaces"].as_array().unwrap();
         assert_eq!(arr.len(), 4);
-        let kinds: Vec<&str> = arr
-            .iter()
-            .map(|r| r["kind"].as_str().unwrap())
-            .collect();
+        let kinds: Vec<&str> = arr.iter().map(|r| r["kind"].as_str().unwrap()).collect();
         assert!(kinds.contains(&"group"));
         assert!(kinds.contains(&"user"));
     }

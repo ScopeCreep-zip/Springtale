@@ -16,6 +16,8 @@ async-trait = { workspace = true }
 tokio = { workspace = true }
 reqwest = { workspace = true }
 springtale-connector = { workspace = true }
+springtale-transport = { workspace = true }
+springtale-crypto = { workspace = true }
 inventory = { workspace = true }
 
 [dev-dependencies]

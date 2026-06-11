@@ -15,6 +15,7 @@ use crate::config::FilesystemConfig;
 use crate::error::FilesystemError;
 use crate::triggers;
 use crate::watcher::{FsConnectorWatcher, TriggerCallback};
+use springtale_connector::manifest::SignatureAlgorithm;
 
 /// The filesystem connector.
 ///
@@ -207,6 +208,7 @@ fn build_manifest(
         ],
         roles: vec![],
         wasm_hash: None,
+        signature_alg: SignatureAlgorithm::default(),
         signature: None,
     }
 }

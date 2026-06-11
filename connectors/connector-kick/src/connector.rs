@@ -16,6 +16,7 @@ use crate::client::KickClient;
 use crate::config::KickConfig;
 use crate::triggers;
 use crate::webhook;
+use springtale_connector::manifest::SignatureAlgorithm;
 
 /// Kick connector.
 ///
@@ -252,6 +253,7 @@ fn build_manifest(triggers: &[TriggerDecl], actions: &[ActionDecl]) -> Connector
         ],
         roles: vec![],
         wasm_hash: None,
+        signature_alg: SignatureAlgorithm::default(),
         signature: None,
     }
 }

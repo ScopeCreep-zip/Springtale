@@ -93,21 +93,26 @@ fn infer_capabilities_for_action(
 mod tests {
     use super::*;
     use crate::capability::grant::{CapabilityChecker, CapabilityPolicy};
+    use springtale_crypto::signature::SignatureAlgorithm;
 
     fn test_manifest() -> ConnectorManifest {
+        // Non-ShellExec manifest so `CapabilityPolicy::AllowAll` can
+        // approve everything for the fallback-semantics tests below.
+        // ShellExec is policy-exempt (Phase-7 audit Finding A) — the
+        // bridge's `ApprovalGate` is the load-bearing surface for that
+        // capability, separately tested in
+        // `crates/springtale-bot/tests/shellexec_approval.rs`.
         ConnectorManifest {
             name: "connector-test".into(),
             version: "1.0.0".into(),
             author: "test".into(),
             description: "test".into(),
-            capabilities: vec![
-                Capability::NetworkOutbound {
-                    host: "api.example.com".into(),
-                },
-                Capability::ShellExec,
-            ],
+            capabilities: vec![Capability::NetworkOutbound {
+                host: "api.example.com".into(),
+            }],
             triggers: vec![],
             actions: vec![ActionDecl {
+                read_only: false,
                 name: "call_api".into(),
                 description: "call an api".into(),
                 input_schema: None,
@@ -116,8 +121,18 @@ mod tests {
             data_disclosure: vec![],
             roles: vec![],
             wasm_hash: None,
+            signature_alg: SignatureAlgorithm::default(),
             signature: None,
         }
+    }
+
+    /// Manifest that includes ShellExec — used by the
+    /// `test_fallback_fails_if_any_capability_denied` test which
+    /// asserts the policy-exempt routing into pending_approval.
+    fn test_manifest_with_shell_exec() -> ConnectorManifest {
+        let mut m = test_manifest();
+        m.capabilities.push(Capability::ShellExec);
+        m
     }
 
     #[test]
@@ -145,17 +160,19 @@ mod tests {
     #[test]
     fn test_fallback_fails_if_any_capability_denied() {
         let mut checker = CapabilityChecker::new();
-        let manifest = test_manifest();
-        // ShellExec will be pending in interactive mode
+        let manifest = test_manifest_with_shell_exec();
+        // ShellExec is policy-exempt — even under `AllowAll` it lands
+        // in pending_approval (Phase-7 audit Finding A). The fallback
+        // path consults every declared cap and correctly refuses
+        // because ShellExec isn't approved.
         checker
             .register(
                 &manifest.name,
                 &manifest.capabilities,
-                &CapabilityPolicy::Interactive,
+                &CapabilityPolicy::AllowAll,
             )
             .unwrap();
 
-        // Fallback checks all → ShellExec is pending → fails
         let result = check_action_capabilities(
             &checker,
             &manifest,

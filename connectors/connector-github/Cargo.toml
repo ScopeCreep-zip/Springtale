@@ -18,7 +18,10 @@ reqwest = { workspace = true }
 hmac = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
+base64 = { workspace = true }
 springtale-connector = { workspace = true }
+springtale-transport = { workspace = true }
+springtale-crypto = { workspace = true }
 inventory = { workspace = true }
 
 [dev-dependencies]
