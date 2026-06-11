@@ -11,7 +11,7 @@ use springtale_cooperation::cadence::IntentPattern as CoreIntent;
 /// strings — the Rust newtype layer (`TaskDescriptor`, `PlanId`,
 /// `StabilizeReason`, `DissolveReason`) is collapsed to `Optional[str]`
 /// in the Python surface so callers don't have to model every newtype.
-#[pyclass(frozen)]
+#[pyclass(frozen, from_py_object)]
 #[derive(Clone, Debug)]
 pub struct Intent {
     pub(crate) inner: CoreIntent,

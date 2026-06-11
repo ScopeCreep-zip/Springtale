@@ -7,7 +7,7 @@ use pyo3::prelude::*;
 /// Momentum tier — capability gate per `COOPERATION.md §7`. Python sees
 /// this as an enum with four members; Rust round-trips through the
 /// `MomentumTier::parse` / `Display` pair the rest of the system uses.
-#[pyclass(eq, eq_int, frozen)]
+#[pyclass(eq, eq_int, frozen, from_py_object)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MomentumTier {
     Cold,

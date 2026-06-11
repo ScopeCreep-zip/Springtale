@@ -41,7 +41,7 @@ use springtale_cooperation::types::FormationId as CoreFormationId;
 /// Momentum tier — capability gate per `COOPERATION.md §7`. Python sees
 /// this as an enum with four members; Rust round-trips through the
 /// `MomentumTier::parse` / `Display` pair the rest of the system uses.
-#[pyclass(eq, eq_int, frozen)]
+#[pyclass(eq, eq_int, frozen, from_py_object)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum MomentumTier {
     Cold,
@@ -76,7 +76,7 @@ impl From<MomentumTier> for CoreTier {
 /// strings — the Rust newtype layer (`TaskDescriptor`, `PlanId`,
 /// `StabilizeReason`, `DissolveReason`) is collapsed to `Optional[str]`
 /// in the Python surface so callers don't have to model every newtype.
-#[pyclass(frozen)]
+#[pyclass(frozen, from_py_object)]
 #[derive(Clone, Debug)]
 pub struct Intent {
     inner: CoreIntent,
@@ -159,7 +159,7 @@ impl Intent {
 
 /// Formation identity. Wraps the 128-bit UUID the rest of the system
 /// uses; Python sees it as a string.
-#[pyclass(frozen)]
+#[pyclass(frozen, from_py_object)]
 #[derive(Clone, Debug)]
 pub struct FormationId {
     inner: CoreFormationId,
@@ -213,7 +213,7 @@ impl Default for FormationId {
 /// Lightweight Formation handle — read-only view a Python script gets
 /// over a known formation. Mirrors the `FormationView` gossip record
 /// without the live runtime hookup.
-#[pyclass(frozen)]
+#[pyclass(frozen, from_py_object)]
 #[derive(Clone, Debug)]
 pub struct Formation {
     id: FormationId,
