@@ -1,0 +1,178 @@
+{
+  "$schema": "http://cyclonedx.org/schema/bom-1.6.schema.json",
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.6",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-05-25T00:00:00Z",
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "author": "Springtale Maintainers",
+          "name": "springtale-cbom-generator",
+          "description": "Hand-curated CBOM derived from docs/security/CRYPTO-INVENTORY.md. Updated as part of the quarterly inventory review."
+        }
+      ]
+    },
+    "component": {
+      "type": "application",
+      "bom-ref": "pkg:springtale@0.1.0",
+      "name": "Springtale",
+      "version": "0.1.0",
+      "description": "Local-first privacy-preserving automation platform for high-risk users."
+    },
+    "licenses": [{ "license": { "id": "MIT" } }]
+  },
+  "components": [
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "crypto-asset:vault-aead-xchacha20poly1305",
+      "name": "XChaCha20-Poly1305",
+      "description": "AEAD used by the encrypted vault and at-rest record encryption. PQ-safe (symmetric, 256-bit key).",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "ae",
+          "parameterSetIdentifier": "256",
+          "executionEnvironment": "software-plain-ram",
+          "implementationPlatform": "x86_64,aarch64",
+          "certificationLevel": ["none"],
+          "mode": "cipher",
+          "padding": "raw",
+          "cryptoFunctions": ["encrypt", "decrypt"],
+          "nistQuantumSecurityLevel": 5
+        },
+        "oid": "1.3.6.1.4.1.1722.12.3.4.1"
+      }
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "crypto-asset:transport-aead-chacha20poly1305",
+      "name": "ChaCha20-Poly1305",
+      "description": "AEAD used by the transport layer where TLS is not in use (Phase 3 P2P will use this via Veilid).",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "ae",
+          "parameterSetIdentifier": "256",
+          "executionEnvironment": "software-plain-ram",
+          "implementationPlatform": "x86_64,aarch64",
+          "certificationLevel": ["none"],
+          "mode": "cipher",
+          "padding": "raw",
+          "cryptoFunctions": ["encrypt", "decrypt"],
+          "nistQuantumSecurityLevel": 5
+        }
+      }
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "crypto-asset:kdf-argon2id",
+      "name": "Argon2id",
+      "description": "Passphrase-to-key derivation for the vault. Memory-hard. m=64 MiB, t=3, p=4.",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "kdf",
+          "parameterSetIdentifier": "Argon2id v=19 m=65536 t=3 p=4",
+          "executionEnvironment": "software-plain-ram",
+          "implementationPlatform": "x86_64,aarch64",
+          "certificationLevel": ["none"],
+          "cryptoFunctions": ["keyderive"],
+          "nistQuantumSecurityLevel": 5
+        }
+      }
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "crypto-asset:hash-sha256",
+      "name": "SHA-256",
+      "description": "Integrity hashes (manifest body hash, WASM blob hash, capability token canonicalisation).",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "hash",
+          "parameterSetIdentifier": "256",
+          "executionEnvironment": "software-plain-ram",
+          "implementationPlatform": "x86_64,aarch64",
+          "certificationLevel": ["fips140-3-l1"],
+          "cryptoFunctions": ["digest"],
+          "nistQuantumSecurityLevel": 2
+        },
+        "oid": "2.16.840.1.101.3.4.2.1"
+      }
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "crypto-asset:mac-hmac-sha256",
+      "name": "HMAC-SHA256",
+      "description": "API bearer tokens (management API), webhook signature verification.",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "mac",
+          "parameterSetIdentifier": "256",
+          "executionEnvironment": "software-plain-ram",
+          "implementationPlatform": "x86_64,aarch64",
+          "certificationLevel": ["fips140-3-l1"],
+          "cryptoFunctions": ["sign", "verify"],
+          "nistQuantumSecurityLevel": 2
+        }
+      }
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "crypto-asset:sig-ed25519",
+      "name": "Ed25519",
+      "description": "Connector manifest signing (default `signature_alg`). DEPRECATED by NIST IR 8547 after 2030, DISALLOWED after 2035. Hybrid Ed25519+ML-DSA-65 successor is the migration target.",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "signature",
+          "parameterSetIdentifier": "Ed25519",
+          "curve": "ed25519",
+          "executionEnvironment": "software-plain-ram",
+          "implementationPlatform": "x86_64,aarch64",
+          "certificationLevel": ["none"],
+          "cryptoFunctions": ["sign", "verify", "keygen"],
+          "nistQuantumSecurityLevel": 0
+        },
+        "oid": "1.3.101.112"
+      }
+    },
+    {
+      "type": "cryptographic-asset",
+      "bom-ref": "crypto-asset:kex-x25519",
+      "name": "X25519",
+      "description": "TLS 1.3 key exchange (management API, connector outbound HTTP). DEPRECATED by NIST IR 8547 after 2030, DISALLOWED after 2035. Hybrid X25519MLKEM768 is the migration target — rustls-post-quantum 0.2 is already a workspace dependency; enable per-builder rollout planned Q4 2026.",
+      "cryptoProperties": {
+        "assetType": "algorithm",
+        "algorithmProperties": {
+          "primitive": "key-agree",
+          "parameterSetIdentifier": "X25519",
+          "curve": "curve25519",
+          "executionEnvironment": "software-plain-ram",
+          "implementationPlatform": "x86_64,aarch64",
+          "certificationLevel": ["none"],
+          "cryptoFunctions": ["keyderive", "keygen"],
+          "nistQuantumSecurityLevel": 0
+        }
+      }
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "pkg:springtale@0.1.0",
+      "dependsOn": [
+        "crypto-asset:vault-aead-xchacha20poly1305",
+        "crypto-asset:transport-aead-chacha20poly1305",
+        "crypto-asset:kdf-argon2id",
+        "crypto-asset:hash-sha256",
+        "crypto-asset:mac-hmac-sha256",
+        "crypto-asset:sig-ed25519",
+        "crypto-asset:kex-x25519"
+      ]
+    }
+  ]
+}

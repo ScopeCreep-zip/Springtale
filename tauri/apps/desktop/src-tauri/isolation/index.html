@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta http-equiv="X-Content-Type-Options" content="nosniff" />
+    <!--
+      NO Content-Security-Policy <meta> here, deliberately. Tauri is the CSP
+      authority for the isolation app exactly as it is for the main app: it
+      inlines `isolation.js`, computes its sha256 hash, and injects the
+      managed policy (`security.csp` for builds, `security.devCsp` for
+      `tauri dev`) WITH that hash into this file — so only the real isolation
+      script runs, under `default-src 'none'` + `script-src 'self' 'sha256-…'`.
+      A static <meta> CSP can't receive that hash (Tauri injects into the
+      configured policy, not <meta> tags), so it would refuse the inlined
+      script in dev and fight Tauri's injection. `devCsp` mirrors `csp`, so
+      dev enforces the same policy as production. See https://v2.tauri.app/security/csp/.
+    -->
+    <title>Springtale Isolation</title>
+  </head>
+  <body>
+    <!--
+      Tauri 2.x Isolation Pattern entry point.
+
+      Every IPC message dispatched by the application frontend
+      (`@tauri-apps/api`) is routed through this iframe BEFORE it
+      reaches the Tauri runtime. We get a final, application-level
+      chance to inspect and reject malformed / out-of-policy payloads
+      that somehow slipped past the SolidJS provider layer (e.g. via
+      a future XSS regression, third-party SDK compromise, or
+      developer-mode injection).
+
+      The hook MUST be assigned to `window.__TAURI_ISOLATION_HOOK__`
+      and return either the (possibly transformed) message object or
+      throw to reject the call. Throwing surfaces a `js error: …`
+      rejection at the caller site.
+
+      Threat model — what we reject here:
+        - Wildcard scopes ("path": "*", "url": "*", "host": "*").
+        - Unsafe `fs` / `process` / `shell` commands invoked from a
+          non-explicit path (i.e. shell exec without prior approval).
+        - Oversized payloads (>1 MiB) — sentinel against memory DoS
+          via runaway argument construction.
+
+      What we DO NOT do here:
+        - Authentication. The HMAC-bearer + cosign signature checks
+          happen in Rust. This layer is defense-in-depth, not
+          authorization.
+        - Logging of secrets. We don't inspect / log token-shaped
+          arguments.
+
+      Reference: https://v2.tauri.app/concept/inter-process-communication/isolation/
+    -->
+    <!-- Plain script (not type=module): `isolation.js` uses no import/export,
+         only a `window.__TAURI_ISOLATION_HOOK__ =` global assignment, and
+         Tauri's isolation inliner does not handle ES modules. -->
+    <script src="./isolation.js"></script>
+  </body>
+</html>

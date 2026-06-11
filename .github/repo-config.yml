@@ -1,0 +1,144 @@
+# GitHub repo / branch / org settings — as-code reference.
+#
+# This file is DOCUMENTATION ONLY. GitHub does not natively read it; the
+# actual settings are applied via the GitHub web UI or API by a maintainer
+# with admin access on the repo + org. We keep it under version control so
+# the intended posture is reviewable in PRs, surfaceable in code search,
+# and re-applicable after any UI drift.
+#
+# Tools that CAN apply this declaratively (future option):
+#   - https://github.com/marketplace/actions/probot-settings (the
+#     `repository-settings` GitHub App reads `.github/settings.yml`)
+#   - https://github.com/marketplace/actions/repo-config-action
+#   - Terraform `github_repository` / `github_branch_protection` resources
+#
+# The "Maintainer setup checklist" mirror in `docs/security/CI-TRUST.md`
+# is the operator runbook; this file is the spec it derives from.
+#
+# Related: NIST SP 800-204D §5.1 (build-environment hardening), CISA
+# Secure-by-Design pledge goal 1 (phishing-resistant MFA), CISA
+# tj-actions Mar-2025 advisory (SHA-pinned actions).
+
+repository:
+  name: Springtale
+  description: "Local-first, privacy-preserving bot automation platform."
+  homepage: "https://github.com/ScopeCreep-zip/Springtale"
+  topics:
+    - automation
+    - privacy
+    - rust
+    - tauri
+    - local-first
+  private: false
+  has_issues: true
+  has_projects: false
+  has_wiki: false
+  has_discussions: true
+  has_downloads: true
+  default_branch: main
+  allow_squash_merge: true
+  allow_merge_commit: false
+  allow_rebase_merge: false
+  delete_branch_on_merge: true
+  allow_update_branch: true
+  squash_merge_commit_title: PR_TITLE
+  squash_merge_commit_message: COMMIT_MESSAGES
+  # Vulnerability + secret scanning posture.
+  security_and_analysis:
+    secret_scanning:
+      status: enabled
+    secret_scanning_push_protection:
+      status: enabled
+    dependabot_security_updates:
+      status: enabled
+
+# Branch protection on `main` — required-status-check gating mirrors the
+# job set in Phase 4 of `~/.claude/plans/mighty-honking-pinwheel.md`.
+branches:
+  - name: main
+    protection:
+      required_status_checks:
+        strict: true
+        contexts:
+          # ci.yml
+          - "Format"
+          - "Clippy"
+          - "Test"
+          - "Tauri build"
+          - "Frontend (typecheck + build)"
+          - "Frontend lint (Biome)"
+          - "Hardening config check"
+          # sca.yml
+          - "cargo audit"
+          - "cargo deny"
+          - "cargo vet"
+          - "cargo geiger"
+          - "pnpm audit"
+          - "pip-audit"
+          - "OSV scanner"
+          - "KEV check"
+          - "npm lockfile poisoning scan"
+          # sast.yml
+          - "CodeQL"
+          - "Semgrep"
+          - "actionlint"
+          - "zizmor"
+          - "hadolint"
+          # secrets.yml
+          - "gitleaks"
+          - "trufflehog"
+          # scorecard.yml — weekly, not on PR
+          # codeowners-lint.yml
+          - "codeowners-validator"
+      required_pull_request_reviews:
+        required_approving_review_count: 1
+        require_code_owner_reviews: true
+        dismiss_stale_reviews: true
+      enforce_admins: true
+      required_linear_history: true
+      allow_force_pushes: false
+      allow_deletions: false
+      required_signatures: false  # See CONTRIBUTING.md — anonymous contributor policy.
+      block_creations: false
+      required_conversation_resolution: true
+
+# Org-level policy — apply via Settings > Actions > General on the
+# ScopeCreep-zip org, not on this repo alone. SHA pinning is enforced by
+# the GitHub Actions policy feature shipped Aug 2025
+# (https://github.blog/changelog/2025-08-15-github-actions-policy-now-supports-blocking-and-sha-pinning-actions/).
+org_actions_policy:
+  allowed_actions: selected
+  selected_actions:
+    github_owned_allowed: true
+    verified_allowed: false
+    # Explicit allowlist — every entry MUST be SHA-pinned in workflow files.
+    # Authoritative list lives in `docs/security/CI-TRUST.md`.
+    patterns_allowed:
+      - "dtolnay/rust-toolchain@*"
+      - "Swatinem/rust-cache@*"
+      - "taiki-e/install-action@*"
+      - "EmbarkStudios/cargo-deny-action@*"
+      - "rustsec/audit-check@*"
+      - "pnpm/action-setup@*"
+      - "gitleaks/gitleaks-action@*"
+      - "trufflesecurity/trufflehog@*"
+      - "aquasecurity/trivy-action@*"
+      - "anchore/scan-action@*"
+      - "anchore/sbom-action@*"
+      - "hadolint/hadolint-action@*"
+      - "returntocorp/semgrep-action@*"
+      - "raven-actions/actionlint@*"
+      - "woodruffw/zizmor-action@*"
+      - "ossf/scorecard-action@*"
+      - "google/osv-scanner-action@*"
+      - "step-security/harden-runner@*"
+      - "sigstore/cosign-installer@*"
+      - "slsa-framework/slsa-github-generator/*"
+      - "softprops/action-gh-release@*"
+      - "zaproxy/action-baseline@*"
+      - "mszostok/codeowners-validator@*"
+      - "docker/setup-buildx-action@*"
+      - "docker/build-push-action@*"
+  workflow_permissions:
+    default_workflow_permissions: read
+    can_approve_pull_request_reviews: false

@@ -43,8 +43,14 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    # Resource caps — NIST SP 800-190 §4.3 + bound-the-damage on compromise.
+    pids_limit: 200
+    mem_limit: 1g
+    cpus: 2.0
+    # Healthcheck via the CLI subcommand — distroless has no shell tools,
+    # so the binary itself is the healthcheck. Same /health path as before.
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8080/health"]
+      test: ["CMD", "/usr/local/bin/springtale", "healthcheck"]
       interval: 30s
       timeout: 5s
       retries: 3

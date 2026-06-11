@@ -1,0 +1,46 @@
+# Workspace-level clippy configuration.
+# Applies on top of `[lints]` declared in each crate's Cargo.toml plus the
+# `RUSTFLAGS` in `.cargo/config.toml`.
+
+# NOTE: `disallowed-methods` is intentionally not used for primitives
+# that have no closure-free alternative (e.g. `secrecy::ExposeSecret::expose_secret`,
+# `reqwest::Client::builder`, `std::env::var`, `std::process::Command::new`).
+# Any clippy lint on those would force the typed wrappers
+# (`springtale_crypto::secret_use::*`, `springtale_transport::safe_http::*`,
+# the connector-shell exec shim) to carry internal `#[allow(...)]` overrides
+# — the very pattern the lint was supposed to prevent. The wrapper
+# modules remain the only legitimate access path BY CONVENTION, enforced
+# via:
+#   - module naming (`safe_*`, `secret_use`)
+#   - the `// SECURITY: <reason>` comment requirement in
+#     `.claude/rules/backend/security.md`
+#   - code review
+# A grep-based CI check could enforce the comment-annotation rule without
+# any source-level `#[allow]`; clippy is the wrong tool for it.
+
+# Disallowed macros — only ban what's NEVER legitimate, anywhere, in any
+# compilation unit. clippy.toml is workspace-global; there's no per-target
+# exclusion mechanism, so anything banned here MUST be honored by:
+#   - build.rs files (cargo's build-script protocol REQUIRES `println!`)
+#   - CLI apps (`springtale-cli` legitimately prints user-facing output)
+#   - test code (some `println!` for failure-context debugging is fine)
+#
+# "Use tracing instead of println in library code" stays as a code-review
+# rule per `.claude/rules/backend/security.md`. Library crates that want
+# strict enforcement can opt in via crate-level
+# `#![warn(clippy::disallowed_macros)]` with their own clippy.toml override.
+disallowed-macros = [
+    { path = "std::dbg", reason = "remove before merge; debugging artifact never appropriate to ship" },
+]
+
+# Cognitive complexity threshold — match repo conventions (named modules
+# keep functions small).
+cognitive-complexity-threshold = 25
+type-complexity-threshold = 250
+
+# Avoid `too_many_arguments` warning for command/action signatures with
+# capability tokens.
+too-many-arguments-threshold = 8
+
+# Allow `&str` in public APIs without forcing Cow<'_, str>.
+avoid-breaking-exported-api = true

@@ -31,6 +31,7 @@ members = [
   "connectors/connector-filesystem",
   "connectors/connector-shell",
   "connectors/connector-http",
+  "connectors/connector-opencode",
   # Phase 1b connectors
   "connectors/connector-telegram",
   # Phase 2a connectors
@@ -40,10 +41,13 @@ members = [
   "connectors/connector-slack",
   "connectors/connector-signal",
   "connectors/connector-browser",
-  # connector-matrix: DEFERRED — matrix-sdk 0.16 requires rusqlite 0.37 which
-  # has CVE-2025-70873 (heap info disclosure). Our store uses rusqlite 0.39
-  # (patched). Downgrading would expose activist/survivor data to heap leaks.
-  # Waiting for matrix-sdk to update to rusqlite 0.39+.
+  # connector-matrix: DEFERRED — upstream matrix-sdk-sqlite (v0.18.0 main)
+  # still declares rusqlite = "0.37.0" which carries CVE-2025-70873 (heap
+  # info disclosure). Our store crate is pinned to rusqlite 0.39 (patched);
+  # downgrading would expose activist/survivor data to the heap leak.
+  # Accountable tracking: `vex/connector-matrix-rusqlite-cve-2025-70873.json`
+  # (v2, last reviewed 2026-06-02, next_review 2026-09-01). The src/ tree
+  # is preserved so it compiles when upstream lands a rusqlite >= 0.39 bump.
   # Apps
   "apps/springtaled",
   "apps/springtale-cli",
@@ -141,8 +145,8 @@ rusqlite         = { version = "0.39", features = ["bundled", "vtab"] }
 sqlx             = { version = "0.8",  features = ["postgres", "uuid", "chrono", "json", "migrate", "runtime-tokio"] }
 
 # ── WASM Sandbox ───────────────────────────────────────────────────────────────
-wasmtime         = { version = "43",   features = ["cranelift", "component-model", "parallel-compilation"] }
-wasmtime-wasi    = { version = "43",   features = ["p2"] }
+wasmtime         = { version = "44",   features = ["cranelift", "component-model", "parallel-compilation"] }
+wasmtime-wasi    = { version = "44",   features = ["p2"] }
 wat              = "1"
 
 # ── MCP Protocol ───────────────────────────────────────────────────────────────
@@ -209,6 +213,11 @@ rustls           = { version = "0.23", default-features = false, features = ["ri
 tokio-rustls     = "0.26"
 rustls-pemfile   = "2"
 rustls-pki-types = "1"
+# Hybrid post-quantum KEX (X25519MLKEM768) for TLS 1.3, per NIST IR 8547
+# (X25519 deprecated 2030, disallowed 2035). Wires into rustls' provider
+# via `rustls-post-quantum::provider()`. Activate at every `ClientConfig`
+# builder site in `springtale-transport` and connector clients.
+rustls-post-quantum = "0.2"
 ring             = "0.17"
 
 # ── Config ─────────────────────────────────────────────────────────────────────
@@ -242,32 +251,37 @@ criterion        = { version = "0.5", features = ["html_reports", "async_tokio"]
 proptest         = "1"
 
 # ── Internal Crates ────────────────────────────────────────────────────────────
-springtale-core       = { path = "crates/springtale-core" }
-springtale-crypto     = { path = "crates/springtale-crypto" }
-springtale-transport  = { path = "crates/springtale-transport" }
-springtale-connector  = { path = "crates/springtale-connector" }
-springtale-scheduler  = { path = "crates/springtale-scheduler" }
-springtale-store      = { path = "crates/springtale-store" }
-springtale-ai         = { path = "crates/springtale-ai" }
-springtale-cooperation = { path = "crates/springtale-cooperation" }
-springtale-bot        = { path = "crates/springtale-bot" }
-springtale-mcp        = { path = "crates/springtale-mcp" }
-springtale-sentinel   = { path = "crates/springtale-sentinel" }
-springtale-runtime    = { path = "crates/springtale-runtime" }
-connector-kick        = { path = "connectors/connector-kick" }
-connector-presearch   = { path = "connectors/connector-presearch" }
-connector-bluesky     = { path = "connectors/connector-bluesky" }
-connector-github      = { path = "connectors/connector-github" }
-connector-filesystem  = { path = "connectors/connector-filesystem" }
-connector-shell       = { path = "connectors/connector-shell" }
-connector-http        = { path = "connectors/connector-http" }
-connector-telegram    = { path = "connectors/connector-telegram" }
-connector-nostr       = { path = "connectors/connector-nostr" }
-connector-irc         = { path = "connectors/connector-irc" }
-connector-discord     = { path = "connectors/connector-discord" }
-connector-slack       = { path = "connectors/connector-slack" }
-connector-signal      = { path = "connectors/connector-signal" }
-connector-browser     = { path = "connectors/connector-browser" }
+# Each declaration carries `version = "0.1.0"` alongside `path` so cargo-deny's
+# `wildcards = "deny"` doesn't flag the workspace `*`-resolution. The path
+# wins at build time; the version is what crates.io would see if these were
+# ever published.
+springtale-core       = { path = "crates/springtale-core", version = "0.1.0" }
+springtale-crypto     = { path = "crates/springtale-crypto", version = "0.1.0" }
+springtale-transport  = { path = "crates/springtale-transport", version = "0.1.0" }
+springtale-connector  = { path = "crates/springtale-connector", version = "0.1.0" }
+springtale-scheduler  = { path = "crates/springtale-scheduler", version = "0.1.0" }
+springtale-store      = { path = "crates/springtale-store", version = "0.1.0" }
+springtale-ai         = { path = "crates/springtale-ai", version = "0.1.0" }
+springtale-cooperation = { path = "crates/springtale-cooperation", version = "0.1.0" }
+springtale-bot        = { path = "crates/springtale-bot", version = "0.1.0" }
+springtale-mcp        = { path = "crates/springtale-mcp", version = "0.1.0" }
+springtale-sentinel   = { path = "crates/springtale-sentinel", version = "0.1.0" }
+springtale-runtime    = { path = "crates/springtale-runtime", version = "0.1.0" }
+connector-kick        = { path = "connectors/connector-kick", version = "0.1.0" }
+connector-presearch   = { path = "connectors/connector-presearch", version = "0.1.0" }
+connector-bluesky     = { path = "connectors/connector-bluesky", version = "0.1.0" }
+connector-github      = { path = "connectors/connector-github", version = "0.1.0" }
+connector-filesystem  = { path = "connectors/connector-filesystem", version = "0.1.0" }
+connector-shell       = { path = "connectors/connector-shell", version = "0.1.0" }
+connector-http        = { path = "connectors/connector-http", version = "0.1.0" }
+connector-opencode    = { path = "connectors/connector-opencode", version = "0.1.0" }
+connector-telegram    = { path = "connectors/connector-telegram", version = "0.1.0" }
+connector-nostr       = { path = "connectors/connector-nostr", version = "0.1.0" }
+connector-irc         = { path = "connectors/connector-irc", version = "0.1.0" }
+connector-discord     = { path = "connectors/connector-discord", version = "0.1.0" }
+connector-slack       = { path = "connectors/connector-slack", version = "0.1.0" }
+connector-signal      = { path = "connectors/connector-signal", version = "0.1.0" }
+connector-browser     = { path = "connectors/connector-browser", version = "0.1.0" }
 
 # ── Nostr Protocol ─────────────────────────────────────────────────────────────
 nostr-sdk            = { version = "0.44", features = ["nip44", "nip59"] }
@@ -310,8 +324,41 @@ chromiumoxide        = { version = "0.9", default-features = false }
 # overflow-checks: prevent silent integer wrapping in release builds.
 # Critical for fuel metering, size limits, and event query bounds —
 # silent overflow is exploitable in resource accounting.
+#
+# Other settings target deterministic binaries:
+#   codegen-units=1 — single codegen unit improves reproducibility.
+#   lto="fat" — full link-time optimization shrinks binary + removes
+#     dead code that might otherwise leak through audit trails.
+#   panic="abort" — never unwind across the FFI boundary; faster too.
+#   strip="symbols" — no debug strings in production binaries.
+#   incremental=false — incremental compilation injects per-machine
+#     state (timing salt, path-dependent metadata) that breaks
+#     bit-for-bit reproducibility across runners. The release
+#     workflow's `repro-check` job rebuilds on a clean runner and
+#     diffs the SHA-256, so this MUST stay off (Phase-7 audit
+#     Finding G, reproducible-build attestation).
 [profile.release]
 overflow-checks = true
+codegen-units = 1
+lto = "fat"
+panic = "abort"
+strip = "symbols"
+incremental = false
+
+# Bench profile mirrors release so benchmarks measure realistic codegen.
+[profile.bench]
+overflow-checks = true
+codegen-units = 1
+lto = "fat"
 
 [patch.crates-io]
 libsqlite3-sys = { path = "crates/libsqlite3-sys-mc" }
+
+# ── TLS / Crypto Bans (compile-time enforcement) ──────────────────────────────
+# Springtale uses rustls + RustCrypto exclusively. Any transitive dependency
+# that tries to pull OpenSSL or native-tls gets a compile-error stub instead
+# of the real crate. Belt-and-suspenders complement to `deny.toml` [bans].
+# Trace offenders with `cargo tree -i <crate>`.
+native-tls = { path = "vendor/native-tls-stub" }
+openssl    = { path = "vendor/openssl-stub" }
+openssl-sys = { path = "vendor/openssl-sys-stub" }

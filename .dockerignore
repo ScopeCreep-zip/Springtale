@@ -1,0 +1,93 @@
+# Springtale Docker build-context exclusions.
+#
+# Without this file, `COPY . .` in the builder stage pulls every file in
+# the repo into the build context — including multi-gigabyte `target/`
+# directories, the `.git/` history, every connector's `node_modules/`,
+# and (most importantly for the threat model) any local `secrets/`,
+# `data/vault.bin`, or `.env*` files that a developer might have lying
+# around. Those layers get cached on the build host and CI runner —
+# pre-emptive exclusion is the only way to stop them entering the
+# build cache in the first place.
+#
+# Aligned with NIST SP 800-190 §4.1 (minimize image attack surface) +
+# Springtale's local-first threat model (vault material must never
+# enter a Docker layer).
+
+# ── Rust build artifacts ──────────────────────────────────────────
+target/
+**/target/
+**/*.rs.bk
+fuzz/target/
+fuzz/artifacts/
+fuzz/corpus/
+
+# ── Git ───────────────────────────────────────────────────────────
+.git/
+.gitignore
+.gitattributes
+.gitleaks.toml
+.gitmodules
+
+# ── Node / pnpm ───────────────────────────────────────────────────
+**/node_modules/
+**/.pnpm-store/
+**/.npm/
+**/pnpm-debug.log
+
+# ── Tauri frontend build outputs ──────────────────────────────────
+tauri/apps/desktop/dist/
+tauri/apps/dashboard/dist/
+tauri/apps/desktop/src-tauri/target/
+tauri/apps/desktop/src-tauri/gen/
+
+# ── Local data + secrets — NEVER ship into a layer ────────────────
+# Any local dev run will create these; we COPY . . in the builder so
+# they would otherwise land in the builder layer cache.
+secrets/
+data/
+**/*.bin
+**/vault.bin
+**/vault.bin.tmp
+**/springtale.db
+**/springtale.db-wal
+**/springtale.db-shm
+**/springtale.sock
+.env
+.env.*
+
+# ── IDE / editor scratch ──────────────────────────────────────────
+.vscode/
+.idea/
+.cursor/
+**/*.swp
+**/*.swo
+**/.DS_Store
+**/Thumbs.db
+
+# ── CI artifacts ──────────────────────────────────────────────────
+sbom/
+sboms/
+mlbom/
+cbom/
+*.sarif
+*.cdx.json
+*.spdx.json
+*.cosign.bundle
+
+# ── Docs / examples (not needed inside the runtime image) ─────────
+docs/
+README.md
+CHANGELOG.md
+CONTRIBUTING.md
+SECURITY.md
+docker-compose.yml
+Dockerfile
+.dockerignore
+.github/
+
+# ── Misc dev scratch ──────────────────────────────────────────────
+*.log
+*.tmp
+*~
+.claude/
+.claude-cache/

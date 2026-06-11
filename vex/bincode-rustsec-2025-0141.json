@@ -1,0 +1,28 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://springtale.dev/vex/bincode-rustsec-2025-0141.json",
+  "author": "Springtale Maintainers <k1104jackson@hotmail.com>",
+  "timestamp": "2026-05-13T00:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": {
+        "@id": "https://rustsec.org/advisories/RUSTSEC-2025-0141",
+        "name": "RUSTSEC-2025-0141",
+        "description": "bincode 2.0.1 — maintainer team ceased development due to doxxing/harassment incident; not a security defect"
+      },
+      "products": [
+        {
+          "@id": "pkg:cargo/bincode@2.0.1",
+          "subcomponents": [
+            { "@id": "pkg:cargo/foca" }
+          ]
+        }
+      ],
+      "status": "affected",
+      "justification": "vulnerable_code_not_present",
+      "impact_statement": "RUSTSEC-2025-0141 is an unmaintained-status advisory, not a CVE. bincode is pulled transitively via `foca` (SWIM membership protocol) with the `bincode-codec` feature. bincode 2.0.1 has no known vulnerabilities; the advisory exists because the team stopped publishing new versions after a harassment incident. No active exploitation path. Springtale's threat model aligns with the maintainers'; we will not penalize a project whose team faced doxxing.",
+      "action_statement": "Tracking foca's evolution. Will swap `bincode-codec` for `postcard` or `wincode` when foca publishes an alternative codec feature. No fix needed until then; bincode 2.0.1 is functionally complete per upstream announcement."
+    }
+  ]
+}

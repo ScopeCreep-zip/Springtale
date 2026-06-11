@@ -1,0 +1,32 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://springtale.dev/vex/instant-rustsec-2024-0384.json",
+  "author": "Springtale Maintainers <k1104jackson@hotmail.com>",
+  "timestamp": "2026-05-13T00:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": {
+        "@id": "https://rustsec.org/advisories/RUSTSEC-2024-0384",
+        "name": "RUSTSEC-2024-0384",
+        "description": "instant 0.1.13 — unmaintained; upstream recommends migration to `web-time`"
+      },
+      "products": [
+        {
+          "@id": "pkg:cargo/instant@0.1.13",
+          "subcomponents": [
+            { "@id": "pkg:cargo/nostr" },
+            { "@id": "pkg:cargo/nostr-database" },
+            { "@id": "pkg:cargo/nostr-relay-pool" },
+            { "@id": "pkg:cargo/nostr-sdk" },
+            { "@id": "pkg:cargo/connector-nostr" }
+          ]
+        }
+      ],
+      "status": "affected",
+      "justification": "vulnerable_code_not_present",
+      "impact_statement": "RUSTSEC-2024-0384 is an unmaintained-status advisory, not a vulnerability. `instant` is pulled transitively via `nostr-sdk` → `nostr-relay-pool` → `nostr-database` → `nostr`. `instant 0.1.13` is functionally complete for our wall-clock-timing use cases and has no known soundness issues. No upgrade path is safe — the advisory's recommendation is to migrate the caller, not the dependency.",
+      "action_statement": "Tracking upstream `nostr-sdk` issue for the `web-time` migration. Will land the bump when nostr-sdk publishes a version that drops `instant`. Until then, the connector-nostr crate carries this transitive without operational risk on our supported targets."
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+# Springtale security.txt — per RFC 9116
+# https://datatracker.ietf.org/doc/html/rfc9116
+
+Contact: https://github.com/ScopeCreep-zip/Springtale/security/advisories/new
+Contact: mailto:k1104jackson@hotmail.com
+Expires: 2027-05-13T00:00:00.000Z
+Encryption: https://github.com/radicalkjax.gpg
+Preferred-Languages: en
+Canonical: https://springtale.dev/.well-known/security.txt
+Policy: https://github.com/ScopeCreep-zip/Springtale/blob/main/SECURITY.md
+Acknowledgments: https://github.com/ScopeCreep-zip/Springtale/security/advisories
+
+# Critical user-safety bugs (identity leak across contexts, duress vault
+# detectability, panic-wipe defeat, telemetry, awareness gossip leak) are
+# triaged within 24 hours and patched within 14 days. See SECURITY.md.

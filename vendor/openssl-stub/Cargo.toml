@@ -1,0 +1,9 @@
+[package]
+name = "openssl"
+version = "0.10.66"
+edition = "2021"
+description = "Stub crate that prevents openssl from being used. Springtale uses rustls (with ring/aws-lc-rs) exclusively."
+
+[lib]
+name = "openssl"
+path = "src/lib.rs"

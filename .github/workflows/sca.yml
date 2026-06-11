@@ -1,0 +1,281 @@
+# Springtale Supply Chain Analysis.
+#
+# Maps to:
+# - NIST SP 800-218 PW.4.1, PW.4.4, RV.1.1
+# - NIST SP 800-161r1 SR-3, SR-4, SR-8
+# - CISA BOD 22-01 (KEV catalog)
+# - CISA Sep-2025 npm Shai-Hulud advisory
+# - OWASP Top 10:2025 A03 Software Supply Chain Failures
+
+name: SCA
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Nightly so KEV / RustSec / OSV updates trigger fresh runs.
+  schedule:
+    - cron: '13 5 * * *'  # 05:13 UTC daily
+
+permissions:
+  contents: read
+
+jobs:
+  # ── Rust: RustSec advisories ──────────────────────────────────────
+  cargo-audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Rust: bans / licenses / sources / advisories policy ───────────
+  cargo-deny:
+    name: cargo deny
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          command: check advisories bans licenses sources
+
+  # ── Rust: audited dep graph (cargo-vet) ───────────────────────────
+  cargo-vet:
+    name: cargo vet
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-vet
+      - run: cargo vet --locked
+        continue-on-error: true  # Until audits.toml is seeded; flip to required after bring-up.
+
+  # ── Rust: unsafe surface trend ────────────────────────────────────
+  cargo-geiger:
+    name: cargo geiger
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-geiger
+      - run: cargo geiger --workspace --output-format Json --update-readme false > geiger.json || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cargo-geiger-report
+          path: geiger.json
+          retention-days: 30
+
+  # ── npm / pnpm audit ──────────────────────────────────────────────
+  pnpm-audit:
+    name: pnpm audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: tauri/pnpm-lock.yaml
+      - run: pnpm -C tauri install --frozen-lockfile
+      - run: pnpm -C tauri audit --audit-level=high
+
+  # ── Python (pyo3 wheel deps via maturin) ──────────────────────────
+  pip-audit:
+    name: pip-audit
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # `crates/springtale-py/pyproject.toml` is committed. If a fork removes
+    # the pyo3 crate the step below will short-circuit on the missing path.
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: |
+          pip install pip-audit
+          pip-audit --strict --requirement crates/springtale-py/pyproject.toml || \
+          pip-audit --strict --requirement <(grep -E '^\s*"' crates/springtale-py/pyproject.toml | tr -d '"' || true)
+
+  # ── OSV: cross-ecosystem CVE/GHSA scan ────────────────────────────
+  osv-scanner:
+    name: OSV scanner
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - uses: google/osv-scanner-action@v2.3.8
+        with:
+          scan-args: |-
+            --recursive
+            --skip-git
+            --format=sarif
+            --output=osv.sarif
+            ./
+        continue-on-error: true
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: osv.sarif
+          category: osv-scanner
+
+  # ── KEV daily gate — CISA BOD 22-01 ───────────────────────────────
+  #
+  # Cross-references our dep graph against the CISA Known Exploited
+  # Vulnerabilities catalog. Fails if any direct or transitive dep
+  # matches an active KEV entry.
+  kev-check:
+    name: KEV check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: tauri/pnpm-lock.yaml
+      - run: pnpm -C tauri install --frozen-lockfile
+      - name: Download KEV catalog
+        run: |
+          curl -fsSL --retry 3 \
+            -o kev.json \
+            https://www.cisa.gov/sites/default/files/feeds/known_exploited_vulnerabilities.json
+      - name: Extract CVE IDs from KEV
+        run: |
+          jq -r '.vulnerabilities[].cveID' kev.json | sort -u > kev-cves.txt
+          wc -l kev-cves.txt
+      - name: Gather CVE IDs from cargo audit
+        run: |
+          cargo audit --json | jq -r '.vulnerabilities.list[]?.advisory.aliases[]? // empty' \
+            | grep -E '^CVE-' | sort -u > cargo-cves.txt || touch cargo-cves.txt
+          wc -l cargo-cves.txt
+      - name: Gather CVE IDs from pnpm audit
+        run: |
+          pnpm -C tauri audit --json 2>/dev/null | jq -r '
+            .advisories // {} | to_entries[] | .value.cves[]? // empty
+          ' | sort -u > pnpm-cves.txt || touch pnpm-cves.txt
+          wc -l pnpm-cves.txt
+      - name: Cross-reference all dep CVEs against KEV
+        run: |
+          cat cargo-cves.txt pnpm-cves.txt | sort -u > all-dep-cves.txt
+          matches=$(comm -12 all-dep-cves.txt kev-cves.txt || true)
+          if [ -n "$matches" ]; then
+            echo "::error::Dep CVE matches CISA KEV catalog. Fix or VEX justify."
+            echo "$matches"
+            exit 1
+          fi
+          echo "✅ No KEV matches"
+
+  # ── npm lockfile poisoning scan — CISA Shai-Hulud / Axios ─────────
+  #
+  # Cross-references `pnpm-lock.yaml` against the known-bad package list
+  # maintained by community + GitHub Security Lab. Catches the Sep-2025
+  # Shai-Hulud worm packages + the Apr-2026 Axios compromise window even
+  # if upstream advisory feeds haven't propagated yet.
+  npm-lockfile-scan:
+    name: npm lockfile poisoning scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - name: Scan pnpm-lock.yaml against known-bad list
+        run: |
+          set -euo pipefail
+          # Committed list of known-bad package@version combinations. Adds via PR.
+          # Each line: `<package>@<version>  # advisory ref`
+          known_bad=".github/known-bad-npm.txt"
+          if [ ! -f "$known_bad" ]; then
+            echo "::warning::$known_bad missing; skipping (seed file via Phase 1)"
+            exit 0
+          fi
+          fail=0
+          while IFS= read -r line; do
+            [ -z "$line" ] && continue
+            case "$line" in \#*) continue ;; esac
+            pkgver=${line%% *}
+            if grep -q -F "$pkgver" tauri/pnpm-lock.yaml; then
+              echo "::error::lockfile contains known-bad: $pkgver"
+              fail=1
+            fi
+          done < "$known_bad"
+          exit $fail
+
+  # ── cargo-outdated weekly report ──────────────────────────────────
+  cargo-outdated:
+    name: cargo outdated (report-only)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    if: github.event_name == 'schedule'
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-outdated
+      - run: cargo outdated --workspace --depth 1 || true

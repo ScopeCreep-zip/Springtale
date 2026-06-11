@@ -1,12 +1,22 @@
 [build]
 rustflags = [
   "-D", "warnings",            # all warnings are errors
-  "-D", "clippy::unwrap_used", # no unwrap() in library code
-  "-D", "clippy::expect_used", # no expect() in library code (use thiserror)
-  "-D", "clippy::panic",       # no panic!() in library code
 ]
 
-# Ban native-tls to enforce rustls across all transitive dependencies.
-# Any crate pulling native-tls will get this stub, which fails at compile time.
-[patch.crates-io]
-native-tls = { path = "vendor/native-tls-stub" }
+# clippy::unwrap_used, ::expect_used, ::panic are declared at the crate
+# level via `#![cfg_attr(not(test), deny(...))]` in each library's
+# `lib.rs`. Putting them in rustflags as well would override the
+# `not(test)` guard — rustflags apply to every compilation unit including
+# test builds — and force the denies on test code where panic!/unwrap
+# are idiomatic. The crate-level attribute is the canonical Rust pattern
+# for "production-only restriction lints"
+# (https://github.com/rust-lang/rust-clippy/discussions/11343).
+
+# `[patch.crates-io]` only takes effect from the workspace Cargo.toml — the
+# native-tls / openssl / openssl-sys stubs live there. The previous attempt
+# to declare them here was silently ignored by cargo.
+
+# Enable check-cfg validation of `#[cfg(fuzzing)]` attributes used by
+# cargo-fuzz targets so a missing `cfg` attribute doesn't go unnoticed.
+[unstable]
+check-cfg = ["cfg(fuzzing)"]

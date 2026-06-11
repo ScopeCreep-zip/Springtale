@@ -1,23 +1,47 @@
 # cargo-deny configuration
 # https://embarkstudios.github.io/cargo-deny/
+#
+# Policy alignment:
+# - CISA Secure-by-Design (memory-safe + supply-chain-failure mitigation)
+# - NIST SP 800-218 PW.4.1 / PW.4.4 (well-secured components, vuln monitoring)
+# - OWASP Top 10:2025 A03 (Software Supply Chain Failures)
+# - OWASP A04 (Cryptographic Failures — broken hash / banned curve bans)
 
 [graph]
 targets = []
 all-features = true
 
 [advisories]
-vulnerability = "deny"
-unmaintained = "warn"
+# cargo-deny 0.18+ schema:
+# - `yanked` = "deny" | "warn" | "allow"  — yanked-crate policy
+# - `unmaintained` = "all" | "workspace" | "transitive" | "none"
+#                    scope of unmaintained-crate warnings
+# - vulnerability severity uses the implicit default (any reported
+#   vulnerability is a hard deny); per-id allowlist via `ignore`.
 yanked = "deny"
-notice = "warn"
-ignore = []
+unmaintained = "all"
+# Per-advisory accepted-with-mitigation entries also live in
+# `.cargo/audit.toml`; mirror them here so `cargo deny check advisories`
+# matches `cargo audit` output.
+ignore = [
+  "RUSTSEC-2023-0089", # atomic-polyfill (no-op on our targets) — see vex/
+  "RUSTSEC-2024-0384", # instant unmaintained via nostr-sdk — see vex/
+  "RUSTSEC-2025-0119", # number_prefix unmaintained (cosmetic, CLI only)
+  "RUSTSEC-2025-0134", # rustls-pemfile merged into rustls upstream
+  "RUSTSEC-2025-0141", # bincode unmaintained (doxxing incident) — see vex/
+  "RUSTSEC-2026-0002", # lru 0.13 IterMut Stacked Borrows via chitchat — see vex/
+  "RUSTSEC-2026-0097", # rand 0.8.5 log-feature unsoundness — log feat disabled
+]
 
 [licenses]
-unlicensed = "deny"
-copyleft = "deny"
+# cargo-deny 0.18+ schema — only the `allow` list is authoritative. Anything
+# not in the list is denied. `unlicensed` / `copyleft` keys from older
+# versions are removed.
 allow = [
   "MIT",
+  "MIT-0",                          # MIT No Attribution — fluent-uri / borrow-or-share
   "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception", # Cranelift / wasmtime codegen — FSF-free
   "BSD-2-Clause",
   "BSD-3-Clause",
   "ISC",
@@ -26,30 +50,56 @@ allow = [
   "Zlib",
   "BSL-1.0",
   "OpenSSL",
+  # MPL-2.0 is file-scoped copyleft (per-file, not per-binary). OK to ship.
+  "MPL-2.0",
+  # CDLA-Permissive-2.0 — used by some data files (e.g. ICU tables).
+  "CDLA-Permissive-2.0",
+  # CC0-1.0 — public-domain-equivalent.
+  "CC0-1.0",
 ]
 exceptions = []
 
 [bans]
+# Tighten multiple-versions to `deny` once the workspace has run through a
+# `cargo update` dedup pass. Keep at `warn` while migrating so we can land
+# the rest of the security hardening without blocking.
 multiple-versions = "warn"
-wildcards = "allow"
+# `wildcards = "deny"` blocks `version = "*"` requirements in any crate.
+# `allow-wildcard-paths = true` exempts intra-workspace `workspace = true`
+# entries (which Cargo records as `*` at the package level) so the
+# legitimate workspace pattern doesn't trip the gate.
+wildcards = "deny"
+allow-wildcard-paths = true
 highlight = "all"
 deny = [
-  # No OpenSSL — rustls exclusively
+  # ── TLS / OpenSSL bans — rustls exclusively ────────────────────────
   { name = "native-tls", wrappers = [] },
   { name = "openssl-sys", wrappers = [] },
   { name = "openssl", wrappers = [] },
-  # E3: rsa crate is affected by RUSTSEC-2023-0071 (Marvin Attack timing
-  # sidechannel). No upstream fix exists. Springtale targets vulnerable
-  # populations under active surveillance — any pulled-in `rsa` is a
-  # supply-chain CVE waiting to land. Block at the workspace level so
-  # transitive pulls fail audit before merge.
+
+  # ── Broken / abandoned cryptography ────────────────────────────────
+  # rsa: RUSTSEC-2023-0071 Marvin Attack, no upstream fix.
   { name = "rsa", wrappers = [] },
+  # md-5: broken hash, never appropriate.
+  { name = "md-5", wrappers = [] },
+  # sha-1: broken hash for any new use.
+  { name = "sha-1", wrappers = [] },
+  # rust-crypto: abandoned crate, unaudited.
+  { name = "rust-crypto", wrappers = [] },
+
+  # ── Telemetry / phone-home crates ──────────────────────────────────
+  # We ship zero telemetry. Block common telemetry pipes at the workspace
+  # level so a transitive pull cannot enable a phone-home path.
+  { name = "sentry", wrappers = [] },
+  { name = "sentry-core", wrappers = [] },
+  { name = "opentelemetry-otlp", wrappers = [] },
+  { name = "datadog-tracing", wrappers = [] },
 ]
 skip = []
 skip-tree = []
 
 [sources]
 unknown-registry = "deny"
-unknown-git = "warn"
+unknown-git = "deny"  # tighten from warn — no git deps in release builds
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 allow-git = []

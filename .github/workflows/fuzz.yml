@@ -1,0 +1,63 @@
+# Nightly cargo-fuzz run.
+#
+# Maps to:
+# - NIST SP 800-218 PW.8 (executable testing)
+# - NIST IR 8397 minimum-verification practice §9 (fuzzing)
+# - OWASP A05 (Injection) — fuzz the parser surface
+
+name: Fuzz
+
+on:
+  schedule:
+    - cron: '53 1 * * *'  # nightly 01:53 UTC
+  workflow_dispatch:
+    inputs:
+      target:
+        description: 'fuzz target name'
+        required: false
+        default: ''
+      duration_seconds:
+        description: 'per-target fuzz duration'
+        required: false
+        default: '300'
+
+permissions:
+  contents: read
+
+jobs:
+  fuzz:
+    name: cargo-fuzz
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    # `fuzz/Cargo.toml` is committed; per-target presence is enforced by
+    # the matrix below + the `actions-rs/install` step probing the target
+    # at runtime.
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - fuzz_manifest_parse
+          - fuzz_capability_parse
+          - fuzz_ipc_frame
+          - fuzz_path_canon
+          - fuzz_url_allowlist
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@nightly
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-fuzz --locked
+      - name: Run fuzz target
+        run: |
+          duration=${{ inputs.duration_seconds || '300' }}
+          cd fuzz
+          cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=$duration
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: fuzz-crash-${{ matrix.target }}
+          path: fuzz/artifacts/${{ matrix.target }}/
+          retention-days: 30

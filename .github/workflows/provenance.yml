@@ -1,0 +1,202 @@
+# SLSA L3 provenance + cosign signing — release only.
+#
+# Maps to:
+# - NIST SP 800-218 PS.2.1 (release integrity), PS.3.2 (provenance/SBOM)
+# - CISA Secure-by-Demand Supply Chain section
+# - OWASP A03 (Supply Chain Failures), A08 (Software Integrity)
+#
+# Sigstore keyless OIDC — no long-lived keys. The signing certificate is
+# bound to this repository's GitHub identity at the moment of signing,
+# published to the Sigstore Rekor transparency log.
+#
+# Phase-7 audit Finding G: reproducible-build attestation. The
+# `release-build` job pins SOURCE_DATE_EPOCH to the release commit's
+# timestamp; the `repro-check` job runs a second build on a fresh
+# runner and asserts the SHA-256 matches. The cross-runner byte-equal
+# result is then attested separately so verifiers can prove the
+# attestation came from a same-toolchain, same-commit rebuild.
+
+name: Provenance
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  release-build:
+    name: Build release artifacts
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      hashes: ${{ steps.hash.outputs.hashes }}
+      source_date_epoch: ${{ steps.epoch.outputs.epoch }}
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo install cargo-auditable --locked
+      - name: Compute SOURCE_DATE_EPOCH from release tag commit
+        id: epoch
+        run: |
+          set -euo pipefail
+          epoch=$(git show -s --format=%ct "$GITHUB_SHA")
+          echo "epoch=$epoch" >> "$GITHUB_OUTPUT"
+          echo "SOURCE_DATE_EPOCH=$epoch"
+      - name: Build daemon + CLI with auditable (reproducible)
+        env:
+          SOURCE_DATE_EPOCH: ${{ steps.epoch.outputs.epoch }}
+          # CARGO_INCREMENTAL=0 mirrors the workspace `[profile.release]
+          # incremental = false` guarantee. Belt-and-braces: even if a
+          # future config drift re-enables incremental, the env var
+          # overrides per cargo semantics.
+          CARGO_INCREMENTAL: "0"
+        run: |
+          cargo auditable build --release --locked \
+            --bin springtaled --bin springtale-cli
+      - name: Generate per-file SHA-256
+        id: hash
+        run: |
+          cd target/release
+          checksums=$(sha256sum springtaled springtale-cli | base64 -w0)
+          echo "hashes=$checksums" >> "$GITHUB_OUTPUT"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-binaries
+          path: |
+            target/release/springtaled
+            target/release/springtale-cli
+          retention-days: 365
+
+  repro-check:
+    name: Reproducible build cross-runner check
+    needs: release-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          # Different cache key so this job can't accidentally reuse
+          # the `release-build` job's incremental artifacts and fake
+          # reproducibility by hitting the cache.
+          shared-key: repro-check
+      - run: cargo install cargo-auditable --locked
+      - name: Rebuild from clean runner with same SOURCE_DATE_EPOCH
+        env:
+          SOURCE_DATE_EPOCH: ${{ needs.release-build.outputs.source_date_epoch }}
+          CARGO_INCREMENTAL: "0"
+        run: |
+          cargo auditable build --release --locked \
+            --bin springtaled --bin springtale-cli
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-binaries
+          path: ref/
+      - name: Compare SHA-256 across runners
+        id: compare
+        run: |
+          set -euo pipefail
+          for binary in springtaled springtale-cli; do
+            ref_sum=$(sha256sum "ref/$binary" | awk '{print $1}')
+            new_sum=$(sha256sum "target/release/$binary" | awk '{print $1}')
+            echo "$binary ref=$ref_sum new=$new_sum"
+            if [ "$ref_sum" != "$new_sum" ]; then
+              echo "::error::$binary not reproducible: $ref_sum != $new_sum"
+              exit 1
+            fi
+          done
+          # Pack the cross-runner-verified hashes into a base64
+          # subject list for the SLSA-style attestation predicate.
+          hashes=$(sha256sum target/release/springtaled target/release/springtale-cli | base64 -w0)
+          echo "hashes=$hashes" >> "$GITHUB_OUTPUT"
+      - name: Attest reproducible build
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            target/release/springtaled
+            target/release/springtale-cli
+
+  slsa-provenance:
+    name: SLSA L3 provenance
+    needs: release-build
+    permissions:
+      id-token: write   # OIDC for SLSA generator
+      contents: write   # attach to release
+      actions: read     # SLSA reads workflow metadata
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    with:
+      base64-subjects: "${{ needs.release-build.outputs.hashes }}"
+      upload-assets: true
+
+  cosign-sign:
+    name: Cosign sign release artifacts
+    needs: release-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write   # update release assets
+      id-token: write   # OIDC keyless
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - uses: sigstore/cosign-installer@v3
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-binaries
+          path: dist/
+      - name: Sign each artifact with cosign keyless
+        env:
+          COSIGN_YES: "true"
+        run: |
+          set -euo pipefail
+          mkdir -p dist/bundles
+          for f in dist/springtaled dist/springtale-cli; do
+            cosign sign-blob \
+              --bundle "dist/bundles/$(basename "$f").cosign.bundle" \
+              "$f"
+          done
+      - name: Upload bundles to release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/springtaled
+            dist/springtale-cli
+            dist/bundles/*.cosign.bundle
+
+  attest-build:
+    name: GitHub build attestation
+    needs: release-build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: release-binaries
+          path: dist/
+      - uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: |
+            dist/springtaled
+            dist/springtale-cli

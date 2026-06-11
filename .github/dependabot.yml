@@ -58,3 +58,18 @@ updates:
     labels:
       - dependencies
       - ci
+
+  # Docker — the production runtime image's `FROM` lines + the CI
+  # workflow `container.yml`. Dependabot tracks both the tag bump
+  # (rust:1.96-slim → 1.97-slim, distroless cc-debian12 → cc-debian13)
+  # AND the @sha256 digest churn within a given tag (security patches
+  # land as digest bumps under the same tag). Without this entry the
+  # digest-pinned FROM lines would go stale silently.
+  - package-ecosystem: docker
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    labels:
+      - dependencies
+      - container

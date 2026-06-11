@@ -1,0 +1,35 @@
+# zizmor — GitHub Actions security auditor.
+# https://woodruffw.github.io/zizmor/
+#
+# Runs in `.github/workflows/sast.yml`. Persona: `auditor` (strictest).
+
+rules:
+  # Block unpinned action references — per CISA tj-actions Mar-2025 advisory.
+  unpinned-uses:
+    config:
+      policies:
+        # Anything outside actions/ or github/ must be SHA-pinned (40 hex chars).
+        "actions/*": ref-pin
+        "github/*": ref-pin
+        "*": hash-pin
+
+  # Block overly-broad `permissions:` blocks at top level.
+  overprovisioned-secrets:
+    ignore: []
+
+  # Block `pull_request_target` with checkout of untrusted ref.
+  dangerous-triggers:
+    ignore: []
+
+  # Block use of `secrets.*` inside `if:` expressions (allows secret leak via run logs).
+  secrets-inherit:
+    ignore: []
+
+  # Block templated expressions in `run:` blocks (script injection).
+  template-injection:
+    ignore: []
+
+  # Block runners other than `ubuntu-latest`, `macos-latest`, `windows-latest`,
+  # or pinned version variants.
+  self-hosted-runner:
+    ignore: []

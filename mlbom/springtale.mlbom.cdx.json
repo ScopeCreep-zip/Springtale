@@ -1,0 +1,142 @@
+{
+  "$schema": "http://cyclonedx.org/schema/bom-1.7.schema.json",
+  "bomFormat": "CycloneDX",
+  "specVersion": "1.7",
+  "version": 1,
+  "metadata": {
+    "timestamp": "2026-05-25T00:00:00Z",
+    "tools": {
+      "components": [
+        {
+          "type": "application",
+          "author": "Springtale Maintainers",
+          "name": "springtale-mlbom-generator",
+          "description": "Hand-curated ML-BOM for the AI adapters Springtale ships. Maps to OWASP LLM03 (training data poisoning) and LLM10 (unbounded consumption / model supply-chain): every AI socket Springtale exposes is enumerated here with provenance, license, and quantisation."
+        }
+      ]
+    },
+    "component": {
+      "type": "application",
+      "bom-ref": "pkg:springtale@0.1.0",
+      "name": "Springtale",
+      "version": "0.1.0",
+      "description": "Local-first privacy-preserving automation platform. AI is per-bot, opt-in, and always defaultable to NoopAdapter."
+    },
+    "licenses": [{ "license": { "id": "MIT" } }]
+  },
+  "components": [
+    {
+      "type": "machine-learning-model",
+      "bom-ref": "ai-adapter:noop",
+      "name": "NoopAdapter",
+      "version": "0.1.0",
+      "description": "Built-in no-op adapter. The default for every bot. Routes every AiRequest to AiError::Disabled — no network call, no model inference. Used to prove the platform works without any AI, and for adapters that have not yet been configured by the user.",
+      "modelCard": {
+        "modelParameters": {
+          "approach": { "type": "none" },
+          "task": "no-op (refuses all requests)",
+          "architectureFamily": "none",
+          "modelArchitecture": "none"
+        },
+        "considerations": {
+          "useCases": ["fallback when no AI adapter is configured", "regression-testing the platform under zero-AI conditions", "deployment to environments where outbound AI calls are forbidden"]
+        }
+      },
+      "licenses": [{ "license": { "id": "MIT" } }]
+    },
+    {
+      "type": "machine-learning-model",
+      "bom-ref": "ai-adapter:ollama",
+      "name": "Ollama",
+      "description": "Adapter targeting a locally-hosted Ollama daemon. Model weights live on the user's machine; no data leaves the box. The adapter optionally pins the model's SHA-256 manifest digest (`OllamaConfig::expected_digest`) to defend against a poisoned local model store (OWASP LLM03).",
+      "modelCard": {
+        "modelParameters": {
+          "approach": { "type": "supervised" },
+          "task": "general-purpose chat / completion / tool-calling",
+          "architectureFamily": "transformer",
+          "modelArchitecture": "varies — Llama, Mistral, Qwen, DeepSeek, etc. — selected by `OllamaConfig::model`"
+        },
+        "considerations": {
+          "useCases": [
+            "local-only chat with no third-party visibility",
+            "structured extraction with provider-side schema enforcement",
+            "tool-use / agent loops gated by the platform's capability bridge"
+          ],
+          "ethicalConsiderations": [
+            { "name": "model provenance", "value": "Variable. The deploying user picks the model. Springtale ships no model weights; the user is responsible for licence / origin / bias review." },
+            { "name": "data residency", "value": "All inference is local. No prompts or completions leave the host." }
+          ]
+        }
+      },
+      "licenses": [{ "license": { "id": "MIT" } }],
+      "externalReferences": [
+        { "type": "website", "url": "https://ollama.com" },
+        { "type": "vcs", "url": "https://github.com/ollama/ollama" }
+      ]
+    },
+    {
+      "type": "machine-learning-model",
+      "bom-ref": "ai-adapter:openai-compatible",
+      "name": "OpenAI-compatible",
+      "description": "Adapter targeting OpenAI's chat-completions API and any compatible third-party endpoint (vLLM, llama.cpp server, OpenRouter, DeepSeek, etc.). Outbound TLS via rustls (hybrid X25519+ML-KEM-768 KEX once Phase 5 #1 lands). Sanitiser layer removes credentials / PII / prompt-injection markers from every user-facing prompt BEFORE the request leaves the daemon.",
+      "modelCard": {
+        "modelParameters": {
+          "approach": { "type": "supervised" },
+          "task": "general-purpose chat / completion / tool-calling / function-calling",
+          "architectureFamily": "transformer"
+        },
+        "considerations": {
+          "useCases": [
+            "cloud-hosted chat where local inference is impractical",
+            "structured extraction with vendor JSON-mode",
+            "tool-use loops"
+          ],
+          "ethicalConsiderations": [
+            { "name": "data residency", "value": "Prompts and completions transit the provider's infrastructure. Bot configuration must surface this to the user (per the data_disclosure manifest field on every connector that feeds external content to AI)." },
+            { "name": "vendor lock", "value": "Mitigated by the OpenAI-compatible base URL — any compliant endpoint works without code changes." }
+          ]
+        }
+      },
+      "externalReferences": [
+        { "type": "documentation", "url": "https://platform.openai.com/docs/api-reference" }
+      ]
+    },
+    {
+      "type": "machine-learning-model",
+      "bom-ref": "ai-adapter:anthropic",
+      "name": "Anthropic",
+      "description": "Adapter targeting Anthropic's Messages API. Native tool-use surface. Outbound TLS via rustls.",
+      "modelCard": {
+        "modelParameters": {
+          "approach": { "type": "supervised" },
+          "task": "general-purpose chat / completion / tool-calling",
+          "architectureFamily": "transformer"
+        },
+        "considerations": {
+          "useCases": [
+            "high-quality chat with native tool-use",
+            "agent loops with the runtime's capability-checked tool execution",
+            "structured extraction"
+          ],
+          "ethicalConsiderations": [
+            { "name": "data residency", "value": "Prompts and completions transit Anthropic's infrastructure. Same disclosure surfacing rule as the OpenAI adapter." }
+          ]
+        }
+      },
+      "externalReferences": [
+        { "type": "documentation", "url": "https://docs.anthropic.com/en/api/messages" }
+      ]
+    }
+  ],
+  "dependencies": [
+    {
+      "ref": "pkg:springtale@0.1.0",
+      "dependsOn": [
+        "ai-adapter:noop",
+        "ai-adapter:ollama",
+        "ai-adapter:openai-compatible",
+        "ai-adapter:anthropic"
+      ]
+    }
+  ]
+}

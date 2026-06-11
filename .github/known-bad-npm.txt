@@ -1,0 +1,22 @@
+# Known-bad npm packages — append-only list scanned by sca.yml.
+# Format: `<package>@<version>  # advisory reference`
+#
+# Sources to mirror:
+# - CERT/CC VU#534320 (Shai-Hulud npm compromise, Sep 2025)
+#   https://www.kb.cert.org/vuls/id/534320
+# - CISA Apr-2026 Axios npm advisory
+#   https://www.cisa.gov/news-events/alerts/2026/04/20/supply-chain-compromise-impacts-axios-node-package-manager
+# - Wiz / Snyk / GitHub Security Lab community feeds
+#
+# When adding entries, link to the advisory in the trailing comment.
+# Remove only after the registry has yanked the version AND we've
+# bumped past it in our lockfile.
+
+# === Shai-Hulud worm (Sep 16-23, 2025) — placeholder example ===
+# debug@4.4.2                # CERT/CC VU#534320 — typosquatting Shai-Hulud
+# chalk@5.6.0                # CERT/CC VU#534320
+
+# === Axios compromise (Apr 20, 2026) — placeholder example ===
+# axios@1.7.10               # CISA AA26-Apr-20
+
+# Maintainer: keep the comment block above. Add real entries as advisories land.

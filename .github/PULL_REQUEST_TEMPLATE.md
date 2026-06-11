@@ -25,11 +25,15 @@
 - [ ] `cargo clippy --workspace --all-targets -- -D warnings`
 - [ ] `cargo nextest run --workspace` (or `cargo test --workspace`)
 - [ ] Frontend changes built with `pnpm build` (if applicable)
+- [ ] `cargo deny check` clean (PR will run it in CI)
+- [ ] `cargo audit` clean (PR will run it in CI)
+- [ ] Pre-commit hooks pass (`pre-commit run --all-files`)
 - [ ] No new unsafe blocks (or every new one has a `// SAFETY:` comment)
 - [ ] No new `unwrap()` / `expect()` / `panic!()` in library crates
 - [ ] No new `native-tls` or OpenSSL dependencies — direct or transitive
 - [ ] No new telemetry, analytics, or "anonymized usage" reporting
 - [ ] All new credentials wrapped in `Secret<T>`
+- [ ] `.well-known/security.txt` `Expires` still valid (or refreshed)
 - [ ] Docs updated (if behaviour changed)
 
 ## Security review needed?

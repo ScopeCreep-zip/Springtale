@@ -1,0 +1,54 @@
+# DAST baseline — OWASP ZAP against the dev-mode dashboard.
+#
+# Maps to OWASP A01 (Broken Access Control), ASVS L2 V4 (API).
+# Runs nightly only — the dashboard requires a running daemon and seed
+# data which we wire up in the workflow.
+
+name: DAST
+
+on:
+  schedule:
+    - cron: '11 4 * * *'  # nightly 04:11 UTC
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  zap-baseline:
+    name: ZAP baseline scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write   # ZAP action opens issues for findings
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: tauri/pnpm-lock.yaml
+      - run: pnpm -C tauri install --frozen-lockfile
+      - name: Build dashboard
+        run: pnpm -C tauri/apps/dashboard build
+      - name: Serve dashboard
+        run: |
+          npx -y http-server tauri/apps/dashboard/dist -p 4173 -c-1 &
+          # Wait until the port is responsive.
+          for _ in {1..30}; do
+            if curl -fsS http://127.0.0.1:4173 > /dev/null; then break; fi
+            sleep 1
+          done
+      - uses: zaproxy/action-baseline@v0.14.0
+        with:
+          target: 'http://127.0.0.1:4173'
+          rules_file_name: '.github/zap-rules.tsv'
+          allow_issue_writing: false
+          fail_action: false
+          cmd_options: '-a'

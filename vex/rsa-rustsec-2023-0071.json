@@ -1,0 +1,23 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://springtale.dev/vex/rsa-rustsec-2023-0071.json",
+  "author": "Springtale Maintainers <k1104jackson@hotmail.com>",
+  "timestamp": "2026-05-13T00:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": {
+        "@id": "https://rustsec.org/advisories/RUSTSEC-2023-0071",
+        "name": "RUSTSEC-2023-0071",
+        "description": "Marvin Attack: potential key recovery through timing sidechannels"
+      },
+      "products": [
+        { "@id": "pkg:cargo/rsa" }
+      ],
+      "status": "not_affected",
+      "justification": "component_not_present",
+      "impact_statement": "Springtale serves vulnerable populations under active surveillance. Any pulled-in `rsa` would be a supply-chain CVE waiting to land. The crate is banned at the workspace level via `deny.toml` `[bans].deny` so any transitive pull fails CI before merge.",
+      "action_statement": "Enforced by `cargo deny check bans` in `.github/workflows/sca.yml`. Re-evaluate if upstream releases a patched version with constant-time operations."
+    }
+  ]
+}

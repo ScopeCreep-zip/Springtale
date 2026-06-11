@@ -1,0 +1,42 @@
+# LLM red-team corpus — nightly + PR-on-AI-changes.
+#
+# Runs the prompt-injection / PII / credential corpus through
+# `springtale-ai`'s `Sanitizer`. Fails if any canonical attack is not
+# flagged by the workspace's default sanitizer policy.
+#
+# Maps to OWASP LLM01:2025 (Prompt Injection), LLM02:2025 (Sensitive
+# Information Disclosure), LLM07:2025 (System Prompt Leakage), and the
+# CISA Secure-by-Design "eliminate classes of vulnerability" principle.
+
+name: LLM red-team
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'crates/springtale-ai/**'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'crates/springtale-ai/**'
+  schedule:
+    - cron: '47 3 * * *'  # nightly 03:47 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  corpus:
+    name: Sanitizer corpus
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: taiki-e/install-action@nextest
+      - run: cargo nextest run -p springtale-ai --test redteam_corpus --no-fail-fast

@@ -1,0 +1,9 @@
+# OWASP ZAP baseline rule overrides for Springtale dashboard.
+# Format: <ruleID>	<level>	<comment>   (TAB-separated)
+# Levels: IGNORE, FAIL, WARN.
+#
+# Most defaults stay at WARN. Overrides below note Springtale-specific
+# context. Add new entries as the dashboard surface grows.
+
+10038	WARN	Content Security Policy — primary CSP is set in tauri.conf.json + meta tag; ZAP may flag the meta-only fallback as weak.
+10063	WARN	Permissions-Policy — informational only on a Tauri webview load.

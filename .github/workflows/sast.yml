@@ -1,0 +1,142 @@
+# Springtale SAST — static-analysis suite.
+#
+# Maps to NIST SP 800-218 PW.7 (tool selection for code review) and the
+# OWASP A05 (Injection) tooling baseline.
+
+name: SAST
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Re-run weekly to catch new rules published by upstream rulesets.
+  schedule:
+    - cron: '17 6 * * 1'  # Mondays 06:17 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  # ── CodeQL (JS/TS) ────────────────────────────────────────────────
+  codeql:
+    name: CodeQL
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript]
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          config: |
+            paths:
+              - tauri/apps
+              - tauri/packages
+            paths-ignore:
+              - '**/node_modules/**'
+              - '**/dist/**'
+      - uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  # ── Semgrep ───────────────────────────────────────────────────────
+  semgrep:
+    name: Semgrep
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    container:
+      image: returntocorp/semgrep:1.96.0
+    steps:
+      - uses: actions/checkout@v4
+      - run: |
+          semgrep ci \
+            --config p/rust \
+            --config p/typescript \
+            --config p/owasp-top-ten \
+            --config p/javascript \
+            --config p/secrets \
+            --config p/security-audit \
+            --sarif --output=semgrep.sarif \
+            --error \
+            --severity ERROR --severity WARNING
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: semgrep.sarif
+          category: semgrep
+
+  # ── actionlint ────────────────────────────────────────────────────
+  actionlint:
+    name: actionlint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - uses: raven-actions/actionlint@v2
+
+  # ── zizmor (workflow security) ────────────────────────────────────
+  zizmor:
+    name: zizmor
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - uses: woodruffw/zizmor-action@v0
+        with:
+          # Persona: `auditor` is strictest (requires SHA-pinned actions).
+          # Transition path: persona `regular` until the SHA-pin sweep PR
+          # lands; flip to `auditor` afterwards. Tracked in CI-TRUST.md.
+          persona: regular
+          format: sarif
+          output_file: zizmor.sarif
+          fail_on: any
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: zizmor.sarif
+          category: zizmor
+
+  # ── hadolint (Dockerfile) ─────────────────────────────────────────
+  hadolint:
+    name: hadolint
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: Dockerfile
+          format: sarif
+          output-file: hadolint.sarif
+          no-fail: false
+      - uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        with:
+          sarif_file: hadolint.sarif
+          category: hadolint

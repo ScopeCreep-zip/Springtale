@@ -1,0 +1,29 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://springtale.dev/vex/rustls-pemfile-rustsec-2025-0134.json",
+  "author": "Springtale Maintainers <k1104jackson@hotmail.com>",
+  "timestamp": "2026-05-25T00:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": {
+        "@id": "https://rustsec.org/advisories/RUSTSEC-2025-0134",
+        "name": "RUSTSEC-2025-0134",
+        "description": "rustls-pemfile 2.2.0 — unmaintained; PEM-parsing functionality merged into `rustls` upstream"
+      },
+      "products": [
+        {
+          "@id": "pkg:cargo/rustls-pemfile@2.2.0",
+          "subcomponents": [
+            { "@id": "pkg:cargo/springtale-transport" },
+            { "@id": "pkg:cargo/irc" }
+          ]
+        }
+      ],
+      "status": "affected",
+      "justification": "vulnerable_code_not_present",
+      "impact_statement": "RUSTSEC-2025-0134 is an unmaintained-status advisory, not a vulnerability. `rustls-pemfile` 2.2.0 is feature-complete; its PEM-parsing surface was absorbed into `rustls` upstream, leaving the standalone crate in maintenance mode. Springtale uses it directly (`springtale-transport`) to load mTLS certs from disk and transitively (`irc` crate); both call sites feed controlled local-filesystem inputs.",
+      "action_statement": "Migrate Springtale's direct usage to `rustls::pki_types::pem` once the upstream API stabilizes; track `irc` crate for the same migration. No production exposure given trust boundary."
+    }
+  ]
+}

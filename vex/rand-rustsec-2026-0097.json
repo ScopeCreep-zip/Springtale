@@ -1,0 +1,23 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://springtale.dev/vex/rand-rustsec-2026-0097.json",
+  "author": "Springtale Maintainers <k1104jackson@hotmail.com>",
+  "timestamp": "2026-05-13T00:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": {
+        "@id": "https://rustsec.org/advisories/RUSTSEC-2026-0097",
+        "name": "RUSTSEC-2026-0097",
+        "description": "rand 0.8.5 — unsoundness in log-feature reseed path"
+      },
+      "products": [
+        { "@id": "pkg:cargo/rand@0.8.5" }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_present",
+      "impact_statement": "The unsoundness requires the rand `log` feature plus a custom logger that calls `thread_rng()` during reseed. Springtale's workspace `Cargo.toml` pins `rand` with `default-features = false`, so the `log` feature is absent from every binary in the workspace. The UB code path is unreachable.",
+      "action_statement": "Awaiting RustCrypto ecosystem release of stable versions on rand_core 0.9 (ed25519-dalek 3.x, chacha20poly1305 0.11.x). Will upgrade to rand 0.9.3+ at that time. Mitigated by feature exclusion, not accepted risk."
+    }
+  ]
+}

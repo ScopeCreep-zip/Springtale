@@ -1,3 +1,22 @@
+# Springtale CI — lint + test gate.
+#
+# Hardening / supply-chain jobs are split out into companion workflows:
+#   - sca.yml         supply-chain analysis (cargo-audit/deny/vet, KEV, pnpm-audit, pip-audit, osv-scanner)
+#   - sast.yml        SAST (CodeQL, Semgrep, actionlint, zizmor, hadolint)
+#   - secrets.yml     gitleaks + trufflehog
+#   - scorecard.yml   OpenSSF Scorecard weekly
+#   - container.yml   Trivy/Grype/Syft image scan
+#   - sbom.yml        CycloneDX + SPDX SBOM generation
+#   - provenance.yml  SLSA L3 + cosign signing (release-only)
+#   - fuzz.yml        nightly cargo-fuzz
+#   - dast.yml        nightly OWASP ZAP baseline on dashboard
+#   - llm-redteam.yml nightly prompt-injection corpus
+#   - codeowners-lint.yml CODEOWNERS validation
+#
+# Action pinning policy: third-party actions referenced by tag here are
+# tagged for human readability; the org-level Action policy enforces
+# SHA pinning at runtime. See docs/security/CI-TRUST.md.
+
 name: CI
 
 on:
@@ -6,28 +25,44 @@ on:
   pull_request:
     branches: [main]
 
+# Default to read-only. Per-job blocks elevate where needed.
+permissions:
+  contents: read
+
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
   CARGO_INCREMENTAL: 0
+  # Deterministic flags for reproducible-build posture.
+  SOURCE_DATE_EPOCH: 1715558400  # 2024-05-13T00:00:00Z baseline; PRs may override
 
 jobs:
   # ── Format ────────────────────────────────────────────────────────
   fmt:
     name: Format
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
       - run: cargo fmt --check
 
-  # ── Lint (SAST) ──────────────────────────────────────────────────
+  # ── Lint (SAST surface — strict warnings) ─────────────────────────
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -39,49 +74,49 @@ jobs:
   test:
     name: Test
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
       - uses: taiki-e/install-action@nextest
-      - run: cargo nextest run --workspace
-      - run: cargo test --doc
+      - run: cargo nextest run --workspace --locked
+      - run: cargo test --doc --locked
 
-  # ── SCA (Supply Chain) ───────────────────────────────────────────
-  deny:
-    name: Cargo Deny
+  # ── Tauri desktop crate build (catches IPC-side regressions) ──────
+  tauri-build:
+    name: Tauri build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
-
-  audit:
-    name: Cargo Audit
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: rustsec/audit-check@v2
+      - uses: step-security/harden-runner@v2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-  # ── Secrets Detection ────────────────────────────────────────────
-  gitleaks:
-    name: Gitleaks
-    runs-on: ubuntu-latest
-    steps:
+          egress-policy: audit
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-      - uses: gitleaks/gitleaks-action@v2
-        env:
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # System deps for tauri (webkit2gtk).
+      - run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
+                                  libsoup-3.0-dev libgtk-3-dev
+      - run: cargo build -p springtale-desktop --manifest-path tauri/apps/desktop/src-tauri/Cargo.toml
 
-  # ── TypeScript SDK ───────────────────────────────────────────────
-  sdk:
-    name: TypeScript SDK
+  # ── TypeScript / Tauri frontend ───────────────────────────────────
+  frontend:
+    name: Frontend (typecheck + build)
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('sdk/connector-sdk-ts/package.json') != '' }}
+    permissions:
+      contents: read
     steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
         with:
@@ -90,7 +125,246 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          cache-dependency-path: sdk/connector-sdk-ts/pnpm-lock.yaml
-      - run: pnpm -C sdk/connector-sdk-ts install --frozen-lockfile
-      - run: pnpm -C sdk/connector-sdk-ts run check
-      - run: pnpm -C sdk/connector-sdk-ts run test
+          cache-dependency-path: tauri/pnpm-lock.yaml
+      - run: pnpm -C tauri install --frozen-lockfile
+      - run: pnpm -C tauri typecheck
+      - run: pnpm -C tauri build
+
+  # ── TypeScript Lint (Biome) ───────────────────────────────────────
+  #
+  # Biome is the workspace's TS/JSX linter + formatter (2026 idiom for
+  # SolidJS+Vite stacks; replaces ESLint+Prettier with a single ~100x
+  # faster tool). Config: `tauri/biome.json`. Per-package `pnpm lint`
+  # resolves to `biome check .` from the tauri workspace root.
+  ts-lint:
+    name: Frontend lint (Biome)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: tauri/pnpm-lock.yaml
+      - run: pnpm -C tauri install --frozen-lockfile
+      - run: pnpm -C tauri lint
+
+  # Note: the TypeScript SDK job at `sdk/connector-sdk-ts/` will be added
+  # back when that crate lands. Today it doesn't exist on disk; actionlint
+  # rejects `if: hashFiles(...)` at the job level, so the cleanest path is
+  # to add the job in the same PR that adds the crate.
+
+  # ── Hardening configuration check ─────────────────────────────────
+  #
+  # Static assertions about Tauri / capability / CSP config files.
+  # Fails CI if the regressions land that would silently weaken the
+  # frontend or IPC posture.
+  hardening-check:
+    name: Hardening config check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@v4
+      - name: Tauri CSP must be present and strict
+        run: |
+          set -euo pipefail
+          conf=tauri/apps/desktop/src-tauri/tauri.conf.json
+          jq -e '.app.security.csp."default-src"' "$conf" > /dev/null
+          jq -e '.app.security.freezePrototype == true' "$conf" > /dev/null
+          # withGlobalTauri must be explicitly set AND false. The default
+          # is `true` in Tauri 2.x, so a missing key fails closed. The
+          # field lives at `.app.withGlobalTauri`, NOT `.app.security.*`.
+          jq -e '.app.withGlobalTauri == false' "$conf" > /dev/null
+          # dangerousDisableAssetCspModification must be false.
+          jq -e '(.app.security.dangerousDisableAssetCspModification // false) == false' "$conf" > /dev/null
+          # Every window must opt in to the secure asset protocol scheme.
+          # In Tauri 2.x the asset loader picks `http://asset.localhost`
+          # by default on Linux/macOS and `https://asset.localhost` on
+          # Windows; `useHttpsScheme: true` forces the secure scheme on
+          # every platform. (The Tauri v1 field `security.dangerousUseHttpScheme`
+          # was removed in v2 — its per-window successor with inverted
+          # polarity is what we pin here.)
+          jq -e 'all(.app.windows[]; .useHttpsScheme == true)' "$conf" > /dev/null
+          # require-trusted-types-for must be set on script — frontend kill-switch
+          # for innerHTML / eval regressions.
+          jq -e '.app.security.csp."require-trusted-types-for" == "'"'"'script'"'"'"' "$conf" > /dev/null
+          # Isolation Pattern must be wired so every IPC message flows
+          # through the application-level guard iframe.
+          jq -e '.app.security.pattern.use == "isolation"' "$conf" > /dev/null
+      - name: Tauri $schema must point at canonical tauri-apps source
+        run: |
+          set -euo pipefail
+          # Schema URLs determine what IDEs validate against. A fork-hosted
+          # URL is a supply-chain risk even if the fork is benign today —
+          # see docs/security/SUPPLY-CHAIN.md and the Phase-2 verification
+          # report. Only `schema.tauri.app` (canonical CDN) or relative
+          # `../gen/schemas/` (locally generated by tauri-build) are
+          # accepted.
+          conf=tauri/apps/desktop/src-tauri/tauri.conf.json
+          cap=tauri/apps/desktop/src-tauri/capabilities/default.json
+          conf_schema=$(jq -r '.["$schema"]' "$conf")
+          cap_schema=$(jq -r '.["$schema"]' "$cap")
+          case "$conf_schema" in
+            https://schema.tauri.app/*|../gen/schemas/*) ;;
+            *)
+              echo "::error::tauri.conf.json \$schema must be schema.tauri.app or ../gen/schemas/* (got: $conf_schema)"
+              exit 1
+              ;;
+          esac
+          case "$cap_schema" in
+            https://schema.tauri.app/*|../gen/schemas/*) ;;
+            *)
+              echo "::error::capabilities/default.json \$schema must be schema.tauri.app or ../gen/schemas/* (got: $cap_schema)"
+              exit 1
+              ;;
+          esac
+      - name: SRI plugin must be wired in every Vite config
+        run: |
+          set -euo pipefail
+          # Catches regression that drops the springtale-sri plugin from
+          # either app — webview integrity requires every <script> /
+          # <link> tag to carry an SHA-384 integrity attribute.
+          for f in tauri/apps/dashboard/vite.config.ts tauri/apps/desktop/vite.config.ts; do
+            grep -q 'springtaleSri()' "$f" || {
+              echo "::error::springtale-sri plugin missing from $f"
+              exit 1
+            }
+          done
+      - name: No wildcard capability scopes
+        run: |
+          set -euo pipefail
+          # No capability file may reference a wildcard `*` plugin scope.
+          if grep -rE '"\*"' tauri/apps/desktop/src-tauri/capabilities/; then
+            echo "::error::wildcard capability scope detected"
+            exit 1
+          fi
+      - name: No `core:default` permission set
+        run: |
+          set -euo pipefail
+          # `core:default` is the blanket Tauri preset that grants ALL
+          # built-in IPC commands (`core:event:*`, `core:window:*`,
+          # `core:webview:*`, etc.). Springtale ships an explicit
+          # minimum permission list — re-introducing `core:default`
+          # silently widens the IPC attack surface back to the
+          # default-everything posture. The audit lives in
+          # `capabilities/default.json`; this guard prevents drift.
+          if grep -rE '"core:default"' tauri/apps/desktop/src-tauri/capabilities/; then
+            echo "::error::core:default permission set re-introduced — see docs/security/RISK-REGISTER.md R-012"
+            exit 1
+          fi
+      - name: ShellExec must route through the approval gate
+        run: |
+          set -euo pipefail
+          # OpenClaw CVE-2026-25253 1-click-RCE class: `ShellExec` is
+          # the cap that gives a connector arbitrary command execution
+          # under daemon trust. The capability layer routes ShellExec
+          # into `pending_approval` regardless of `CapabilityPolicy`
+          # (see `crates/springtale-connector/src/capability/grant.rs`
+          # Finding A regression test). The ONLY legitimate path from
+          # pending → approved is the blocking `ApprovalGate` in
+          # `springtale-runtime::approval` — wired via
+          # `bridge.with_approval_gate(...)` and resolved by the
+          # `POST /approvals/:id` endpoint.
+          #
+          # This guard catches any future code that tries to insert
+          # `Capability::ShellExec` (or its `"ShellExec"` string form)
+          # into a grant's `approved` set OUTSIDE the gate, which
+          # would re-open the 1-click-RCE surface.
+          #
+          # Allow-listed sites:
+          #   - capability/grant.rs `approve()` (per-cap promotion API
+          #     called by the gate, by design).
+          #   - capability/grant.rs `register()` test fixtures + the
+          #     ShellExec policy-exempt branch (which routes to pending
+          #     or denied, never approved).
+          #   - capability_bridge.rs `bridge.execute` single-shot
+          #     `checker.approve(connector_name, &Capability::ShellExec)`
+          #     after the gate returns Approved (mutates the CLONE only).
+          #
+          # Anything else that puts ShellExec into approved is a
+          # regression. The grep covers two patterns:
+          #   (a) `approved.insert("ShellExec"` or
+          #       `approved.insert(Capability::ShellExec)` — anyone
+          #       directly inserting into the approved HashSet.
+          #   (b) `.approve(...ShellExec...)` — anyone reaching the
+          #       CapabilityChecker's typed promotion API outside the
+          #       legitimate bridge.execute path.
+          # Both patterns excluded from the known-good sites below.
+          # Allow-listed legitimate sites:
+          #   - capability/grant.rs (defines approve(), runs the policy
+          #     exemption that puts ShellExec in pending).
+          #   - capability_bridge.rs (the bridge.execute single-shot
+          #     clone-approve path that is the entire point of the
+          #     ApprovalGate).
+          #   - lines tagged `ci-hardening-allow:` for test fixtures
+          #     that simulate the gate-already-fired path.
+          if grep -rnE '(approved\.insert|\.approve)\([^)]*ShellExec' \
+              crates/ connectors/ apps/ \
+              --include='*.rs' \
+              | grep -vE '(capability/grant\.rs|capability_bridge\.rs|ci-hardening-allow)'; then
+            echo "::error::ShellExec promoted into approved set outside the gate — see docs/security/RISK-REGISTER.md R-005 / Phase-7 Finding A"
+            exit 1
+          fi
+      - name: Dockerfile FROM lines must be digest-pinned
+        run: |
+          set -euo pipefail
+          # Every `FROM` in our Dockerfile must carry an `@sha256:`
+          # byte pin. Tag-only FROMs (e.g. `rust:1.96-slim` without a
+          # digest) mean a malicious upstream tag-overwrite could land
+          # a different image into our release build without any
+          # signal. Dependabot's `docker` ecosystem keeps the digest
+          # pin moving forward as patch releases land.
+          if grep -nE '^FROM\b' Dockerfile | grep -vE '@sha256:[0-9a-f]{64}\b'; then
+            echo "::error::Dockerfile has unpinned FROM — every base image must carry @sha256:<digest>"
+            exit 1
+          fi
+      - name: .dockerignore must exclude secrets + data
+        run: |
+          set -euo pipefail
+          # The build context streams every non-ignored file to the
+          # builder layer cache. A missing or weak .dockerignore means
+          # a local `secrets/` or `data/vault.bin` from dev gets baked
+          # into the layer cache on whoever runs `docker build`.
+          test -f .dockerignore || {
+            echo "::error::.dockerignore missing — required to keep secrets/ and data/ out of the build context"
+            exit 1
+          }
+          # Patterns are basic substrings — grep -F so we don't have to
+          # worry about regex escaping for `.git/` / `.env` / `vault.bin`.
+          for required in 'secrets/' 'data/' 'target/' '.git/' '.env' 'vault.bin'; do
+            grep -qF "$required" .dockerignore || {
+              echo "::error::.dockerignore missing pattern: $required"
+              exit 1
+            }
+          done
+      - name: .npmrc must block lifecycle scripts
+        run: |
+          set -euo pipefail
+          for rc in .npmrc tauri/.npmrc; do
+            grep -q '^ignore-scripts=true' "$rc" || {
+              echo "::error::missing ignore-scripts=true in $rc"
+              exit 1
+            }
+          done
+      - name: No telemetry strings introduced
+        run: |
+          set -euo pipefail
+          # No code path may call out to analytics / telemetry hosts.
+          if grep -rEi '(googletagmanager|google-analytics|sentry-dsn|amplitude\.com|posthog|mixpanel)' \
+              --include='*.rs' --include='*.ts' --include='*.tsx' --include='*.toml' \
+              --exclude-dir=target --exclude-dir=node_modules .; then
+            echo "::error::telemetry endpoint string found"
+            exit 1
+          fi

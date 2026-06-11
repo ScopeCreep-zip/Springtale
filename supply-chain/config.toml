@@ -1,0 +1,64 @@
+# cargo-vet configuration
+# https://mozilla.github.io/cargo-vet/
+#
+# This file declares which audit graphs to import. The actual audit
+# certificates live in audits.toml. Both files are checked in.
+
+[cargo-vet]
+version = "0.10"
+
+# Trusted external audit graphs. We import audits from these orgs so we
+# don't have to re-audit every transitive Rust dep ourselves.
+[imports.bytecode-alliance]
+url = "https://raw.githubusercontent.com/bytecodealliance/wasmtime/main/supply-chain/audits.toml"
+
+[imports.embark-studios]
+url = "https://raw.githubusercontent.com/EmbarkStudios/rust-ecosystem/main/audits.toml"
+
+[imports.google]
+url = "https://raw.githubusercontent.com/google/supply-chain/main/audits.toml"
+
+[imports.isrg]
+url = "https://raw.githubusercontent.com/divviup/libprio-rs/main/supply-chain/audits.toml"
+
+[imports.mozilla]
+url = "https://raw.githubusercontent.com/mozilla/supply-chain/main/audits.toml"
+
+[imports.zcash]
+url = "https://raw.githubusercontent.com/zcash/zcash/master/qa/supply-chain/audits.toml"
+
+# Default criteria a dep must satisfy to ship in Springtale.
+[policy.springtale-core]
+criteria = "safe-to-deploy"
+
+[policy.springtale-crypto]
+criteria = "safe-to-deploy"
+notes = """
+Crypto crate audit posture: every dep here must be audited to the same
+standard as our own crypto code. Reject any dep with unsafe-code expansion
+beyond the documented memsec/libc boundary.
+"""
+
+[policy.springtale-connector]
+criteria = "safe-to-deploy"
+
+[policy.springtale-transport]
+criteria = "safe-to-deploy"
+
+[policy.springtale-sentinel]
+criteria = "safe-to-deploy"
+
+# Connector crates are run inside the WASM sandbox at runtime; their
+# native deps are still part of the host build, so we audit them too.
+[policy.springtale-runtime]
+criteria = "safe-to-deploy"
+
+[policy.springtale-bot]
+criteria = "safe-to-deploy"
+
+# Apps are integration glue; same audit bar.
+[policy.springtaled]
+criteria = "safe-to-deploy"
+
+[policy.springtale-cli]
+criteria = "safe-to-deploy"

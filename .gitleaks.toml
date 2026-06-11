@@ -1,13 +1,140 @@
 title = "Springtale gitleaks config"
 
+# Springtale-authored ruleset extends gitleaks' built-in defaults with
+# patterns for the AI providers + chat connectors we ship. Aligned with
+# OWASP Secrets Management Cheat Sheet and the CISA Sep-2025 npm advisory
+# (rotation patterns when tokens leak via build logs).
+
 [allowlist]
 description = "Known false positives"
-stopwords = ["abc123", "XChaCha20-Poly1305"]
-paths = ['''docs/guide/.*''']
+stopwords = [
+  "abc123",
+  "XChaCha20-Poly1305",
+  "REPLACE_ME",
+  "your-passphrase",
+  "your-api-key",
+]
+paths = [
+  '''docs/guide/.*''',
+  '''docs/operations/.*''',
+  '''docs/security/.*''',
+  '''docs/intended-arch/.*''',
+  '''docs/threat-model-faq\.md''',
+  '''CHANGELOG\.md''',
+  # Test fixtures with intentionally fake tokens used by unit tests.
+  '''connectors/connector-slack/src/auth/mod\.rs''',
+  '''connectors/connector-.*/src/.*/?tests?\.rs''',
+  # AI sanitizer test corpus — every file is a known-bad-by-design fixture
+  # whose whole purpose is to look like a credential to the regex.
+  '''crates/springtale-ai/tests/redteam_corpus/.*\.toml''',
+  '''crates/springtale-ai/src/sanitize/patterns\.rs''',
+]
 
+# Known doc-example tokens that look real but aren't.
 [[rules]]
 id = "discord-token-format"
 description = "Discord token format example in config docs"
 regex = '''NDcyNTk2MDcwMzU1MzE2NzQ2'''
 [rules.allowlist]
 paths = ['''connectors/connector-discord/src/config\.rs''']
+
+# AI provider secrets — Anthropic, OpenAI, Google AI Studio.
+[[rules]]
+id = "anthropic-api-key"
+description = "Anthropic API key"
+regex = '''sk-ant-[a-zA-Z0-9_-]{32,}'''
+keywords = ["sk-ant-"]
+
+[[rules]]
+id = "openai-api-key"
+description = "OpenAI API key (anchored on the T3BlbkFJ project discriminator real keys carry)"
+regex = '''sk-(?:proj-)?[A-Za-z0-9]{16,}T3BlbkFJ[A-Za-z0-9]{16,}'''
+keywords = ["T3BlbkFJ"]
+
+[[rules]]
+id = "openai-org-key"
+description = "OpenAI organization key"
+regex = '''org-[a-zA-Z0-9]{24}'''
+keywords = ["org-"]
+
+[[rules]]
+id = "google-ai-studio-key"
+description = "Google AI Studio API key"
+regex = '''AIza[0-9A-Za-z\-_]{35}'''
+keywords = ["AIza"]
+
+# Chat / connector tokens.
+[[rules]]
+id = "slack-bot-token"
+description = "Slack bot/app token (real keys are 3 dash-separated segments with specific minimum lengths)"
+regex = '''xox[bpars]-[0-9]{10,}-[0-9]{10,}-[A-Za-z0-9]{20,}'''
+keywords = ["xoxb-", "xoxp-", "xoxa-", "xoxr-", "xoxs-"]
+
+[[rules]]
+id = "slack-webhook"
+description = "Slack incoming webhook URL"
+regex = '''https://hooks\.slack\.com/services/T[A-Z0-9]+/B[A-Z0-9]+/[a-zA-Z0-9]+'''
+keywords = ["hooks.slack.com"]
+
+[[rules]]
+id = "telegram-bot-token"
+description = "Telegram bot token"
+regex = '''\b[0-9]{8,12}:AA[a-zA-Z0-9_-]{32,}\b'''
+keywords = [":AA"]
+
+[[rules]]
+id = "discord-bot-token-prefix"
+description = "Discord bot token (Bot prefix form)"
+regex = '''(?i)Bot\s+[A-Za-z0-9._\-]{59,}'''
+keywords = ["Bot "]
+
+# Package registry tokens.
+[[rules]]
+id = "npm-token"
+description = "npm token (classic + granular)"
+regex = '''npm_[A-Za-z0-9]{36}'''
+keywords = ["npm_"]
+
+[[rules]]
+id = "pypi-token"
+description = "PyPI upload token"
+regex = '''pypi-AgEIcHlwaS5vcmc[A-Za-z0-9_-]{50,}'''
+keywords = ["pypi-AgEIcHlwaS5vcmc"]
+
+[[rules]]
+id = "crates-io-token"
+description = "crates.io API token"
+regex = '''cio[A-Za-z0-9]{32}'''
+keywords = ["cio"]
+
+# GitHub.
+[[rules]]
+id = "github-pat-classic"
+description = "GitHub classic personal access token"
+regex = '''ghp_[A-Za-z0-9]{36}'''
+keywords = ["ghp_"]
+
+[[rules]]
+id = "github-pat-fine-grained"
+description = "GitHub fine-grained personal access token"
+regex = '''github_pat_[A-Za-z0-9_]{82}'''
+keywords = ["github_pat_"]
+
+[[rules]]
+id = "github-oauth"
+description = "GitHub OAuth access token"
+regex = '''gho_[A-Za-z0-9]{36}'''
+keywords = ["gho_"]
+
+# Generic private keys.
+[[rules]]
+id = "private-key-pem"
+description = "PEM-encoded private key"
+regex = '''-----BEGIN (?:RSA |EC |DSA |OPENSSH |PGP |ENCRYPTED )?PRIVATE KEY-----'''
+keywords = ["BEGIN", "PRIVATE KEY"]
+
+[[rules]]
+id = "age-secret-key"
+description = "age secret key (age1...)"
+regex = '''AGE-SECRET-KEY-1[0-9A-Z]{58}'''
+keywords = ["AGE-SECRET-KEY-1"]

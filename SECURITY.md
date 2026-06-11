@@ -8,6 +8,22 @@ This file is the **disclosure policy**. The threat model lives in
 [`docs/current-arch/SECURITY.md`](docs/current-arch/SECURITY.md)
 (design intent, including the vulnerable-user threat models in §2.5–§2.9).
 
+For operators / packagers wanting the "Secure by Demand" answers
+(authentication, vuln classes, intrusion evidence, supply chain, VDP)
+see [`docs/security/SECURITY-FAQ.md`](docs/security/SECURITY-FAQ.md).
+
+Machine-readable disclosure pointer (RFC 9116):
+[`.well-known/security.txt`](tauri/apps/dashboard/public/.well-known/security.txt).
+
+Related operator docs:
+- [`docs/security/MEMORY-SAFETY.md`](docs/security/MEMORY-SAFETY.md) — CISA memory-safety roadmap
+- [`docs/security/CRYPTO-INVENTORY.md`](docs/security/CRYPTO-INVENTORY.md) — NIST IR 8547 algorithm inventory + PQ migration plan
+- [`docs/security/SUPPLY-CHAIN.md`](docs/security/SUPPLY-CHAIN.md) — dep policy + provenance / signing
+- [`docs/security/RISK-REGISTER.md`](docs/security/RISK-REGISTER.md) — 32-row STRIDE register
+- [`docs/security/INCIDENT-RUNBOOK.md`](docs/security/INCIDENT-RUNBOOK.md) — maintainer playbooks
+- [`docs/security/CI-TRUST.md`](docs/security/CI-TRUST.md) — CI/CD trust posture
+- [`docs/operations/verifying-releases.md`](docs/operations/verifying-releases.md) — cosign verify recipe
+
 ## Reporting a vulnerability
 
 **Don't open a public issue.** Use one of these channels:
@@ -101,6 +117,12 @@ of higher CVSS but lower user-impact-at-the-margin.
 ## After the fix
 
 - We publish a GitHub Security Advisory with the CVE (if assigned).
+  Today CVEs are issued via GitHub's CNA proxy — the maintainer files
+  the advisory in the repo's Security tab and clicks "Request CVE" so
+  the ID lands under GitHub's CNA namespace. The expanded CNA path
+  (including the forward-looking conditions for Springtale registering
+  as a direct CVE Numbering Authority) is documented in
+  [`docs/security/INCIDENT-RUNBOOK.md` § On becoming a CNA](docs/security/INCIDENT-RUNBOOK.md#on-becoming-a-cna).
 - We update [`docs/arch/AUDIT-NOTES.md`](docs/arch/AUDIT-NOTES.md) and
   [`CHANGELOG.md`](CHANGELOG.md).
 - We credit you (real name, handle, or anonymous — your call).

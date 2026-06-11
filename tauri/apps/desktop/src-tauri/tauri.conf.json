@@ -1,5 +1,5 @@
 {
-  "$schema": "https://raw.githubusercontent.com/nicehash/Tauri/dev/crates/tauri-config-schema/schema.json",
+  "$schema": "https://schema.tauri.app/config/2",
   "productName": "Springtale",
   "version": "0.1.0",
   "identifier": "com.springtale.app",
@@ -17,30 +17,53 @@
         "height": 768,
         "minWidth": 800,
         "minHeight": 600,
-        "contentProtected": true
+        "contentProtected": true,
+        "useHttpsScheme": true
       }
     ],
+    "withGlobalTauri": false,
     "security": {
       "freezePrototype": true,
+      "dangerousDisableAssetCspModification": false,
+      "pattern": {
+        "use": "isolation",
+        "options": { "dir": "isolation" }
+      },
       "csp": {
-        "default-src": "'self'",
-        "script-src": "'self'",
+        "default-src": "'none'",
+        "script-src": "'self' 'wasm-unsafe-eval'",
         "style-src": "'self' 'unsafe-inline'",
         "connect-src": "'self' http://127.0.0.1:* ipc: http://ipc.localhost",
         "img-src": "'self' data: asset: http://asset.localhost",
-        "frame-ancestors": "'none'"
+        "font-src": "'self' data: asset: http://asset.localhost",
+        "media-src": "'self' asset: http://asset.localhost",
+        "object-src": "'none'",
+        "base-uri": "'none'",
+        "form-action": "'none'",
+        "frame-ancestors": "'none'",
+        "require-trusted-types-for": "'script'"
+      },
+      "devCsp": {
+        "default-src": "'none'",
+        "script-src": "'self' 'wasm-unsafe-eval'",
+        "style-src": "'self' 'unsafe-inline'",
+        "connect-src": "'self' http://127.0.0.1:* ipc: http://ipc.localhost ws://localhost:1420",
+        "img-src": "'self' data: asset: http://asset.localhost",
+        "font-src": "'self' data: asset: http://asset.localhost",
+        "media-src": "'self' asset: http://asset.localhost",
+        "object-src": "'none'",
+        "base-uri": "'none'",
+        "form-action": "'none'",
+        "frame-ancestors": "'none'",
+        "require-trusted-types-for": "'script'"
       }
     }
   },
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": [
-      "icons/icon.png"
-    ],
-    "resources": [
-      "icons/disguise/*.png"
-    ],
+    "icon": ["icons/icon.png"],
+    "resources": ["icons/disguise/*.png"],
     "android": {
       "minSdkVersion": 24
     },

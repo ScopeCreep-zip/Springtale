@@ -1,0 +1,11 @@
+[package]
+name = "openssl-sys"
+version = "0.9.103"
+edition = "2021"
+description = "Stub crate that prevents openssl-sys from being used. Springtale uses rustls exclusively; openssl-sys is banned."
+
+[lib]
+name = "openssl_sys"
+path = "src/lib.rs"
+
+[build-dependencies]

@@ -1,0 +1,13 @@
+# cargo-vet audits — Springtale-authored certificates.
+#
+# Each `[[audits.<crate>]]` entry attests that a maintainer has reviewed the
+# crate at the named version against the declared criteria. The full set of
+# attestations for the workspace is the union of this file plus everything
+# referenced by `supply-chain/config.toml` `[imports]`.
+#
+# Run `cargo vet` to verify. Run `cargo vet certify <crate> <ver>` to add.
+# Run `cargo vet diff <crate> <old> <new>` to review version bumps.
+
+# Seeded as empty so the workspace policy gates start enforceable.
+# Maintainer-authored audits land here as deps are reviewed for the
+# Phase-2 bring-up.

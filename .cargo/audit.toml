@@ -20,4 +20,24 @@ ignore = [
     # stable releases with rand_core 0.9 (ed25519-dalek 3.x, chacha20poly1305
     # 0.11.x). Mitigated by feature exclusion, not accepted risk.
     "RUSTSEC-2026-0097",
+
+    # bincode 2.0.1 unmaintained — upstream team ceased development after a
+    # doxxing/harassment incident. No CVE. Pulled transitively via foca
+    # (SWIM membership) with the `bincode-codec` feature. bincode 2.0.1 is
+    # functionally complete; no exploitation path. Tracking foca's migration
+    # to postcard/wincode. See `vex/bincode-rustsec-2025-0141.json`.
+    "RUSTSEC-2025-0141",
+
+    # instant 0.1.13 unmaintained — upstream recommends migrating callers to
+    # `web-time`. Pulled transitively via nostr-sdk -> nostr-relay-pool ->
+    # nostr-database -> nostr. instant 0.1.13 has no known soundness issues.
+    # No safe upgrade — the migration must happen in nostr-sdk. Tracking
+    # upstream issue. See `vex/instant-rustsec-2024-0384.json`.
+    "RUSTSEC-2024-0384",
+
+    # lru 0.13 IterMut Stacked Borrows soundness — pulled transitively via
+    # chitchat (workspace SWIM/scuttlebutt). Springtale doesn't call
+    # lru::IterMut directly; chitchat is on the dependabot ignore list (wire
+    # format critical). See `vex/lru-rustsec-2026-0002.json`.
+    "RUSTSEC-2026-0002",
 ]

@@ -1,0 +1,28 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "https://springtale.dev/vex/number-prefix-rustsec-2025-0119.json",
+  "author": "Springtale Maintainers <k1104jackson@hotmail.com>",
+  "timestamp": "2026-05-25T00:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": {
+        "@id": "https://rustsec.org/advisories/RUSTSEC-2025-0119",
+        "name": "RUSTSEC-2025-0119",
+        "description": "number_prefix 0.4.0 — unmaintained crate (progress-bar formatting)"
+      },
+      "products": [
+        {
+          "@id": "pkg:cargo/number_prefix@0.4.0",
+          "subcomponents": [
+            { "@id": "pkg:cargo/indicatif" }
+          ]
+        }
+      ],
+      "status": "affected",
+      "justification": "vulnerable_code_not_present",
+      "impact_statement": "RUSTSEC-2025-0119 is an unmaintained-status advisory, not a vulnerability. `number_prefix` is a tiny formatting library used by `indicatif` for progress-bar prefixes (e.g. `1.2 kB`). Pulled in only via `springtale-cli`'s progress UI — never executed against attacker-controlled input. No known soundness or correctness issues; the crate is feature-complete for what it does.",
+      "action_statement": "Track `indicatif` upstream; will drop the transitive when `indicatif` switches formatters or `number_prefix` is taken over by a new maintainer. No production exposure."
+    }
+  ]
+}
