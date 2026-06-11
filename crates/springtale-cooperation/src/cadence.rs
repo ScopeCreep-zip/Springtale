@@ -4,20 +4,23 @@
 //! the beat. The music IS the clock. All participants synchronize to it."
 //!
 //! The CadenceBus provides an external clock that all formation members
-//! synchronize to. The tick rate can modulate based on pacing phase
-//! (§22) — faster during Peak, slower during Recovery.
+//! synchronize to. It is a PURE metronome: ticks carry timing only.
+//! Intent travels on the `FormationContext` watch channel (§6) because
+//! one bus serves every formation in the process — a bus-level intent
+//! would be wrong for all but one of them. The per-formation tick rate
+//! modulates via the §22 pacing divider (`PacingManager::tick_divider`),
+//! which skips bus ticks rather than changing the bus interval.
 //!
 //! Ryan Clark's discovery: "100% timing leeway felt best." This means
 //! agents should have generous windows to commit actions — the hard
 //! part is choosing the RIGHT action, not hitting the timing.
 
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 use specta::Type;
-use tokio::sync::{RwLock, broadcast};
+use tokio::sync::broadcast;
 
 /// Unique identifier for an agent in a formation.
 ///
@@ -165,15 +168,14 @@ pub enum IntentPattern {
     Dissolve { reason: DissolveReason },
 }
 
-/// A single tick of the cadence bus.
+/// A single tick of the cadence bus. Pure timing — no intent (§6:
+/// intent rides the `FormationContext` watch channel).
 #[derive(Debug, Clone)]
 pub struct Tick {
     /// Monotonically increasing tick number.
     pub sequence: crate::tick::TickId,
     /// When this tick was emitted.
     pub timestamp: Instant,
-    /// Current intent pattern for the formation.
-    pub intent: IntentPattern,
     /// How long agents have to respond (generous, per Necrodancer insight).
     pub window: Duration,
 }
@@ -221,7 +223,6 @@ pub struct TickReport {
 /// across tasks (spec §5.4 test shows `Arc::new(bus)` pattern).
 pub struct CadenceBus {
     pub tick_interval: Duration,
-    pub current_intent: Arc<RwLock<IntentPattern>>,
     tick_counter: AtomicU64,
     tx: broadcast::Sender<Tick>,
     reports_tx: tokio::sync::mpsc::Sender<TickReport>,
@@ -238,9 +239,6 @@ impl CadenceBus {
         let (reports_tx, reports_rx) = tokio::sync::mpsc::channel(capacity * 4);
         let bus = Self {
             tick_interval,
-            current_intent: Arc::new(RwLock::new(IntentPattern::Stabilize {
-                reason: "formation assembling".into(),
-            })),
             tick_counter: AtomicU64::new(0),
             tx,
             reports_tx,
@@ -264,12 +262,6 @@ impl CadenceBus {
         self.reports_tx.clone()
     }
 
-    /// Change the current intent broadcast on the next tick.
-    pub async fn set_intent(&self, intent: IntentPattern) {
-        let mut guard = self.current_intent.write().await;
-        *guard = intent;
-    }
-
     /// Get the current tick count.
     pub fn tick_count(&self) -> u64 {
         self.tick_counter.load(Ordering::Relaxed)
@@ -284,12 +276,10 @@ impl CadenceBus {
         loop {
             interval.tick().await;
 
-            let intent = self.current_intent.read().await.clone();
             let seq = self.tick_counter.fetch_add(1, Ordering::Relaxed);
             let tick = Tick {
                 sequence: crate::tick::TickId(seq),
                 timestamp: Instant::now(),
-                intent,
                 window: self.tick_interval.saturating_mul(4),
             };
 
@@ -304,6 +294,8 @@ impl CadenceBus {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
+    use std::sync::Arc;
+
     use super::*;
 
     #[tokio::test]
@@ -348,33 +340,6 @@ mod tests {
         assert_eq!(report.action_taken.as_ref().unwrap().kind, "send_message");
 
         handle.abort();
-    }
-
-    #[tokio::test]
-    async fn test_set_intent() {
-        let (bus, mut reports_rx) = CadenceBus::new(Duration::from_millis(100), 16);
-
-        bus.set_intent(IntentPattern::Execute { plan_id: None })
-            .await;
-
-        let intent = bus.current_intent.read().await;
-        assert!(matches!(&*intent, IntentPattern::Execute { .. }));
-
-        // Verify the reports channel works in this bus too
-        let sender = bus.reports_sender();
-        sender
-            .send(TickReport {
-                agent_id: AgentId::new(),
-                tick_sequence: crate::tick::TickId(0),
-                action_taken: None,
-                latency: Duration::from_millis(0),
-                intent_alignment: 1.0,
-                interference_with: vec![],
-            })
-            .await
-            .expect("send");
-        let report = reports_rx.recv().await.expect("recv");
-        assert!((report.intent_alignment - 1.0).abs() < f32::EPSILON);
     }
 
     #[tokio::test]

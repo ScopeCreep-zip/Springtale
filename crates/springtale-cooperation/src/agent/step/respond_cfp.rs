@@ -28,7 +28,7 @@ mod tests {
     use super::*;
     use crate::action::SubTask;
     use crate::attention::AttentionEconomy;
-    use crate::cadence::{AgentId, IntentPattern, Tick};
+    use crate::cadence::{AgentId, Tick};
     use crate::capability::CapabilityDecl;
     use crate::context::FormationContext;
     use crate::contract_net::bid::evaluate::UtilityBidder;
@@ -42,7 +42,6 @@ mod tests {
         let tick = Tick {
             sequence: crate::tick::TickId(1),
             timestamp: std::time::Instant::now(),
-            intent: IntentPattern::Execute { plan_id: None },
             window: Duration::from_millis(33),
         };
         let fc = FormationContext {
@@ -92,7 +91,6 @@ mod tests {
         let tick = Tick {
             sequence: crate::tick::TickId(1),
             timestamp: std::time::Instant::now(),
-            intent: IntentPattern::Execute { plan_id: None },
             window: Duration::from_millis(33),
         };
         let fc = FormationContext::default();

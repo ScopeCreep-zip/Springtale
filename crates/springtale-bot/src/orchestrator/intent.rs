@@ -1,4 +1,4 @@
-//! Intent — publish intent patterns to the cadence bus.
+//! Intent — the §3.2 orchestration chokepoint for intent changes.
 //!
 //! Per COOPERATION.pdf §3.2:
 //! Game source: Patapon drum patterns, Total War attack/defend orders,
@@ -8,51 +8,98 @@
 //! engage. It does not tell individual agents which target to pick,
 //! what timing to use, or what sequence to follow."
 //!
-//! IntentPattern is defined in cooperation::cadence (§5) — the
-//! orchestrator publishes it, the cadence bus broadcasts it,
-//! agents interpret it individually.
+//! Three sources for intent transitions (§5.5) — ALL of them route
+//! through [`apply_intent`] so every intent write is audited in one
+//! place and the §7 momentum FSM always observes the change:
+//!
+//! 1. Orchestrator/user command (`FormationCommand::ChangeIntent`)
+//! 2. Formation self-governance — a consensus-approved
+//!    `DecisionSubject::IntentChange` at Fever tier
+//!    (`tick_steps/resolve_consensus`)
+//! 3. L6 intervention (`Intervention::ChangeIntent`)
+//!
+//! The intent travels to members on the `FormationContext` watch
+//! channel (§6) — the cadence bus is a pure metronome and carries no
+//! intent (see `springtale_cooperation::cadence`).
 
-use crate::cooperation::cadence::{CadenceBus, IntentPattern};
+use crate::cooperation::cadence::IntentPattern;
+use crate::cooperation::formation::Formation;
+use springtale_cooperation::momentum::MomentumEvent;
 
-/// Publish a new intent to the cadence bus.
+/// Replace the formation's intent and rebroadcast its context.
 ///
-/// Three sources for intent transitions (§5.2):
-/// 1. Orchestrator command (this function)
-/// 2. Formation self-governance (via consensus at Fever tier)
-/// 3. Momentum-gated access to new intent options
-pub async fn publish_intent(cadence: &CadenceBus, intent: IntentPattern) {
-    *cadence.current_intent.write().await = intent;
+/// Side effects, in order:
+/// 1. Momentum observes `IntentChanged` — the consecutive-success run
+///    resets (§7: coherence is earned per-intent, not carried across).
+/// 2. `formation.intent` is replaced.
+/// 3. The `FormationContext` watch channel rebroadcasts so every member
+///    sees the new intent on its next `changed()` (§6).
+pub fn apply_intent(formation: &mut Formation, intent: IntentPattern) {
+    formation
+        .momentum
+        .apply_event(&MomentumEvent::IntentChanged(intent.clone()));
+    formation.intent = intent;
+    formation.broadcast_context();
 }
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use std::time::Duration;
+    use crate::cooperation::formation::FormationMember;
+    use crate::cooperation::types::FormationConstraints;
+    use springtale_cooperation::cadence::AgentId;
 
-    #[tokio::test]
-    async fn test_publish_intent() {
-        let (bus, mut reports_rx) = CadenceBus::new(Duration::from_millis(100), 16);
+    fn formation() -> Formation {
+        Formation::new_disconnected(
+            vec![FormationMember::new(AgentId::new(), vec!["github".into()])],
+            IntentPattern::Execute { plan_id: None },
+            FormationConstraints::default(),
+        )
+    }
 
-        publish_intent(&bus, IntentPattern::Execute { plan_id: None }).await;
+    #[test]
+    fn apply_intent_swaps_and_resets_momentum_run() {
+        let mut f = formation();
+        for _ in 0..2 {
+            f.momentum.record_success();
+        }
+        assert_eq!(f.momentum.consecutive_successes, 2);
 
-        let intent = bus.current_intent.read().await;
-        assert!(matches!(&*intent, IntentPattern::Execute { .. }));
+        apply_intent(
+            &mut f,
+            IntentPattern::Surge {
+                objective: "ship it".into(),
+            },
+        );
 
-        // Verify reports channel is functional (not just created)
-        let sender = bus.reports_sender();
-        sender
-            .send(springtale_cooperation::cadence::TickReport {
-                agent_id: springtale_cooperation::cadence::AgentId::new(),
-                tick_sequence: springtale_cooperation::TickId::ZERO,
-                action_taken: None,
-                latency: Duration::from_millis(0),
-                intent_alignment: 1.0,
-                interference_with: vec![],
-            })
-            .await
-            .expect("report send");
-        let report = reports_rx.recv().await.expect("report recv");
-        assert!((report.intent_alignment - 1.0).abs() < f32::EPSILON);
+        assert!(matches!(f.intent, IntentPattern::Surge { .. }));
+        assert_eq!(
+            f.momentum.consecutive_successes, 0,
+            "intent change resets the §7 coherence run"
+        );
+    }
+
+    #[test]
+    fn apply_intent_rebroadcasts_context() {
+        let mut f = formation();
+        let (_, mut ctx_rx) = f.subscribe();
+        ctx_rx.borrow_and_update();
+
+        apply_intent(
+            &mut f,
+            IntentPattern::Stabilize {
+                reason: "cooling".into(),
+            },
+        );
+
+        assert!(
+            ctx_rx.has_changed().unwrap(),
+            "watch channel observed the intent change"
+        );
+        assert!(matches!(
+            ctx_rx.borrow().intent,
+            IntentPattern::Stabilize { .. }
+        ));
     }
 }

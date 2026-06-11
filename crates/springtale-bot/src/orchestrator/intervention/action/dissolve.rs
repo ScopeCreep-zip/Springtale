@@ -9,8 +9,7 @@ use super::super::types::InterventionError;
 /// observes the shutdown reason.
 pub fn apply(formation: &mut Formation, reason: DissolveReason) -> Result<(), InterventionError> {
     let logged_reason = reason.0.clone();
-    formation.intent = IntentPattern::Dissolve { reason };
-    formation.broadcast_context();
+    crate::orchestrator::intent::apply_intent(formation, IntentPattern::Dissolve { reason });
     tracing::warn!(
         formation_id = %formation.id.0,
         reason = %logged_reason,

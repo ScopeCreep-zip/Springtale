@@ -304,6 +304,69 @@ async fn formation_name(state: &RuntimeState, id: &str) -> String {
         .unwrap_or_else(|| id.to_owned())
 }
 
+/// Propose an intent change for the formation to vote on (§5.5 source 2).
+///
+/// Unlike [`update_intent`] (the §3.2 orchestrator/user path, applied
+/// immediately), this opens a consensus vote among the formation's
+/// operational members. The bot event loop honors it only at Fever
+/// (`MomentumState::can_consensus`) — formation self-governance is an
+/// earned capability. Joint Intention Theory: the joint goal changes by
+/// mutual belief (a vote), not by one member's private belief. Nothing
+/// is persisted here; if the vote passes, `resolve_consensus` applies
+/// the intent in-memory and the next `update_intent`-style persistence
+/// follows the regular formation-state sync.
+pub async fn propose_intent_change(
+    state: &RuntimeState,
+    id: &str,
+    intent: &str,
+) -> Result<(), OperationError> {
+    let fid = springtale_cooperation::types::FormationId::parse(id)
+        .map_err(|e| OperationError::Validation(format!("invalid formation id: {e}")))?;
+    let parsed = springtale_cooperation::command::parse_intent(intent);
+    let _ = state
+        .formation_cmd_tx
+        .send(
+            springtale_cooperation::command::FormationCommand::ProposeIntentChange {
+                formation_id: fid,
+                intent: parsed,
+            },
+        )
+        .await;
+    Ok(())
+}
+
+/// Cast a ballot on an open consensus vote (§11).
+///
+/// `voter` is the agent id casting the ballot; `approve = false` votes
+/// for the "deny" option. The vote resolves in the bot's
+/// `resolve_consensus` tick step on quorum, override, or deadline.
+pub async fn cast_vote(
+    state: &RuntimeState,
+    formation_id: &str,
+    vote_id: &str,
+    voter: &str,
+    approve: bool,
+) -> Result<(), OperationError> {
+    let fid = springtale_cooperation::types::FormationId::parse(formation_id)
+        .map_err(|e| OperationError::Validation(format!("invalid formation id: {e}")))?;
+    let vid = uuid::Uuid::parse_str(vote_id)
+        .map_err(|e| OperationError::Validation(format!("invalid vote id: {e}")))?;
+    let voter_id = uuid::Uuid::parse_str(voter)
+        .map_err(|e| OperationError::Validation(format!("invalid voter id: {e}")))?;
+    let _ = state
+        .formation_cmd_tx
+        .send(
+            springtale_cooperation::command::FormationCommand::CastVote {
+                formation_id: fid,
+                vote_id: vid,
+                voter: springtale_cooperation::cadence::AgentId(voter_id),
+                approve,
+            },
+        )
+        .await;
+    Ok(())
+}
+
 /// Manually trigger a self-rally for a formation.
 ///
 /// Sends a Rally command to the bot event loop. The event loop

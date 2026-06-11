@@ -3,11 +3,12 @@ use crate::cooperation::formation::Formation;
 
 use super::super::types::InterventionError;
 
-/// Apply a `ChangeIntent` intervention. Rewrites the formation's intent and
-/// pushes the new context to all members over the watch channel.
+/// Apply a `ChangeIntent` intervention. Routes through the §3.2
+/// `apply_intent` chokepoint so the momentum FSM observes the change and
+/// the context watch channel rebroadcasts — same path as user commands
+/// and consensus-approved intent changes.
 pub fn apply(formation: &mut Formation, intent: IntentPattern) -> Result<(), InterventionError> {
-    formation.intent = intent;
-    formation.broadcast_context();
+    crate::orchestrator::intent::apply_intent(formation, intent);
     tracing::info!(
         formation_id = %formation.id.0,
         "intervention: intent changed"

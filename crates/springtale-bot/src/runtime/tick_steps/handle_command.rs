@@ -131,10 +131,85 @@ pub async fn handle_formation_command(bot: &mut Bot, cmd: FormationCommand) {
         } => {
             let mut formations = bot.formations.write().await;
             if let Some(formation) = formations.iter_mut().find(|f| f.id == formation_id) {
-                formation.intent = intent;
+                crate::orchestrator::intent::apply_intent(formation, intent);
                 tracing::info!(id = %formation_id, "formation intent updated");
             } else {
                 tracing::warn!(id = %formation_id, "formation not found for intent change");
+            }
+        }
+        FormationCommand::ProposeIntentChange {
+            formation_id,
+            intent,
+        } => {
+            let mut formations = bot.formations.write().await;
+            if let Some(formation) = formations.iter_mut().find(|f| f.id == formation_id) {
+                // §5.5 source 2 / §7 capability table: formation
+                // self-governance requires earned Fever momentum.
+                if !formation.momentum.can_consensus() {
+                    tracing::info!(
+                        id = %formation_id,
+                        tier = ?formation.momentum.tier,
+                        "intent-change proposal denied — consensus requires Fever tier"
+                    );
+                } else {
+                    let voters: Vec<AgentId> = formation
+                        .members
+                        .iter()
+                        .filter(|m| m.is_operational())
+                        .map(|m| m.agent_id)
+                        .collect();
+                    let voter_count = voters.len() as u32;
+                    use springtale_cooperation::consensus::{DecisionDescriptor, DecisionSubject};
+                    let vote_id = formation.consensus.propose(
+                        DecisionDescriptor {
+                            description: format!("change intent to {intent:?}"),
+                            options: vec!["approve".into(), "deny".into()],
+                            required_participants: voter_count,
+                            subject: DecisionSubject::IntentChange { proposed: intent },
+                        },
+                        std::time::Duration::from_secs(10),
+                        &voters,
+                        1,
+                    );
+                    tracing::info!(
+                        id = %formation_id,
+                        vote_id = %vote_id,
+                        voters = voter_count,
+                        "intent-change consensus vote opened (joint-intention protocol)"
+                    );
+                }
+            } else {
+                tracing::warn!(id = %formation_id, "formation not found for ProposeIntentChange");
+            }
+        }
+        FormationCommand::CastVote {
+            formation_id,
+            vote_id,
+            voter,
+            approve,
+        } => {
+            let mut formations = bot.formations.write().await;
+            if let Some(formation) = formations.iter_mut().find(|f| f.id == formation_id) {
+                use springtale_cooperation::consensus::VoteChoice;
+                // Options are ["approve", "deny"] by §11 convention.
+                let choice = VoteChoice::Option(if approve { 0 } else { 1 });
+                match formation.consensus.vote(&vote_id, voter, choice) {
+                    Ok(()) => tracing::info!(
+                        id = %formation_id,
+                        vote = %vote_id,
+                        voter = %voter,
+                        approve,
+                        "ballot cast"
+                    ),
+                    Err(e) => tracing::warn!(
+                        id = %formation_id,
+                        vote = %vote_id,
+                        error = %e,
+                        "ballot rejected"
+                    ),
+                }
+            } else {
+                tracing::warn!(id = %formation_id, "formation not found for CastVote");
             }
         }
         FormationCommand::AddMember {

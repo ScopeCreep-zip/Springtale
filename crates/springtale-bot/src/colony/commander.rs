@@ -64,7 +64,7 @@ pub async fn run(bot: &mut Bot) {
                 continue;
             }
             tracing::info!(formation = %fid, intent = ?intent, "colony: cross-formation move applied");
-            f.intent = intent;
+            crate::orchestrator::intent::apply_intent(f, intent);
             f.cascade_hit_streak = 0;
         }
     }

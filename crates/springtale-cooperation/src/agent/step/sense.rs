@@ -49,7 +49,7 @@ pub fn run(
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::cadence::{AgentId, IntentPattern, Tick};
+    use crate::cadence::{AgentId, Tick};
     use crate::context::FormationContext;
     use crate::momentum::{MomentumState, MomentumTier};
     use crate::stigmergy::deposit::SurfaceStore;
@@ -94,7 +94,6 @@ mod tests {
         let tick = Tick {
             sequence: crate::tick::TickId(0),
             timestamp: Instant::now(),
-            intent: IntentPattern::Execute { plan_id: None },
             window: Duration::from_millis(33),
         };
         let fc = FormationContext::default();

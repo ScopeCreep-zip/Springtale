@@ -167,6 +167,38 @@ pub async fn update_intent(
     Ok((StatusCode::OK, Json(serde_json::json!({ "updated": id }))))
 }
 
+/// POST /formations/{id}/propose-intent — open a consensus vote to change
+/// the formation's intent (§5.5 formation self-governance, Fever-gated).
+pub async fn propose_intent(
+    State(state): State<AppState>,
+    ValidatedPath(id): ValidatedPath,
+    Json(body): Json<serde_json::Value>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let intent = body["intent"].as_str().ok_or(StatusCode::BAD_REQUEST)?;
+    operations::formations::propose_intent_change(&state.runtime, &id, intent)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)?;
+    Ok((StatusCode::OK, Json(serde_json::json!({ "proposed": id }))))
+}
+
+/// POST /formations/{id}/votes/{vote_id} — cast a ballot on an open
+/// consensus vote (§11). Body: { "voter": "<agent uuid>", "approve": bool }.
+pub async fn cast_vote(
+    State(state): State<AppState>,
+    axum::extract::Path((id, vote_id)): axum::extract::Path<(String, String)>,
+    Json(body): Json<serde_json::Value>,
+) -> Result<impl IntoResponse, StatusCode> {
+    let voter = body["voter"].as_str().ok_or(StatusCode::BAD_REQUEST)?;
+    let approve = body["approve"].as_bool().ok_or(StatusCode::BAD_REQUEST)?;
+    operations::formations::cast_vote(&state.runtime, &id, &vote_id, voter, approve)
+        .await
+        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    Ok((
+        StatusCode::OK,
+        Json(serde_json::json!({ "voted": vote_id })),
+    ))
+}
+
 /// POST /formations/{id}/members — add a member to a formation.
 pub async fn add_member(
     State(state): State<AppState>,

@@ -147,6 +147,14 @@ pub fn build_router(state: AppState) -> Router {
         .route("/formations/{id}/rally", post(formations::rally))
         .route("/formations/{id}/intent", put(formations::update_intent))
         .route(
+            "/formations/{id}/propose-intent",
+            post(formations::propose_intent),
+        )
+        .route(
+            "/formations/{id}/votes/{vote_id}",
+            post(formations::cast_vote),
+        )
+        .route(
             "/formations/{id}/members",
             post(formations::add_member).delete(formations::remove_member),
         )

@@ -55,7 +55,7 @@ mod tests {
     use super::*;
     use crate::attention::AttentionEconomy;
     use crate::awareness::{LocalAwareness, NeighborSnapshot, RoleSignature};
-    use crate::cadence::{AgentId, IntentPattern, Tick};
+    use crate::cadence::{AgentId, Tick};
     use crate::context::FormationContext;
     use crate::momentum::MomentumState;
     use crate::supervision::Liveness;
@@ -88,7 +88,6 @@ mod tests {
         let tick = Tick {
             sequence: crate::tick::TickId(1),
             timestamp: Instant::now(),
-            intent: IntentPattern::Execute { plan_id: None },
             window: Duration::from_millis(33),
         };
         let fc = FormationContext::default();
@@ -131,7 +130,6 @@ mod tests {
         let tick = Tick {
             sequence: crate::tick::TickId(1),
             timestamp: Instant::now(),
-            intent: IntentPattern::Execute { plan_id: None },
             window: Duration::from_millis(33),
         };
         let fc = FormationContext {

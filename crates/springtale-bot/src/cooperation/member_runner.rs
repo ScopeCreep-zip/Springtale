@@ -20,7 +20,7 @@ use tokio::task::JoinHandle;
 
 use springtale_cooperation::agent::AgentContext;
 use springtale_cooperation::attention::AttentionBroker;
-use springtale_cooperation::cadence::{AgentId, IntentPattern, Tick};
+use springtale_cooperation::cadence::{AgentId, Tick};
 use springtale_cooperation::capability::CapabilityDecl;
 use springtale_cooperation::context::FormationContext;
 use springtale_cooperation::contract_net::ParticipantHandle;
@@ -102,7 +102,7 @@ fn on_cfp(
         tier: context.momentum_tier,
         ..MomentumState::default()
     };
-    let tick = synthetic_tick(&context.intent);
+    let tick = synthetic_tick();
     // Runner tasks evaluate CFPs out-of-band; they don't carry the
     // member's per-tick LocalAwareness here. Use a default awareness so
     // CFP scoring sees a neutral peer state — the bidder's hard gate is
@@ -131,11 +131,10 @@ fn on_cfp(
     }
 }
 
-fn synthetic_tick(intent: &IntentPattern) -> Tick {
+fn synthetic_tick() -> Tick {
     Tick {
         sequence: springtale_cooperation::TickId::ZERO,
         timestamp: Instant::now(),
-        intent: intent.clone(),
         window: Duration::from_millis(33),
     }
 }
