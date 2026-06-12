@@ -152,7 +152,7 @@ wat              = "1"
 # ── MCP Protocol ───────────────────────────────────────────────────────────────
 # >=1.4 floors out CVE-2026-42559 (GHSA-89vp-x53w-74fx, fixed in 1.4.0).
 rmcp             = { version = "1.4",  features = ["server", "transport-io", "macros"] }
-jsonschema       = { version = "0.45", default-features = false }
+jsonschema       = { version = "0.46", default-features = false }
 
 # ── Filesystem Watching ────────────────────────────────────────────────────────
 notify           = { version = "8",    features = ["macos_fsevent"] }
