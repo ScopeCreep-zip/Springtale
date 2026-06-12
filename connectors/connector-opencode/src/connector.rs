@@ -134,9 +134,10 @@ mod tests {
     fn manifest_name_and_loopback_capability() {
         let connector = test_connector();
         assert_eq!(connector.manifest().name, "connector-opencode");
-        let has_loopback = connector.manifest().capabilities.iter().any(
-            |c| matches!(c, Capability::NetworkOutbound { host } if host == "127.0.0.1:4096"),
-        );
+        let has_loopback =
+            connector.manifest().capabilities.iter().any(
+                |c| matches!(c, Capability::NetworkOutbound { host } if host == "127.0.0.1:4096"),
+            );
         assert!(has_loopback);
     }
 
@@ -144,7 +145,11 @@ mod tests {
     fn declares_two_actions_both_mutating() {
         let connector = test_connector();
         assert_eq!(connector.actions().len(), 2);
-        let names: Vec<&str> = connector.actions().iter().map(|a| a.name.as_str()).collect();
+        let names: Vec<&str> = connector
+            .actions()
+            .iter()
+            .map(|a| a.name.as_str())
+            .collect();
         assert!(names.contains(&"run_task"));
         assert!(names.contains(&"continue_session"));
         // Coding actions must never be advertised as read-only.
@@ -165,6 +170,11 @@ mod tests {
     #[tokio::test]
     async fn unknown_action_errors() {
         let connector = test_connector();
-        assert!(connector.execute("delete", serde_json::json!({})).await.is_err());
+        assert!(
+            connector
+                .execute("delete", serde_json::json!({}))
+                .await
+                .is_err()
+        );
     }
 }

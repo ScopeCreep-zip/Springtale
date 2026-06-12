@@ -28,12 +28,17 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # audit-check creates a Check Run to surface advisories inline; without
+      # `checks: write` it dies with "Resource not accessible by integration".
+      checks: write
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
-      - uses: rustsec/audit-check@v2
+        with:
+          persist-credentials: false
+      - uses: rustsec/audit-check@69366f33c96575abad1ee0dba8212993eecbe998 # v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -44,11 +49,13 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
-      - uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          persist-credentials: false
+      - uses: EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe # v2
         with:
           command: check advisories bans licenses sources
 
@@ -59,12 +66,14 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-vet
@@ -78,12 +87,14 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-geiger
@@ -101,11 +112,13 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 9
       - uses: actions/setup-node@v4
@@ -125,44 +138,51 @@ jobs:
     # `crates/springtale-py/pyproject.toml` is committed. If a fork removes
     # the pyo3 crate the step below will short-circuit on the missing path.
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
+      # `springtale-py` is a pyo3 extension module: it has no `[project]`
+      # runtime dependencies — only the maturin build backend under
+      # `[build-system].requires`. pip-audit can't treat a pyproject.toml as a
+      # requirements file (it's not one), so extract the build-system requires
+      # into a real requirements file and audit that — the only Python packages
+      # in the wheel's supply chain.
       - run: |
+          set -euo pipefail
           pip install pip-audit
-          pip-audit --strict --requirement crates/springtale-py/pyproject.toml || \
-          pip-audit --strict --requirement <(grep -E '^\s*"' crates/springtale-py/pyproject.toml | tr -d '"' || true)
+          python - <<'PY' > build-requires.txt
+          import tomllib, pathlib
+          data = tomllib.loads(pathlib.Path("crates/springtale-py/pyproject.toml").read_text())
+          for req in data.get("build-system", {}).get("requires", []):
+              print(req)
+          PY
+          echo "Auditing build-system requirements:"; cat build-requires.txt
+          pip-audit --strict --requirement build-requires.txt
 
   # ── OSV: cross-ecosystem CVE/GHSA scan ────────────────────────────
+  #
+  # osv-scanner-action ships ONLY as a reusable workflow (its action.yml has
+  # no top-level `runs:`, so it can't be a step `uses:`). The reusable
+  # workflow runs the scan, uploads SARIF to code scanning, and gates the
+  # job. `permissions` must be declared on the caller job.
   osv-scanner:
     name: OSV scanner
-    runs-on: ubuntu-latest
     permissions:
+      actions: read
       contents: read
       security-events: write
-    steps:
-      - uses: step-security/harden-runner@v2
-        with:
-          egress-policy: audit
-      - uses: actions/checkout@v4
-      - uses: google/osv-scanner-action@v2.3.8
-        with:
-          scan-args: |-
-            --recursive
-            --skip-git
-            --format=sarif
-            --output=osv.sarif
-            ./
-        continue-on-error: true
-      - uses: github/codeql-action/upload-sarif@v3
-        if: always()
-        with:
-          sarif_file: osv.sarif
-          category: osv-scanner
+    uses: google/osv-scanner-action/.github/workflows/osv-scanner-reusable.yml@9a498708959aeaef5ef730655706c5a1df1edbc2 # v2.3.8
+    with:
+      scan-args: |-
+        --recursive
+        --skip-git
+        ./
 
   # ── KEV daily gate — CISA BOD 22-01 ───────────────────────────────
   #
@@ -175,15 +195,17 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 9
       - uses: actions/setup-node@v4
@@ -235,10 +257,12 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Scan pnpm-lock.yaml against known-bad list
         run: |
           set -euo pipefail
@@ -269,12 +293,14 @@ jobs:
       contents: read
     if: github.event_name == 'schedule'
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-outdated

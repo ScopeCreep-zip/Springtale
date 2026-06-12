@@ -26,9 +26,9 @@ import type {
   RuleSummary,
 } from "@springtale/ui";
 import { getCanvasState, subscribeToCanvasUpdates } from "./api/canvas";
+import { sendChatMessage, subscribeToChat } from "./api/chat";
 import { del, get, getBaseUrl, getToken, post, put } from "./api/client";
 import { subscribeToCooperationEvents } from "./api/cooperation";
-import { sendChatMessage, subscribeToChat } from "./api/chat";
 import { subscribeToEvents } from "./api/events";
 import {
   applyRecipe,

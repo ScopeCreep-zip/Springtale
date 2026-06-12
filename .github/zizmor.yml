@@ -1,5 +1,5 @@
 # zizmor — GitHub Actions security auditor.
-# https://woodruffw.github.io/zizmor/
+# https://docs.zizmor.sh/
 #
 # Runs in `.github/workflows/sast.yml`. Persona: `auditor` (strictest).
 
@@ -8,9 +8,19 @@ rules:
   unpinned-uses:
     config:
       policies:
-        # Anything outside actions/ or github/ must be SHA-pinned (40 hex chars).
+        # GitHub-owned actions (actions/*, github/*) are allowed tag refs — they
+        # carry GitHub's own supply-chain guarantees and tags are stable.
         "actions/*": ref-pin
         "github/*": ref-pin
+        # Two actions select their behavior from the git ref NAME, so they
+        # cannot be hash-pinned without breaking:
+        #   - dtolnay/rust-toolchain@{stable,nightly}: the ref IS the toolchain
+        #     channel (the action reads github.action_ref).
+        #   - taiki-e/install-action@{nextest,...}: the ref names the tool.
+        # These stay ref-pinned; everything else must be SHA-pinned.
+        "dtolnay/rust-toolchain": ref-pin
+        "taiki-e/install-action": ref-pin
+        # Anything else outside actions/ or github/ must be SHA-pinned.
         "*": hash-pin
 
   # Block overly-broad `permissions:` blocks at top level.

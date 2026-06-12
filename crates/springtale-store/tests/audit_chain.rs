@@ -41,9 +41,8 @@ fn entry(connector: &str) -> AuditEntry {
 /// sentinel verifier without taking a dep on it from the store crate.
 fn verify(rows: &[AuditEntry], genesis_anchor: &str) -> Result<u64, String> {
     let mut expected_prev = genesis_anchor.to_owned();
-    let mut expected_seq: i64 = 1;
-    let mut verified: u64 = 0;
-    for row in rows {
+    for (i, row) in rows.iter().enumerate() {
+        let expected_seq = i as i64 + 1;
         if row.chain_seq != expected_seq {
             return Err(format!(
                 "chain_seq gap at row {}: expected {}, got {}",
@@ -64,10 +63,8 @@ fn verify(rows: &[AuditEntry], genesis_anchor: &str) -> Result<u64, String> {
             ));
         }
         expected_prev = row.row_hash.clone();
-        expected_seq += 1;
-        verified += 1;
     }
-    Ok(verified)
+    Ok(rows.len() as u64)
 }
 
 #[tokio::test]

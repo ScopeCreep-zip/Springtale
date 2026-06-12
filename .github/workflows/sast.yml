@@ -31,10 +31,12 @@ jobs:
       matrix:
         language: [javascript-typescript]
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
@@ -57,11 +59,20 @@ jobs:
       contents: read
       security-events: write
     container:
-      image: returntocorp/semgrep:1.96.0
+      # Digest-pinned to match the Dockerfile's FROM-pinning posture
+      # (zizmor unpinned-images). Tag kept for human readability.
+      image: semgrep/semgrep:1.165.0@sha256:f4791a54c891eabe1188248135574e6e03dfc31dfd3f3b747c7bec7079bfed1b
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      # `semgrep ci` is the org-policy mode and rejects --config/--error/
+      # --severity; `semgrep scan` is the explicit-ruleset mode that accepts
+      # them. --error makes the job fail on findings. `|| true` is NOT used —
+      # we want a hard gate, but SARIF must still upload, so the upload step
+      # runs with `if: always()`.
       - run: |
-          semgrep ci \
+          semgrep scan \
             --config p/rust \
             --config p/typescript \
             --config p/owasp-top-ten \
@@ -84,11 +95,13 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
-      - uses: raven-actions/actionlint@v2
+        with:
+          persist-credentials: false
+      - uses: raven-actions/actionlint@205b530c5d9fa8f44ae9ed59f341a0db994aa6f8 # v2
 
   # ── zizmor (workflow security) ────────────────────────────────────
   zizmor:
@@ -98,24 +111,33 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
-      - uses: woodruffw/zizmor-action@v0
         with:
-          # Persona: `auditor` is strictest (requires SHA-pinned actions).
-          # Transition path: persona `regular` until the SHA-pin sweep PR
-          # lands; flip to `auditor` afterwards. Tracked in CI-TRUST.md.
-          persona: regular
-          format: sarif
-          output_file: zizmor.sarif
-          fail_on: any
-      - uses: github/codeql-action/upload-sarif@v3
-        if: always()
+          persist-credentials: false
+      # zizmor moved orgs: woodruffw/zizmor-action -> zizmorcore/zizmor-action.
+      # The action runs zizmor and, with advanced-security (default), uploads
+      # SARIF to code scanning itself — no separate upload step needed.
+      #
+      # persona `auditor` runs the strictest, most complete audit set (all
+      # findings, including low/help/info, are visible in the uploaded SARIF).
+      # Every medium/high finding it raises has been CORRECTED in-tree, not
+      # suppressed: the SHA-pin sweep (unpinned-uses), digest-pinned container
+      # images (unpinned-images), the fuzz.yml env-var rewrite
+      # (template-injection), scoped scorecard permissions
+      # (excessive-permissions), and the npm-sbom cache removal
+      # (cache-poisoning). `min-severity: medium` is the failure gate: it fails
+      # the build on every actionable security finding while not blocking on
+      # the residual low-severity nudges — per-workflow `concurrency` blocks
+      # (which would be actively wrong to add to the release/provenance/signing
+      # workflows, as they'd cancel in-flight releases) and
+      # permission-comment style notes.
+      - uses: zizmorcore/zizmor-action@5f14fd08f7cf1cb1609c1e344975f152c7ee938d # v0.5.6
         with:
-          sarif_file: zizmor.sarif
-          category: zizmor
+          persona: auditor
+          min-severity: medium
 
   # ── hadolint (Dockerfile) ─────────────────────────────────────────
   hadolint:
@@ -125,11 +147,13 @@ jobs:
       contents: read
       security-events: write
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
-      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          persist-credentials: false
+      - uses: hadolint/hadolint-action@54c9adbab1582c2ef04b2016b760714a4bfde3cf # v3.1.0
         with:
           dockerfile: Dockerfile
           format: sarif

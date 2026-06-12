@@ -43,18 +43,26 @@ jobs:
           - fuzz_path_canon
           - fuzz_url_allowlist
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@nightly
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
       - run: cargo install cargo-fuzz --locked
       - name: Run fuzz target
+        # `${{...}}` context data is never interpolated directly into the
+        # script — it's passed through `env:` and referenced as quoted shell
+        # variables so untrusted input can't break out into the runner
+        # (CWE-78 / semgrep run-shell-injection / zizmor template-injection).
+        env:
+          FUZZ_TARGET: ${{ matrix.target }}
+          FUZZ_DURATION: ${{ inputs.duration_seconds || '300' }}
         run: |
-          duration=${{ inputs.duration_seconds || '300' }}
           cd fuzz
-          cargo +nightly fuzz run ${{ matrix.target }} -- -max_total_time=$duration
+          cargo +nightly fuzz run "$FUZZ_TARGET" -- -max_total_time="$FUZZ_DURATION"
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

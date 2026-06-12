@@ -150,7 +150,8 @@ wasmtime-wasi    = { version = "44",   features = ["p2"] }
 wat              = "1"
 
 # ── MCP Protocol ───────────────────────────────────────────────────────────────
-rmcp             = { version = "1",    features = ["server", "transport-io", "macros"] }
+# >=1.4 floors out CVE-2026-42559 (GHSA-89vp-x53w-74fx, fixed in 1.4.0).
+rmcp             = { version = "1.4",  features = ["server", "transport-io", "macros"] }
 jsonschema       = { version = "0.45", default-features = false }
 
 # ── Filesystem Watching ────────────────────────────────────────────────────────
@@ -192,7 +193,9 @@ ts-rs            = { version = "11",   features = ["chrono-impl", "uuid-impl", "
 # `extension-module` lets us link against the host Python without
 # embedding a particular interpreter; `abi3-py39` produces a single .so
 # that works on Python 3.9+.
-pyo3             = { version = "0.24", features = ["extension-module", "abi3-py39", "chrono", "uuid"] }
+# >=0.29 floors out RUSTSEC-2026-0176 (OOB read in PyList/PyTuple iterators,
+# fixed in 0.29.0).
+pyo3             = { version = "0.29", features = ["extension-module", "abi3-py39", "chrono", "uuid"] }
 
 # ── CLI ────────────────────────────────────────────────────────────────────────
 clap             = { version = "4",    features = ["derive", "env"] }

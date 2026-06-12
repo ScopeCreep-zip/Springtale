@@ -101,19 +101,13 @@ export const ChatPanel: Component<ChatPanelProps> = (props) => {
       >
         <Show when={turns().length === 0}>
           <p class="text-text-dim text-center mt-8">
-            Ask me anything — get the weather, research a topic, scrape a page,
-            or make a change. Reads are instant; changes ask you first.
+            Ask me anything — get the weather, research a topic, scrape a page, or make a change.
+            Reads are instant; changes ask you first.
           </p>
         </Show>
         <For each={turns()}>
           {(turn) => (
-            <div
-              class={
-                turn.role === "user"
-                  ? "text-right"
-                  : "text-left"
-              }
-            >
+            <div class={turn.role === "user" ? "text-right" : "text-left"}>
               <span
                 class={
                   turn.role === "user"

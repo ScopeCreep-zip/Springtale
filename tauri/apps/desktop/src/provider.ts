@@ -52,7 +52,6 @@ import {
   deployTeam,
   dissolveFormation,
   formationAvailableCommands,
-  runFormationCommand,
   formationEligibleMembers,
   getFormation,
   listFormations,
@@ -61,6 +60,7 @@ import {
   rallyFormation,
   removeFormationMember,
   resumeFormation,
+  runFormationCommand,
   updateFormationIntent,
 } from "./ipc/formations";
 import { applyOnboarding, listOnboardingPlatforms } from "./ipc/onboarding";

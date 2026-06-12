@@ -79,7 +79,7 @@ impl InMemoryBackend {
             .cloned()
             .collect();
         // Sort by created_at DESC (most recent first)
-        matching.sort_by(|a, b| b.created_at.cmp(&a.created_at));
+        matching.sort_by_key(|m| std::cmp::Reverse(m.created_at));
         matching.truncate(limit);
         Ok(matching)
     }
@@ -108,7 +108,7 @@ impl InMemoryBackend {
             .filter(|(_, m)| m.user_id == user_id && m.channel_id == channel_id)
             .collect();
         // Sort by created_at DESC
-        matching.sort_by(|a, b| b.1.created_at.cmp(&a.1.created_at));
+        matching.sort_by_key(|entry| std::cmp::Reverse(entry.1.created_at));
 
         if matching.len() <= max_entries {
             return Ok(0);

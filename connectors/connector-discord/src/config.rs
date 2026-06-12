@@ -12,7 +12,8 @@ use springtale_connector::config::deserialize_secret;
 /// Enable `enable_message_content` only if you understand the privacy cost.
 #[derive(Deserialize)]
 pub struct DiscordConfig {
-    /// Bot token. Format: "NDcyNTk2MDcwMzU1MzE2NzQ2.D..."
+    /// Bot token. Format: three dot-separated base64 segments
+    /// (`<bot-id>.<timestamp>.<hmac>`).
     #[serde(deserialize_with = "deserialize_secret")]
     pub bot_token: SecretBox<String>,
 

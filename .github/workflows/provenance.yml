@@ -35,12 +35,16 @@ jobs:
       hashes: ${{ steps.hash.outputs.hashes }}
       source_date_epoch: ${{ steps.epoch.outputs.epoch }}
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          lookup-only: true
       - run: cargo install cargo-auditable --locked
       - name: Compute SOURCE_DATE_EPOCH from release tag commit
         id: epoch
@@ -83,17 +87,20 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
         with:
           # Different cache key so this job can't accidentally reuse
           # the `release-build` job's incremental artifacts and fake
           # reproducibility by hitting the cache.
           shared-key: repro-check
+          lookup-only: true
       - run: cargo install cargo-auditable --locked
       - name: Rebuild from clean runner with same SOURCE_DATE_EPOCH
         env:
@@ -137,7 +144,7 @@ jobs:
       id-token: write   # OIDC for SLSA generator
       contents: write   # attach to release
       actions: read     # SLSA reads workflow metadata
-    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@v2.1.0
+    uses: slsa-framework/slsa-github-generator/.github/workflows/generator_generic_slsa3.yml@f7dd8c54c2067bafc12ca7a55595d5ee9b75204a # v2.1.0
     with:
       base64-subjects: "${{ needs.release-build.outputs.hashes }}"
       upload-assets: true
@@ -150,11 +157,13 @@ jobs:
       contents: write   # update release assets
       id-token: write   # OIDC keyless
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
-      - uses: sigstore/cosign-installer@v3
+        with:
+          persist-credentials: false
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
       - uses: actions/download-artifact@v4
         with:
           name: release-binaries
@@ -171,7 +180,7 @@ jobs:
               "$f"
           done
       - name: Upload bundles to release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
             dist/springtaled
@@ -187,10 +196,12 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           name: release-binaries

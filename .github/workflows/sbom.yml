@@ -27,25 +27,34 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          lookup-only: true
       - uses: taiki-e/install-action@v2
         with:
           tool: cargo-cyclonedx
       - run: |
+          set -euo pipefail
           mkdir -p sbom
-          cargo cyclonedx --format json --output-pattern bom \
-            --override-filename springtale-cargo
-          # Move generated BOMs into a single directory regardless of layout.
+          # cargo-cyclonedx writes one `<crate>.cdx.json` next to every
+          # workspace member's Cargo.toml (there is no `--output-pattern`
+          # flag). `--all` includes the full transitive graph. Collect the
+          # per-crate BOMs into sbom/ for the merge job.
+          cargo cyclonedx --format json --all
           # `-print0 | xargs -0` safely handles paths with spaces / non-ASCII.
-          find . -maxdepth 4 -name 'bom.json' -not -path './target/*' \
+          find . -maxdepth 4 -name '*.cdx.json' \
+                 -not -path './target/*' \
                  -not -path './node_modules/*' \
+                 -not -path './sbom/*' \
                  -print0 \
-              | xargs -0 -I{} cp {} sbom/ 2>/dev/null || true
+              | xargs -0 -I{} cp {} sbom/
       - uses: actions/upload-artifact@v4
         with:
           name: cargo-sbom
@@ -59,12 +68,16 @@ jobs:
       contents: read
     if: github.event_name == 'release'
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          lookup-only: true
       - run: cargo install cargo-auditable --locked
       - run: cargo auditable build --release --locked --bin springtaled --bin springtale-cli
       - uses: actions/upload-artifact@v4
@@ -81,25 +94,37 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
         with:
           version: 9
-      - uses: actions/setup-node@v4
+      # No dependency cache here on purpose: this job runs on `release:
+      # published` and uploads an artifact that the merge job signs, so a
+      # poisoned restore cache would taint a signed SBOM (zizmor
+      # cache-poisoning). The install is cheap enough without it. With no
+      # `cache:` input there is no dependency cache to poison; zizmor's
+      # heuristic still flags setup-node as cache-capable (Low confidence),
+      # so the residual finding is ignored at this exact site.
+      - uses: actions/setup-node@v4 # zizmor: ignore[cache-poisoning]
         with:
           node-version: 22
-          cache: pnpm
-          cache-dependency-path: tauri/pnpm-lock.yaml
       - run: pnpm -C tauri install --frozen-lockfile
+      # `@cyclonedx/cyclonedx-npm --package-lock-only` only understands npm's
+      # package-lock.json; this is a pnpm workspace. cdxgen reads
+      # `pnpm-lock.yaml` directly (`-t pnpm`) and emits CycloneDX JSON.
       - run: |
-          npx -y @cyclonedx/cyclonedx-npm \
-            --package-lock-only \
-            --output-format JSON \
-            --output-file tauri-sbom.cdx.json \
-            tauri/package.json
+          npx -y @cyclonedx/cdxgen@12.5.1 \
+            -t pnpm \
+            -o tauri-sbom.cdx.json \
+            tauri
+        env:
+          # No network enrichment — keep the SBOM build hermetic + fast.
+          FETCH_LICENSE: "false"
       - uses: actions/upload-artifact@v4
         with:
           name: npm-sbom
@@ -114,10 +139,12 @@ jobs:
     # `crates/springtale-py/pyproject.toml` is committed. Forks dropping
     # the pyo3 crate will short-circuit on the missing pyproject path.
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
@@ -141,10 +168,12 @@ jobs:
     # claims CycloneDX 1.7, and lists at least one
     # `machine-learning-model` component.
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Validate ML-BOM JSON
         run: |
           set -euo pipefail
@@ -169,10 +198,12 @@ jobs:
     # the CycloneDX 1.6 schema, then uploads it for the `merge` job to
     # fold into the workspace BOM.
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - name: Validate CBOM JSON
         run: |
           set -euo pipefail
@@ -200,11 +231,13 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
-      - uses: anchore/sbom-action@v0
+        with:
+          persist-credentials: false
+      - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
         with:
           path: .
           format: spdx-json
@@ -225,14 +258,16 @@ jobs:
       attestations: write      # GitHub Attestations API write
     if: github.event_name == 'release'
     steps:
-      - uses: step-security/harden-runner@v2
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
         with:
           egress-policy: audit
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/download-artifact@v4
         with:
           path: sboms/
-      - uses: sigstore/cosign-installer@v3
+      - uses: sigstore/cosign-installer@398d4b0eeef1380460a10c8013a76f728fb906ac # v3
       - name: Merge CycloneDX
         run: |
           curl -sSfL https://github.com/CycloneDX/cyclonedx-cli/releases/latest/download/cyclonedx-linux-x64 \

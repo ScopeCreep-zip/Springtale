@@ -111,9 +111,7 @@ mod tests {
 
         // Create + save a new vault via the production code path.
         let mut vault = Vault::create(&path, passphrase).unwrap();
-        vault
-            .set("test-key", b"test-value".to_vec())
-            .unwrap();
+        vault.set("test-key", b"test-value".to_vec()).unwrap();
         vault.save().unwrap();
 
         // Round-trip into the kernel: read the file's metadata and

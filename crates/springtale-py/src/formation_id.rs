@@ -8,7 +8,7 @@ use springtale_cooperation::types::FormationId as CoreFormationId;
 
 /// Formation identity. Wraps the 128-bit UUID the rest of the system
 /// uses; Python sees it as a string.
-#[pyclass(frozen)]
+#[pyclass(frozen, from_py_object)]
 #[derive(Clone, Debug)]
 pub struct FormationId {
     pub(crate) inner: CoreFormationId,

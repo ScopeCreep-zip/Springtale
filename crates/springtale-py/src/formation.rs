@@ -12,7 +12,7 @@ use crate::momentum::MomentumTier;
 /// Lightweight Formation handle — read-only view a Python script gets
 /// over a known formation. Mirrors the `FormationView` gossip record
 /// without the live runtime hookup.
-#[pyclass(frozen)]
+#[pyclass(frozen, from_py_object)]
 #[derive(Clone, Debug)]
 pub struct Formation {
     id: FormationId,

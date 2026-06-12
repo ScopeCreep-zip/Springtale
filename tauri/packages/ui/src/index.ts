@@ -25,10 +25,10 @@ export type { ApprovalCardProps } from "./colony/ApprovalCard";
 export { ApprovalCard } from "./colony/ApprovalCard";
 export { AppSettingsPanel } from "./colony/AppSettingsPanel";
 export { BottomPanel } from "./colony/BottomPanel";
-export { ChatDock } from "./colony/ChatDock";
 export type { ChatDockProps } from "./colony/ChatDock";
-export { ChatPanel } from "./colony/ChatPanel";
+export { ChatDock } from "./colony/ChatDock";
 export type { ChatPanelProps } from "./colony/ChatPanel";
+export { ChatPanel } from "./colony/ChatPanel";
 export { ColonyCanvas } from "./colony/ColonyCanvas";
 // Colony layout components
 export { ColonyShell } from "./colony/ColonyShell";

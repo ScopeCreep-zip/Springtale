@@ -37,6 +37,15 @@ node_modules/
 sdk/**/*.tsbuildinfo
 .pnpm-store/
 
+# springtaled embeds the dashboard SPA via rust-embed (`src/api/dashboard.rs`),
+# whose derive macro requires the folder to exist at compile time. Keep a
+# tracked sentinel so `cargo build`/`clippy`/`test` compile without a prior
+# frontend build; the real `vite build` output (index.html + hashed assets)
+# stays ignored and overrides the placeholder at runtime.
+!tauri/apps/dashboard/dist/
+tauri/apps/dashboard/dist/*
+!tauri/apps/dashboard/dist/.gitkeep
+
 # ── Tauri generated schemas ───────────────────────────────────────
 **/src-tauri/gen/
 

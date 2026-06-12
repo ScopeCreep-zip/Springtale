@@ -22,6 +22,26 @@
 #   `rust:slim`, so cargo's TLS fetches against crates.io work out of
 #   the box.
 
+# ── Frontend stage ────────────────────────────────────────────────────────────
+# Builds the dashboard SPA so `springtaled` can embed it via rust-embed
+# (`src/api/dashboard.rs` -> `tauri/apps/dashboard/dist/`). Without this the
+# release binary would only carry the build.rs placeholder. node:22-slim
+# multi-arch manifest-list digest (2026-05-28); Dependabot's `docker`
+# ecosystem keeps the pin current.
+FROM node:22-slim@sha256:e21fc383b50d5347dc7a9f1cae45b8f4e2f0d39f7ade28e4eef7d2934522b752 AS frontend
+
+# pnpm via corepack — version matches `packageManager` / CI `pnpm/action-setup`.
+RUN corepack enable && corepack prepare pnpm@9 --activate
+
+WORKDIR /build
+COPY tauri/ tauri/
+# `--frozen-lockfile` mirrors CI; lifecycle scripts are blocked by tauri/.npmrc
+# (`ignore-scripts=true`), enforced by the hardening-check job. Install and
+# build in one RUN (hadolint DL3059). `springtale-dashboard...` selects the
+# dashboard plus its workspace deps (@springtale/ui, @springtale/types).
+RUN pnpm -C tauri install --frozen-lockfile && \
+    pnpm -C tauri --filter "springtale-dashboard..." run build
+
 # ── Builder stage ─────────────────────────────────────────────────────────────
 # rust:1.96-slim multi-arch manifest-list digest (2026-05-28). Matches
 # the workspace's `rust-toolchain.toml` channel = "stable".
@@ -34,6 +54,9 @@ RUN cargo install cargo-auditable --locked --version '~0.6'
 
 WORKDIR /build
 COPY . .
+# Overlay the built dashboard SPA from the frontend stage so rust-embed bakes
+# the real assets (not the build.rs placeholder) into the release binary.
+COPY --from=frontend /build/tauri/apps/dashboard/dist/ tauri/apps/dashboard/dist/
 
 RUN cargo auditable build --release --locked \
       --bin springtaled --bin springtale-cli
@@ -45,7 +68,7 @@ RUN cargo auditable build --release --locked \
 # dynamically-linked Rust binary (rustls' ring backend links to libc).
 # OCI image-index digest (2026-05); Dependabot tracks updates per the
 # docker ecosystem entry in `.github/dependabot.yml`.
-FROM gcr.io/distroless/cc-debian12:nonroot@sha256:bd2899c12b335c827750ccf2359879eab09c09b206023dcebea408947d54127c AS runtime
+FROM gcr.io/distroless/cc-debian12:nonroot@sha256:b0ae8e989418b458e0f25489bc3be523718938a2b70864cc0f6a00af1ddbd985 AS runtime
 
 # OCI image annotations improve Trivy / Grype scan output + GitHub Packages
 # display.
