@@ -117,7 +117,7 @@ argon2           = "0.5"
 # code path is absent from the binary. Cannot upgrade to 0.9 until RustCrypto
 # ships stable releases with rand_core 0.9 (ed25519-dalek 3.x, chacha20poly1305 0.11.x).
 rand             = { version = "0.8",  default-features = false, features = ["std", "std_rng", "getrandom"] }
-sha2             = "0.10"
+sha2             = "0.11"
 hmac             = "0.12"
 subtle           = "2"
 
