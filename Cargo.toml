@@ -188,7 +188,7 @@ similar          = "2"
 # TypeScript declarations. Used to eliminate hand-maintained TS types
 # in `tauri/packages/types/`. The `chrono-impl` feature maps
 # `DateTime<Utc>` → `string` (ISO-8601) to match the existing TS shape.
-ts-rs            = { version = "11",   features = ["chrono-impl", "uuid-impl", "no-serde-warnings"] }
+ts-rs            = { version = "12",   features = ["chrono-impl", "uuid-impl", "no-serde-warnings"] }
 # `pyo3` builds the Python C-API extension module for `springtale-py`.
 # `extension-module` lets us link against the host Python without
 # embedding a particular interpreter; `abi3-py39` produces a single .so
