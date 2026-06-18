@@ -28,7 +28,7 @@
 # release binary would only carry the build.rs placeholder. node:22-slim
 # multi-arch manifest-list digest (2026-05-28); Dependabot's `docker`
 # ecosystem keeps the pin current.
-FROM node:22-slim@sha256:e21fc383b50d5347dc7a9f1cae45b8f4e2f0d39f7ade28e4eef7d2934522b752 AS frontend
+FROM node:26-slim@sha256:95a34da32a840bd9b3b09a5b773591c16923e350174b1c50e1200c75bf15eaa9 AS frontend
 
 # pnpm via corepack — version matches `packageManager` / CI `pnpm/action-setup`.
 RUN corepack enable && corepack prepare pnpm@9 --activate
