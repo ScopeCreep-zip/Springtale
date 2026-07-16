@@ -45,7 +45,7 @@ RUN pnpm -C tauri install --frozen-lockfile && \
 # ── Builder stage ─────────────────────────────────────────────────────────────
 # rust:1.96-slim multi-arch manifest-list digest (2026-05-28). Matches
 # the workspace's `rust-toolchain.toml` channel = "stable".
-FROM rust:1.96-slim@sha256:26abcef3d79b8d890c4ceb17093154573e1f6479cf6dd7c1450043b8458350f6 AS builder
+FROM rust:1.97-slim@sha256:466074ef42a9485c726d71017fa629f1954cd5e09b473dcd00467ddc6afdc753 AS builder
 
 # cargo-auditable embeds the dep graph in the produced binary so post-build
 # `osv-scanner sbom-from-binary`, `syft`, and `grype` can re-derive the
