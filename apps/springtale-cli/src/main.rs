@@ -37,10 +37,10 @@ async fn main() -> Result<()> {
             commands::new::run(&template)?;
         }
         Command::Doctor => {
-            commands::doctor::run().await?;
+            commands::doctor::run(&pass_opts).await?;
         }
         Command::Fix { error_id } => {
-            commands::fix::run(&error_id).await?;
+            commands::fix::run(&error_id, &pass_opts).await?;
         }
         Command::Trace { connector, rule } => {
             commands::trace::run(connector.as_deref(), rule.as_deref()).await?;

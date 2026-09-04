@@ -32,12 +32,20 @@ pub fn open_store(opts: &PassphraseOpts) -> Result<SqliteBackend> {
         );
     }
 
-    let passphrase = read_passphrase(opts)?;
-    // SECURITY: expose needed to derive the DB key; the derived hex is never logged
-    let key_hex = derive_db_encryption_key_hex(passphrase.expose_secret().as_bytes());
-
+    let key_hex = derive_db_key_hex(opts)?;
     SqliteBackend::open_encrypted(&db_path, &key_hex)
         .context("failed to open encrypted database (wrong passphrase?)")
+}
+
+/// Read the passphrase (file, command, or prompt) and derive the hex
+/// store key from it, for callers that hand the key to an operation
+/// instead of opening the store themselves (`doctor`, `fix`).
+pub fn derive_db_key_hex(opts: &PassphraseOpts) -> Result<String> {
+    let passphrase = read_passphrase(opts)?;
+    // SECURITY: expose needed to derive the DB key; the derived hex is never logged
+    Ok(derive_db_encryption_key_hex(
+        passphrase.expose_secret().as_bytes(),
+    ))
 }
 
 fn read_passphrase(opts: &PassphraseOpts) -> Result<SecretString> {

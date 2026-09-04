@@ -5,13 +5,22 @@
 
 use anyhow::Result;
 
-use springtale_runtime::operations::diagnostics::{self, CallerContext, Check, Report, Severity};
+use springtale_runtime::operations::diagnostics::{
+    self, CallerContext, Check, DiagnosticPaths, Report, Severity,
+};
 
-pub async fn run() -> Result<()> {
+use crate::store::{PassphraseOpts, derive_db_key_hex};
+
+pub async fn run(opts: &PassphraseOpts) -> Result<()> {
+    // The integrity check needs the store key; the user just gave the
+    // passphrase, so derive it here rather than reporting "vault locked".
+    let key = derive_db_key_hex(opts)?;
+
     println!("Springtale Doctor");
     println!("=================\n");
 
-    let report = diagnostics::run_default_checks(CallerContext::Cli).await;
+    let report =
+        diagnostics::run_checks(&DiagnosticPaths::default(), Some(&key), CallerContext::Cli).await;
     render(&report);
 
     println!();
