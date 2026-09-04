@@ -87,6 +87,7 @@ mod tests {
                     triggers: vec![],
                     actions: vec![ActionDecl {
                         read_only: false,
+                        destructive: None,
                         name: "test".into(),
                         description: "test".into(),
                         input_schema: None,

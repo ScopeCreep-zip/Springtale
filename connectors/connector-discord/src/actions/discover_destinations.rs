@@ -15,6 +15,7 @@ use crate::error::DiscordError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: true,
+        destructive: None,
         name: "discover_destinations".to_owned(),
         description:
             "Enumerate every text channel this bot can see across every guild it's a member of."

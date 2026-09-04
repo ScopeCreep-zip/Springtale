@@ -7,6 +7,7 @@ use crate::error::NostrError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: false,
+        destructive: None,
         name: "react".to_owned(),
         description: "React to a Nostr event with an emoji (kind 7).".to_owned(),
         input_schema: Some(serde_json::json!({

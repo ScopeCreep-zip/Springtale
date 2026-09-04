@@ -206,6 +206,7 @@ pub(crate) mod tests {
                     }],
                     actions: vec![ActionDecl {
                         read_only: false,
+                        destructive: None,
                         name: "test_action".into(),
                         description: "A test action".into(),
                         input_schema: None,

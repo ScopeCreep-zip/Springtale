@@ -148,6 +148,12 @@ pub struct ActionDecl {
     /// modify state — a "search" that also logs analytics is *not* read-only.
     #[serde(default)]
     pub read_only: bool,
+
+    /// MCP `destructiveHint`. `None` is unknown and classifies as
+    /// destructive, matching MCP's default of `true`. Meaningful only
+    /// when `read_only == false`. Advisory: the sentinel decides.
+    #[serde(default)]
+    pub destructive: Option<bool>,
 }
 
 /// What user data a connector accesses (for transparency/Privacy by Design).

@@ -113,6 +113,7 @@ mod tests {
             triggers: vec![],
             actions: vec![ActionDecl {
                 read_only: false,
+                destructive: None,
                 name: "call_api".into(),
                 description: "call an api".into(),
                 input_schema: None,

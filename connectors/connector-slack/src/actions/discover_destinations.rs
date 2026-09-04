@@ -17,6 +17,7 @@ use crate::error::SlackError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: true,
+        destructive: None,
         name: "discover_destinations".to_owned(),
         description:
             "Enumerate every conversation this bot has access to via Slack's `conversations.list`."

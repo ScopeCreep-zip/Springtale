@@ -27,6 +27,7 @@
 //! database already sorts by insert time.
 
 use serde::{Deserialize, Serialize};
+use springtale_core::policy::{ApprovalPolicy, AutonomyLevel};
 use springtale_core::rule::RuleId;
 
 use crate::cadence::AgentId;
@@ -111,6 +112,12 @@ pub struct ExecutionContext {
     /// What fired the rule. Surfaces in the executions panel for
     /// "this bot ran at 7am because cron".
     pub mode: ExecutionMode,
+    /// Formation `destructive_action_policy`; `AutoApprove` for global rules.
+    #[serde(default)]
+    pub policy: ApprovalPolicy,
+    /// Firing member's autonomy; `ActAutonomously` for global rules.
+    #[serde(default)]
+    pub autonomy: AutonomyLevel,
 }
 
 impl ExecutionContext {
@@ -126,18 +133,23 @@ impl ExecutionContext {
             formation_id: None,
             momentum: MomentumTier::Warming,
             mode,
+            policy: ApprovalPolicy::default(),
+            autonomy: AutonomyLevel::default(),
         }
     }
 
     /// Construct an envelope for a formation-tick fire. Caller
-    /// supplies the firing agent, the formation, and the formation's
-    /// current momentum tier.
+    /// supplies the firing agent, the formation, the formation's
+    /// current momentum tier, its `destructive_action_policy`, and
+    /// the firing member's autonomy level.
     pub fn for_formation(
         rule_id: RuleId,
         agent_id: AgentId,
         formation_id: FormationId,
         momentum: MomentumTier,
         mode: ExecutionMode,
+        policy: ApprovalPolicy,
+        autonomy: AutonomyLevel,
     ) -> Self {
         Self {
             execution_id: ExecutionId::new(),
@@ -146,6 +158,8 @@ impl ExecutionContext {
             formation_id: Some(formation_id),
             momentum,
             mode,
+            policy,
+            autonomy,
         }
     }
 
@@ -165,6 +179,8 @@ impl ExecutionContext {
             formation_id: None,
             momentum,
             mode,
+            policy: ApprovalPolicy::default(),
+            autonomy: AutonomyLevel::default(),
         }
     }
 
@@ -203,6 +219,8 @@ mod tests {
         assert!(ctx.formation_id.is_none());
         assert_eq!(ctx.momentum, MomentumTier::Warming);
         assert_eq!(ctx.mode, ExecutionMode::Cron);
+        assert_eq!(ctx.policy, ApprovalPolicy::AutoApprove);
+        assert_eq!(ctx.autonomy, AutonomyLevel::ActAutonomously);
     }
 
     #[test]
@@ -226,10 +244,14 @@ mod tests {
             FormationId(Uuid::new_v4()),
             MomentumTier::Fever,
             ExecutionMode::Cooperation,
+            ApprovalPolicy::AlwaysRequire,
+            AutonomyLevel::ActWithApproval,
         );
         assert!(ctx.agent_id.is_some());
         assert!(ctx.formation_id.is_some());
         assert_eq!(ctx.momentum, MomentumTier::Fever);
+        assert_eq!(ctx.policy, ApprovalPolicy::AlwaysRequire);
+        assert_eq!(ctx.autonomy, AutonomyLevel::ActWithApproval);
     }
 
     #[test]
@@ -241,6 +263,8 @@ mod tests {
             formation_id: None,
             momentum: MomentumTier::Warming,
             mode: ExecutionMode::DryRun,
+            policy: ApprovalPolicy::default(),
+            autonomy: AutonomyLevel::default(),
         };
         assert!(dry.is_dry_run());
         let live = ExecutionContext::for_global(RuleId(Uuid::new_v4()), ExecutionMode::Cron);
@@ -260,5 +284,18 @@ mod tests {
         assert_eq!(ctx.execution_id, back.execution_id);
         assert_eq!(ctx.rule_id.0, back.rule_id.0);
         assert_eq!(ctx.mode, back.mode);
+    }
+
+    #[test]
+    fn missing_policy_and_autonomy_deserialize_to_defaults() {
+        let json = serde_json::json!({
+            "execution_id": ExecutionId::new(),
+            "rule_id": RuleId(Uuid::new_v4()),
+            "momentum": MomentumTier::Warming,
+            "mode": "cron",
+        });
+        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
+        assert_eq!(ctx.policy, ApprovalPolicy::AutoApprove);
+        assert_eq!(ctx.autonomy, AutonomyLevel::ActAutonomously);
     }
 }

@@ -64,6 +64,7 @@ impl BlankConnector {
                 }],
                 actions: vec![ActionDecl {
                     read_only: false,
+                    destructive: None,
                     name: "echo".into(),
                     description: "blank-echo: returns the input verbatim".into(),
                     input_schema: None,

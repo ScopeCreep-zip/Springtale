@@ -7,6 +7,7 @@ use crate::error::BlueskyError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: false,
+        destructive: None,
         name: "create_post".to_owned(),
         description: "Create a new post on Bluesky.".to_owned(),
         input_schema: Some(serde_json::json!({

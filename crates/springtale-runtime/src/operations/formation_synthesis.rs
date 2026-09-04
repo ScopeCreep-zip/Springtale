@@ -17,10 +17,13 @@
 //! canonical action survives in the automation config, so cycling back to
 //! `Execute` restores it exactly.
 
+use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
 
+use springtale_connector::registry::store::ConnectorRegistry;
 use springtale_core::rule::{Action, Rule, RuleId, RuleOwner, RuleStatus, RuleVersion, Trigger};
-use springtale_sentinel::impact::{ActionImpact, classify_impact};
+use springtale_sentinel::impact::{ActionHints, ActionImpact, classify_impact};
 
 use crate::error::OperationError;
 use crate::operations::{config, rules};
@@ -45,6 +48,48 @@ fn automation_key(formation_id: &str) -> String {
     format!("formation:{formation_id}:automation")
 }
 
+/// Manifest hints for the actions a formation's automations name, keyed
+/// by `(action_connector, action_name)`. Built from the connector
+/// registry by [`collect_action_hints`] and consulted by
+/// [`synthesize_formation_rules`] so guard mode classifies a
+/// `RunConnector` the same way the sentinel does at dispatch.
+pub type ActionHintIndex = HashMap<(String, String), ActionHints>;
+
+/// Look up the manifest's advisory hints for every action the given
+/// automations reference. Actions whose connector is not installed, or
+/// which the manifest does not declare, are simply absent — and
+/// [`classify_impact`] treats an absent hint as destructive.
+pub fn collect_action_hints(
+    registry: &ConnectorRegistry,
+    automations: &[MemberAutomation],
+) -> ActionHintIndex {
+    let mut out = ActionHintIndex::new();
+    for auto in automations {
+        if auto.action_connector.is_empty() || auto.action_name.is_empty() {
+            continue;
+        }
+        let key = (auto.action_connector.clone(), auto.action_name.clone());
+        if out.contains_key(&key) {
+            continue;
+        }
+        let hints = registry.get(&auto.action_connector).and_then(|entry| {
+            entry
+                .host
+                .actions()
+                .iter()
+                .find(|decl| decl.name == auto.action_name)
+                .map(|decl| ActionHints {
+                    read_only: decl.read_only,
+                    destructive: decl.destructive,
+                })
+        });
+        if let Some(hints) = hints {
+            out.insert(key, hints);
+        }
+    }
+    out
+}
+
 /// Read-only observation action used under Reconnoiter / Stabilize, or when an
 /// Execute action would be destructive while guard mode is engaged.
 fn observation_action(formation_name: &str, auto: &MemberAutomation) -> Action {
@@ -65,7 +110,9 @@ fn observation_action(formation_name: &str, auto: &MemberAutomation) -> Action {
 ///   is never invoked.
 /// - **Execute** / **Surge** (take action) → each member trigger fires its
 ///   configured `RunConnector` action. Under guard mode, an action sentinel
-///   classifies as `Destructive` is downgraded to an observation instead.
+///   classifies as `Destructive` — consulting the manifest hints in `hints`,
+///   with an absent hint counting as destructive — is downgraded to an
+///   observation instead.
 /// - **Dissolve** / unknown → no rules.
 ///
 /// Every rule is owned by `RuleOwner::Formation { formation_id }` so it only
@@ -76,6 +123,7 @@ pub fn synthesize_formation_rules(
     intent: &str,
     guard_mode: bool,
     automations: &[MemberAutomation],
+    hints: &ActionHintIndex,
 ) -> Vec<Rule> {
     let active = matches!(intent, "Reconnoiter" | "Execute" | "Stabilize" | "Surge");
     if !active {
@@ -102,7 +150,10 @@ pub fn synthesize_formation_rules(
                 };
                 // Guard engaged → refuse destructive actions (mirrors the
                 // formation guard semantics documented in guide/formations.md).
-                if guard_mode && classify_impact(&run) == ActionImpact::Destructive {
+                let hint = hints
+                    .get(&(auto.action_connector.clone(), auto.action_name.clone()))
+                    .copied();
+                if guard_mode && classify_impact(&run, hint) == ActionImpact::Destructive {
                     observation_action(formation_name, auto)
                 } else {
                     run
@@ -204,8 +255,18 @@ pub async fn regenerate_formation_rules(
     delete_formation_rules(state, fid).await?;
 
     let automations = load_formation_automation(state, formation_id).await?;
-    let new_rules =
-        synthesize_formation_rules(fid, formation_name, intent, guard_mode, &automations);
+    let hints = {
+        let registry = state.registry.read().await;
+        collect_action_hints(&registry, &automations)
+    };
+    let new_rules = synthesize_formation_rules(
+        fid,
+        formation_name,
+        intent,
+        guard_mode,
+        &automations,
+        &hints,
+    );
 
     let mut created = Vec::with_capacity(new_rules.len());
     for rule in new_rules {
@@ -241,6 +302,7 @@ mod tests {
                 "message_received",
                 "send_message",
             )],
+            &ActionHintIndex::new(),
         );
         assert_eq!(rules.len(), 1);
         assert!(matches!(rules[0].actions[0], Action::Notify { .. }));
@@ -262,6 +324,7 @@ mod tests {
                 "message_received",
                 "send_message",
             )],
+            &ActionHintIndex::new(),
         );
         assert_eq!(rules.len(), 1);
         match &rules[0].actions[0] {
@@ -283,26 +346,47 @@ mod tests {
                 "message_received",
                 "send_message",
             )],
+            &ActionHintIndex::new(),
         );
         assert!(rules.is_empty());
     }
 
     #[test]
-    fn guard_downgrades_destructive_execute() {
+    fn guard_downgrades_hintless_execute_to_observation() {
         let fid = uuid::Uuid::new_v4();
-        // A shell-exec-style action: classify_impact treats RunShell as
-        // Destructive, but RunConnector is Reversible — so to exercise the
-        // guard path we rely on classify_impact of the synthesized RunConnector
-        // being non-destructive. This asserts the non-guarded Execute keeps the
-        // action; the guard branch is covered by classify_impact's own tests.
+        // No manifest hint for the action → `classify_impact` treats the
+        // `RunConnector` as Destructive (MCP `destructiveHint` default),
+        // so guard mode downgrades it to a read-only observation.
         let rules = synthesize_formation_rules(
             fid,
             "Squad",
             "Execute",
             true,
             &[auto("connector-fs", "file_changed", "write_file")],
+            &ActionHintIndex::new(),
         );
-        // RunConnector is Reversible (not Destructive), so guard keeps it.
+        assert!(matches!(rules[0].actions[0], Action::Notify { .. }));
+    }
+
+    #[test]
+    fn guard_keeps_execute_when_manifest_says_not_destructive() {
+        let fid = uuid::Uuid::new_v4();
+        let mut hints = ActionHintIndex::new();
+        hints.insert(
+            ("connector-fs".to_owned(), "write_file".to_owned()),
+            ActionHints {
+                read_only: false,
+                destructive: Some(false),
+            },
+        );
+        let rules = synthesize_formation_rules(
+            fid,
+            "Squad",
+            "Execute",
+            true,
+            &[auto("connector-fs", "file_changed", "write_file")],
+            &hints,
+        );
         assert!(matches!(rules[0].actions[0], Action::RunConnector { .. }));
     }
 }

@@ -268,6 +268,8 @@ pub async fn execute(ctx: ExecuteCtx<'_>) -> ExecuteOutcome {
         springtale_cooperation::types::FormationId(ctx.formation_id),
         ctx.formation_momentum,
         springtale_cooperation::execution::ExecutionMode::Cooperation,
+        ctx.destructive_policy,
+        ctx.autonomy,
     );
     let exec_result = springtale_runtime::dispatch::dispatch_action(
         &action,
@@ -500,6 +502,7 @@ mod tests {
                         input_schema: None,
                         output_schema: None,
                         read_only: false,
+                        destructive: None,
                     }],
                     data_disclosure: vec![],
                     roles: vec![],

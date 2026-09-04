@@ -7,6 +7,7 @@ use crate::error::BrowserError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: false,
+        destructive: None,
         name: "fill_form".to_owned(),
         description: "Fill a form field by CSS selector.".to_owned(),
         input_schema: Some(serde_json::json!({

@@ -7,6 +7,7 @@ use crate::error::GithubError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: true,
+        destructive: None,
         name: "get_diff".to_owned(),
         description: "Get the unified diff for a GitHub pull request.".to_owned(),
         input_schema: Some(serde_json::json!({
