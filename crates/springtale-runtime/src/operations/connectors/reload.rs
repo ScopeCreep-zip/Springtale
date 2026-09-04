@@ -14,11 +14,13 @@
 //!    manifest validation + capability declarations match exactly.
 //! 3. Snapshot the current `enabled` state so the swap doesn't
 //!    accidentally re-enable a deliberately-disabled connector.
-//! 4. Run `install_native` under the registry write lock — that
-//!    atomically replaces the entry's `host: Arc<dyn ConnectorHost>`
-//!    (and re-registers capabilities; `CapabilityChecker::register`
-//!    overwrites the prior grant entry, so a reload is idempotent on
-//!    the capability map).
+//! 4. Under the registry write lock, `remove` the old entry and then
+//!    `install_native` the rebuilt connector. A name is registered
+//!    once (`ConnectorError::AlreadyRegistered`), so the remove must
+//!    come first; both steps happen under the same write guard, so no
+//!    reader observes the gap. `install_native` re-registers
+//!    capabilities (`CapabilityChecker::register` overwrites the prior
+//!    grant entry, so a reload is idempotent on the capability map).
 //! 5. Restore the previously-captured `enabled` flag.
 //!
 //! Existing in-flight `execute()` calls that obtained the old host via
@@ -74,14 +76,19 @@ pub async fn reload_connector(state: &RuntimeState, name: &str) -> Result<(), Op
         .await
         .map_err(|e| OperationError::Connector(format!("failed to rebuild {name}: {e}")))?;
 
-    // 4. Atomic swap under the registry write lock. `install_native`
-    //    replaces the entry — the prior `Arc<dyn ConnectorHost>` drops
-    //    once the last in-flight `execute()` guard finishes its work.
+    // 4. Swap under the registry write lock: remove the old entry, then
+    //    install the rebuilt one. The registry refuses to register a
+    //    name twice, so the remove must come first; the prior
+    //    `Arc<dyn ConnectorHost>` drops once the last in-flight
+    //    `execute()` guard finishes its work.
     // 5. Restore the previous `enabled` flag (install_native defaults
     //    to `enabled: true`, which would silently re-enable a
     //    deliberately-disabled connector if we didn't preserve state).
     {
         let mut registry = state.registry.write().await;
+        registry
+            .remove(name)
+            .map_err(|e| OperationError::Connector(format!("failed to remove {name}: {e}")))?;
         registry
             .install_native(fresh)
             .map_err(|e| OperationError::Connector(format!("failed to reinstall {name}: {e}")))?;

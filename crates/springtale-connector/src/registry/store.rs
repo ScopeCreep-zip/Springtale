@@ -176,7 +176,7 @@ impl Default for ConnectorRegistry {
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use crate::connector::trait_::{ActionResult, Connector, EventHandler};
     use crate::manifest::types::{ActionDecl, Capability, ConnectorManifest, TriggerDecl};
@@ -184,12 +184,12 @@ mod tests {
     use springtale_crypto::signature::SignatureAlgorithm;
 
     /// A minimal test connector for registry tests.
-    struct TestConnector {
+    pub(crate) struct TestConnector {
         manifest: ConnectorManifest,
     }
 
     impl TestConnector {
-        fn new(name: &str) -> Self {
+        pub(crate) fn new(name: &str) -> Self {
             Self {
                 manifest: ConnectorManifest {
                     name: name.to_owned(),

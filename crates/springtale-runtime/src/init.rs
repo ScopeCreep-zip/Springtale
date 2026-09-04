@@ -601,12 +601,20 @@ async fn init_registry(
     // Load the set of connectors explicitly removed by the user.
     // Prevents auto-loading of no-config connectors (shell, filesystem)
     // that were removed via the UI.
-    let removed_connectors: std::collections::HashSet<String> = _store
-        .list_config()
-        .await
-        .unwrap_or_default()
-        .into_iter()
+    let stored_config = _store.list_config().await.unwrap_or_default();
+    let removed_connectors: std::collections::HashSet<String> = stored_config
+        .iter()
         .filter_map(|(k, _)| k.strip_prefix("connector-removed:").map(|s| s.to_owned()))
+        .collect();
+
+    // Config keys the user configured via the UI (`setup_connector`
+    // writes `connector:{config_key}`). A name is registered once, so
+    // the first pass to install wins: the no-config default install
+    // below must yield to these so the config-store pass installs the
+    // UI-configured instance, as it did when installs overwrote.
+    let ui_configured_keys: std::collections::HashSet<String> = stored_config
+        .iter()
+        .filter_map(|(k, _)| k.strip_prefix("connector:").map(|s| s.to_owned()))
         .collect();
 
     // First run detection: if onboarding hasn't completed yet, don't
@@ -658,7 +666,7 @@ async fn init_registry(
                     );
                 }
             }
-        } else if !factory.requires_config() && onboarded {
+        } else if !factory.requires_config() && onboarded && !ui_configured_keys.contains(key) {
             match factory
                 .create(serde_json::Value::Object(Default::default()))
                 .await
