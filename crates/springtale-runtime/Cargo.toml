@@ -61,6 +61,9 @@ chrono = { workspace = true }
 # We hold a `oneshot::Sender` per outstanding request; DashMap lets the
 # management API's resolve path land without serialising every check.
 dashmap = { workspace = true }
+# One runtime per store (plan 0.6): exclusive flock on `<db>.lock` held
+# by `RuntimeState` for the life of the process.
+fd-lock = { workspace = true }
 
 # ── Extraction ladder (Phase A) ────────────────────────────────────────────
 # Powers `Action::Extract` per-kind handlers in `crate::extraction`.
