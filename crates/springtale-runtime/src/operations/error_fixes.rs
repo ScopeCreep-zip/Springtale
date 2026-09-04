@@ -124,7 +124,8 @@ async fn fix_store_error() -> FixOutcome {
         }
     }
 
-    match try_open_db(db_path) {
+    // The fix runner has no vault key (plan 0.5): never open plain.
+    match try_open_db(db_path, None) {
         Ok(()) => outcome
             .push("Database opened successfully. The error may be transient.")
             .succeed(),
@@ -135,8 +136,11 @@ async fn fix_store_error() -> FixOutcome {
     }
 }
 
-fn try_open_db(path: &Path) -> Result<(), String> {
-    springtale_store::backend::sqlite::SqliteBackend::open(path)
+fn try_open_db(path: &Path, encryption_key_hex: Option<&str>) -> Result<(), String> {
+    let Some(key) = encryption_key_hex else {
+        return Err("store is encrypted; rerun with the vault unlocked".to_owned());
+    };
+    springtale_store::backend::sqlite::SqliteBackend::open_encrypted(path, key)
         .map(|_| ())
         .map_err(|e| e.to_string())
 }

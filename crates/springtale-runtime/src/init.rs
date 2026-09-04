@@ -558,14 +558,24 @@ async fn init_store(
         tracing::warn!("EPHEMERAL MODE — all state in memory, lost on exit");
         Ok(Arc::new(springtale_store::backend::InMemoryBackend::new()))
     } else {
-        tracing::info!(path = %config.path.display(), "opening SQLite store");
-        ensure_store_dir(&config.path)?;
-        let backend = if let Some(ref key) = config.encryption_key_hex {
-            SqliteBackend::open_encrypted(&config.path, key)
-                .map_err(|e| OperationError::Init(format!("failed to open encrypted store: {e}")))?
-        } else {
-            SqliteBackend::open(&config.path)
-                .map_err(|e| OperationError::Init(format!("failed to open SQLite store: {e}")))?
+        // No plaintext mode (plan 0.5): a store is encrypted or it is
+        // in memory. A config that lost its key fails here, loudly,
+        // instead of silently writing an unencrypted file to disk.
+        let backend = match config.encryption_key_hex.as_deref() {
+            Some(key) => {
+                tracing::info!(path = %config.path.display(), "opening encrypted SQLite store");
+                ensure_store_dir(&config.path)?;
+                SqliteBackend::open_encrypted(&config.path, key).map_err(|e| {
+                    OperationError::Init(format!("failed to open encrypted store: {e}"))
+                })?
+            }
+            None => {
+                return Err(OperationError::Init(
+                    "store.encryption_key_hex is required; run `springtale init` or set \
+                     store.ephemeral = true for a throwaway in-memory store"
+                        .into(),
+                ));
+            }
         };
         Ok(Arc::new(backend))
     }
@@ -1029,5 +1039,29 @@ mod tests {
         drop(first);
         let third = acquire_runtime_lock(&db).expect("lock free again after first guard drops");
         drop(third);
+    }
+
+    #[tokio::test]
+    async fn test_init_store_no_key_not_ephemeral_returns_init_error() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db = dir.path().join("springtale.db");
+        let config = crate::config::StoreConfig {
+            path: db.clone(),
+            ephemeral: false,
+            encryption_key_hex: None,
+            ..Default::default()
+        };
+
+        match init_store(&config).await {
+            Err(OperationError::Init(msg)) => {
+                assert!(
+                    msg.contains("encryption_key_hex"),
+                    "Init message names the key: {msg}"
+                );
+            }
+            Err(other) => panic!("expected OperationError::Init, got {other:?}"),
+            Ok(_) => panic!("plaintext store opened without a key"),
+        }
+        assert!(!db.exists(), "no plaintext database file was created");
     }
 }

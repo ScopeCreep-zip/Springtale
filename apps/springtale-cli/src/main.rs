@@ -1,11 +1,10 @@
 mod cli;
 mod commands;
 mod output;
+mod store;
 
 use anyhow::Result;
 use clap::Parser;
-
-use springtale_store::backend::sqlite::SqliteBackend;
 
 use cli::{BotAction, Cli, Command, CryptoAction, ServerAction, TravelAction, VaultAction};
 
@@ -20,6 +19,10 @@ async fn main() -> Result<()> {
     springtale_transport::crypto_provider::install_default_pq();
 
     let cli = Cli::parse();
+    let pass_opts = store::PassphraseOpts {
+        passphrase_file: cli.passphrase_file,
+        passphrase_command: cli.passphrase_command,
+    };
 
     match cli.command {
         Command::Init { template } => {
@@ -58,7 +61,7 @@ async fn main() -> Result<()> {
             commands::healthcheck::run(&url).await?;
         }
         Command::Panic => {
-            let store = open_store()?;
+            let store = store::open_store(&pass_opts)?;
             commands::panic::run(&store).await?;
         }
         Command::Travel { action } => {
@@ -67,7 +70,7 @@ async fn main() -> Result<()> {
             let config_path = std::path::PathBuf::from("springtale.toml");
             match action {
                 TravelAction::Prepare { backup_to } => {
-                    let store = open_store()?;
+                    let store = store::open_store(&pass_opts)?;
                     commands::travel::prepare(
                         &backup_to,
                         &vault_path,
@@ -94,15 +97,15 @@ async fn main() -> Result<()> {
         },
         Command::Bot { action } => match action {
             BotAction::PairInit => {
-                commands::bot::pair_init().await?;
+                commands::bot::pair_init(&pass_opts).await?;
             }
             BotAction::PanicUnpair => {
-                commands::bot::panic_unpair().await?;
+                commands::bot::panic_unpair(&pass_opts).await?;
             }
         },
         // Commands that need the store
         command => {
-            let store = open_store()?;
+            let store = store::open_store(&pass_opts)?;
             match command {
                 Command::Connector { action } => {
                     commands::connector::run(action, &store, cli.json).await?;
@@ -138,38 +141,4 @@ async fn main() -> Result<()> {
     }
 
     Ok(())
-}
-
-/// Open the SQLite store from the default or configured path.
-fn open_store() -> Result<SqliteBackend> {
-    // Try loading config to get the store path
-    let config_path = "springtale.toml";
-    let store_path = if std::path::Path::new(config_path).exists() {
-        // Parse just the store section from config
-        let figment = figment::Figment::new()
-            .merge(<figment::providers::Toml as figment::providers::Format>::file(config_path))
-            .merge(
-                figment::providers::Env::prefixed("SPRINGTALE_")
-                    .map(|key| key.as_str().replace("__", ".").into()),
-            );
-
-        #[derive(serde::Deserialize, Default)]
-        struct PartialConfig {
-            #[serde(default)]
-            store: StoreSection,
-        }
-        #[derive(serde::Deserialize, Default)]
-        struct StoreSection {
-            #[serde(default = "springtale_store::paths::default_db_path")]
-            path: std::path::PathBuf,
-        }
-
-        let config: PartialConfig = figment.extract().unwrap_or_default();
-        config.store.path
-    } else {
-        springtale_store::paths::default_db_path()
-    };
-
-    SqliteBackend::open(&store_path)
-        .map_err(|e| anyhow::anyhow!("failed to open store at {}: {e}", store_path.display()))
 }
