@@ -78,21 +78,10 @@ impl SqliteBackend {
 
         let conn = open_and_configure(path, hex_key)?;
 
-        // Pre-launch policy: legacy migration-runner databases get
-        // wiped and rebuilt from the declarative schema. Old dev DBs
-        // carry a `_migrations` tracking table; that's the marker.
-        let conn = if schema::is_legacy_database(&conn)? {
-            tracing::warn!(
-                path = %path.display(),
-                "legacy migration-runner database detected — wiping and rebuilding from declarative schema",
-            );
-            drop(conn);
-            super::wipe::secure_wipe_sqlite(path)?;
-            open_and_configure(path, hex_key)?
-        } else {
-            conn
-        };
-
+        // Opening never destroys a database. If the file does not
+        // match the schema this build expects, `apply_schema` returns
+        // `StoreError::SchemaVersion` and the file is left untouched.
+        // Only `panic_wipe` may call `secure_wipe_sqlite`.
         schema::apply_schema(&conn)?;
 
         tracing::info!(path = %path.display(), "SQLite store opened");
@@ -107,7 +96,6 @@ impl SqliteBackend {
     pub fn open_in_memory() -> Result<Self, StoreError> {
         let conn = Connection::open_in_memory()?;
         configure_connection(&conn)?;
-        // In-memory DBs are always fresh; no legacy check needed.
         schema::apply_schema(&conn)?;
 
         Ok(Self {
@@ -124,8 +112,7 @@ impl SqliteBackend {
 
 /// Open a SQLite connection and apply per-process configuration:
 /// secure file permissions, optional cipher key, and the standard
-/// pragma set. Used both on first open and on the legacy auto-wipe
-/// rebuild path, so the cipher key and permissions stay consistent.
+/// pragma set.
 fn open_and_configure(path: &Path, hex_key: Option<&str>) -> Result<Connection, StoreError> {
     let conn = Connection::open(path)?;
 
