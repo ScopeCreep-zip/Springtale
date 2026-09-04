@@ -90,6 +90,10 @@ pub fn create_dual_vault(
 ///
 /// Returns the decrypted entries and which session was unlocked.
 /// If neither region decrypts, returns `VaultDecryptionFailed`.
+///
+/// Both regions are always derived and attempted, regardless of whether
+/// the first succeeds, so the wall-clock cost of an unlock does not reveal
+/// which passphrase was entered.
 pub fn open_dual_vault(data: &[u8], passphrase: &[u8]) -> Result<DualVaultOpenResult, CryptoError> {
     if data.len() != DUAL_VAULT_FILE_SIZE {
         return Err(CryptoError::VaultDecryptionFailed);
@@ -98,17 +102,16 @@ pub fn open_dual_vault(data: &[u8], passphrase: &[u8]) -> Result<DualVaultOpenRe
     let real_region = &data[..REGION_HEADER_SIZE + REGION_SIZE];
     let decoy_region = &data[REGION_HEADER_SIZE + REGION_SIZE..];
 
-    // Try real region first
-    if let Ok((entries, salt, key)) = decrypt_region(real_region, passphrase) {
-        return Ok((entries, salt, key, VaultSession::Real));
-    }
+    // Always derive and try both, so unlock time does not depend on which
+    // passphrase was entered (IPV threat model: the coercer may be watching).
+    let real = decrypt_region(real_region, passphrase);
+    let decoy = decrypt_region(decoy_region, passphrase);
 
-    // Try decoy region
-    if let Ok((entries, salt, key)) = decrypt_region(decoy_region, passphrase) {
-        return Ok((entries, salt, key, VaultSession::Duress));
+    match (real, decoy) {
+        (Ok((entries, salt, key)), _) => Ok((entries, salt, key, VaultSession::Real)),
+        (Err(_), Ok((entries, salt, key))) => Ok((entries, salt, key, VaultSession::Duress)),
+        (Err(_), Err(_)) => Err(CryptoError::VaultDecryptionFailed),
     }
-
-    Err(CryptoError::VaultDecryptionFailed)
 }
 
 /// Check if a file is a dual-region vault (by constant file size).
@@ -356,5 +359,76 @@ mod tests {
         assert!(is_dual_vault(DUAL_VAULT_FILE_SIZE));
         assert!(!is_dual_vault(100));
         assert!(!is_dual_vault(0));
+    }
+
+    /// Median of a sample set (mean of the two middle values for even sizes).
+    fn median_secs(samples: &mut [std::time::Duration]) -> f64 {
+        samples.sort();
+        let n = samples.len();
+        let mid = n / 2;
+        if n.is_multiple_of(2) {
+            (samples[mid - 1].as_secs_f64() + samples[mid].as_secs_f64()) / 2.0
+        } else {
+            samples[mid].as_secs_f64()
+        }
+    }
+
+    /// A real unlock and a duress unlock must cost the same wall-clock time,
+    /// otherwise a watching coercer can tell which passphrase was entered.
+    /// Twenty of each, interleaved, on one fixture; medians within 10 percent.
+    ///
+    /// Ignored by default: each unlock runs two Argon2id derivations
+    /// (64 MiB, 3 passes), so the 40 unlocks take 2-4 minutes in a debug
+    /// build, and on a loaded machine (parallel cargo builds) the medians
+    /// drift past 10 percent in either direction (observed 1 failure at
+    /// 11.1 percent in 3 runs, with duress both slower and faster than real,
+    /// i.e. noise, not a systematic gap). Run explicitly on a quiet machine:
+    /// `cargo test -p springtale-crypto unlock_timing -- --ignored --nocapture`.
+    #[test]
+    #[ignore = "wall-clock timing test; slow and load-sensitive, run on a quiet machine"]
+    fn test_dual_vault_unlock_timing_independent_of_passphrase() {
+        const ROUNDS: usize = 20;
+        const TOLERANCE: f64 = 0.10;
+
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("dual_vault.bin");
+
+        let mut real = HashMap::new();
+        real.insert("secret".into(), b"real_data".to_vec());
+        let mut decoy = HashMap::new();
+        decoy.insert("note".into(), b"shopping list".to_vec());
+
+        create_dual_vault(&path, b"real_pass", b"duress_pass", &real, &decoy).unwrap();
+        let data = std::fs::read(&path).unwrap();
+
+        let mut real_times = Vec::with_capacity(ROUNDS);
+        let mut duress_times = Vec::with_capacity(ROUNDS);
+
+        for _ in 0..ROUNDS {
+            let start = std::time::Instant::now();
+            let (_, _, _, session) = open_dual_vault(&data, b"real_pass").unwrap();
+            real_times.push(start.elapsed());
+            assert_eq!(session, VaultSession::Real);
+
+            let start = std::time::Instant::now();
+            let (_, _, _, session) = open_dual_vault(&data, b"duress_pass").unwrap();
+            duress_times.push(start.elapsed());
+            assert_eq!(session, VaultSession::Duress);
+        }
+
+        let real_median = median_secs(&mut real_times);
+        let duress_median = median_secs(&mut duress_times);
+        let diff = (real_median - duress_median).abs();
+        let allowed = TOLERANCE * real_median.max(duress_median);
+        eprintln!(
+            "unlock timing: real median {real_median:.4}s, duress median {duress_median:.4}s, \
+             diff {diff:.4}s, allowed {allowed:.4}s"
+        );
+
+        assert!(
+            diff <= allowed,
+            "unlock timing leaks passphrase kind: real median {real_median:.4}s, \
+             duress median {duress_median:.4}s, diff {diff:.4}s > allowed {allowed:.4}s"
+        );
     }
 }
