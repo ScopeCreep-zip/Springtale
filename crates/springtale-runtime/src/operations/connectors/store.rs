@@ -8,7 +8,7 @@ use springtale_store::StorageBackend;
 
 use crate::error::OperationError;
 
-use super::install::verify_manifest_sig_if_present;
+use super::install::verify_manifest_signature;
 
 /// List connectors from the persistent store (no registry needed).
 ///
@@ -63,8 +63,8 @@ pub async fn install_connector_to_store(
     springtale_connector::manifest::verify::verify_manifest(&manifest)
         .map_err(|e| OperationError::Validation(format!("manifest invalid: {e}")))?;
 
-    // Verify Ed25519 signature if present using trusted author registry
-    verify_manifest_sig_if_present(&manifest, store).await?;
+    // Signing is required: unsigned or unknown-author manifests are rejected.
+    verify_manifest_signature(&manifest, store).await?;
 
     let manifest_json = serde_json::to_string(&manifest)
         .map_err(|e| OperationError::Serialization(e.to_string()))?;

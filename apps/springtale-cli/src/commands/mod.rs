@@ -1,4 +1,5 @@
 pub mod agent;
+pub mod author;
 pub mod bot;
 pub mod connector;
 pub mod crypto;
