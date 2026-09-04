@@ -53,6 +53,7 @@ pub async fn run(
         tick,
         deps.bridge,
         deps.sentinel,
+        deps.registry,
         deps.store,
         &reports_sender,
         deps.cooperation_tx,
