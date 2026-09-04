@@ -740,3 +740,57 @@ async fn mental_model_clear_removes_rows() {
     let loaded = store.mental_model_load("f1").await.unwrap();
     assert!(loaded.domain.is_empty());
 }
+
+// ── Opening never destroys a database (plan 0.12) ─────────────
+
+/// A file left behind by the old numbered-migration runner carries a
+/// `_migrations` table and no `user_version`. `open` must refuse it
+/// with `SchemaVersion` and leave every byte of the file alone.
+///
+/// The fixture is created in WAL mode, as every earlier build did, so
+/// the `PRAGMA journal_mode = WAL` issued on open is a no-op on the
+/// file header.
+#[test]
+fn test_open_legacy_migrations_database_returns_schema_version_and_leaves_file_untouched() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("legacy.db");
+
+    {
+        let fixture = Connection::open(&path).unwrap();
+        fixture
+            .execute_batch(
+                "PRAGMA journal_mode = WAL;
+                 CREATE TABLE _migrations (version INTEGER PRIMARY KEY, applied_at TEXT NOT NULL);
+                 INSERT INTO _migrations VALUES (1, '2026-01-01'), (2, '2026-02-01');
+                 CREATE TABLE rules (id TEXT PRIMARY KEY, name TEXT NOT NULL);
+                 INSERT INTO rules VALUES ('r1', 'keep me');",
+            )
+            .unwrap();
+    }
+    let before = std::fs::read(&path).unwrap();
+    assert!(!before.is_empty());
+
+    let err = match SqliteBackend::open(&path) {
+        Ok(_) => panic!("open must refuse a legacy database"),
+        Err(e) => e,
+    };
+    assert!(
+        matches!(
+            err,
+            StoreError::SchemaVersion {
+                found: 0,
+                expected: schema::SCHEMA_VERSION
+            }
+        ),
+        "expected SchemaVersion, got {err:?}"
+    );
+
+    let after = std::fs::read(&path).unwrap();
+    assert_eq!(before, after, "open must leave the file byte-identical");
+
+    let check = Connection::open(&path).unwrap();
+    let rows: i64 = check
+        .query_row("SELECT COUNT(*) FROM rules", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(rows, 1, "existing data survives a refused open");
+}
