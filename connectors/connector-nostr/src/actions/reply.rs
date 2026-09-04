@@ -7,6 +7,7 @@ use crate::error::NostrError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: false,
+        destructive: None,
         name: "reply".to_owned(),
         description: "Reply to a Nostr note (kind 1 with e/p tags).".to_owned(),
         input_schema: Some(serde_json::json!({

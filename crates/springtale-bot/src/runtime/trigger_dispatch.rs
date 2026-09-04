@@ -96,6 +96,7 @@ pub async fn handle_trigger_event(
         springtale_cooperation::types::FormationId,
         springtale_cooperation::cadence::AgentId,
         springtale_cooperation::momentum::MomentumTier,
+        springtale_cooperation::types::ApprovalPolicy,
     )> = match event.connector.as_deref() {
         Some(conn) => {
             let formations = bot.formations.read().await;
@@ -105,7 +106,14 @@ pub async fn handle_trigger_event(
                     f.members
                         .iter()
                         .find(|m| m.capabilities.iter().any(|c| c.name == conn))
-                        .map(|m| (f.id, m.agent_id, f.momentum.tier))
+                        .map(|m| {
+                            (
+                                f.id,
+                                m.agent_id,
+                                f.momentum.tier,
+                                f.constraints.destructive_action_policy,
+                            )
+                        })
                 })
                 .collect()
         }
@@ -120,7 +128,7 @@ pub async fn handle_trigger_event(
             global_matches.iter().map(|m| m.rule_id).collect();
 
         let mut formation_jobs = Vec::new();
-        for (fid, agent_id, tier) in &formation_ctxs {
+        for (fid, agent_id, tier, policy) in &formation_ctxs {
             for m in springtale_core::router::dispatch::dispatch_event_with_owner(
                 &engine,
                 event,
@@ -130,7 +138,7 @@ pub async fn handle_trigger_event(
                 // `dispatch_event_with_owner` also returns Globals — skip those
                 // here so they fire exactly once via the global path below.
                 if !global_ids.contains(&m.rule_id) {
-                    formation_jobs.push((m, *fid, *agent_id, *tier));
+                    formation_jobs.push((m, *fid, *agent_id, *tier, *policy));
                 }
             }
         }
@@ -147,14 +155,24 @@ pub async fn handle_trigger_event(
     }
 
     // Formation-scoped rules — fire in their formation's tier context so
-    // sentinel / authority gating sees the right momentum.
-    for (rule_match, fid, agent_id, tier) in &formation_jobs {
+    // sentinel / authority gating sees the right momentum, the formation's
+    // destructive-action policy, and the firing member's autonomy.
+    for (rule_match, fid, agent_id, tier, policy) in &formation_jobs {
+        let autonomy_str = springtale_runtime::operations::agent::get_autonomy(
+            bot.store.as_ref(),
+            &agent_id.0.to_string(),
+        )
+        .await
+        .unwrap_or_else(|_| "suggest".to_owned());
+        let autonomy = springtale_cooperation::AutonomyLevel::parse(&autonomy_str);
         let execution = springtale_cooperation::execution::ExecutionContext::for_formation(
             rule_match.rule_id,
             *agent_id,
             *fid,
             *tier,
             mode,
+            *policy,
+            autonomy,
         );
         dispatch_rule_match(bot, rule_match, execution).await;
     }

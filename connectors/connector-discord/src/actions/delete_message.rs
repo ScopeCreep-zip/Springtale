@@ -7,6 +7,7 @@ use crate::error::DiscordError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: false,
+        destructive: None,
         name: "delete_message".to_owned(),
         description: "Delete a Discord message.".to_owned(),
         input_schema: Some(serde_json::json!({

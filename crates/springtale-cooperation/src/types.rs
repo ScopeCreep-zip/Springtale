@@ -13,6 +13,11 @@ use specta::Type;
 use crate::cadence::AgentId;
 use crate::capability::CapabilityDecl;
 
+// `ApprovalPolicy` and `AutonomyLevel` live in `springtale_core::policy`
+// so `springtale-sentinel` (which depends on core, not on this crate)
+// can consult them. Re-exported here so existing paths keep compiling.
+pub use springtale_core::policy::{ApprovalPolicy, AutonomyLevel};
+
 /// Typed fuel amount — wraps a raw `u64` so fuel values are unambiguous.
 ///
 /// `FuelBudget` in the bot crate is the runtime tracker; this newtype is
@@ -194,82 +199,6 @@ pub enum DynamicRole {
     Information,
     /// Custom role (connector-specific).
     Custom { name: String },
-}
-
-/// How a formation gates actions by risk class (§3.3).
-///
-/// Modeled on Microsoft Agent Governance Toolkit's 3-category classification
-/// (DESTRUCTIVE_DATA / DATA_EXFILTRATION / PRIVILEGE_ESCALATION) extended
-/// with Springtale's Sentinel integration and the OpenAI Agents SDK
-/// `needsApproval` pattern (pause → approve/reject → resume).
-///
-/// Maps to RTS fire stances:
-///   AutoApprove     = AoE "Aggressive" / Spring "Fire at Will"
-///   ApproveOnce     = AoE "Defensive" / OpenAI `alwaysApprove: true`
-///   AlwaysRequire   = AoE "Stand Ground" / Claude Code modification gate
-///   RequireConsensus = AoE "No Attack" / Microsoft AGT Ring 0 quorum
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
-pub enum ApprovalPolicy {
-    /// Auto-approve. Read-only, non-mutating actions.
-    AutoApprove,
-    /// Approve once per action type, then remember for the session.
-    ApproveOnce,
-    /// Require explicit approval every time.
-    AlwaysRequire,
-    /// Require consensus vote from formation members (§11).
-    RequireConsensus,
-}
-
-/// Agent autonomy level — RTS stance mapped to bot behavior (§3.3, §7).
-///
-/// Cross-referenced across 5 RTS games:
-///   Observe         = AoE "No Attack"    = SC "Stop"        = 0AD "Passive"
-///   Suggest         = AoE "Stand Ground" = SC "Hold Pos"    = 0AD "Stand Ground"
-///   ActWithApproval = AoE "Defensive"    = SC "Patrol"      = 0AD "Defensive"
-///   ActAutonomously = AoE "Aggressive"   = SC "Attack-Move" = 0AD "Aggressive"
-///
-/// Also maps to Microsoft AGT trust rings:
-///   Observe = Ring 3 (read-only sandbox)
-///   Suggest = Ring 2 (standard tool access)
-///   ActWithApproval = Ring 1 (elevated, cross-agent)
-///   ActAutonomously = Ring 0 (full system access)
-#[derive(
-    Debug, Clone, Copy, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Type,
-)]
-pub enum AutonomyLevel {
-    /// Holdfire + holdpos. Watch and report only.
-    Observe,
-    /// Returnfire + holdpos. Scan, report what WOULD be done, don't claim.
-    #[default]
-    Suggest,
-    /// Fireatwill + maneuver. Scan, claim, but hold for human/consensus OK.
-    ActWithApproval,
-    /// Fireatwill + roam. Full autonomy — scan, claim, execute.
-    ActAutonomously,
-}
-
-impl AutonomyLevel {
-    /// Parse from the string form stored in config store. Falls back to
-    /// `Suggest` on unrecognized input (safe default — reports but doesn't act).
-    pub fn parse(s: &str) -> Self {
-        match s {
-            "observe" => Self::Observe,
-            "suggest" => Self::Suggest,
-            "act-with-approval" => Self::ActWithApproval,
-            "act-autonomously" => Self::ActAutonomously,
-            _ => Self::Suggest,
-        }
-    }
-
-    /// Serialize to the string form for config store persistence.
-    pub fn as_str(&self) -> &'static str {
-        match self {
-            Self::Observe => "observe",
-            Self::Suggest => "suggest",
-            Self::ActWithApproval => "act-with-approval",
-            Self::ActAutonomously => "act-autonomously",
-        }
-    }
 }
 
 /// Constraints on formation behavior — set by the orchestrator (§3.3).

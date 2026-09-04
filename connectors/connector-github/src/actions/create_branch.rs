@@ -7,6 +7,7 @@ use crate::error::GithubError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: false,
+        destructive: None,
         name: "create_branch".to_owned(),
         description: "Create a new branch from an existing base branch.".to_owned(),
         input_schema: Some(serde_json::json!({

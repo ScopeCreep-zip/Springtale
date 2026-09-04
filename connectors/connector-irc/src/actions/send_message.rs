@@ -7,6 +7,7 @@ use crate::error::IrcError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: false,
+        destructive: None,
         name: "send_message".to_owned(),
         description: "Send a message to a channel or user via PRIVMSG.".to_owned(),
         input_schema: Some(serde_json::json!({

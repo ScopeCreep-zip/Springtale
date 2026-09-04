@@ -115,6 +115,7 @@ mod tests {
                     actions: vec![
                         ActionDecl {
                             read_only: false,
+                            destructive: None,
                             name: "search".into(),
                             description: "Search something".into(),
                             input_schema: Some(serde_json::json!({
@@ -127,6 +128,7 @@ mod tests {
                         },
                         ActionDecl {
                             read_only: false,
+                            destructive: None,
                             name: "ping".into(),
                             description: "Ping the service".into(),
                             input_schema: None,

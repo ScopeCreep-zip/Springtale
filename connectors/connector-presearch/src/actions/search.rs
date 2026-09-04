@@ -8,6 +8,7 @@ use crate::error::PresearchError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: true,
+        destructive: None,
         name: "search".to_owned(),
         description: "Search the web using Presearch's privacy-first decentralized search engine."
             .to_owned(),

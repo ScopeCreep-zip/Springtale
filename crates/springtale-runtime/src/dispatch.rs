@@ -51,6 +51,8 @@ use springtale_cooperation::execution::ExecutionContext;
 use springtale_core::rule::action::Action;
 use springtale_core::rule::template_resolve::{resolve_chain_template, resolve_chain_value};
 use springtale_core::rule::{ChainContext, ChainError, StepOutput};
+use springtale_sentinel::impact::ActionHints;
+use springtale_sentinel::sentinel::EvaluateRequest;
 use springtale_sentinel::{Sentinel, Verdict};
 
 use crate::cooperation::{CapabilityBridge, momentum_to_throttle_tier, momentum_to_wasm_tier};
@@ -244,15 +246,45 @@ async fn run_step_inner(
     // ── Sentinel ─────────────────────────────────────────────────
     // Throw the (unresolved) action at sentinel for connector-name
     // routing only — the resolver below produces the executable
-    // version. Sentinel doesn't read action parameters; the connector
-    // name is the discriminant it actually uses.
+    // version. Sentinel doesn't read action parameters; it reads the
+    // connector name, the manifest's advisory hints for the named
+    // action, and the envelope's policy / autonomy.
     let connector_name = match action {
         Action::RunConnector { connector, .. } => connector.as_str(),
         _ => "system",
     };
     let throttle_tier = momentum_to_throttle_tier(execution.momentum);
+    let hints = if let Action::RunConnector {
+        connector,
+        action: name,
+        ..
+    } = action
+    {
+        let reg = bridge.registry().read().await;
+        reg.get(connector)
+            .and_then(|e| e.host.actions().iter().find(|d| d.name == *name).cloned())
+            .map(|d| ActionHints {
+                read_only: d.read_only,
+                destructive: d.destructive,
+            })
+    } else {
+        None
+    };
+    let action_name = if let Action::RunConnector { action: name, .. } = action {
+        Some(name.as_str())
+    } else {
+        None
+    };
     let verdict = sentinel
-        .evaluate(action, connector_name, throttle_tier)
+        .evaluate(EvaluateRequest {
+            action,
+            connector_name,
+            tier: throttle_tier,
+            hints,
+            action_name,
+            policy: execution.policy,
+            autonomy: execution.autonomy,
+        })
         .await;
     match verdict {
         Verdict::Go => {}
@@ -1093,5 +1125,136 @@ mod tests {
         );
         assert_eq!(list[0].error_kind.as_deref(), Some("step_failed"));
         let _ = exec_id; // unused but kept for parallel-with-success test
+    }
+
+    /// Minimal native connector whose single action declares no
+    /// `destructive` hint — the "unknown hint" case the sentinel must
+    /// treat as destructive (MCP `destructiveHint` default `true`).
+    struct HintlessConnector {
+        manifest: springtale_connector::manifest::types::ConnectorManifest,
+    }
+
+    impl HintlessConnector {
+        fn new(name: &str) -> Self {
+            use springtale_connector::manifest::SignatureAlgorithm;
+            use springtale_connector::manifest::types::{
+                ActionDecl, Capability, ConnectorManifest, TriggerDecl,
+            };
+            Self {
+                manifest: ConnectorManifest {
+                    name: name.to_owned(),
+                    version: "0.1.0".into(),
+                    author: "test".into(),
+                    description: "hintless".into(),
+                    capabilities: vec![Capability::NetworkOutbound {
+                        host: "api.example.com".into(),
+                    }],
+                    triggers: vec![TriggerDecl {
+                        name: "test_event".into(),
+                        description: "test".into(),
+                        schema: None,
+                    }],
+                    actions: vec![ActionDecl {
+                        read_only: false,
+                        destructive: None,
+                        name: "echo".into(),
+                        description: "echo".into(),
+                        input_schema: None,
+                        output_schema: None,
+                    }],
+                    data_disclosure: vec![],
+                    roles: vec![],
+                    wasm_hash: None,
+                    signature_alg: SignatureAlgorithm::default(),
+                    signature: None,
+                },
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl springtale_connector::connector::trait_::Connector for HintlessConnector {
+        fn triggers(&self) -> &[springtale_connector::manifest::types::TriggerDecl] {
+            &self.manifest.triggers
+        }
+        fn actions(&self) -> &[springtale_connector::manifest::types::ActionDecl] {
+            &self.manifest.actions
+        }
+        async fn execute(
+            &self,
+            action: &str,
+            input: serde_json::Value,
+        ) -> Result<
+            springtale_connector::connector::trait_::ActionResult,
+            springtale_connector::ConnectorError,
+        > {
+            Ok(springtale_connector::connector::trait_::ActionResult {
+                success: true,
+                output: serde_json::json!({"echoed": input, "action": action}),
+                message: "ok".into(),
+            })
+        }
+        async fn on_event(
+            &self,
+            trigger: &str,
+            _handler: springtale_connector::connector::trait_::EventHandler,
+        ) -> Result<
+            springtale_connector::connector::subscription::Subscription,
+            springtale_connector::ConnectorError,
+        > {
+            Ok(
+                springtale_connector::connector::subscription::Subscription {
+                    id: springtale_connector::connector::subscription::SubscriptionId(0),
+                    trigger: trigger.to_owned(),
+                },
+            )
+        }
+        async fn remove_event(
+            &self,
+            _sub: &springtale_connector::connector::subscription::Subscription,
+        ) -> Result<(), springtale_connector::ConnectorError> {
+            Ok(())
+        }
+        fn manifest(&self) -> &springtale_connector::manifest::types::ConnectorManifest {
+            &self.manifest
+        }
+    }
+
+    #[tokio::test]
+    async fn dispatch_quarantines_hintless_connector_action_under_default_deny() {
+        let store: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open_in_memory().unwrap());
+        let mut registry = springtale_connector::registry::store::ConnectorRegistry::new(
+            springtale_connector::capability::grant::CapabilityPolicy::AllowAll,
+        );
+        registry
+            .install_native(Box::new(HintlessConnector::new("hintless")))
+            .unwrap();
+        let bridge = CapabilityBridge::new(Arc::new(tokio::sync::RwLock::new(registry)))
+            .with_store(store.clone());
+        // `Sentinel::new` wires `DefaultDenyApprovalGate`.
+        let sentinel = Arc::new(springtale_sentinel::Sentinel::new(
+            springtale_sentinel::SentinelConfig::default(),
+            store.clone(),
+        ));
+        let execution = manual_execution_ctx();
+
+        let action = Action::RunConnector {
+            connector: "hintless".into(),
+            action: "echo".into(),
+            params: serde_json::Map::new(),
+        };
+        let err = dispatch_action(
+            &action,
+            &bridge,
+            &sentinel,
+            execution,
+            serde_json::Value::Null,
+        )
+        .await
+        .unwrap_err();
+        assert!(
+            matches!(&err, ChainError::StepFailed { message, .. } if message.contains("quarantined")),
+            "expected sentinel quarantine, got {err:?}"
+        );
     }
 }

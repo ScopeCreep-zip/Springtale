@@ -8,6 +8,7 @@ use crate::error::GithubError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: false,
+        destructive: None,
         name: "commit_file".to_owned(),
         description: "Create or update a single file on a branch with a commit.".to_owned(),
         input_schema: Some(serde_json::json!({

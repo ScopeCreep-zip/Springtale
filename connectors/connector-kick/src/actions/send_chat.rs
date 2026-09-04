@@ -7,6 +7,7 @@ use crate::error::KickError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: false,
+        destructive: None,
         name: "send_chat".to_owned(),
         description: "Send a chat message to a Kick channel.".to_owned(),
         input_schema: Some(serde_json::json!({

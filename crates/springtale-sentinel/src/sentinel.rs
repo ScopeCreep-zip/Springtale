@@ -1,7 +1,9 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use dashmap::DashSet;
 use springtale_connector::manifest::types::Capability;
+use springtale_core::policy::{ApprovalPolicy, AutonomyLevel};
 use springtale_core::rule::action::Action;
 use springtale_store::StorageBackend;
 
@@ -10,10 +12,38 @@ use crate::audit::AuditTrail;
 use crate::circuit_breaker::CircuitBreaker;
 use crate::config::SentinelConfig;
 use crate::dead_man::DeadManSwitch;
-use crate::impact::{ActionImpact, classify_impact};
+use crate::impact::{ActionHints, ActionImpact, classify_impact};
 use crate::rate_limiter::RateLimiter;
+use crate::throttle_tier::ThrottleTier;
 use crate::toxic_pairs;
 use crate::verdict::Verdict;
+
+/// Everything the sentinel needs to evaluate one action dispatch.
+///
+/// Built by the runtime dispatcher (`springtale_runtime::dispatch`) from
+/// the resolved action, the connector registry's manifest hints, and the
+/// fire's `ExecutionContext` (policy + autonomy).
+pub struct EvaluateRequest<'a> {
+    /// The action about to run.
+    pub action: &'a Action,
+    /// Connector the action targets, or `"system"` for built-in actions.
+    pub connector_name: &'a str,
+    /// Momentum tier — scales the rate-limit budget.
+    pub tier: ThrottleTier,
+    /// The manifest's advisory hints for the named connector action.
+    /// `None` when the action is not a `RunConnector`, or the connector /
+    /// action is unknown — which [`classify_impact`] treats as destructive.
+    pub hints: Option<ActionHints>,
+    /// The connector action name for `RunConnector`, else `None`. Needed
+    /// because `action_type` is the enum discriminant, which is the
+    /// same string for every connector action.
+    pub action_name: Option<&'a str>,
+    /// The formation's `destructive_action_policy` (`AutoApprove` for
+    /// global rules).
+    pub policy: ApprovalPolicy,
+    /// The firing member's autonomy (`ActAutonomously` for global rules).
+    pub autonomy: AutonomyLevel,
+}
 
 /// Runtime behavioral monitor.
 ///
@@ -27,6 +57,8 @@ pub struct Sentinel {
     dead_man: DeadManSwitch,
     audit: AuditTrail,
     approval: Arc<dyn ApprovalGate>,
+    /// `ApproveOnce` memory: (connector, action name) approved this session.
+    session_approvals: DashSet<(String, String)>,
     _config: SentinelConfig,
 }
 
@@ -60,6 +92,7 @@ impl Sentinel {
             dead_man,
             audit,
             approval,
+            session_approvals: DashSet::new(),
             _config: config,
         }
     }
@@ -67,24 +100,29 @@ impl Sentinel {
     /// Evaluate whether an action should proceed.
     ///
     /// Checks in order: circuit breaker, rate limiter, dead-man switch,
-    /// destructive action gate. Returns the first non-Go verdict.
-    /// Logs every evaluation to the audit trail.
+    /// human-approval gate. Returns the first non-Go verdict. Logs every
+    /// evaluation to the audit trail.
     ///
-    /// `tier` scales the rate-limit budget per the cooperation
-    /// framework's momentum tier (see [`crate::ThrottleTier`]).
-    /// Pre-Phase-0 callers without firing context should pass
-    /// [`ThrottleTier::Warming`] — the baseline budget. The runtime
-    /// dispatcher (Phase 0.2) converts each fire's
-    /// `ExecutionContext.momentum` into a [`ThrottleTier`] via
-    /// `springtale_runtime::cooperation::momentum_to_throttle_tier`.
-    pub async fn evaluate(
-        &self,
-        action: &Action,
-        connector_name: &str,
-        tier: crate::ThrottleTier,
-    ) -> Verdict {
-        let action_type = format!("{:?}", std::mem::discriminant(action));
-        let impact = classify_impact(action);
+    /// The approval gate is consulted when:
+    /// - the firing member's autonomy is `ActWithApproval` (every
+    ///   action, regardless of impact), or
+    /// - the action classifies as `Destructive` (see [`classify_impact`],
+    ///   which reads the manifest hints in `req.hints`) and the policy is
+    ///   `AutoApprove` or `AlwaysRequire`, or `ApproveOnce` and this
+    ///   `(connector, action name)` pair has not been approved this
+    ///   session.
+    ///
+    /// `RequireConsensus` never prompts here: the formation vote happens
+    /// before dispatch, so reaching the sentinel means the vote passed.
+    ///
+    /// `req.tier` scales the rate-limit budget per the cooperation
+    /// framework's momentum tier (see [`ThrottleTier`]). Callers without
+    /// firing context should pass [`ThrottleTier::Warming`] — the
+    /// baseline budget.
+    pub async fn evaluate(&self, req: EvaluateRequest<'_>) -> Verdict {
+        let action_type = format!("{:?}", std::mem::discriminant(req.action));
+        let impact = classify_impact(req.action, req.hints);
+        let connector_name = req.connector_name;
 
         // 1. Circuit breaker check (per-connector) — tier-independent.
         if !self.circuit_breaker.is_allowed(connector_name) {
@@ -101,7 +139,7 @@ impl Sentinel {
         // 2. Rate limiter check (per-connector, tier-scoped) — the
         //    budget scales with momentum so a Fever swarm isn't
         //    throttled to the same baseline as a Cold solo observer.
-        if let Some(delay) = self.rate_limiter.check_at_tier(connector_name, tier) {
+        if let Some(delay) = self.rate_limiter.check_at_tier(connector_name, req.tier) {
             let verdict = Verdict::Throttle(delay);
             let _ = self
                 .audit
@@ -122,32 +160,58 @@ impl Sentinel {
             return verdict;
         }
 
-        // 4. Destructive action gate — route through the configured
+        // 4. Human-approval gate — route through the configured
         //    `ApprovalGate`. CLI / headless wire `DefaultDenyApprovalGate`
         //    so unattended runs never delete data; desktop / web wire
         //    a `ChannelApprovalGate` that prompts the survivor.
-        if impact == ActionImpact::Destructive {
+        //
+        //    `ApproveOnce` is keyed on (connector, action name) — never on
+        //    `action_type` alone, which is the same discriminant string
+        //    for every connector action.
+        let approval_key = || {
+            (
+                connector_name.to_owned(),
+                req.action_name.unwrap_or(&action_type).to_owned(),
+            )
+        };
+        let needs_human = match (impact, req.policy, req.autonomy) {
+            (_, _, AutonomyLevel::ActWithApproval) => true,
+            (ActionImpact::Destructive, ApprovalPolicy::AutoApprove, _) => true,
+            (ActionImpact::Destructive, ApprovalPolicy::AlwaysRequire, _) => true,
+            (ActionImpact::Destructive, ApprovalPolicy::ApproveOnce, _) => {
+                !self.session_approvals.contains(&approval_key())
+            }
+            // RequireConsensus: the formation vote happens before dispatch;
+            // reaching here means the vote passed.
+            (ActionImpact::Destructive, ApprovalPolicy::RequireConsensus, _) => false,
+            _ => false,
+        };
+        if needs_human {
             let request = ApprovalRequest {
                 connector_name: connector_name.to_owned(),
                 action_type: action_type.clone(),
                 rationale: format!(
-                    "{connector_name} is about to run a destructive action ({action_type})"
+                    "{connector_name} is about to run {action_type} (impact {impact:?}, policy {:?}, autonomy {:?})",
+                    req.policy, req.autonomy
                 ),
             };
             if !self.approval.request_approval(request).await {
-                let verdict = Verdict::Quarantine(format!(
-                    "destructive action denied by approval gate ({action_type})"
-                ));
+                let verdict =
+                    Verdict::Quarantine(format!("denied by approval gate ({action_type})"));
                 let _ = self
                     .audit
                     .log(connector_name, &action_type, "", &verdict, "denied")
                     .await;
                 return verdict;
             }
+            if matches!(req.policy, ApprovalPolicy::ApproveOnce) {
+                self.session_approvals.insert(approval_key());
+            }
             tracing::info!(
                 connector = connector_name,
                 action = %action_type,
-                "destructive action approved"
+                impact = ?impact,
+                "action approved by gate"
             );
         }
 
@@ -187,8 +251,10 @@ impl Sentinel {
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
     use super::*;
-    use springtale_store::SqliteBackend;
+    use springtale_store::{AuditFilter, SqliteBackend};
 
     fn test_sentinel() -> Sentinel {
         let store: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open_in_memory().unwrap());
@@ -206,6 +272,72 @@ mod tests {
         )
     }
 
+    /// A request with no hints, no action name, and the global-rule
+    /// defaults (`AutoApprove` / `ActAutonomously`).
+    fn req<'a>(action: &'a Action, connector: &'a str, tier: ThrottleTier) -> EvaluateRequest<'a> {
+        EvaluateRequest {
+            action,
+            connector_name: connector,
+            tier,
+            hints: None,
+            action_name: None,
+            policy: ApprovalPolicy::AutoApprove,
+            autonomy: AutonomyLevel::ActAutonomously,
+        }
+    }
+
+    /// Sentinel with generous rate / breaker / dead-man budgets so the
+    /// approval-gate tests exercise only the gate. Returns the store so
+    /// tests can read the audit trail back.
+    fn gate_sentinel(gate: Arc<dyn ApprovalGate>) -> (Sentinel, Arc<dyn StorageBackend>) {
+        let store: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open_in_memory().unwrap());
+        let sentinel = Sentinel::with_approval_gate(
+            SentinelConfig {
+                rate_limit_per_minute: 1000,
+                circuit_breaker_threshold: 1000,
+                circuit_breaker_cooldown_secs: 1,
+                dead_man_threshold: 1000,
+                audit_retention_days: 90,
+                daily_token_limit: None,
+            },
+            store.clone(),
+            gate,
+        );
+        (sentinel, store)
+    }
+
+    /// Gate that counts how often it is consulted and answers `allow`.
+    struct CountingGate {
+        calls: AtomicUsize,
+        allow: bool,
+    }
+
+    #[async_trait::async_trait]
+    impl ApprovalGate for CountingGate {
+        async fn request_approval(&self, _request: ApprovalRequest) -> bool {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            self.allow
+        }
+    }
+
+    fn connector_action(name: &str) -> Action {
+        Action::RunConnector {
+            connector: "connector-github".into(),
+            action: name.into(),
+            params: serde_json::Map::new(),
+        }
+    }
+
+    async fn audit_results(store: &Arc<dyn StorageBackend>) -> Vec<(String, String)> {
+        store
+            .list_audit_entries(&AuditFilter::default())
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|e| (e.verdict, e.result))
+            .collect()
+    }
+
     #[tokio::test]
     async fn test_evaluate_go() {
         let sentinel = test_sentinel();
@@ -213,7 +345,7 @@ mod tests {
             text: "hello".into(),
         };
         let verdict = sentinel
-            .evaluate(&action, "test-connector", crate::ThrottleTier::Warming)
+            .evaluate(req(&action, "test-connector", ThrottleTier::Warming))
             .await;
         assert_eq!(verdict, Verdict::Go);
     }
@@ -240,14 +372,14 @@ mod tests {
         // Warming tier budget: 12 actions per 60s.
         for i in 0..12 {
             let v = sentinel
-                .evaluate(&action, "test", crate::ThrottleTier::Warming)
+                .evaluate(req(&action, "test", ThrottleTier::Warming))
                 .await;
             assert_eq!(v, Verdict::Go, "call #{i} should be Go at Warming tier");
         }
 
         // 13th should throttle.
         let v = sentinel
-            .evaluate(&action, "test", crate::ThrottleTier::Warming)
+            .evaluate(req(&action, "test", ThrottleTier::Warming))
             .await;
         assert!(matches!(v, Verdict::Throttle(_)));
     }
@@ -259,12 +391,12 @@ mod tests {
 
         // Cold tier budget: 1 action per 30s.
         let first = sentinel
-            .evaluate(&action, "cold-test", crate::ThrottleTier::Cold)
+            .evaluate(req(&action, "cold-test", ThrottleTier::Cold))
             .await;
         assert_eq!(first, Verdict::Go);
 
         let second = sentinel
-            .evaluate(&action, "cold-test", crate::ThrottleTier::Cold)
+            .evaluate(req(&action, "cold-test", ThrottleTier::Cold))
             .await;
         assert!(
             matches!(second, Verdict::Throttle(_)),
@@ -295,7 +427,7 @@ mod tests {
         // all clear without a throttle.
         for i in 0..100 {
             let v = sentinel
-                .evaluate(&action, "fever-test", crate::ThrottleTier::Fever)
+                .evaluate(req(&action, "fever-test", ThrottleTier::Fever))
                 .await;
             assert_eq!(v, Verdict::Go, "call #{i} should be Go at Fever tier");
         }
@@ -311,7 +443,7 @@ mod tests {
         sentinel.report_failure("test");
 
         let v = sentinel
-            .evaluate(&action, "test", crate::ThrottleTier::Warming)
+            .evaluate(req(&action, "test", ThrottleTier::Warming))
             .await;
         assert!(matches!(v, Verdict::Quarantine(_)));
     }
@@ -338,7 +470,7 @@ mod tests {
         for _ in 0..3 {
             assert_eq!(
                 sentinel
-                    .evaluate(&action, "test", crate::ThrottleTier::Warming)
+                    .evaluate(req(&action, "test", ThrottleTier::Warming))
                     .await,
                 Verdict::Go
             );
@@ -346,7 +478,7 @@ mod tests {
 
         // 4th triggers dead-man
         let v = sentinel
-            .evaluate(&action, "test", crate::ThrottleTier::Warming)
+            .evaluate(req(&action, "test", ThrottleTier::Warming))
             .await;
         assert!(matches!(v, Verdict::Pause(_)));
     }
@@ -369,10 +501,10 @@ mod tests {
 
         let action = Action::Delay { seconds: 0 };
         sentinel
-            .evaluate(&action, "t", crate::ThrottleTier::Warming)
+            .evaluate(req(&action, "t", ThrottleTier::Warming))
             .await;
         sentinel
-            .evaluate(&action, "t", crate::ThrottleTier::Warming)
+            .evaluate(req(&action, "t", ThrottleTier::Warming))
             .await;
 
         sentinel.record_user_interaction().await;
@@ -380,10 +512,116 @@ mod tests {
         // After interaction, counter reset — should be Go again
         assert_eq!(
             sentinel
-                .evaluate(&action, "t", crate::ThrottleTier::Warming)
+                .evaluate(req(&action, "t", ThrottleTier::Warming))
                 .await,
             Verdict::Go
         );
+    }
+
+    #[tokio::test]
+    async fn test_evaluate_always_require_destructive_auto_allow_gate_goes_with_allowed_row() {
+        let (sentinel, store) = gate_sentinel(Arc::new(crate::approval::AutoAllowApprovalGate));
+        let action = connector_action("delete_repository");
+        let verdict = sentinel
+            .evaluate(EvaluateRequest {
+                policy: ApprovalPolicy::AlwaysRequire,
+                action_name: Some("delete_repository"),
+                ..req(&action, "connector-github", ThrottleTier::Warming)
+            })
+            .await;
+        assert_eq!(verdict, Verdict::Go);
+        let rows = audit_results(&store).await;
+        assert_eq!(rows, vec![("go".to_owned(), "allowed".to_owned())]);
+    }
+
+    #[tokio::test]
+    async fn test_evaluate_always_require_destructive_default_deny_gate_quarantines_with_denied_row()
+     {
+        let (sentinel, store) = gate_sentinel(Arc::new(DefaultDenyApprovalGate));
+        let action = connector_action("delete_repository");
+        let verdict = sentinel
+            .evaluate(EvaluateRequest {
+                policy: ApprovalPolicy::AlwaysRequire,
+                action_name: Some("delete_repository"),
+                ..req(&action, "connector-github", ThrottleTier::Warming)
+            })
+            .await;
+        assert!(matches!(verdict, Verdict::Quarantine(_)), "got {verdict:?}");
+        let rows = audit_results(&store).await;
+        assert_eq!(rows, vec![("quarantine".to_owned(), "denied".to_owned())]);
+    }
+
+    #[tokio::test]
+    async fn test_evaluate_approve_once_requests_once_then_goes_without_gate() {
+        let gate = Arc::new(CountingGate {
+            calls: AtomicUsize::new(0),
+            allow: true,
+        });
+        let (sentinel, _store) = gate_sentinel(gate.clone());
+        let action = connector_action("delete_repository");
+
+        // First fire: the gate is consulted.
+        let first = sentinel
+            .evaluate(EvaluateRequest {
+                policy: ApprovalPolicy::ApproveOnce,
+                action_name: Some("delete_repository"),
+                ..req(&action, "connector-github", ThrottleTier::Warming)
+            })
+            .await;
+        assert_eq!(first, Verdict::Go);
+        assert_eq!(gate.calls.load(Ordering::SeqCst), 1);
+
+        // Second fire of the same (connector, action): remembered.
+        let second = sentinel
+            .evaluate(EvaluateRequest {
+                policy: ApprovalPolicy::ApproveOnce,
+                action_name: Some("delete_repository"),
+                ..req(&action, "connector-github", ThrottleTier::Warming)
+            })
+            .await;
+        assert_eq!(second, Verdict::Go);
+        assert_eq!(gate.calls.load(Ordering::SeqCst), 1);
+
+        // A different action on the same connector shares the enum
+        // discriminant but not the memory — the gate is asked again.
+        let other = connector_action("delete_branch");
+        let third = sentinel
+            .evaluate(EvaluateRequest {
+                policy: ApprovalPolicy::ApproveOnce,
+                action_name: Some("delete_branch"),
+                ..req(&other, "connector-github", ThrottleTier::Warming)
+            })
+            .await;
+        assert_eq!(third, Verdict::Go);
+        assert_eq!(gate.calls.load(Ordering::SeqCst), 2);
+    }
+
+    #[tokio::test]
+    async fn test_evaluate_act_with_approval_requests_even_for_read_only() {
+        let gate = Arc::new(CountingGate {
+            calls: AtomicUsize::new(0),
+            allow: true,
+        });
+        let (sentinel, _store) = gate_sentinel(gate.clone());
+        let action = Action::Delay { seconds: 0 };
+        let verdict = sentinel
+            .evaluate(EvaluateRequest {
+                autonomy: AutonomyLevel::ActWithApproval,
+                ..req(&action, "system", ThrottleTier::Warming)
+            })
+            .await;
+        assert_eq!(verdict, Verdict::Go);
+        assert_eq!(gate.calls.load(Ordering::SeqCst), 1);
+
+        // Same stance behind a denying gate: even a read-only step stops.
+        let (denying, _store) = gate_sentinel(Arc::new(DefaultDenyApprovalGate));
+        let verdict = denying
+            .evaluate(EvaluateRequest {
+                autonomy: AutonomyLevel::ActWithApproval,
+                ..req(&action, "system", ThrottleTier::Warming)
+            })
+            .await;
+        assert!(matches!(verdict, Verdict::Quarantine(_)), "got {verdict:?}");
     }
 
     #[test]

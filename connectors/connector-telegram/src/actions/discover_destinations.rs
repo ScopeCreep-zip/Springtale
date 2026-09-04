@@ -55,6 +55,7 @@ use crate::mention::TELEGRAM_MENTION_EXTRACTOR;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: true,
+        destructive: None,
         name: "discover_destinations".to_owned(),
         description:
             "Stateless poll of Telegram's getUpdates surface. Returns every chat that has \

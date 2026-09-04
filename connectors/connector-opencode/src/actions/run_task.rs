@@ -9,6 +9,7 @@ pub fn declaration() -> ActionDecl {
         // Agentic coding edits files and runs commands on the host — never
         // read-only. The W2 chat-approval gate fronts it.
         read_only: false,
+        destructive: None,
         name: "run_task".to_owned(),
         description: "Start a new agentic coding task: create a session and send the prompt to the opencode agent.".to_owned(),
         input_schema: Some(serde_json::json!({

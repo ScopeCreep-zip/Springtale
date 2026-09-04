@@ -7,6 +7,7 @@ use crate::error::OpenCodeError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: false,
+        destructive: None,
         name: "continue_session".to_owned(),
         description:
             "Send a follow-up prompt to an existing opencode session (e.g. \"now add tests\")."

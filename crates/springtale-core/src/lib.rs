@@ -7,6 +7,7 @@
 pub mod canvas;
 pub mod error;
 pub mod pipeline;
+pub mod policy;
 pub mod router;
 pub mod rule;
 pub mod transform;

@@ -7,6 +7,7 @@ use crate::error::GithubError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: false,
+        destructive: None,
         name: "create_issue".to_owned(),
         description: "Create a new issue in a GitHub repository.".to_owned(),
         input_schema: Some(serde_json::json!({
