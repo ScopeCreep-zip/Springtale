@@ -5,11 +5,11 @@ use crate::state::RuntimeState;
 
 /// Install a connector manifest — validates and registers in the store.
 ///
-/// The manifest is validated for structure (name, version, no wildcard hosts).
-/// Sandboxed (WASM) manifests must carry a signature by an author in the
-/// trusted-author registry — [`verify_manifest_signature`] rejects unsigned
-/// and unknown-author manifests outright. First-party native connectors
-/// register through `inventory` and never enter this path.
+/// The manifest is validated for structure (name, version, no wildcard hosts)
+/// and must carry a signature by an author in the trusted-author registry —
+/// [`verify_manifest_signature`] rejects unsigned and unknown-author
+/// manifests outright. First-party native connectors register through
+/// `inventory` and never enter this path.
 /// [`springtale_sentinel::Sentinel::check_toxic_pairs`] additionally gates
 /// dangerous capability combinations.
 pub async fn install_connector(
@@ -24,10 +24,8 @@ pub async fn install_connector(
     springtale_sentinel::Sentinel::check_toxic_pairs(&manifest.capabilities)
         .map_err(|e| OperationError::Validation(format!("toxic capability pair: {e}")))?;
 
-    // Signing is required for anything that runs sandboxed code.
-    if manifest.wasm_hash.is_some() {
-        verify_manifest_signature(&manifest, &*state.store).await?;
-    }
+    // Signing is required for every manifest that reaches this path.
+    verify_manifest_signature(&manifest, &*state.store).await?;
 
     let manifest_json = serde_json::to_string(&manifest)
         .map_err(|e| OperationError::Serialization(e.to_string()))?;
