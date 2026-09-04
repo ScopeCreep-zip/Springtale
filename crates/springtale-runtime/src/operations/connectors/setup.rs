@@ -30,9 +30,17 @@ pub async fn setup_connector(
         .await
         .map_err(|e| OperationError::Connector(format!("failed to create {name}: {e}")))?;
 
-    // Install in registry
+    // Install in registry. A name is registered once, so a re-configure
+    // of an already-loaded connector removes the old entry first, under
+    // the same write lock (mirrors `reload_connector`). A first-time
+    // configure has nothing to remove.
     let registered_name = {
         let mut registry = state.registry.write().await;
+        if registry.get(factory.name()).is_some() {
+            registry
+                .remove(factory.name())
+                .map_err(|e| OperationError::Connector(format!("failed to remove {name}: {e}")))?;
+        }
         registry
             .install_native(connector)
             .map_err(|e| OperationError::Connector(format!("failed to install {name}: {e}")))?
