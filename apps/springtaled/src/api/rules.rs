@@ -29,17 +29,16 @@ pub async fn create(
     let rule: springtale_core::rule::types::Rule =
         serde_json::from_value(body).map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    // Schedule trigger (app-specific: cron/fs_watcher + connector events)
-    if let Err(e) = state.scheduler.schedule(&rule).await {
-        tracing::error!(rule = %rule.name, error = %e, "trigger scheduling failed");
-        return Err(StatusCode::INTERNAL_SERVER_ERROR);
-    }
-    state
-        .trigger_registry
-        .attach_rule(&rule, &state.runtime.registry)
-        .await;
-
-    let rule_id = match operations::rules::create_rule(&state.runtime, rule).await {
+    // Persist (store + engine) before activating triggers — if the store
+    // insert fails, no trigger is ever scheduled or attached.
+    let rule_id = match operations::rules::create_and_activate(
+        &state.runtime,
+        &state.scheduler,
+        &state.trigger_registry,
+        rule,
+    )
+    .await
+    {
         Ok(id) => id,
         Err(e) => {
             tracing::error!(error = %e, "failed to create rule");
@@ -65,39 +64,19 @@ pub async fn update(
     let rule: springtale_core::rule::types::Rule =
         serde_json::from_value(body).map_err(|_| StatusCode::BAD_REQUEST)?;
 
-    // Unschedule old triggers (app-specific: cron/fs + connector events)
-    let old_rule = {
-        let engine = state.runtime.engine.read().await;
-        engine
-            .list_rules()
-            .iter()
-            .find(|r| r.id == rule_id)
-            .map(|r| (*r).clone())
-    };
-    if let Some(ref old) = old_rule {
-        state.scheduler.unschedule(old).await;
-    }
-    state
-        .trigger_registry
-        .detach_rule(&rule_id, &state.runtime.registry)
-        .await;
-
-    // Delegate store+engine update to operations
-    operations::rules::update_rule(&state.runtime, &rule_id, rule.clone())
-        .await
-        .map_err(|e| {
-            tracing::error!(error = %e, "failed to update rule");
-            StatusCode::INTERNAL_SERVER_ERROR
-        })?;
-
-    // Schedule new triggers (app-specific: cron/fs + connector events)
-    if let Err(e) = state.scheduler.schedule(&rule).await {
-        tracing::warn!(rule = %rule.name, error = %e, "failed to schedule updated rule trigger");
-    }
-    state
-        .trigger_registry
-        .attach_rule(&rule, &state.runtime.registry)
-        .await;
+    // Deactivate old triggers, persist the update, activate the new triggers.
+    operations::rules::update_and_reactivate(
+        &state.runtime,
+        &state.scheduler,
+        &state.trigger_registry,
+        &rule_id,
+        rule,
+    )
+    .await
+    .map_err(|e| {
+        tracing::error!(error = %e, "failed to update rule");
+        StatusCode::INTERNAL_SERVER_ERROR
+    })?;
 
     Ok((StatusCode::OK, Json(serde_json::json!({ "updated": id }))))
 }
@@ -110,27 +89,15 @@ pub async fn delete(
     let uuid = uuid::Uuid::parse_str(&id).map_err(|_| StatusCode::BAD_REQUEST)?;
     let rule_id = springtale_core::rule::types::RuleId(uuid);
 
-    // Unschedule triggers (app-specific: cron/fs + connector events)
-    let old_rule = {
-        let engine = state.runtime.engine.read().await;
-        engine
-            .list_rules()
-            .iter()
-            .find(|r| r.id == rule_id)
-            .map(|r| (*r).clone())
-    };
-    if let Some(ref old) = old_rule {
-        state.scheduler.unschedule(old).await;
-    }
-    state
-        .trigger_registry
-        .detach_rule(&rule_id, &state.runtime.registry)
-        .await;
-
-    // Delegate store+engine deletion to operations
-    operations::rules::delete_rule(&state.runtime, &rule_id)
-        .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
+    // Deactivate triggers, then delete (store + engine).
+    operations::rules::delete_and_deactivate(
+        &state.runtime,
+        &state.scheduler,
+        &state.trigger_registry,
+        &rule_id,
+    )
+    .await
+    .map_err(|_| StatusCode::NOT_FOUND)?;
 
     Ok((StatusCode::OK, Json(serde_json::json!({ "deleted": id }))))
 }

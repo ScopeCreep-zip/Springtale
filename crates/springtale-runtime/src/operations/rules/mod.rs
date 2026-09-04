@@ -6,6 +6,7 @@
 
 mod create;
 mod execute;
+mod lifecycle;
 mod query;
 mod schema;
 
@@ -19,6 +20,7 @@ pub use execute::{
     ConnectorTestResult, RunResult, build_synthetic_trigger, reassign_rule_connector, run_rule,
     run_rule_standalone, test_connector,
 };
+pub use lifecycle::{create_and_activate, delete_and_deactivate, update_and_reactivate};
 pub use query::{
     add_rule_to_store, delete_rule_from_store, list_rules, list_rules_for_connector,
     list_rules_from_store, toggle_rule_in_store,
