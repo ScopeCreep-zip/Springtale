@@ -4,6 +4,8 @@
 //! the desktop app call. No background tasks spawned here — that's
 //! app-specific (daemon spawns scheduler/bot, desktop spawns Tauri).
 
+use std::fs::{File, OpenOptions};
+use std::path::Path;
 use std::sync::Arc;
 
 use tokio::sync::RwLock;
@@ -31,6 +33,19 @@ pub async fn init(
     live_formations: Option<Arc<dyn crate::state::LiveFormationReader>>,
     approval_gate: Option<Arc<dyn springtale_sentinel::ApprovalGate>>,
 ) -> Result<RuntimeState, OperationError> {
+    // One runtime per store (plan 0.6): hold an exclusive flock on
+    // `<db path>.lock` for the life of this `RuntimeState`. The kernel
+    // drops it when the process dies, so there is no stale-heartbeat
+    // window and nothing for shutdown to clean up. Ephemeral stores have
+    // no path and no lock. The lock file lives beside the database, so
+    // the data directory must exist first.
+    let lock = if config.store.ephemeral {
+        None
+    } else {
+        ensure_store_dir(&config.store.path)?;
+        Some(Arc::new(acquire_runtime_lock(&config.store.path)?))
+    };
+
     let store = init_store(&config.store).await?;
     tracing::info!("store initialized");
 
@@ -365,6 +380,7 @@ pub async fn init(
         formation_gossip,
         knowledge_store,
         swim_node,
+        _lock: lock,
     })
 }
 
@@ -543,14 +559,7 @@ async fn init_store(
         Ok(Arc::new(springtale_store::backend::InMemoryBackend::new()))
     } else {
         tracing::info!(path = %config.path.display(), "opening SQLite store");
-        if let Some(parent) = config.path.parent() {
-            std::fs::create_dir_all(parent).map_err(|e| {
-                OperationError::Init(format!(
-                    "failed to create data directory {}: {e}",
-                    parent.display()
-                ))
-            })?;
-        }
+        ensure_store_dir(&config.path)?;
         let backend = if let Some(ref key) = config.encryption_key_hex {
             SqliteBackend::open_encrypted(&config.path, key)
                 .map_err(|e| OperationError::Init(format!("failed to open encrypted store: {e}")))?
@@ -560,6 +569,51 @@ async fn init_store(
         };
         Ok(Arc::new(backend))
     }
+}
+
+/// Create the store's parent directory if it does not exist yet.
+fn ensure_store_dir(db_path: &Path) -> Result<(), OperationError> {
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent).map_err(|e| {
+            OperationError::Init(format!(
+                "failed to create data directory {}: {e}",
+                parent.display()
+            ))
+        })?;
+    }
+    Ok(())
+}
+
+/// Take the exclusive runtime lock on `<db_path>.lock` (plan 0.6).
+///
+/// flock(2) is advisory and released when every descriptor on the file
+/// is closed — the kernel does that when the process dies — so a crash
+/// can never leave a stale lock. `WouldBlock` means another runtime
+/// holds it. The `RwLock` is leaked on purpose: the guard lives inside
+/// `RuntimeState` for the life of the process and needs `'static`.
+fn acquire_runtime_lock(
+    db_path: &Path,
+) -> Result<fd_lock::RwLockWriteGuard<'static, File>, OperationError> {
+    let path = db_path.with_extension("lock");
+    let mut opts = OpenOptions::new();
+    opts.create(true).truncate(false).read(true).write(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let file = opts
+        .open(&path)
+        .map_err(|e| OperationError::Init(format!("cannot open {}: {e}", path.display())))?;
+    // Process-lifetime lock: the RwLock lives as long as the process, so the guard can be 'static.
+    let lock: &'static mut fd_lock::RwLock<File> = Box::leak(Box::new(fd_lock::RwLock::new(file)));
+    lock.try_write().map_err(|e| match e.kind() {
+        std::io::ErrorKind::WouldBlock => OperationError::Init(format!(
+            "another Springtale runtime holds {}; stop it first",
+            path.display()
+        )),
+        _ => OperationError::Init(format!("cannot lock {}: {e}", path.display())),
+    })
 }
 
 /// Load rules from store into a RuleEngine.
@@ -938,4 +992,34 @@ fn reverify_persisted_wasm(
         "WASM connector trust-anchor re-verified at boot"
     );
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_acquire_runtime_lock_second_holder_rejected_until_first_drops() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let db = dir.path().join("springtale.db");
+        let lock_path = db.with_extension("lock").display().to_string();
+
+        let first = acquire_runtime_lock(&db).expect("first runtime takes the lock");
+
+        match acquire_runtime_lock(&db) {
+            Err(OperationError::Init(msg)) => {
+                assert!(
+                    msg.contains(&lock_path),
+                    "Init message names the lock path: {msg}"
+                );
+            }
+            Err(other) => panic!("expected OperationError::Init, got {other:?}"),
+            Ok(_) => panic!("second runtime acquired the lock while the first still held it"),
+        }
+
+        drop(first);
+        let third = acquire_runtime_lock(&db).expect("lock free again after first guard drops");
+        drop(third);
+    }
 }

@@ -140,6 +140,9 @@ reqwest          = { version = "0.13", default-features = false, features = ["js
 
 # ── Database (local-first) ─────────────────────────────────────────────────────
 rusqlite         = { version = "0.39", features = ["bundled", "vtab"] }
+# One runtime per store: RAII flock/LockFileEx guard on `<db>.lock`, no
+# unsafe at the call site so `#![forbid(unsafe_code)]` on the runtime holds.
+fd-lock          = "4"
 
 # ── Database (server mode, optional) ──────────────────────────────────────────
 sqlx             = { version = "0.8",  features = ["postgres", "uuid", "chrono", "json", "migrate", "runtime-tokio"] }
