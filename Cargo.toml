@@ -97,7 +97,7 @@ schemars         = { version = "1", features = ["derive", "uuid1", "chrono04"] }
 specta           = { version = "=2.0.0-rc.25", features = ["derive", "serde_json", "uuid", "chrono"] }
 
 # ── Validation ─────────────────────────────────────────────────────────────────
-garde            = { version = "0.22", features = ["derive", "full"] }
+garde            = { version = "0.23", features = ["derive", "full"] }
 
 # ── Filesystem Sandbox ─────────────────────────────────────────────────────────
 cap-std          = "3"
@@ -173,7 +173,7 @@ chrono           = { version = "0.4",  features = ["serde"] }
 dom_smoothie     = "0.17"
 scraper          = "0.27"
 serde_json_path  = "0.7"
-feed-rs          = "2.3"
+feed-rs          = "2.4"
 icalendar        = { version = "0.17", features = ["chrono-tz"] }
 rrule            = "0.14"
 # HTML sanitizer (used by extraction::diff for page-change hashing).
