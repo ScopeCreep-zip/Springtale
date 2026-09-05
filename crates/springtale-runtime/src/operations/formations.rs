@@ -13,6 +13,7 @@ use crate::operations::formation_synthesis::{
 };
 
 use crate::error::OperationError;
+use crate::operations::config;
 use crate::state::RuntimeState;
 
 /// Agent health as a tagged union — mirrors
@@ -127,6 +128,25 @@ pub struct FormationInfo {
     pub capabilities: Vec<String>,
     /// Guard readiness: "OK" if any member active, "--" otherwise.
     pub guard_status: String,
+    /// True when guard mode is engaged for this formation. Read from the
+    /// `guard:{formation_id}` config row — the same key `toggle_formation_guard`
+    /// writes (finding 78 / plan 1.12). Gates Dissolve, ChangeIntent,
+    /// RemoveMember, and Rally in `commands.rs::is_enabled_for`.
+    ///
+    /// KNOWN DIVERGENCE: this reads the config row, not the live formation's
+    /// `constraints.guard_mode`. The `formation:guard` toggle writes only the
+    /// config row; the live `Formation` in the bot tick loop (which
+    /// `tick_steps/handle_command.rs::guarded` checks) reads
+    /// `constraints.guard_mode`, set once at deploy/spawn time and never
+    /// refreshed from the config row afterward. `LiveFormationReader` has no
+    /// accessor for a live formation's `constraints.guard_mode` today, so
+    /// there is no way to source this field from the live formation without
+    /// extending that trait — out of scope for this change. The two can
+    /// therefore disagree: toggling guard on a formation whose bot process
+    /// already has it live-loaded updates the UI eligibility (this field)
+    /// immediately, but the live enforcement in `handle_command.rs` will not
+    /// see the change until the formation is redeployed.
+    pub guard_engaged: bool,
     /// Rally tokens remaining (Monster Hunter carts, §15).
     pub rally_tokens: i64,
     /// Maximum rally tokens.
@@ -540,6 +560,12 @@ pub async fn list_formations(state: &RuntimeState) -> Result<Vec<FormationInfo>,
         let capabilities = tier_capabilities(&momentum_tier);
         let guard_status = if f.status == "active" { "OK" } else { "--" }.to_owned();
 
+        // See `guard_engaged` doc comment for the live-vs-config divergence.
+        let guard_engaged = !config::get_config(&*state.store, &format!("guard:{}", f.id))
+            .await
+            .unwrap_or(serde_json::Value::Null)
+            .is_null();
+
         // Operational count: prefer the live reader (accurate — reads
         // current AgentHealth from in-memory Formation). Fall back to
         // member_count when no reader is wired (desktop app before
@@ -580,6 +606,7 @@ pub async fn list_formations(state: &RuntimeState) -> Result<Vec<FormationInfo>,
             momentum_successes_to_next_tier,
             capabilities,
             guard_status,
+            guard_engaged,
             rally_tokens,
             rally_max,
         });
@@ -931,6 +958,7 @@ mod tests {
             momentum_successes_to_next_tier: Some(3),
             capabilities: vec!["read env".into(), "chain".into()],
             guard_status: "OK".into(),
+            guard_engaged: false,
             rally_tokens: 3,
             rally_max: 3,
         };
@@ -983,6 +1011,7 @@ mod tests {
             momentum_successes_to_next_tier: None,
             capabilities: vec![],
             guard_status: "OK".into(),
+            guard_engaged: false,
             rally_tokens: 3,
             rally_max: 3,
         };

@@ -99,6 +99,20 @@ pub async fn formation_available_commands(
 /// Rule of thumb: lifecycle commands gate by `status`; capability commands
 /// (RALLY, ADD MBR, RM MBR) gate by their resource invariant.
 fn is_enabled_for(cid: &str, d: &FormationDetail) -> (bool, Option<String>) {
+    if d.info.guard_engaged
+        && matches!(
+            cid,
+            "formation:dissolve"
+                | "formation:intent"
+                | "formation:remove_member"
+                | "formation:rally"
+        )
+    {
+        return (
+            false,
+            Some("guard engaged; disengage guard first".to_owned()),
+        );
+    }
     let status = d.info.status.as_str();
     let member_count = d.info.member_count;
     let rally_remaining = d.info.rally_tokens;
@@ -276,6 +290,7 @@ mod tests {
                 momentum_successes_to_next_tier: Some(3),
                 capabilities: vec![],
                 guard_status: "--".into(),
+                guard_engaged: false,
                 rally_tokens: rally,
                 rally_max: 3,
             },
@@ -331,6 +346,26 @@ mod tests {
     fn rally_disabled_when_inactive() {
         let draft = make_detail("draft", 2, 3);
         assert!(!is_enabled_for("formation:rally", &draft).0);
+    }
+
+    #[test]
+    fn guard_engaged_disables_destructive_commands() {
+        let mut guarded = make_detail("active", 2, 3);
+        guarded.info.guard_engaged = true;
+        for cid in [
+            "formation:dissolve",
+            "formation:intent",
+            "formation:remove_member",
+            "formation:rally",
+        ] {
+            let (enabled, reason) = is_enabled_for(cid, &guarded);
+            assert!(!enabled, "{cid} should be disabled under guard");
+            assert!(reason.is_some(), "{cid} should carry a denial reason");
+        }
+        assert!(
+            is_enabled_for("formation:pause", &guarded).0,
+            "pause is not in the guarded command set"
+        );
     }
 
     #[test]
