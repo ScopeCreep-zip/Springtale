@@ -157,7 +157,10 @@ pub async fn spawn_formation(
         formation.momentum.tier =
             springtale_cooperation::momentum::MomentumTier::parse(&momentum_row.tier);
         formation.momentum.consecutive_successes = momentum_row.consecutive_successes as u32;
-        formation.momentum.interference_count = momentum_row.interference_count as u32;
+        // The stored column is the lifetime total. The per-run counter
+        // (`interference_count`) starts a fresh clean run at 0 on restore
+        // and is never loaded from disk.
+        formation.momentum.interference_total = momentum_row.interference_count as u32;
     }
 
     // Restore rally state from DB (survives restarts). `FormationRally`

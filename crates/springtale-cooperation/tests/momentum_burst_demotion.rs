@@ -15,10 +15,15 @@ use std::time::{Duration, Instant};
 
 use springtale_cooperation::momentum::{MomentumState, MomentumTier};
 
-/// Helper: forge an aged `last_activity` so `check_decay` observes the
-/// configured idle interval without sleeping in real wall-clock time.
+/// Helper: forge an aged `last_activity` (and `last_transition`, which
+/// gates forced demotion to one step per `decay_interval`) so
+/// `check_decay` observes the configured idle interval without sleeping
+/// in real wall-clock time.
 fn age_activity(state: &mut MomentumState, age: Duration) {
     state.last_activity = Instant::now().checked_sub(age).unwrap_or(Instant::now());
+    state.last_transition = state
+        .last_transition
+        .map(|t| t.checked_sub(age).unwrap_or(t));
 }
 
 #[test]
