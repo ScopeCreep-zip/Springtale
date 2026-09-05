@@ -46,18 +46,6 @@ pub struct SpringtaleConfig {
     #[serde(default)]
     #[garde(skip)]
     pub sentinel: Option<springtale_sentinel::SentinelConfig>,
-    /// Ollama AI adapter. If absent, not used.
-    #[serde(default)]
-    #[garde(skip)]
-    pub ai_ollama: Option<springtale_ai::OllamaConfig>,
-    /// OpenAI-compatible AI adapter. If absent, not used.
-    #[serde(default)]
-    #[garde(skip)]
-    pub ai_openai: Option<springtale_ai::OpenAiConfig>,
-    /// Anthropic AI adapter. If absent, not used.
-    #[serde(default)]
-    #[garde(skip)]
-    pub ai_anthropic: Option<springtale_ai::AnthropicConfig>,
     /// Nostr connector configuration. If absent, connector not loaded.
     #[serde(default)]
     #[garde(skip)]

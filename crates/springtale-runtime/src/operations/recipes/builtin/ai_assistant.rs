@@ -85,7 +85,7 @@ fn llm_assistant() -> Recipe {
             connector_configs: vec![],
             rules: vec![],
             ai_config: Some(AiConfigStep {
-                target: "ai:global".into(),
+                target: crate::operations::config::AiTarget::Colony,
                 config: json!({
                     "adapter": "${provider}",
                     "base_url": "${base_url}",

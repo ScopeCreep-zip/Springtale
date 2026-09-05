@@ -122,6 +122,9 @@ async fn main() -> Result<()> {
                 Command::Agent { action } => {
                     commands::agent::run(action, &store).await?;
                 }
+                Command::Config { action } => {
+                    commands::config::run(action, &store).await?;
+                }
                 other => {
                     // Every store-needing variant should have an arm
                     // above; any miss is a programming error caught at

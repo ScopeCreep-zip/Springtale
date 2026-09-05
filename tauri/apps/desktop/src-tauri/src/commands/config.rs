@@ -45,7 +45,7 @@ pub async fn list_config(
         .map_err(|e| e.to_string())
 }
 
-/// Set AI adapter config and hot-swap at runtime.
+/// Set the colony AI adapter config and hot-swap at runtime.
 #[tauri::command]
 #[specta::specta]
 pub async fn set_ai_adapter(
@@ -54,7 +54,11 @@ pub async fn set_ai_adapter(
 ) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
-    springtale_runtime::operations::config::set_ai_adapter(rt, config)
+    springtale_runtime::operations::config::configure_ai_adapter(
+        rt,
+        springtale_runtime::operations::config::AiTarget::Colony,
+        config,
+    )
         .await
         .map_err(|e| e.to_string())
 }
@@ -74,17 +78,18 @@ pub async fn set_connector_config(
         .map_err(|e| e.to_string())
 }
 
-/// Configure AI adapter — persists under target key and hot-swaps.
+/// Configure AI at one level (colony / formation / agent) — validates,
+/// persists under that level's key, hot-swaps when colony.
 #[tauri::command]
 #[specta::specta]
 pub async fn configure_ai_adapter(
     state: State<'_, AppState>,
-    target: String,
+    target: springtale_runtime::operations::config::AiTarget,
     config: serde_json::Value,
 ) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
-    springtale_runtime::operations::config::configure_ai_adapter(rt, &target, config)
+    springtale_runtime::operations::config::configure_ai_adapter(rt, target, config)
         .await
         .map_err(|e| e.to_string())
 }

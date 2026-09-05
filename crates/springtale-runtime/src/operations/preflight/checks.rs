@@ -472,11 +472,9 @@ pub async fn check_structured_extraction_capability(
         return None;
     }
 
-    // Resolve the same adapter the dispatcher will use at runtime.
-    // `ai_adapter_for(None, None)` returns the global adapter or NoopAdapter —
-    // the colony/global default. Per-agent adapters (unit layer) resolve from
-    // `ai:{agent_id}` when a firing agent id is present at dispatch.
-    let adapter = state.capability_bridge.ai_adapter_for(None, None).await;
+    // Preflight has no firing context, so inspect the colony default —
+    // what a rule without its own or its formation's `ai:` row resolves to.
+    let adapter = state.capability_bridge.global_adapter();
     if adapter.structured_extractor().is_some() {
         return Some(PreflightItem {
             id: "ai_structured_extraction".into(),
@@ -543,9 +541,12 @@ pub async fn check_ai_required(state: &RuntimeState, recipe: &Recipe) -> Option<
     }
     // Otherwise check whether the runtime already has an AI:global
     // config set.
-    let raw = crate::operations::config::get_config(&*state.store, "ai:global")
-        .await
-        .unwrap_or(Value::Null);
+    let raw = crate::operations::config::get_config(
+        &*state.store,
+        crate::operations::config::AI_COLONY_KEY,
+    )
+    .await
+    .unwrap_or(Value::Null);
     if matches!(raw, Value::Null) {
         Some(PreflightItem {
             id: "ai_config:global".into(),

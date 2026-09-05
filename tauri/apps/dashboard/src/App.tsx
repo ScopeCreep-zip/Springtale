@@ -749,8 +749,11 @@ export const App = () => {
           targetName={aca.name}
           scope={aca.scope}
           onSave={async (targetId, config) => {
-            const key = aca.scope === "formation" ? `ai:formation:${targetId}` : `ai:${targetId}`;
-            await db.provider.configureAiAdapter(key, config);
+            const target =
+              aca.scope === "formation"
+                ? ({ scope: "formation", id: targetId } as const)
+                : ({ scope: "agent", rule_id: targetId } as const);
+            await db.provider.configureAiAdapter(target, config);
             await db.refresh();
           }}
           onClose={() => setAiConfigAgent(null)}
@@ -832,7 +835,7 @@ export const App = () => {
             }}
             onParseRule={async (intent) => db.provider.parseRuleFromIntent(intent)}
             onSaveAiConfig={async (config) => {
-              await db.provider.configureAiAdapter("ai:global", config);
+              await db.provider.configureAiAdapter({ scope: "colony" }, config);
             }}
             onDeploy={async (team: TeamConfig) => {
               await db.provider.deployTeam({

@@ -17,18 +17,6 @@ pub struct RuntimeConfig {
     #[serde(default)]
     pub store: StoreConfig,
 
-    /// Ollama AI adapter config (optional).
-    #[serde(default)]
-    pub ai_ollama: Option<springtale_ai::OllamaConfig>,
-
-    /// OpenAI-compatible adapter config (optional).
-    #[serde(default)]
-    pub ai_openai: Option<springtale_ai::OpenAiConfig>,
-
-    /// Anthropic adapter config (optional).
-    #[serde(default)]
-    pub ai_anthropic: Option<springtale_ai::AnthropicConfig>,
-
     /// Sentinel behavioral monitor config (optional).
     #[serde(default)]
     pub sentinel: Option<springtale_sentinel::SentinelConfig>,

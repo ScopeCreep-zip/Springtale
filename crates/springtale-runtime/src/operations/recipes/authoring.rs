@@ -11,7 +11,7 @@
 //!      SQL table because every user-facing key/value Springtale
 //!      stores today rides the encrypted `config_store` —
 //!      `recipes:favorites`, `recipes:recent`, `memory:encryption_key`,
-//!      `ai:global`, etc. Adding another key fits the existing
+//!      `ai:colony`, etc. Adding another key fits the existing
 //!      encrypted-at-rest envelope.)
 //!
 //! Field visibility is **author-declared** per

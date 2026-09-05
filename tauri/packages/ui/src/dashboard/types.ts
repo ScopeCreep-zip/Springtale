@@ -400,6 +400,12 @@ export interface SafetyConfig {
  * Every method returns a Promise — callers never see platform details.
  * Subscribe methods return an unsubscribe function.
  */
+/** Which level of the AI hierarchy a config applies to. Mirrors Rust `AiTarget`. */
+export type AiTarget =
+  | { scope: "colony" }
+  | { scope: "formation"; id: string }
+  | { scope: "agent"; rule_id: string };
+
 export interface DataProvider {
   // Connectors
   listConnectors(): Promise<Array<{ name: string; enabled: boolean }>>;
@@ -531,7 +537,8 @@ export interface DataProvider {
   listConfig(): Promise<Array<[string, unknown]>>;
   setAiAdapter(config: Record<string, unknown>): Promise<void>;
   setConnectorConfig(name: string, config: Record<string, unknown>): Promise<void>;
-  configureAiAdapter(target: string, config: Record<string, unknown>): Promise<void>;
+  /** One config per level: colony → formation → agent (keyed by rule id). */
+  configureAiAdapter(target: AiTarget, config: Record<string, unknown>): Promise<void>;
   upsertConnectorConfig(name: string, config: Record<string, unknown>): Promise<boolean>;
   toggleFormationGuard(formationId: string): Promise<boolean>;
 

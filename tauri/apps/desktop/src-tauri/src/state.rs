@@ -126,16 +126,6 @@ pub async fn init_runtime(
         }
     }
 
-    if let Ok(val) = figment.extract_inner::<springtale_ai::OllamaConfig>("ai_ollama") {
-        config.ai_ollama = Some(val);
-    }
-    if let Ok(val) = figment.extract_inner::<springtale_ai::OpenAiConfig>("ai_openai") {
-        config.ai_openai = Some(val);
-    }
-    if let Ok(val) = figment.extract_inner::<springtale_ai::AnthropicConfig>("ai_anthropic") {
-        config.ai_anthropic = Some(val);
-    }
-
     // Formation command channel — the receiver now feeds the in-process
     // bot event loop (the desktop is "springtaled with a GUI", so it runs
     // the same bot the daemon does).
