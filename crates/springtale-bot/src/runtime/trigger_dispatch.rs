@@ -151,20 +151,15 @@ pub async fn handle_trigger_event(
             rule_match.rule_id,
             mode,
         );
-        dispatch_rule_match(bot, rule_match, execution).await;
+        dispatch_rule_match(bot, event, rule_match, execution, None).await;
     }
 
     // Formation-scoped rules — fire in their formation's tier context so
-    // sentinel / authority gating sees the right momentum, the formation's
-    // destructive-action policy, and the firing member's autonomy.
+    // sentinel / authority gating sees the right momentum and the formation's
+    // destructive-action policy. Autonomy is resolved per dispatch in
+    // `dispatch_rule_match` (rule row, then the owning formation's row), which
+    // overwrites the placeholder level set here.
     for (rule_match, fid, agent_id, tier, policy) in &formation_jobs {
-        let autonomy_str = springtale_runtime::operations::agent::get_autonomy(
-            bot.store.as_ref(),
-            &agent_id.0.to_string(),
-        )
-        .await
-        .unwrap_or_else(|_| "suggest".to_owned());
-        let autonomy = springtale_cooperation::AutonomyLevel::parse(&autonomy_str);
         let execution = springtale_cooperation::execution::ExecutionContext::for_formation(
             rule_match.rule_id,
             *agent_id,
@@ -172,21 +167,78 @@ pub async fn handle_trigger_event(
             *tier,
             mode,
             *policy,
-            autonomy,
+            springtale_cooperation::AutonomyLevel::default(),
         );
-        dispatch_rule_match(bot, rule_match, execution).await;
+        dispatch_rule_match(bot, event, rule_match, execution, Some(fid.0)).await;
     }
     Ok(())
 }
 
 /// Dispatch a single matched rule's actions through the connector framework
-/// with the given cooperation envelope. Logs success / failure; never returns
-/// an error so one failing rule doesn't abort the rest of the fan-out.
+/// with the given cooperation envelope.
+///
+/// Every dispatch reads autonomy first (plan §6.2): the rule's own row, then
+/// its owning formation's row, then `ActAutonomously`. The four levels are
+/// Sheridan 1 / 4 / 5 / 7: `Observe` records what would have run and stops;
+/// `Suggest` records the recommended action and stops (the human carries it
+/// out via `rule run` or the RUN card); `ActWithApproval` and
+/// `ActAutonomously` dispatch with the level on the envelope so the
+/// approval gate reads it. Logs success / failure; never returns an error so
+/// one failing rule doesn't abort the rest of the fan-out.
 async fn dispatch_rule_match(
     bot: &crate::runtime::lifecycle::Bot,
+    event: &springtale_core::rule::engine::TriggerEvent,
     rule_match: &springtale_core::rule::engine::RuleMatch,
-    execution: springtale_cooperation::execution::ExecutionContext,
+    mut execution: springtale_cooperation::execution::ExecutionContext,
+    formation_id: Option<uuid::Uuid>,
 ) {
+    let formation_id = formation_id.map(|id| id.to_string());
+    let autonomy = springtale_runtime::operations::agent::resolve_autonomy(
+        bot.store.as_ref(),
+        &rule_match.rule_id.0,
+        formation_id.as_deref(),
+    )
+    .await;
+    match autonomy {
+        springtale_cooperation::AutonomyLevel::Observe => {
+            tracing::info!(
+                rule = %rule_match.rule_name,
+                "bot: rule matched trigger — autonomy observe, holding actions"
+            );
+            record_autonomy_event(
+                bot,
+                event,
+                format!(
+                    "observed: rule '{}' matched, {} action(s) held",
+                    rule_match.rule_name,
+                    rule_match.actions.len()
+                ),
+            )
+            .await;
+            return;
+        }
+        springtale_cooperation::AutonomyLevel::Suggest => {
+            tracing::info!(
+                rule = %rule_match.rule_name,
+                "bot: rule matched trigger — autonomy suggest, recording suggestion"
+            );
+            record_autonomy_event(
+                bot,
+                event,
+                format!(
+                    "suggested: rule '{}' — {}",
+                    rule_match.rule_name,
+                    summarize_actions(&rule_match.actions)
+                ),
+            )
+            .await;
+            return;
+        }
+        springtale_cooperation::AutonomyLevel::ActWithApproval
+        | springtale_cooperation::AutonomyLevel::ActAutonomously => {}
+    }
+    execution.autonomy = autonomy;
+
     tracing::info!(
         rule = %rule_match.rule_name,
         actions = rule_match.actions.len(),
@@ -212,5 +264,46 @@ async fn dispatch_rule_match(
             error = %e,
             "bot: rule actions dispatch failed"
         ),
+    }
+}
+
+/// Record an `observed` / `suggested` row so the canvas and event log show
+/// what the rule would have done. Failure to record is logged, not fatal.
+async fn record_autonomy_event(
+    bot: &crate::runtime::lifecycle::Bot,
+    event: &springtale_core::rule::engine::TriggerEvent,
+    action_taken: String,
+) {
+    let entry = springtale_store::schema::events::EventEntry {
+        id: uuid::Uuid::new_v4(),
+        connector_name: event
+            .connector
+            .clone()
+            .unwrap_or_else(|| "global".to_owned()),
+        trigger_type: event.trigger_type.clone(),
+        timestamp: chrono::Utc::now(),
+        action_taken,
+    };
+    if let Err(e) = bot.store.log_event(&entry).await {
+        tracing::warn!(error = %e, "bot: failed to record autonomy event");
+    }
+}
+
+/// One-line rendering of a rule's action chain by action kind
+/// (`Action` is `#[serde(tag = "type")]`, so the tag is the variant name).
+fn summarize_actions(actions: &[springtale_core::rule::action::Action]) -> String {
+    let kinds: Vec<String> = actions
+        .iter()
+        .map(|a| {
+            serde_json::to_value(a)
+                .ok()
+                .and_then(|v| v.get("type").and_then(|t| t.as_str()).map(str::to_owned))
+                .unwrap_or_else(|| "action".to_owned())
+        })
+        .collect();
+    if kinds.is_empty() {
+        "no actions".to_owned()
+    } else {
+        kinds.join(" -> ")
     }
 }

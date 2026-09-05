@@ -530,10 +530,12 @@ async fn test_create_connector_rule() {
 #[tokio::test]
 async fn test_step_autonomy_up_down() {
     let (router, token) = build_test_app(true);
+    // Autonomy is keyed by rule id; an id needs no engine lookup.
+    let rule_id = uuid::Uuid::new_v4();
 
-    // Step up from default "suggest" to "act-with-approval"
-    let body = serde_json::json!({ "direction": "up" });
-    let req = Request::post("/agents/test-agent/autonomy/step")
+    // Step down from default "act-autonomously" to "act-with-approval"
+    let body = serde_json::json!({ "direction": "down" });
+    let req = Request::post(format!("/agents/{rule_id}/autonomy/step"))
         .header("Authorization", format!("Bearer {token}"))
         .header("Content-Type", "application/json")
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
@@ -542,16 +544,16 @@ async fn test_step_autonomy_up_down() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["level"], "act-with-approval");
 
-    // Step down back to "suggest"
-    let body = serde_json::json!({ "direction": "down" });
-    let req = Request::post("/agents/test-agent/autonomy/step")
+    // Step up back to "act-autonomously"
+    let body = serde_json::json!({ "direction": "up" });
+    let req = Request::post(format!("/agents/{rule_id}/autonomy/step"))
         .header("Authorization", format!("Bearer {token}"))
         .header("Content-Type", "application/json")
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
         .unwrap();
     let (status, json) = send(router, req).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(json["level"], "suggest");
+    assert_eq!(json["level"], "act-autonomously");
 }
 
 #[tokio::test]
