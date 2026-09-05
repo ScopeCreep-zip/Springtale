@@ -314,7 +314,7 @@ pub enum DataAction {
 pub enum AgentAction {
     /// Set an agent's autonomy level (observe, suggest, act-with-approval, act-autonomously).
     SetAutonomy {
-        /// Agent name.
+        /// Rule name or rule id of the agent.
         name: String,
         /// Autonomy level.
         level: String,

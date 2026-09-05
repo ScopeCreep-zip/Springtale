@@ -86,12 +86,14 @@ pub async fn run(
             continue;
         }
 
-        let agent_name = member.agent_id.0.to_string();
-        let autonomy_str =
-            springtale_runtime::operations::agent::get_autonomy(store.as_ref(), &agent_name)
-                .await
-                .unwrap_or_else(|_| "suggest".to_owned());
-        let autonomy = springtale_cooperation::AutonomyLevel::parse(&autonomy_str);
+        // Members have no rule of their own yet (synthesized formation rules
+        // are owned by the formation), so autonomy resolves at the formation
+        // level: `autonomy:formation:{id}`, else ActAutonomously.
+        let autonomy = springtale_runtime::operations::agent::resolve_formation_autonomy(
+            store.as_ref(),
+            &formation.id.0.to_string(),
+        )
+        .await;
 
         // Plan §A2 layer order: L0 sense → L3 inbox → L2 react → L1 scan.
         // Borrow scoping: react needs `&mut member.awareness`, while

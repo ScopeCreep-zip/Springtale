@@ -797,8 +797,10 @@ pub async fn cycle_autonomy(
     state: &RuntimeState,
     formation_id: &str,
 ) -> Result<String, OperationError> {
-    let key = format!("formation:{formation_id}");
-    let current = super::agent::get_autonomy(&*state.store, &key).await?;
+    let target = super::agent::AutonomyTarget::Formation {
+        id: formation_id.to_owned(),
+    };
+    let current = super::agent::get_autonomy(&*state.store, &target).await?;
 
     let levels = [
         "observe",
@@ -806,10 +808,13 @@ pub async fn cycle_autonomy(
         "act-with-approval",
         "act-autonomously",
     ];
-    let idx = levels.iter().position(|l| *l == current).unwrap_or(0);
+    let idx = levels
+        .iter()
+        .position(|l| *l == current.as_str())
+        .unwrap_or(0);
     let next = levels[(idx + 1) % levels.len()];
 
-    super::agent::set_autonomy(&*state.store, &key, next).await?;
+    super::agent::set_autonomy(&*state.store, &target, next).await?;
 
     Ok(next.to_owned())
 }

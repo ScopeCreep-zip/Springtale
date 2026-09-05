@@ -16,18 +16,22 @@ pub async fn list_agent_states(
         .map_err(|e| e.to_string())
 }
 
-/// Get agent autonomy level.
+/// Get agent autonomy level. `name` is a rule name or rule id.
 #[tauri::command]
 #[specta::specta]
 pub async fn get_autonomy(state: State<'_, AppState>, name: String) -> Result<String, String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
-    springtale_runtime::operations::agent::get_autonomy(&*rt.store, &name)
+    let target = springtale_runtime::operations::agent::resolve_agent_target(rt, &name)
         .await
+        .map_err(|e| e.to_string())?;
+    springtale_runtime::operations::agent::get_autonomy(&*rt.store, &target)
+        .await
+        .map(|level| level.as_str().to_owned())
         .map_err(|e| e.to_string())
 }
 
-/// Set agent autonomy level.
+/// Set agent autonomy level. `name` is a rule name or rule id.
 #[tauri::command]
 #[specta::specta]
 pub async fn set_autonomy(
@@ -37,7 +41,10 @@ pub async fn set_autonomy(
 ) -> Result<(), String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
-    springtale_runtime::operations::agent::set_autonomy(&*rt.store, &name, &level)
+    let target = springtale_runtime::operations::agent::resolve_agent_target(rt, &name)
+        .await
+        .map_err(|e| e.to_string())?;
+    springtale_runtime::operations::agent::set_autonomy(&*rt.store, &target, &level)
         .await
         .map_err(|e| e.to_string())
 }
@@ -52,7 +59,10 @@ pub async fn step_autonomy(
 ) -> Result<String, String> {
     let guard = require_runtime(&state.runtime).await?;
     let rt = guard.as_ref().unwrap();
-    springtale_runtime::operations::agent::step_autonomy(&*rt.store, &name, direction)
+    let target = springtale_runtime::operations::agent::resolve_agent_target(rt, &name)
+        .await
+        .map_err(|e| e.to_string())?;
+    springtale_runtime::operations::agent::step_autonomy(&*rt.store, &target, direction)
         .await
         .map_err(|e| e.to_string())
 }
