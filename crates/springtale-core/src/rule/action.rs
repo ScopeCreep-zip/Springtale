@@ -260,6 +260,17 @@ pub enum ExtractKind {
     PageDiff,
 }
 
+impl Action {
+    /// Walk this action and every nested [`Action::Chain`] step, yielding the
+    /// leaf actions in execution order. A non-chain action yields itself.
+    pub fn iter_leaves(&self) -> Vec<&Action> {
+        match self {
+            Action::Chain { steps } => steps.iter().flat_map(Action::iter_leaves).collect(),
+            other => vec![other],
+        }
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {

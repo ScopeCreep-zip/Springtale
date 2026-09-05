@@ -9,6 +9,7 @@
 //! tagged so the engine can run them out-of-band.
 
 use serde_json::Value;
+use springtale_core::rule::types::Rule;
 
 use crate::state::RuntimeState;
 
@@ -566,6 +567,52 @@ pub async fn check_ai_required(state: &RuntimeState, recipe: &Recipe) -> Option<
             fix_hint: None,
         })
     }
+}
+
+/// Every rendered `RunConnector` must name an action the connector declares
+/// and its params must satisfy that action's `input_schema` — the check the
+/// MCP bridge applies to tool calls, applied before deploy. Connectors that
+/// are not loaded are skipped here; `check_connectors` already reports them.
+pub async fn check_action_schemas(
+    state: &RuntimeState,
+    recipe: &Recipe,
+    inputs: &RecipeInputs,
+) -> Vec<PreflightItem> {
+    use super::super::recipes::action_schema::{ActionOutcome, check_rule_actions};
+    use super::super::recipes::apply::substitute_template_public;
+
+    let registry = state.registry.read().await;
+    let mut items = Vec::new();
+    for (idx, step) in recipe.blueprint.rules.iter().enumerate() {
+        let toml = substitute_template_public(&step.toml, inputs);
+        // A rule that does not parse is reported by apply as InvalidRuleToml;
+        // this check only speaks to action params.
+        let Ok(rule) = toml::from_str::<Rule>(&toml) else {
+            continue;
+        };
+        let checks = check_rule_actions(&rule, |name| {
+            registry.get(name).map(|entry| entry.host.actions())
+        });
+        for check in checks {
+            let id = format!("action_schema:{idx}:{}", check.step);
+            let (status, detail) = match check.outcome {
+                ActionOutcome::Skipped => continue,
+                ActionOutcome::Valid => (
+                    PreflightStatus::Verified,
+                    "Params match the connector's action schema.".to_owned(),
+                ),
+                ActionOutcome::Invalid(reason) => (PreflightStatus::Blocking, reason),
+            };
+            items.push(PreflightItem {
+                id,
+                label: check.step,
+                status,
+                detail: Some(detail),
+                fix_hint: None,
+            });
+        }
+    }
+    items
 }
 
 #[cfg(test)]

@@ -5846,6 +5846,7 @@ dependencies = [
  "hex",
  "icalendar",
  "inventory",
+ "jsonschema",
  "rand 0.8.5",
  "regex",
  "rrule",
