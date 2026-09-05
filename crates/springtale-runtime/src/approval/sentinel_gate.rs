@@ -40,6 +40,7 @@ impl SentinelChatGate {
             summary: req.rationale.clone(),
             requested_at: chrono::Utc::now(),
             origin: req.origin.clone(),
+            expires_at: None,
         }
     }
 }

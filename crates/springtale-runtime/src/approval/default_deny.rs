@@ -140,6 +140,7 @@ mod tests {
             summary: "test request".into(),
             requested_at: Utc::now(),
             origin: None,
+            expires_at: None,
         }
     }
 

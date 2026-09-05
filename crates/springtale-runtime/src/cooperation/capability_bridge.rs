@@ -439,6 +439,7 @@ impl CapabilityBridge {
                 summary: format!("{connector_name}.{action}"),
                 requested_at: chrono::Utc::now(),
                 origin,
+                expires_at: None,
             };
             let decision = gate
                 .request(request)

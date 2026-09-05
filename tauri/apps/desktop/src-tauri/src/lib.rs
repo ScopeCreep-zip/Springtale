@@ -216,6 +216,8 @@ pub fn run() {
             commands::recipes::export_recipe_toml,
             commands::recipes::import_recipe_toml,
             commands::approval::respond_to_approval,
+            commands::approval::list_pending_approvals,
+            commands::approval::resolve_approval,
         ]);
 
     // .export() is intentionally NOT called yet.

@@ -24,6 +24,7 @@ export const PendingApprovals: Component = () => {
           connectorName={a().connector_name}
           actionType={actionTypeOf(a())}
           rationale={`${a().summary} (${db.pendingApprovals().length} pending)`}
+          expiresAt={a().expires_at}
           onDecision={(approve) => void db.resolveApproval(a().id, approve)}
         />
       )}

@@ -28,7 +28,11 @@ use tauri_specta::Event;
 use tokio::sync::{Mutex, oneshot};
 use uuid::Uuid;
 
+use springtale_runtime::{ApprovalDecision, ApprovalRequestId};
 use springtale_sentinel::approval::{ApprovalRequest, ChannelApprovalGate, PendingApproval};
+
+use crate::runtime_guard::require_runtime;
+use crate::state::AppState;
 
 /// State the dispatcher task + `respond_to_approval` command share.
 pub struct ApprovalDispatcher {
@@ -131,4 +135,74 @@ pub async fn respond_to_approval(
         }
         None => Err(format!("no pending approval for id {request_id}")),
     }
+}
+
+/// Plan 6.7 — list the runtime chat gate's pending queue.
+///
+/// Same call and same JSON shape as the daemon's `GET /approvals`
+/// (`{ "pending": [ApprovalRequest, ..] }`) so the shared
+/// `PendingApprovals` panel renders identically on both surfaces.
+/// Returns an empty queue while the vault is locked or no gate is
+/// wired, mirroring the daemon's "render uniformly" choice.
+///
+/// This is a *different* queue from the sentinel dispatcher above:
+/// that one is keyed by dispatcher-minted UUIDs and answered via
+/// `respond_to_approval`; this one is the store-backed
+/// `ChatApprovalGate` keyed by `ApprovalRequestId`, answered via
+/// `resolve_approval`.
+#[tauri::command]
+#[specta::specta]
+pub async fn list_pending_approvals(
+    state: State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let guard = state.runtime.read().await;
+    let gate = guard
+        .as_ref()
+        .and_then(|rt| rt.capability_bridge.approval_gate())
+        .cloned();
+    drop(guard);
+    let pending = match gate {
+        Some(gate) => gate.pending().await,
+        None => Vec::new(),
+    };
+    Ok(serde_json::json!({ "pending": pending }))
+}
+
+/// Plan 6.7 — land a decision on the runtime chat gate's queue.
+///
+/// Mirrors the daemon's `POST /approvals/{id}`: `approver` is only the
+/// audit-row attribution label and the desktop user has already
+/// unlocked the vault, so `"maintainer"` matches the daemon's default.
+#[tauri::command]
+#[specta::specta]
+pub async fn resolve_approval(
+    state: State<'_, AppState>,
+    request_id: String,
+    approve: bool,
+    reason: Option<String>,
+) -> Result<(), String> {
+    let id = request_id
+        .parse::<Uuid>()
+        .map_err(|e| format!("invalid approval id {request_id}: {e}"))?;
+    let guard = require_runtime(&state.runtime).await?;
+    let gate = guard
+        .as_ref()
+        .and_then(|rt| rt.capability_bridge.approval_gate())
+        .cloned()
+        .ok_or_else(|| "no approval gate wired".to_owned())?;
+    drop(guard);
+    let decision = if approve {
+        ApprovalDecision::Approved {
+            approver: "maintainer".to_owned(),
+            approved_at: chrono::Utc::now(),
+        }
+    } else {
+        ApprovalDecision::Denied {
+            reason: reason.unwrap_or_else(|| "denied by maintainer".to_owned()),
+            denied_at: chrono::Utc::now(),
+        }
+    };
+    gate.resolve(ApprovalRequestId(id), decision)
+        .await
+        .map_err(|e| e.to_string())
 }

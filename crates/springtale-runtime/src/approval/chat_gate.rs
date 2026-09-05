@@ -178,6 +178,7 @@ impl ApprovalGate for ChatApprovalGate {
                     summary: r.summary,
                     requested_at: chrono::DateTime::from_timestamp_millis(r.requested_at)?,
                     origin: None,
+                    expires_at: chrono::DateTime::from_timestamp_millis(r.expires_at),
                 })
             })
             .collect()
@@ -199,6 +200,7 @@ mod tests {
             summary: "exec: echo hi".into(),
             requested_at: Utc::now(),
             origin: None,
+            expires_at: None,
         }
     }
 

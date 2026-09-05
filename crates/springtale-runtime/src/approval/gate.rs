@@ -87,6 +87,12 @@ pub struct ApprovalRequest {
     /// dashboard is the only surface (deny-on-timeout still applies).
     #[serde(default)]
     pub origin: Option<ChatOrigin>,
+    /// When the gate's deny-by-default timeout fires. Stamped by the
+    /// store-backed gate from its persisted row; `None` for in-flight
+    /// requests that have not been stored yet. The UI renders a
+    /// countdown against it.
+    #[serde(default)]
+    pub expires_at: Option<DateTime<Utc>>,
 }
 
 /// User decision on a pending approval. `Approved` carries who

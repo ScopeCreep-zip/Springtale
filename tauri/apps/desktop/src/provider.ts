@@ -10,6 +10,7 @@ import type { CooperationEventEnvelope, DataProvider } from "@springtale/ui";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getAutonomy, listAgentStates, setAutonomy, stepAutonomy } from "./ipc/agents";
+import { listPendingApprovals, resolveApproval as resolveRuntimeApproval } from "./ipc/approval";
 import { addAuthor, listAuthors, removeAuthor } from "./ipc/authors";
 import { getCanvasState, getConnections } from "./ipc/canvas";
 import {
@@ -169,15 +170,12 @@ export function createDesktopProvider(): DataProvider {
 
     // Events
     listEvents,
-    // Plan 6.7 — the desktop has no command that lists the runtime chat
-    // gate's queue yet; its sentinel prompts arrive as `approval-required`
-    // Tauri events (App.tsx overlay) and are answered via `respond_to_approval`.
-    async listApprovals() {
-      return [];
-    },
-    async resolveApproval(id, approve) {
-      await invoke("respond_to_approval", { requestId: id, approve });
-    },
+    // Plan 6.7 — the runtime chat gate's queue (`list_pending_approvals` /
+    // `resolve_approval`). Sentinel prompts are a separate queue: they
+    // arrive as `approval-required` Tauri events (App.tsx overlay) and are
+    // answered via `respond_to_approval`.
+    listApprovals: listPendingApprovals,
+    resolveApproval: resolveRuntimeApproval,
     subscribeToEvents(callback) {
       let unlisten: (() => void) | undefined;
       listen<EventEntry>("event-fired", (e) => callback(e.payload))

@@ -410,6 +410,8 @@ export interface ApprovalInfo {
   summary: string;
   requested_at: string;
   origin: { connector: string; channel_id: string } | null;
+  /** Deny-by-default deadline (ISO); `null` when the gate has not stamped one. */
+  expires_at: string | null;
 }
 
 export interface DataProvider {
