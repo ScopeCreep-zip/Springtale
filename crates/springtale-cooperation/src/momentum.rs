@@ -33,9 +33,15 @@
 //! - `Hot → Warming`: consecutive successes drop below 5
 //! - `Warming → Cold`: consecutive successes reach 0
 //!
-//! Interference resets `interference_count` on demotion so the formation
-//! is measured on its *post-demotion* behavior, not the incident that
-//! dropped it.
+//! Interference breaks the combo (Patapon: any miss ends the run and the
+//! counter restarts from zero). `record_interference` demotes Fever → Hot,
+//! then resets `consecutive_successes` and the per-run `interference_count`
+//! so a new clean run starts at once; the lifetime total lives in
+//! `interference_total`. A past interference never blocks promotion.
+//!
+//! A tick where nobody acted is `MomentumEvent::TickIdle`: no counter
+//! change either way. Per the Microsoft AGT trust calibration, "idle time
+//! cannot raise scores" — only the decay clock keeps running.
 //!
 //! ## Trust decay
 //!
@@ -47,7 +53,9 @@
 //!    success count is already at 0 can idle forever.
 //! 2. **Forced demotion** — after `3 × decay_interval` of inactivity,
 //!    force-demote one tier regardless of counter. Catches the "Hot with
-//!    0 successes, idle forever" case.
+//!    0 successes, idle forever" case. At most one step per
+//!    `decay_interval`: a transition inside the current interval defers
+//!    the next forced step, so decay cannot cascade in one call.
 //!
 //! `last_activity` is refreshed only by `record_activity` (real work
 //! happened) — NOT by `record_success` (tick alignment without work).
@@ -78,8 +86,16 @@ use specta::Type;
 /// explicit and exhaustive.
 #[derive(Debug, Clone)]
 pub enum MomentumEvent {
-    TickSuccess { had_real_action: bool },
-    TickInterference { count: u32 },
+    /// At least one member acted and nothing failed or interfered.
+    TickSuccess {
+        had_real_action: bool,
+    },
+    /// Nobody acted. Not a success, not a failure. The decay clock runs.
+    TickIdle,
+    /// One or more interference events between members this tick.
+    TickInterference {
+        count: u32,
+    },
     TickFailure,
     IntentChanged(crate::cadence::IntentPattern),
 }
@@ -125,7 +141,11 @@ impl MomentumTier {
 pub struct MomentumState {
     pub tier: MomentumTier,
     pub consecutive_successes: u32,
+    /// Interferences inside the current clean run. Always 0 between events;
+    /// kept as a field so `try_demote` can read it during the event.
     pub interference_count: u32,
+    /// Lifetime count, for the UI and the mental model.
+    pub interference_total: u32,
     pub last_transition: Option<Instant>,
     /// When the last successful tick was recorded. Used for trust decay —
     /// idle formations lose momentum over time (Microsoft AGT pattern).
@@ -149,6 +169,7 @@ impl Default for MomentumState {
             tier: MomentumTier::Cold,
             consecutive_successes: 0,
             interference_count: 0,
+            interference_total: 0,
             last_transition: None,
             last_activity: Instant::now(),
             decay_interval: std::time::Duration::from_secs(60),
@@ -178,12 +199,19 @@ impl MomentumState {
         self.last_activity = Instant::now();
     }
 
-    /// Record interference. May demote tier.
+    /// Record interference. Demotes Fever → Hot, then breaks the combo.
+    ///
+    /// Patapon: any miss ends the run and the counter restarts from zero.
+    /// The formation can rebuild toward Hot/Fever immediately; a past
+    /// interference never permanently blocks promotion.
     pub fn record_interference(&mut self) {
         self.interference_count += 1;
-        self.consecutive_successes = self.consecutive_successes.saturating_sub(2);
+        self.interference_total = self.interference_total.saturating_add(1);
         self.last_activity = Instant::now(); // interference IS activity (bad activity)
-        self.try_demote();
+        self.try_demote(); // Fever → Hot on any interference
+        // The combo is broken. A new clean run starts now.
+        self.consecutive_successes = 0;
+        self.interference_count = 0;
     }
 
     /// Record a failed tick. Resets consecutive count, may demote.
@@ -202,7 +230,8 @@ impl MomentumState {
     /// 1. Success counter decay: one per decay_interval of inactivity
     /// 2. Forced tier demotion: after 3x decay_interval with no activity,
     ///    force demotion regardless of success count (handles the
-    ///    "Hot with 0 successes but idle" case)
+    ///    "Hot with 0 successes but idle" case). At most one step per
+    ///    decay_interval — decay cannot fight promotion or cascade.
     pub fn check_decay(&mut self) {
         // L6 intervention signal — count ticks stuck in Cold so the
         // intervention evaluator can decide when to escalate to user.
@@ -232,8 +261,17 @@ impl MomentumState {
         }
 
         // Mode 2: Force demotion after extended inactivity (3x interval)
-        // Handles: Hot tier with 0 successes, idle forever
-        if elapsed >= self.decay_interval * 3 && self.tier != MomentumTier::Cold {
+        // Handles: Hot tier with 0 successes, idle forever.
+        // Guard: only when the last transition (either direction) is older
+        // than one decay_interval, so forced demotion is one step per
+        // interval and never cascades within a single call.
+        let recently_transitioned = self
+            .last_transition
+            .is_some_and(|t| t.elapsed() < self.decay_interval);
+        if elapsed >= self.decay_interval * 3
+            && self.tier != MomentumTier::Cold
+            && !recently_transitioned
+        {
             let old_tier = self.tier;
             self.tier = match self.tier {
                 MomentumTier::Fever => MomentumTier::Hot,
@@ -291,7 +329,6 @@ impl MomentumState {
             _ => return,
         };
         self.tier = new_tier;
-        self.interference_count = 0;
         self.last_transition = Some(Instant::now());
         tracing::info!(
             from = ?old_tier,
@@ -341,6 +378,10 @@ impl MomentumState {
                 if *had_real_action {
                     self.record_activity();
                 }
+            }
+            MomentumEvent::TickIdle => {
+                // Nobody acted: no counter change either way. The decay
+                // clock keeps running because `last_activity` is untouched.
             }
             MomentumEvent::TickInterference { count } => {
                 for _ in 0..*count {
@@ -407,14 +448,68 @@ mod tests {
     }
 
     #[test]
-    fn test_interference_prevents_promotion() {
+    fn test_interference_resets_combo() {
         let mut state = MomentumState::default();
         for _ in 0..7 {
             state.record_success();
         }
+        assert_eq!(state.tier, MomentumTier::Warming);
         state.record_interference();
-        // Should not promote to Hot because interference_count > 0
-        state.record_success();
+        // The combo is broken: counter restarts from zero, the per-run
+        // count is clear, the lifetime total is kept, the tier holds.
+        assert_eq!(state.consecutive_successes, 0);
+        assert_eq!(state.interference_count, 0);
+        assert_eq!(state.interference_total, 1);
+        assert_eq!(state.tier, MomentumTier::Warming);
+        // Rebuild: eight clean successes reach Hot. A past interference
+        // never blocks promotion.
+        for _ in 0..8 {
+            state.record_success();
+        }
+        assert_eq!(state.tier, MomentumTier::Hot);
+    }
+
+    #[test]
+    fn test_idle_ticks_never_promote() {
+        let mut state = MomentumState::default();
+        let before = state.last_activity;
+        for _ in 0..100 {
+            state.apply_event(&MomentumEvent::TickIdle);
+        }
+        assert_eq!(state.tier, MomentumTier::Cold);
+        assert_eq!(state.consecutive_successes, 0);
+        assert_eq!(
+            state.last_activity, before,
+            "idle must not refresh activity"
+        );
+    }
+
+    #[test]
+    fn test_forced_demotion_one_step_per_interval() {
+        let interval = std::time::Duration::from_millis(15);
+        let mut state = MomentumState {
+            decay_interval: interval,
+            ..MomentumState::default()
+        };
+        for _ in 0..15 {
+            state.record_success();
+        }
+        assert_eq!(state.tier, MomentumTier::Fever);
+
+        // Long idle: forced demotion is due, but never more than one step
+        // per interval, and the tier never rises.
+        state.last_activity = Instant::now() - std::time::Duration::from_secs(100);
+        let mut previous = state.tier;
+        for _ in 0..2 {
+            std::thread::sleep(interval + std::time::Duration::from_millis(1));
+            state.check_decay();
+            let stepped = state.tier;
+            assert!(stepped < previous, "exactly one forced step per interval");
+            // Same interval again: the guard holds, no second step.
+            state.check_decay();
+            assert_eq!(state.tier, stepped, "forced demotion must not cascade");
+            previous = stepped;
+        }
         assert_eq!(state.tier, MomentumTier::Warming);
     }
 
@@ -439,6 +534,8 @@ mod tests {
         assert_eq!(state.tier, MomentumTier::Fever);
         state.record_interference();
         assert_eq!(state.tier, MomentumTier::Hot);
+        assert_eq!(state.consecutive_successes, 0);
+        assert_eq!(state.interference_total, 1);
     }
 
     #[test]
