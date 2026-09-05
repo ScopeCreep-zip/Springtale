@@ -23,7 +23,6 @@ export type { AiSchemaEditorProps } from "./colony/AiSchemaEditor";
 export { AiSchemaEditor } from "./colony/AiSchemaEditor";
 export type { ApprovalCardProps } from "./colony/ApprovalCard";
 export { ApprovalCard } from "./colony/ApprovalCard";
-export { PendingApprovals } from "./colony/PendingApprovals";
 export { AppSettingsPanel } from "./colony/AppSettingsPanel";
 export { BottomPanel } from "./colony/BottomPanel";
 export type { ChatDockProps } from "./colony/ChatDock";
@@ -57,6 +56,7 @@ export type { CreateMode, ModeSelectOverlayProps } from "./colony/ModeSelectOver
 export { ModeSelectOverlay } from "./colony/ModeSelectOverlay";
 // Colony data mappers (DashboardState → colony visual model)
 export { mapAgents, mapFormations, mapNodes } from "./colony/mappers";
+export { PendingApprovals } from "./colony/PendingApprovals";
 export type { PreflightChecklistProps } from "./colony/PreflightChecklist";
 export { PreflightChecklist } from "./colony/PreflightChecklist";
 export type { PreviewPanelProps } from "./colony/PreviewPanel";
@@ -125,6 +125,7 @@ export type { MutationResult } from "./dashboard/query";
 export { createProviderMutation, createProviderQuery } from "./dashboard/query";
 export type {
   AgentHealthDetail,
+  ApprovalInfo,
   AvailableConnector,
   ChatStreamMessage,
   CommandDecl,
@@ -134,7 +135,6 @@ export type {
   CooperationEvent,
   CooperationEventEnvelope,
   DashboardState,
-  ApprovalInfo,
   DataProvider,
   Difficulty,
   FieldKind,

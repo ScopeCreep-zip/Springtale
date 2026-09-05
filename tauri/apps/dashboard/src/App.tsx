@@ -10,7 +10,6 @@ import type {
 } from "@springtale/ui";
 import {
   AiConfigPanel,
-  PendingApprovals,
   BottomPanel,
   ChatPanel,
   COMMANDS,
@@ -21,6 +20,7 @@ import {
   mapAgents,
   mapFormations,
   mapNodes,
+  PendingApprovals,
   ProofOfLifePanel,
   RecipeAuthorPanel,
   RecipeDeployPanel,
