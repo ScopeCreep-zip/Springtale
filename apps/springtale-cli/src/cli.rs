@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use clap::{Parser, Subcommand};
 
 /// Springtale — local-first, privacy-preserving automation platform.
@@ -10,6 +12,21 @@ pub struct Cli {
     /// Output as JSON instead of table format.
     #[arg(long, global = true)]
     pub json: bool,
+
+    /// Read the vault passphrase from this file (must be chmod 600)
+    /// instead of prompting. For scripts and cron.
+    #[arg(
+        long,
+        global = true,
+        value_name = "PATH",
+        conflicts_with = "passphrase_command"
+    )]
+    pub passphrase_file: Option<PathBuf>,
+
+    /// Run this shell command and use its stdout as the vault passphrase
+    /// instead of prompting. Lets you plug in your own keychain.
+    #[arg(long, global = true, value_name = "CMD")]
+    pub passphrase_command: Option<String>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -130,6 +147,37 @@ pub enum Command {
         #[command(subcommand)]
         action: BotAction,
     },
+    /// Trusted connector authors — the keys manifest signatures are checked against.
+    Author {
+        #[command(subcommand)]
+        action: AuthorAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum AuthorAction {
+    /// Register a trusted author's Ed25519 public key.
+    ///
+    /// With `--self`, registers this instance's own identity (created by
+    /// `springtale init`) so connectors you sign with
+    /// `springtale connector sign` install like anyone else's.
+    Add {
+        /// Author name — must match the manifest's `author` field.
+        /// Defaults to `local` with `--self`.
+        name: Option<String>,
+        /// Hex-encoded 32-byte Ed25519 public key. Not needed with `--self`.
+        pubkey: Option<String>,
+        /// Use the local identity's public key from the vault.
+        #[arg(long = "self")]
+        use_self: bool,
+    },
+    /// List trusted authors.
+    List,
+    /// Remove a trusted author.
+    Remove {
+        /// Author name.
+        name: String,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -184,6 +232,12 @@ pub enum ConnectorAction {
     },
     /// Install a connector from a TOML manifest file.
     Install {
+        /// Path to the connector manifest TOML file.
+        path: std::path::PathBuf,
+    },
+    /// Sign a connector manifest TOML file with the local identity.
+    /// The signature is written back into the file.
+    Sign {
         /// Path to the connector manifest TOML file.
         path: std::path::PathBuf,
     },
@@ -306,7 +360,7 @@ pub enum AiConfigAction {
 pub enum AgentAction {
     /// Set an agent's autonomy level (observe, suggest, act-with-approval, act-autonomously).
     SetAutonomy {
-        /// Agent name.
+        /// Rule name or rule id of the agent.
         name: String,
         /// Autonomy level.
         level: String,

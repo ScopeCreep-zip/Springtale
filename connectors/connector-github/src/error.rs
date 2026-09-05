@@ -23,9 +23,15 @@ pub enum GithubError {
     #[error("unknown trigger: {0}")]
     UnknownTrigger(String),
 
-    /// An underlying reqwest error.
-    #[error("HTTP error: {0}")]
-    Reqwest(#[from] reqwest::Error),
+    /// An error surfaced by the octocrab GitHub SDK (transport, HTTP status,
+    /// or response decoding).
+    #[error("GitHub API error: {0}")]
+    Api(#[from] octocrab::Error),
+
+    /// A git ref resolved to something other than a commit (e.g. an
+    /// annotated tag), so it cannot be used as a branch base.
+    #[error("git ref does not point at a commit")]
+    UnexpectedRef,
 
     /// Configuration is invalid.
     #[error("invalid configuration: {0}")]

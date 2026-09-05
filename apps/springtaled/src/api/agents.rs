@@ -16,18 +16,32 @@ pub async fn list_states(State(state): State<AppState>) -> Result<impl IntoRespo
     Ok(Json(serde_json::json!({ "agents": states })))
 }
 
-/// GET /agents/:name/autonomy
+/// Resolve the `:name` path segment (a rule name or rule id) to the
+/// rule-id-keyed autonomy target. Unknown names are 404.
+async fn agent_target(
+    state: &AppState,
+    name_or_id: &str,
+) -> Result<operations::agent::AutonomyTarget, StatusCode> {
+    operations::agent::resolve_agent_target(&state.runtime, name_or_id)
+        .await
+        .map_err(|_| StatusCode::NOT_FOUND)
+}
+
+/// GET /agents/:name/autonomy — `:name` is a rule name or rule id.
 pub async fn get_autonomy(
     State(state): State<AppState>,
     ValidatedPath(name): ValidatedPath,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let level = operations::agent::get_autonomy(&*state.runtime.store, &name)
+    let target = agent_target(&state, &name).await?;
+    let level = operations::agent::get_autonomy(&*state.runtime.store, &target)
         .await
-        .map_err(|_| StatusCode::NOT_FOUND)?;
-    Ok(Json(serde_json::json!({ "name": name, "level": level })))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(
+        serde_json::json!({ "name": name, "level": level.as_str() }),
+    ))
 }
 
-/// PUT /agents/:name/autonomy
+/// PUT /agents/:name/autonomy — `:name` is a rule name or rule id.
 pub async fn set_autonomy(
     State(state): State<AppState>,
     ValidatedPath(name): ValidatedPath,
@@ -37,7 +51,8 @@ pub async fn set_autonomy(
         .get("level")
         .and_then(|v| v.as_str())
         .ok_or(StatusCode::BAD_REQUEST)?;
-    operations::agent::set_autonomy(&*state.runtime.store, &name, level)
+    let target = agent_target(&state, &name).await?;
+    operations::agent::set_autonomy(&*state.runtime.store, &target, level)
         .await
         .map_err(|_| StatusCode::BAD_REQUEST)?;
     Ok(Json(serde_json::json!({ "name": name, "level": level })))
@@ -56,7 +71,8 @@ pub async fn step_autonomy(
     let direction: operations::agent::AutonomyDirection =
         serde_json::from_value(serde_json::Value::String(direction_str.to_owned()))
             .map_err(|_| StatusCode::BAD_REQUEST)?;
-    let level = operations::agent::step_autonomy(&*state.runtime.store, &name, direction)
+    let target = agent_target(&state, &name).await?;
+    let level = operations::agent::step_autonomy(&*state.runtime.store, &target, direction)
         .await
         .map_err(|_| StatusCode::BAD_REQUEST)?;
     Ok(Json(serde_json::json!({ "name": name, "level": level })))

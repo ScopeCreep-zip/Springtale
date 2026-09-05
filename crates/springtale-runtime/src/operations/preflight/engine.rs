@@ -45,6 +45,7 @@ pub async fn preflight_recipe(
     items.extend(checks::check_optional_format(&recipe, &inputs));
     items.extend(checks::check_schedule_frequency(&recipe, &inputs));
     items.extend(checks::check_connectors(state, &recipe).await);
+    items.extend(checks::check_action_schemas(state, &recipe, &inputs).await);
     if let Some(item) = checks::check_browser_runtime(&recipe) {
         items.push(item);
     }

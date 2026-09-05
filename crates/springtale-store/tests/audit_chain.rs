@@ -71,7 +71,8 @@ fn verify(rows: &[AuditEntry], genesis_anchor: &str) -> Result<u64, String> {
 async fn fresh_chain_verifies() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("audit.db");
-    let store: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open(&path).unwrap());
+    let store: Arc<dyn StorageBackend> =
+        Arc::new(SqliteBackend::open_encrypted(&path, TEST_KEY_HEX).unwrap());
 
     for name in ["a", "b", "c", "d", "e"] {
         store.insert_audit_entry(&entry(name)).await.unwrap();
@@ -93,7 +94,8 @@ async fn fresh_chain_verifies() {
 async fn tampered_row_breaks_chain() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("audit.db");
-    let store: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open(&path).unwrap());
+    let store: Arc<dyn StorageBackend> =
+        Arc::new(SqliteBackend::open_encrypted(&path, TEST_KEY_HEX).unwrap());
 
     for name in ["a", "b", "c"] {
         store.insert_audit_entry(&entry(name)).await.unwrap();
@@ -105,7 +107,7 @@ async fn tampered_row_breaks_chain() {
     // Side-channel UPDATE: mutate row at chain_seq = 2 verdict from
     // "go" → "throttle". The row's stored `row_hash` no longer
     // matches the recomputed canonical content.
-    let side = rusqlite::Connection::open(&path).unwrap();
+    let side = side_channel(&path);
     side.execute(
         "UPDATE audit_trail SET verdict = ?1 WHERE chain_seq = ?2",
         params!["throttle", 2_i64],
@@ -113,7 +115,8 @@ async fn tampered_row_breaks_chain() {
     .unwrap();
     drop(side);
 
-    let store: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open(&path).unwrap());
+    let store: Arc<dyn StorageBackend> =
+        Arc::new(SqliteBackend::open_encrypted(&path, TEST_KEY_HEX).unwrap());
     let rows = store.list_audit_chain().await.unwrap();
     let err = verify(&rows, "").expect_err("tampered chain must NOT verify");
     assert!(err.contains("row_hash mismatch"), "got: {err}");
@@ -123,7 +126,8 @@ async fn tampered_row_breaks_chain() {
 async fn deleted_row_breaks_chain() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("audit.db");
-    let store: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open(&path).unwrap());
+    let store: Arc<dyn StorageBackend> =
+        Arc::new(SqliteBackend::open_encrypted(&path, TEST_KEY_HEX).unwrap());
 
     for name in ["a", "b", "c", "d"] {
         store.insert_audit_entry(&entry(name)).await.unwrap();
@@ -132,7 +136,7 @@ async fn deleted_row_breaks_chain() {
 
     // Side-channel DELETE: drop the middle row at chain_seq = 2. The
     // verifier sees chain_seq 1 → 3 — gap detected.
-    let side = rusqlite::Connection::open(&path).unwrap();
+    let side = side_channel(&path);
     side.execute(
         "DELETE FROM audit_trail WHERE chain_seq = ?1",
         params![2_i64],
@@ -140,7 +144,8 @@ async fn deleted_row_breaks_chain() {
     .unwrap();
     drop(side);
 
-    let store: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open(&path).unwrap());
+    let store: Arc<dyn StorageBackend> =
+        Arc::new(SqliteBackend::open_encrypted(&path, TEST_KEY_HEX).unwrap());
     let rows = store.list_audit_chain().await.unwrap();
     let err = verify(&rows, "").expect_err("deletion must break chain");
     assert!(err.contains("chain_seq gap"), "got: {err}");
@@ -154,7 +159,8 @@ async fn first_row_anchor_mismatch_breaks_chain() {
     // chain belongs to a different vault (or row 1 was tampered with).
     let dir = tempdir().unwrap();
     let path = dir.path().join("audit.db");
-    let store: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open(&path).unwrap());
+    let store: Arc<dyn StorageBackend> =
+        Arc::new(SqliteBackend::open_encrypted(&path, TEST_KEY_HEX).unwrap());
 
     store.insert_audit_entry(&entry("a")).await.unwrap();
     let rows = store.list_audit_chain().await.unwrap();
@@ -165,4 +171,18 @@ async fn first_row_anchor_mismatch_breaks_chain() {
         "verifier must reject chain when expected anchor disagrees with row-1 prev_hash",
     );
     assert!(err.contains("prev_hash mismatch"), "got: {err}");
+}
+
+/// Production stores are always encrypted (plan 0.5), so file-backed
+/// tests open with a fixed key. Never used outside tests.
+const TEST_KEY_HEX: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
+
+/// Raw connection to the encrypted test store, bypassing the backend so
+/// a test can tamper with rows. Same cipher/key pragmas the backend uses.
+fn side_channel(path: &std::path::Path) -> rusqlite::Connection {
+    let conn = rusqlite::Connection::open(path).unwrap();
+    conn.execute_batch("PRAGMA cipher = 'chacha20';").unwrap();
+    conn.execute_batch(&format!("PRAGMA key = \"x'{TEST_KEY_HEX}'\";"))
+        .unwrap();
+    conn
 }

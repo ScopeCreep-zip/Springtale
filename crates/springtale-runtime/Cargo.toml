@@ -51,6 +51,7 @@ tracing = { workspace = true }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+jsonschema = { workspace = true }
 serde_yaml = { workspace = true }
 specta = { workspace = true }
 rand = { workspace = true }

@@ -117,8 +117,9 @@ pub struct FormationInfo {
     /// Consecutive successful ticks in the current run. Enables UI
     /// progress bars of the form "5/8 to Hot".
     pub momentum_consecutive_successes: i64,
-    /// Interference count accumulated in the current tier. Non-zero
-    /// blocks promotion; see `momentum.rs`.
+    /// Lifetime interference total (`MomentumState::interference_total`).
+    /// Informational only — a past interference never blocks promotion;
+    /// see `momentum.rs`. Wire name kept for the IPC/TS types.
     pub momentum_interference_count: i64,
     /// How many more consecutive successes (at zero interference) are
     /// required to promote to the next tier. `None` at `Fever` (top).
@@ -796,8 +797,10 @@ pub async fn cycle_autonomy(
     state: &RuntimeState,
     formation_id: &str,
 ) -> Result<String, OperationError> {
-    let key = format!("formation:{formation_id}");
-    let current = super::agent::get_autonomy(&*state.store, &key).await?;
+    let target = super::agent::AutonomyTarget::Formation {
+        id: formation_id.to_owned(),
+    };
+    let current = super::agent::get_autonomy(&*state.store, &target).await?;
 
     let levels = [
         "observe",
@@ -805,10 +808,13 @@ pub async fn cycle_autonomy(
         "act-with-approval",
         "act-autonomously",
     ];
-    let idx = levels.iter().position(|l| *l == current).unwrap_or(0);
+    let idx = levels
+        .iter()
+        .position(|l| *l == current.as_str())
+        .unwrap_or(0);
     let next = levels[(idx + 1) % levels.len()];
 
-    super::agent::set_autonomy(&*state.store, &key, next).await?;
+    super::agent::set_autonomy(&*state.store, &target, next).await?;
 
     Ok(next.to_owned())
 }

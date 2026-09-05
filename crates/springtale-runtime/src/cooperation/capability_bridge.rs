@@ -388,6 +388,22 @@ impl CapabilityBridge {
         input: Value,
         tier: WasmTier,
     ) -> Result<ActionResult, BridgeError> {
+        self.execute_with_origin(connector_name, action, input, tier, None)
+            .await
+    }
+
+    /// [`Self::execute`] with the chat origin of the triggering message
+    /// (plan 6.7). A ShellExec approval raised here carries `origin` so
+    /// the announcer can deliver the card to that channel; `None` for
+    /// rule / formation fires, which surface on the dashboard only.
+    pub async fn execute_with_origin(
+        &self,
+        connector_name: &str,
+        action: &str,
+        input: Value,
+        tier: WasmTier,
+        origin: Option<springtale_core::policy::ChatOrigin>,
+    ) -> Result<ActionResult, BridgeError> {
         let (host, mut checker) = {
             let registry = self.registry.read().await;
             registry.get_for_execute(connector_name)?
@@ -422,10 +438,12 @@ impl CapabilityBridge {
             let request = crate::approval::ApprovalRequest {
                 id: crate::approval::ApprovalRequestId::new(),
                 connector_name: connector_name.to_owned(),
-                capability: Capability::ShellExec,
+                capability: crate::approval::GatedCapability::Manifest(Capability::ShellExec),
                 agent_id: None,
                 summary: format!("{connector_name}.{action}"),
                 requested_at: chrono::Utc::now(),
+                origin,
+                expires_at: None,
             };
             let decision = gate
                 .request(request)

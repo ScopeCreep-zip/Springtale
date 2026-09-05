@@ -97,7 +97,7 @@ schemars         = { version = "1", features = ["derive", "uuid1", "chrono04"] }
 specta           = { version = "=2.0.0-rc.25", features = ["derive", "serde_json", "uuid", "chrono"] }
 
 # ── Validation ─────────────────────────────────────────────────────────────────
-garde            = { version = "0.22", features = ["derive", "full"] }
+garde            = { version = "0.23", features = ["derive", "full"] }
 
 # ── Filesystem Sandbox ─────────────────────────────────────────────────────────
 cap-std          = "3"
@@ -137,6 +137,7 @@ rust-embed       = { version = "8", features = ["interpolate-folder-path"] }
 
 # ── HTTP Client ────────────────────────────────────────────────────────────────
 reqwest          = { version = "0.13", default-features = false, features = ["json", "multipart", "rustls", "stream"] }
+octocrab         = { version = "0.54", default-features = false, features = ["default-client", "follow-redirect", "retry", "rustls", "rustls-ring", "timeout", "jwt-aws-lc-rs"] }  # rustls+ring only; `opentls` never enabled. JWT backend is aws-lc-rs (already in graph) because jwt-rust-crypto pulls the banned `rsa` crate
 
 # ── Database (local-first) ─────────────────────────────────────────────────────
 rusqlite         = { version = "0.39", features = ["bundled", "vtab"] }
@@ -148,8 +149,8 @@ fd-lock          = "4"
 sqlx             = { version = "0.8",  features = ["postgres", "uuid", "chrono", "json", "migrate", "runtime-tokio"] }
 
 # ── WASM Sandbox ───────────────────────────────────────────────────────────────
-wasmtime         = { version = "44",   features = ["cranelift", "component-model", "parallel-compilation"] }
-wasmtime-wasi    = { version = "44",   features = ["p2"] }
+wasmtime         = { version = "47",   features = ["cranelift", "component-model", "parallel-compilation"] }
+wasmtime-wasi    = { version = "47",   features = ["p2"] }
 wat              = "1"
 
 # ── MCP Protocol ───────────────────────────────────────────────────────────────
@@ -173,7 +174,7 @@ chrono           = { version = "0.4",  features = ["serde"] }
 dom_smoothie     = "0.17"
 scraper          = "0.27"
 serde_json_path  = "0.7"
-feed-rs          = "2.3"
+feed-rs          = "2.4"
 icalendar        = { version = "0.17", features = ["chrono-tz"] }
 rrule            = "0.14"
 # HTML sanitizer (used by extraction::diff for page-change hashing).
@@ -290,7 +291,10 @@ connector-signal      = { path = "connectors/connector-signal", version = "0.1.0
 connector-browser     = { path = "connectors/connector-browser", version = "0.1.0" }
 
 # ── Nostr Protocol ─────────────────────────────────────────────────────────────
-nostr-sdk            = { version = "0.44", features = ["nip44", "nip59"] }
+nostr-sdk            = "0.45"
+# NIP-44/59 (sealed, gift-wrapped DMs) are opt-in features of the `nostr`
+# crate that nostr-sdk 0.45 no longer enables on our behalf.
+nostr                = { version = "0.45", features = ["nip44", "nip59"] }
 
 # ── IRC Protocol ───────────────────────────────────────────────────────────────
 # Privacy: ctcp feature DISABLED to suppress all CTCP replies (VERSION, TIME, PING).

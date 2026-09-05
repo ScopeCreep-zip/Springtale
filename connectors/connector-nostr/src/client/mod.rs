@@ -1,4 +1,7 @@
+use std::time::Duration;
+
 use async_trait::async_trait;
+use nostr_sdk::prelude::*;
 
 use crate::error::NostrError;
 
@@ -33,13 +36,16 @@ pub trait NostrApi: Send + Sync {
     async fn list_destinations(&self) -> Result<Vec<DiscoveredNostrPubkey>, NostrError>;
 }
 
-/// Concrete Nostr client wrapping nostr-sdk.
-/// All relay communication goes through this client.
+/// Concrete Nostr client backed by nostr-sdk.
 ///
 /// Applies publish-side jitter (Fix 3) to obscure activity timing
 /// from relay observers (ARCHITECTURE.md §2.9 social graph protection).
 pub struct NostrClient {
-    inner: nostr_sdk::Client,
+    inner: Client,
+    /// Signing keys. nostr-sdk 0.45 decouples the relay client from the
+    /// signer, so every event is finalized (signed / encrypted) locally
+    /// before it is handed to the relay pool.
+    keys: Keys,
     /// Jitter in seconds applied BEFORE publishing to relays.
     /// This hides the exact time the bot decided to act from relay observers.
     jitter_secs: u64,
@@ -48,11 +54,14 @@ pub struct NostrClient {
 impl NostrClient {
     /// Create a new NostrClient from parsed keys and relay URLs.
     pub async fn new(
-        keys: nostr_sdk::Keys,
+        keys: Keys,
         relay_urls: &[String],
         jitter_secs: u64,
     ) -> Result<Self, NostrError> {
-        let client = nostr_sdk::Client::new(keys);
+        // NIP-42 relay AUTH challenges are answered with the bot's own keys.
+        let client = Client::builder()
+            .authenticator(SignerAuthenticator::new(keys.clone()))
+            .build();
 
         for url in relay_urls {
             client
@@ -66,13 +75,19 @@ impl NostrClient {
 
         Ok(Self {
             inner: client,
+            keys,
             jitter_secs,
         })
     }
 
     /// Get a reference to the inner nostr-sdk Client (for gateway subscription).
-    pub fn inner(&self) -> &nostr_sdk::Client {
+    pub fn inner(&self) -> &Client {
         &self.inner
+    }
+
+    /// The bot's signing keys (the gateway needs them to unwrap NIP-59 gift wraps).
+    pub fn keys(&self) -> &Keys {
+        &self.keys
     }
 
     /// Apply publish-side jitter before sending events to relays.
@@ -80,108 +95,170 @@ impl NostrClient {
     async fn apply_jitter(&self) {
         if self.jitter_secs > 0 {
             let jitter = rand::random::<u64>() % self.jitter_secs;
-            tokio::time::sleep(std::time::Duration::from_secs(jitter)).await;
+            tokio::time::sleep(Duration::from_secs(jitter)).await;
         }
     }
+
+    /// Fetch a single event by ID from the connected relays.
+    async fn fetch_event(&self, event_id: &str) -> Result<Event, NostrError> {
+        let eid = EventId::parse(event_id)
+            .map_err(|e| NostrError::InvalidInput(format!("invalid event ID: {e}")))?;
+        let filter = Filter::new().id(eid).limit(1);
+        let events = self
+            .inner
+            .fetch_events(filter)
+            .timeout(Duration::from_secs(5))
+            .await
+            .map_err(|e| NostrError::RelayError(format!("failed to fetch event: {e}")))?;
+        events
+            .into_iter()
+            .next()
+            .ok_or_else(|| NostrError::InvalidInput(format!("event not found: {event_id}")))
+    }
+
+    /// Broadcast an already-signed event and return its hex ID.
+    async fn broadcast(&self, event: &Event, what: &str) -> Result<String, NostrError> {
+        let output = self
+            .inner
+            .send_event(event)
+            .await
+            .map_err(|e| NostrError::PublishFailed(format!("failed to {what}: {e}")))?;
+        Ok(output.value.to_hex())
+    }
+}
+
+/// Build the NIP-17 rumor (kind 14, `p`-tagged to `recipient`) for `content`
+/// and gift-wrap it twice: `[to_recipient, to_self]`. Both wraps carry the
+/// same rumor; only the NIP-44 seal recipient differs.
+fn build_dm_gift_wraps(
+    keys: &Keys,
+    recipient: PublicKey,
+    content: &str,
+) -> Result<[Event; 2], NostrError> {
+    let rumor = EventBuilder::new(Kind::PrivateDirectMessage, content)
+        .tag(Tag::public_key(recipient))
+        .finalize_unsigned(keys.public_key());
+    let seal = |receiver: PublicKey, what: &str| {
+        GiftWrapBuilder::new(receiver, rumor.clone())
+            .finalize(keys)
+            .map_err(|e| NostrError::EncryptionError(format!("failed to seal DM {what}: {e}")))
+    };
+    Ok([
+        seal(recipient, "for recipient")?,
+        seal(keys.public_key(), "self-copy")?,
+    ])
 }
 
 #[async_trait]
 impl NostrApi for NostrClient {
     async fn publish_note(&self, content: &str) -> Result<String, NostrError> {
         self.apply_jitter().await;
-        let builder = nostr_sdk::EventBuilder::text_note(content);
-        let output = self
-            .inner
-            .send_event_builder(builder)
-            .await
-            .map_err(|e| NostrError::PublishFailed(format!("failed to publish note: {e}")))?;
-        Ok(output.val.to_hex())
+        let event = EventBuilder::new(Kind::TextNote, content)
+            .finalize(&self.keys)
+            .map_err(|e| NostrError::PublishFailed(format!("failed to sign note: {e}")))?;
+        self.broadcast(&event, "publish note").await
     }
 
     async fn send_dm(&self, recipient_pubkey: &str, content: &str) -> Result<String, NostrError> {
         self.apply_jitter().await;
-        let pubkey = nostr_sdk::PublicKey::parse(recipient_pubkey)
+        let pubkey = PublicKey::parse(recipient_pubkey)
             .map_err(|e| NostrError::InvalidInput(format!("invalid pubkey: {e}")))?;
 
-        // send_private_msg uses NIP-17 (gift-wrapped NIP-44 encryption) when
-        // the `nip59` feature is enabled (which it is in our Cargo.toml).
-        // This is the modern, secure DM method — NIP-04 is deprecated.
-        // The config.dm_encryption field documents this choice but doesn't
-        // change behavior: NIP-44 is always used per spec requirement.
-        let output = self
-            .inner
-            .send_private_msg(pubkey, content, [])
-            .await
-            .map_err(|e| NostrError::EncryptionError(format!("failed to send DM: {e}")))?;
-        Ok(output.val.to_hex())
+        // NIP-17 private DM: the rumor is sealed with NIP-44 and gift-wrapped
+        // (NIP-59) once for the recipient and once for the bot itself, so the
+        // bot's other clients see the outgoing side of the conversation
+        // (matches nostr-sdk 0.44's send_private_msg). NIP-04 is deprecated
+        // and never used. The config.dm_encryption field documents this
+        // choice but doesn't change behavior: NIP-44 is always used per spec.
+        let [to_recipient, to_self] = build_dm_gift_wraps(&self.keys, pubkey, content)?;
+        let event_id = self.broadcast(&to_recipient, "send DM").await?;
+        self.broadcast(&to_self, "send DM self-copy").await?;
+        Ok(event_id)
     }
 
     async fn react(&self, event_id: &str, reaction: &str) -> Result<String, NostrError> {
         self.apply_jitter().await;
-        let eid = nostr_sdk::EventId::parse(event_id)
-            .map_err(|e| NostrError::InvalidInput(format!("invalid event ID: {e}")))?;
-
         // Fetch the target event to build proper reaction tags
-        let filter = nostr_sdk::Filter::new().id(eid).limit(1);
-        let events = self
-            .inner
-            .fetch_events(filter, std::time::Duration::from_secs(5))
-            .await
-            .map_err(|e| NostrError::RelayError(format!("failed to fetch event: {e}")))?;
-
-        let target = events
-            .first()
-            .ok_or_else(|| NostrError::InvalidInput(format!("event not found: {event_id}")))?;
-
-        let builder = nostr_sdk::EventBuilder::reaction(target, reaction);
-        let output = self
-            .inner
-            .send_event_builder(builder)
-            .await
-            .map_err(|e| NostrError::PublishFailed(format!("failed to react: {e}")))?;
-        Ok(output.val.to_hex())
+        let target = self.fetch_event(event_id).await?;
+        let event = ReactionBuilder::new(ReactionTarget::new(&target, None), reaction)
+            .finalize(&self.keys)
+            .map_err(|e| NostrError::PublishFailed(format!("failed to sign reaction: {e}")))?;
+        self.broadcast(&event, "react").await
     }
 
     async fn reply(&self, event_id: &str, content: &str) -> Result<String, NostrError> {
         self.apply_jitter().await;
-        let eid = nostr_sdk::EventId::parse(event_id)
-            .map_err(|e| NostrError::InvalidInput(format!("invalid event ID: {e}")))?;
-
         // Fetch the target event for proper reply tags
-        let filter = nostr_sdk::Filter::new().id(eid).limit(1);
-        let events = self
-            .inner
-            .fetch_events(filter, std::time::Duration::from_secs(5))
-            .await
-            .map_err(|e| NostrError::RelayError(format!("failed to fetch event: {e}")))?;
-
-        let target = events
-            .first()
-            .ok_or_else(|| NostrError::InvalidInput(format!("event not found: {event_id}")))?;
-
-        let builder = nostr_sdk::EventBuilder::text_note_reply(content, target, None, None);
-        let output = self
-            .inner
-            .send_event_builder(builder)
-            .await
-            .map_err(|e| NostrError::PublishFailed(format!("failed to reply: {e}")))?;
-        Ok(output.val.to_hex())
+        let target = self.fetch_event(event_id).await?;
+        let event = TextNoteReplyBuilder::new(content, &target)
+            .finalize(&self.keys)
+            .map_err(|e| NostrError::PublishFailed(format!("failed to sign reply: {e}")))?;
+        self.broadcast(&event, "reply").await
     }
 
     async fn list_destinations(&self) -> Result<Vec<DiscoveredNostrPubkey>, NostrError> {
-        let contacts = self
+        // NIP-02: the bot's latest kind-3 contact list, one `p` tag per contact
+        // (["p", <pubkey>, <relay?>, <petname?>]).
+        let filter = Filter::new()
+            .author(self.keys.public_key())
+            .kind(Kind::ContactList)
+            .limit(1);
+        let events = self
             .inner
-            .get_contact_list(std::time::Duration::from_secs(5))
+            .fetch_events(filter)
+            .timeout(Duration::from_secs(5))
             .await
             .map_err(|e| NostrError::RelayError(format!("failed to fetch contact list: {e}")))?;
-        let out = contacts
-            .into_iter()
-            .map(|c| DiscoveredNostrPubkey {
-                pubkey_hex: c.public_key.to_hex(),
-                alias: c.alias,
+        let out = events
+            .iter()
+            .flat_map(|e| e.tags.iter())
+            .filter_map(|tag| {
+                let parts = tag.as_slice();
+                if parts.first().map(String::as_str) != Some("p") {
+                    return None;
+                }
+                let pubkey_hex = PublicKey::parse(parts.get(1)?).ok()?.to_hex();
+                let alias = parts.get(3).filter(|s| !s.is_empty()).cloned();
+                Some(DiscoveredNostrPubkey { pubkey_hex, alias })
             })
             .collect();
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_dm_gift_wraps_seals_same_rumor_to_recipient_and_self()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let sender = Keys::generate();
+        let recipient = Keys::generate();
+
+        let [to_recipient, to_self] = build_dm_gift_wraps(&sender, recipient.public_key(), "hi")?;
+
+        assert_eq!(to_recipient.kind, Kind::GiftWrap);
+        assert_eq!(to_self.kind, Kind::GiftWrap);
+        assert_ne!(to_recipient.id, to_self.id);
+
+        // The recipient can open only their copy; the sender opens the self-copy.
+        assert!(UnwrappedGift::from_gift_wrap(&recipient, &to_self).is_err());
+        let theirs = UnwrappedGift::from_gift_wrap(&recipient, &to_recipient)?;
+        let mine = UnwrappedGift::from_gift_wrap(&sender, &to_self)?;
+
+        for gift in [&theirs, &mine] {
+            assert_eq!(gift.sender, sender.public_key());
+            assert_eq!(gift.rumor.kind, Kind::PrivateDirectMessage);
+            assert_eq!(gift.rumor.content, "hi");
+            assert!(
+                gift.rumor
+                    .tags
+                    .public_keys()
+                    .any(|pk| pk == recipient.public_key())
+            );
+        }
+        Ok(())
     }
 }
 

@@ -83,11 +83,12 @@ async fn init_and_run_completes_within_budget() {
         store: StoreConfig {
             path: db_path.clone(),
             ephemeral: false,
-            // Real production runs derive this from the passphrase
-            // via `derive_db_encryption_key_hex`. We pass `None` here
-            // because SQLCipher key derivation is a separate
-            // measurement and would distort the runtime-init number.
-            encryption_key_hex: None,
+            // The store is always encrypted (plan 0.5); derive the key the
+            // way the daemon does. The derivation is one HMAC, so it does
+            // not distort the runtime-init number.
+            encryption_key_hex: Some(springtale_crypto::token::derive_db_encryption_key_hex(
+                TEST_PASSPHRASE,
+            )),
             retention_days: None,
         },
         sentinel: None,

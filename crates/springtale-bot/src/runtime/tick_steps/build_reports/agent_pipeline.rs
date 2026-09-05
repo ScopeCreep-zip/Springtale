@@ -4,13 +4,16 @@
 //!
 //! Plan §A2 layer order: L0 sense → L3 inbox → L2 react → L1 scan. Each
 //! step is the trait-bounded function in
-//! `springtale-cooperation::agent::step::*`. First non-None for an
-//! action-producing step wins (early-exit). React folds bus state messages
-//! into awareness without producing a tick action.
+//! `springtale-cooperation::agent::step::*`. An inbox hit early-exits
+//! (the handoff is the tick's task); a surface reaction does not — the
+//! scan still runs so a primed surface never starves task pickup
+//! (plan 1.9 / finding 40). React folds bus state messages into
+//! awareness without producing a tick action.
 //!
 //! - **L0 sense (B4):** primed-surface reaction via `SurfaceSensor`.
 //!   Returns Some without `task_claimed` when a surface fires; the tick
-//!   reports the surface_reaction action and skips L1 scan.
+//!   reports the surface_reaction action unless L1 scan claims a task,
+//!   in which case the report carries the task.
 //! - **L3 inbox (B6):** direct-handoff via `TaskRouter::poll_assigned`.
 //!   Narrows to one assigned SubTask.
 //! - **L2 react:** drains pre-collected bus state messages via
@@ -47,6 +50,7 @@ pub async fn run(
     tick: &Tick,
     bridge: &springtale_runtime::CapabilityBridge,
     sentinel: &Arc<springtale_sentinel::Sentinel>,
+    registry: &Arc<tokio::sync::RwLock<springtale_connector::registry::store::ConnectorRegistry>>,
     store: &Arc<dyn springtale_store::StorageBackend>,
     reports_sender: &mpsc::Sender<TickReport>,
     cooperation_tx: Option<
@@ -82,12 +86,14 @@ pub async fn run(
             continue;
         }
 
-        let agent_name = member.agent_id.0.to_string();
-        let autonomy_str =
-            springtale_runtime::operations::agent::get_autonomy(store.as_ref(), &agent_name)
-                .await
-                .unwrap_or_else(|_| "suggest".to_owned());
-        let autonomy = springtale_cooperation::AutonomyLevel::parse(&autonomy_str);
+        // Members have no rule of their own yet (synthesized formation rules
+        // are owned by the formation), so autonomy resolves at the formation
+        // level: `autonomy:formation:{id}`, else ActAutonomously.
+        let autonomy = springtale_runtime::operations::agent::resolve_formation_autonomy(
+            store.as_ref(),
+            &formation.id.0.to_string(),
+        )
+        .await;
 
         // Plan §A2 layer order: L0 sense → L3 inbox → L2 react → L1 scan.
         // Borrow scoping: react needs `&mut member.awareness`, while
@@ -111,9 +117,11 @@ pub async fn run(
                 awareness: &member.awareness,
             };
             if let Some(r) = step::sense::run(surfaces.as_ref(), &member.awareness, &agent_ctx) {
+                // A surface reaction is not a task claim: it must not
+                // starve task pickup, so the scan still runs below
+                // (plan 1.9 / finding 40). Only an inbox hit skips it.
                 tick_action = r.action;
                 chosen_task = r.task_claimed; // None for surface_reaction
-                needs_scan = false;
             } else if let Some(r) = step::inbox::run(task_router.as_ref(), &agent_ctx).await {
                 tick_action = r.action;
                 chosen_task = r.task_claimed;
@@ -162,6 +170,7 @@ pub async fn run(
             formation_id: formation.id.0,
             formation_momentum,
             destructive_policy: formation.constraints.destructive_action_policy,
+            registry,
             blackboard: formation.blackboard.as_ref(),
             shared_env: formation.shared_env.as_ref(),
             surfaces: formation.surfaces.as_ref(),

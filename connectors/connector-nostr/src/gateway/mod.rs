@@ -10,7 +10,8 @@ use nostr_sdk::prelude::*;
 ///
 /// Runs until shutdown signal received.
 pub async fn gateway_loop(
-    client: Arc<nostr_sdk::Client>,
+    client: Arc<Client>,
+    keys: Keys,
     bot_pubkey: PublicKey,
     dispatcher: Arc<dyn Fn(serde_json::Value) + Send + Sync>,
     mut shutdown: tokio::sync::watch::Receiver<bool>,
@@ -21,7 +22,7 @@ pub async fn gateway_loop(
         .pubkey(bot_pubkey)
         .limit(0); // 0 = only new events going forward
 
-    if let Err(e) = client.subscribe(filter, None).await {
+    if let Err(e) = client.subscribe(filter).await {
         tracing::error!(error = %e, "failed to subscribe to Nostr events");
         return;
     }
@@ -32,12 +33,16 @@ pub async fn gateway_loop(
 
     loop {
         tokio::select! {
-            Ok(notification) = rx.recv() => {
+            next = rx.next() => {
+                let Some(notification) = next else {
+                    tracing::info!("Nostr notification stream ended");
+                    break;
+                };
                 match notification {
-                    RelayPoolNotification::Event { event, relay_url, .. } => {
+                    ClientNotification::Event { event, relay_url, .. } => {
                         // Fix 2: Route by event kind to specific triggers
                         let payload = route_event(
-                            &client,
+                            &keys,
                             &event,
                             &relay_url,
                             &bot_pubkey,
@@ -47,7 +52,7 @@ pub async fn gateway_loop(
                             dispatcher(p);
                         }
                     }
-                    RelayPoolNotification::Shutdown => {
+                    ClientNotification::Shutdown => {
                         tracing::info!("Nostr relay pool shutting down");
                         break;
                     }
@@ -63,7 +68,9 @@ pub async fn gateway_loop(
         }
     }
 
-    client.unsubscribe_all().await;
+    if let Err(e) = client.unsubscribe_all().await {
+        tracing::warn!(error = %e, "failed to unsubscribe from Nostr relays");
+    }
     client.disconnect().await;
     tracing::info!("Nostr gateway stopped");
 }
@@ -71,7 +78,7 @@ pub async fn gateway_loop(
 /// Route an event to the correct trigger based on kind.
 /// Returns None if the event should be ignored.
 async fn route_event(
-    client: &nostr_sdk::Client,
+    keys: &Keys,
     event: &Event,
     relay_url: &RelayUrl,
     bot_pubkey: &PublicKey,
@@ -79,7 +86,7 @@ async fn route_event(
     match event.kind {
         // Fix 1: Decrypt gift-wrapped DMs (NIP-17 via NIP-44)
         Kind::GiftWrap => {
-            match client.unwrap_gift_wrap(event).await {
+            match UnwrappedGift::from_gift_wrap(keys, event) {
                 Ok(gift) => {
                     Some(serde_json::json!({
                         "trigger": "dm_received",

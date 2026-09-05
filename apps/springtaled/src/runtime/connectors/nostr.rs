@@ -31,18 +31,10 @@ pub async fn wire_nostr(
         .context("failed to create Nostr gateway client")?;
 
     let gateway_client = Arc::new(gateway_connector.nostr_client().inner().clone());
-    let bot_pubkey = {
-        let signer = gateway_client
-            .signer()
-            .await
-            .map_err(|e| anyhow::anyhow!("Nostr client has no signer: {e}"))?;
-        signer.get_public_key().await.map_err(|e| {
-            anyhow::anyhow!(
-                "failed to extract Nostr public key from signer — \
-                 cannot subscribe to events without the correct pubkey: {e}"
-            )
-        })?
-    };
+    // nostr-sdk 0.45 decouples the relay client from the signer: the gateway
+    // needs the bot's keys itself to unwrap NIP-59 gift-wrapped DMs.
+    let gateway_keys = gateway_connector.nostr_client().keys().clone();
+    let bot_pubkey = gateway_keys.public_key();
 
     tracing::info!(
         pubkey = %bot_pubkey.to_hex(),
@@ -93,8 +85,14 @@ pub async fn wire_nostr(
     let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
 
     tokio::spawn(async move {
-        connector_nostr::gateway::gateway_loop(gateway_client, bot_pubkey, dispatcher, shutdown_rx)
-            .await;
+        connector_nostr::gateway::gateway_loop(
+            gateway_client,
+            gateway_keys,
+            bot_pubkey,
+            dispatcher,
+            shutdown_rx,
+        )
+        .await;
     });
 
     tracing::info!("Nostr gateway started");

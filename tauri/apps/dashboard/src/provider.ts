@@ -19,6 +19,7 @@ import type {
   WriteReport,
 } from "@springtale/types";
 import type {
+  ApprovalInfo,
   ConnectorOutput,
   DataProvider,
   FormationDetail,
@@ -240,10 +241,20 @@ export function createWebProvider(): DataProvider {
       // No-op on web — no Tauri event bus.
       return () => {};
     },
+    // Plan 6.7 — chat-gate approval queue.
+    async listApprovals() {
+      const r = await get<{ pending: ApprovalInfo[] }>("/approvals");
+      return r.pending;
+    },
+    async resolveApproval(id, approve) {
+      await post(`/approvals/${encodeURIComponent(id)}`, {
+        decision: approve ? "approve" : "deny",
+      });
+    },
     subscribeToEvents(callback) {
       const token = getToken();
       if (!token) return () => {};
-      return subscribeToEvents(getBaseUrl(), token, callback);
+      return subscribeToEvents(getBaseUrl(), callback);
     },
 
     // In-app chat (W5)
@@ -254,7 +265,7 @@ export function createWebProvider(): DataProvider {
     subscribeToChat(callback) {
       const token = getToken();
       if (!token) return () => {};
-      return subscribeToChat(getBaseUrl(), token, callback);
+      return subscribeToChat(getBaseUrl(), callback);
     },
 
     // Formations
@@ -425,15 +436,14 @@ export function createWebProvider(): DataProvider {
     subscribeToCanvasUpdates(callback) {
       const token = getToken();
       if (!token) return () => {};
-      return subscribeToCanvasUpdates(getBaseUrl(), token, callback);
+      return subscribeToCanvasUpdates(getBaseUrl(), callback);
     },
 
     subscribeToCooperationEvents(callback) {
-      // Phase H — SSE client for /cooperation/events. Verbatim mirror
-      // of subscribeToCanvasUpdates / subscribeToEvents.
+      // Phase H — `cooperation` frames of the multiplexed /stream.
       const token = getToken();
       if (!token) return () => {};
-      return subscribeToCooperationEvents(getBaseUrl(), token, callback);
+      return subscribeToCooperationEvents(getBaseUrl(), callback);
     },
 
     // Safety — focused get/save against the dedicated safety table.

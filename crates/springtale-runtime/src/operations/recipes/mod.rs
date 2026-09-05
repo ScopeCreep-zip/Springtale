@@ -14,6 +14,7 @@
 //! match for a query) lives here. Frontends render what they're
 //! told.
 
+pub mod action_schema;
 pub mod apply;
 pub mod authoring;
 pub mod builtin;

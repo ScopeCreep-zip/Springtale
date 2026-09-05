@@ -115,3 +115,15 @@ mod tests {
         assert_eq!(AutonomyLevel::parse("garbage"), AutonomyLevel::Suggest);
     }
 }
+
+/// Chat channel that initiated an action — where approval cards for that
+/// action are delivered. Per-request (plan 6.7): a rule or formation fire
+/// has no origin (`None`), a chat-triggered tool call carries the
+/// connector + channel the message arrived on.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, Type)]
+pub struct ChatOrigin {
+    /// Connector the message arrived on (e.g. `connector-telegram`).
+    pub connector: String,
+    /// Channel / chat id within that connector.
+    pub channel_id: String,
+}

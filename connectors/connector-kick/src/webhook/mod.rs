@@ -12,6 +12,30 @@ use rustls_pemfile::Item;
 
 use crate::error::KickError;
 
+pub mod replay;
+
+pub use replay::{ReplayCache, check_timestamp};
+
+/// Header carrying the idempotent message id (`Kick-Event-Message-Id`).
+pub const HEADER_MESSAGE_ID: &str = "kick-event-message-id";
+/// Header carrying the RFC 3339 send time (`Kick-Event-Message-Timestamp`).
+pub const HEADER_TIMESTAMP: &str = "kick-event-message-timestamp";
+/// Header carrying the base64 RSA signature (`Kick-Event-Signature`).
+pub const HEADER_SIGNATURE: &str = "kick-event-signature";
+
+/// Look up a required webhook header, case-insensitively (the daemon
+/// hands connectors lower-cased names; other callers may not).
+pub fn required_header<'a>(
+    headers: &'a std::collections::HashMap<String, String>,
+    name: &str,
+) -> Result<&'a str, KickError> {
+    headers
+        .iter()
+        .find(|(k, _)| k.eq_ignore_ascii_case(name))
+        .map(|(_, v)| v.as_str())
+        .ok_or_else(|| KickError::RequestFailed(format!("missing {name} header")))
+}
+
 /// Verify a Kick webhook payload signature.
 ///
 /// Kick signs webhooks with RSA-PKCS1v15 over SHA256. The process:

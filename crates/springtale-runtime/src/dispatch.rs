@@ -284,6 +284,7 @@ async fn run_step_inner(
             action_name,
             policy: execution.policy,
             autonomy: execution.autonomy,
+            origin: execution.origin.as_ref(),
         })
         .await;
     match verdict {
@@ -371,7 +372,13 @@ async fn run_step_inner(
 
             let effective_tier = momentum_to_wasm_tier(execution.momentum);
             let exec = bridge
-                .execute(connector, action_name, input, effective_tier)
+                .execute_with_origin(
+                    connector,
+                    action_name,
+                    input,
+                    effective_tier,
+                    execution.origin.clone(),
+                )
                 .await;
             match exec {
                 Ok(result) => {

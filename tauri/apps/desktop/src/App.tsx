@@ -22,6 +22,7 @@ import {
   mapAgents,
   mapFormations,
   mapNodes,
+  PendingApprovals,
   ProofOfLifePanel,
   RecipeAuthorPanel,
   RecipeDeployPanel,
@@ -912,6 +913,11 @@ export const App = () => {
           onDecision={handleApproval}
         />
       );
+    }
+    // Plan 6.7 — the runtime chat gate's queue (`list_pending_approvals`),
+    // same panel the dashboard mounts.
+    if (db.pendingApprovals().length > 0) {
+      return <PendingApprovals />;
     }
     // F5 — member-picker for RM MBR. Renders before settings/AI panels
     // so a destructive action gets focus once requested.

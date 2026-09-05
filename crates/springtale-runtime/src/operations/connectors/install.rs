@@ -5,12 +5,13 @@ use crate::state::RuntimeState;
 
 /// Install a connector manifest — validates and registers in the store.
 ///
-/// The manifest is validated for structure (name, version, no wildcard hosts).
-/// If a signature is present, it is verified against the trusted-author
-/// registry via [`verify_manifest_sig_if_present`]; unsigned manifests
-/// proceed (community connectors without a signing identity are still
-/// usable, but [`springtale_sentinel::Sentinel::check_toxic_pairs`]
-/// gates the dangerous capability combinations).
+/// The manifest is validated for structure (name, version, no wildcard hosts)
+/// and must carry a signature by an author in the trusted-author registry —
+/// [`verify_manifest_signature`] rejects unsigned and unknown-author
+/// manifests outright. First-party native connectors register through
+/// `inventory` and never enter this path.
+/// [`springtale_sentinel::Sentinel::check_toxic_pairs`] additionally gates
+/// dangerous capability combinations.
 pub async fn install_connector(
     state: &RuntimeState,
     manifest: springtale_connector::ConnectorManifest,
@@ -23,8 +24,8 @@ pub async fn install_connector(
     springtale_sentinel::Sentinel::check_toxic_pairs(&manifest.capabilities)
         .map_err(|e| OperationError::Validation(format!("toxic capability pair: {e}")))?;
 
-    // Verify Ed25519 signature if present using trusted author registry
-    verify_manifest_sig_if_present(&manifest, &*state.store).await?;
+    // Signing is required for every manifest that reaches this path.
+    verify_manifest_signature(&manifest, &*state.store).await?;
 
     let manifest_json = serde_json::to_string(&manifest)
         .map_err(|e| OperationError::Serialization(e.to_string()))?;
@@ -69,9 +70,9 @@ pub async fn install_wasm_connector(
     springtale_sentinel::Sentinel::check_toxic_pairs(&manifest.capabilities)
         .map_err(|e| OperationError::Validation(format!("toxic capability pair: {e}")))?;
 
-    // Verify signature if present. Return the pubkey hex we used so
+    // Verify the (required) signature. Return the pubkey hex we used so
     // we can pin it to the persisted row (Phase-7 audit Finding #1).
-    let trusted_pubkey_hex = verify_manifest_sig_if_present(&manifest, &*state.store).await?;
+    let trusted_pubkey_hex = verify_manifest_signature(&manifest, &*state.store).await?;
 
     // Verify WASM hash
     let wasm_hash = manifest.wasm_hash.as_deref().ok_or_else(|| {
@@ -106,10 +107,9 @@ pub async fn install_wasm_connector(
     // Whole-codebase audit Finding #1: persist the install-time
     // pubkey + signature in trust-anchor columns so the boot
     // re-verifier can fail closed on a swap-the-whole-bundle attack
-    // against the SQLite store (TUF §4). Empty strings indicate an
-    // unsigned install — the verifier logs that case rather than
-    // failing closed, preserving the existing TOFU posture.
-    let pinned_pubkey = trusted_pubkey_hex.unwrap_or_default();
+    // against the SQLite store (TUF §4). Both are always present:
+    // `verify_manifest_signature` has already rejected unsigned installs.
+    let pinned_pubkey = trusted_pubkey_hex;
     let pinned_sig = manifest.signature.clone().unwrap_or_default();
     state
         .store
@@ -138,78 +138,147 @@ pub async fn install_wasm_connector(
     Ok(registered_name)
 }
 
-/// Verify a manifest's Ed25519 signature if present and return the
-/// pubkey hex that successfully verified it.
+/// Verify a manifest's Ed25519 signature against the trusted-author
+/// registry and return the pubkey hex that verified it.
 ///
-/// Looks up the author's trusted public key from config store
-/// (`trusted-author:{author_name}` → `{ "pubkey": "hex..." }`).
-/// If the author is not in the trusted registry, logs a warning
-/// but does not reject — unsigned/unknown-author connectors are
-/// allowed but flagged. This matches the TOFU (Trust On First Use)
-/// model: the first install establishes trust.
+/// Signing is required. There is no unsigned path, no override flag and
+/// no fallback: an unsigned manifest or one signed by an author absent
+/// from the registry is a `Validation` error. The author's public key
+/// is read from config (`trusted-author:{author}` → `{ "pubkey": "hex" }`);
+/// developers register their own identity with `springtale author add
+/// --self` and sign with `springtale connector sign <manifest.toml>`.
 ///
-/// Return value:
-///   - `Ok(Some(hex))` — manifest had a signature AND we verified it
-///     against the trusted-author pubkey. Caller pins this hex into
-///     the persisted row so the boot re-verifier can re-check it
-///     (Phase-7 audit Finding #1).
-///   - `Ok(None)` — manifest had no signature OR no trusted-author
-///     pubkey was on file. Caller persists empty strings; the
-///     re-verifier logs "legacy, skip" rather than failing closed.
-pub(super) async fn verify_manifest_sig_if_present(
+/// The returned hex is pinned into the persisted row so the boot
+/// re-verifier can re-check it (Phase-7 audit Finding #1).
+pub(super) async fn verify_manifest_signature(
     manifest: &springtale_connector::ConnectorManifest,
     store: &dyn springtale_store::StorageBackend,
-) -> Result<Option<String>, OperationError> {
-    let Some(ref _sig) = manifest.signature else {
-        return Ok(None); // unsigned — no verification needed
+) -> Result<String, OperationError> {
+    let Some(_) = manifest.signature.as_ref() else {
+        return Err(OperationError::Validation(format!(
+            "manifest for {} is unsigned; sign it with `springtale connector sign <manifest.toml>`",
+            manifest.name
+        )));
     };
 
     let author_key_entry = format!("trusted-author:{}", manifest.author);
-    match store.get_config(&author_key_entry).await {
-        Ok(Some(key_json)) => {
-            let key_data: serde_json::Value = serde_json::from_str(&key_json)
-                .map_err(|e| OperationError::Validation(format!("invalid author key JSON: {e}")))?;
+    let Ok(Some(key_json)) = store.get_config(&author_key_entry).await else {
+        return Err(OperationError::Validation(format!(
+            "manifest for {} is signed by unknown author {}; run `springtale author add {} <pubkey-hex>` if you trust them",
+            manifest.name, manifest.author, manifest.author
+        )));
+    };
 
-            let pubkey_hex = key_data
-                .get("pubkey")
-                .and_then(|v| v.as_str())
-                .ok_or_else(|| {
-                    OperationError::Validation("author key entry missing 'pubkey' field".into())
-                })?;
+    let key_data: serde_json::Value = serde_json::from_str(&key_json)
+        .map_err(|e| OperationError::Validation(format!("invalid author key JSON: {e}")))?;
 
-            let pubkey_bytes = hex::decode(pubkey_hex).map_err(|e| {
-                OperationError::Validation(format!("invalid author pubkey hex: {e}"))
-            })?;
+    let pubkey_hex = key_data
+        .get("pubkey")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| {
+            OperationError::Validation("author key entry missing 'pubkey' field".into())
+        })?;
 
-            let pubkey_arr: [u8; 32] = pubkey_bytes
-                .try_into()
-                .map_err(|_| OperationError::Validation("author pubkey must be 32 bytes".into()))?;
+    let pubkey_bytes = hex::decode(pubkey_hex)
+        .map_err(|e| OperationError::Validation(format!("invalid author pubkey hex: {e}")))?;
 
-            let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(&pubkey_arr)
-                .map_err(|e| OperationError::Validation(format!("invalid author pubkey: {e}")))?;
+    let pubkey_arr: [u8; 32] = pubkey_bytes
+        .try_into()
+        .map_err(|_| OperationError::Validation("author pubkey must be 32 bytes".into()))?;
 
-            springtale_connector::manifest::verify::verify_manifest_signature(
-                manifest,
-                &verifying_key,
+    let verifying_key = ed25519_dalek::VerifyingKey::from_bytes(&pubkey_arr)
+        .map_err(|e| OperationError::Validation(format!("invalid author pubkey: {e}")))?;
+
+    springtale_connector::manifest::verify::verify_manifest_signature(manifest, &verifying_key)
+        .map_err(|e| OperationError::Validation(format!("signature verification failed: {e}")))?;
+
+    tracing::info!(
+        connector = %manifest.name,
+        author = %manifest.author,
+        "manifest signature verified"
+    );
+    Ok(pubkey_hex.to_owned())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+    use springtale_connector::manifest::{
+        Capability, ConnectorManifest, SignatureAlgorithm, sign_manifest,
+    };
+    use springtale_crypto::identity::keypair::Keypair;
+    use springtale_store::StorageBackend;
+    use springtale_store::backend::sqlite::SqliteBackend;
+
+    fn wasm_manifest() -> ConnectorManifest {
+        ConnectorManifest {
+            name: "connector-test".into(),
+            version: "1.0.0".into(),
+            author: "test-author".into(),
+            description: "A test connector".into(),
+            capabilities: vec![Capability::NetworkOutbound {
+                host: "api.example.com".into(),
+            }],
+            triggers: vec![],
+            actions: vec![],
+            data_disclosure: vec![],
+            roles: vec![],
+            wasm_hash: Some("deadbeef".into()),
+            signature_alg: SignatureAlgorithm::default(),
+            signature: None,
+        }
+    }
+
+    #[tokio::test]
+    async fn test_verify_manifest_signature_unsigned_returns_validation() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        let manifest = wasm_manifest();
+
+        let err = verify_manifest_signature(&manifest, &store)
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(err, OperationError::Validation(ref m) if m.contains("unsigned")),
+            "{err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_verify_manifest_signature_unknown_author_returns_validation_naming_author() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        let keypair = Keypair::generate().unwrap();
+        let mut manifest = wasm_manifest();
+        sign_manifest(&mut manifest, &keypair).unwrap();
+
+        let err = verify_manifest_signature(&manifest, &store)
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(err, OperationError::Validation(ref m) if m.contains("test-author")),
+            "{err}"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_verify_manifest_signature_trusted_author_returns_pubkey_hex() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        let keypair = Keypair::generate().unwrap();
+        let pubkey_hex = hex::encode(keypair.verifying_key().to_bytes());
+        store
+            .set_config(
+                "trusted-author:test-author",
+                &serde_json::json!({ "pubkey": pubkey_hex }).to_string(),
             )
-            .map_err(|e| {
-                OperationError::Validation(format!("signature verification failed: {e}"))
-            })?;
+            .await
+            .unwrap();
+        let mut manifest = wasm_manifest();
+        sign_manifest(&mut manifest, &keypair).unwrap();
 
-            tracing::info!(
-                connector = %manifest.name,
-                author = %manifest.author,
-                "manifest signature verified"
-            );
-            Ok(Some(pubkey_hex.to_owned()))
-        }
-        _ => {
-            tracing::warn!(
-                connector = %manifest.name,
-                author = %manifest.author,
-                "manifest is signed but author not in trusted registry"
-            );
-            Ok(None)
-        }
+        let verified = verify_manifest_signature(&manifest, &store).await.unwrap();
+
+        assert_eq!(verified, pubkey_hex);
     }
 }

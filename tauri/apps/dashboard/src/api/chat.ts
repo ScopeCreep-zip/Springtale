@@ -1,12 +1,13 @@
 import type { ChatStreamMessage } from "@springtale/ui";
+import { type SseState, subscribeSse } from "./sse";
 
 /**
  * In-app chat client (W5).
  *
  * `sendChatMessage` POSTs to /chat (fire-and-forget; the bot replies
  * asynchronously). `subscribeToChat` opens an SSE stream on /chat/stream and
- * invokes the callback for each reply. Auth uses the ?token= query param
- * (EventSource can't set headers; the daemon binds 127.0.0.1 only).
+ * invokes the callback for each reply. The stream is opened with a
+ * one-time ticket (see `sse.ts`) — never the bearer token in the URL.
  */
 export async function sendChatMessage(
   baseUrl: string,
@@ -29,26 +30,15 @@ export async function sendChatMessage(
 
 export function subscribeToChat(
   baseUrl: string,
-  token: string,
   onMessage: (message: ChatStreamMessage) => void,
-  onError?: (error: Event) => void,
+  onState?: (s: SseState) => void,
 ): () => void {
-  const url = `${baseUrl}/chat/stream?token=${encodeURIComponent(token)}`;
-  const eventSource = new EventSource(url);
-
-  eventSource.addEventListener("message", (event) => {
-    try {
-      onMessage(JSON.parse(event.data) as ChatStreamMessage);
-    } catch {
-      // Skip malformed events
-    }
-  });
-
-  eventSource.addEventListener("error", (event) => {
-    onError?.(event);
-  });
-
-  return () => {
-    eventSource.close();
-  };
+  return subscribeSse(
+    "/chat/stream",
+    (name, data) => {
+      if (name === "message") onMessage(data as ChatStreamMessage);
+    },
+    onState,
+    baseUrl,
+  );
 }

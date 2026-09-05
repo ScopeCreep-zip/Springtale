@@ -1,5 +1,7 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Instant;
 
 use tokio::sync::{Mutex, broadcast, mpsc};
 
@@ -43,6 +45,11 @@ pub struct AppState {
     /// routes those here instead of to a connector's `send_message`; the
     /// `GET /chat/stream` SSE endpoint fans them out to chat clients.
     pub chat_tx: broadcast::Sender<crate::api::chat::ChatStreamMessage>,
+    /// One-time, 30 s tickets for the SSE routes (`GET /stream`,
+    /// `GET /chat/stream`). Issued by `POST /stream/ticket` under bearer
+    /// auth, consumed by `require_stream_ticket`. Keeps bearer tokens out
+    /// of URLs (EventSource cannot send headers; plan 0.7).
+    pub stream_tickets: Arc<Mutex<HashMap<String, Instant>>>,
 }
 
 impl AppState {
