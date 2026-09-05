@@ -739,7 +739,7 @@ action = "send_message"
 
 [actions.params]
 target = "${channel}"
-text = "${trigger.nick}: ${greeting}"
+message = "${trigger.nick}: ${greeting}"
 "#
                 .into(),
             }],
@@ -968,6 +968,8 @@ action = "reply"
 [actions.params]
 parent_uri = "${trigger.uri}"
 parent_cid = "${trigger.cid}"
+root_uri = "${trigger.uri}"
+root_cid = "${trigger.cid}"
 text = "${last_ai_output}"
 "#
                 .into(),

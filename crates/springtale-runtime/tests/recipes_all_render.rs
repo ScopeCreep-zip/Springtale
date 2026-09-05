@@ -5,13 +5,12 @@
 //! Pure render path only — no `RuntimeState`, no network. Connector
 //! manifests come from the `inventory` factories; `ConnectorFactory` exposes
 //! no manifest, so only connectors that instantiate without config
-//! (`requires_config() == false`) are checked and the rest are counted as
-//! skipped.
+//! are checked through their factory manifests.
 
 use std::collections::HashMap;
 
 use serde_json::{Value, json};
-use springtale_connector::{Connector, FactoryEntry};
+use springtale_connector::FactoryEntry;
 use springtale_core::rule::types::Rule;
 use springtale_runtime::operations::recipes::action_schema::{ActionOutcome, check_rule_actions};
 use springtale_runtime::operations::recipes::apply::substitute_template_public;
@@ -39,28 +38,19 @@ fn placeholder(field: &InputField) -> Value {
     }
 }
 
-async fn config_free_connectors() -> HashMap<String, Box<dyn Connector>> {
-    let mut map = HashMap::new();
-    for entry in inventory::iter::<FactoryEntry> {
-        let factory = entry.factory;
-        if factory.requires_config() {
-            continue;
-        }
-        let connector = factory.create(json!({})).await.unwrap_or_else(|e| {
-            panic!("{} failed to create with empty config: {e}", factory.name())
-        });
-        map.insert(factory.name().to_owned(), connector);
-    }
-    map
+fn all_manifests() -> HashMap<String, springtale_connector::manifest::ConnectorManifest> {
+    // Every factory exposes its static manifest (plan finding 121), so no
+    // connector needs credentials to be validated against.
+    inventory::iter::<FactoryEntry>
+        .into_iter()
+        .map(|entry| (entry.factory.name().to_owned(), entry.factory.manifest()))
+        .collect()
 }
 
 #[tokio::test]
 async fn test_every_builtin_recipe_renders_and_validates_action_params() {
-    let connectors = config_free_connectors().await;
-    assert!(
-        !connectors.is_empty(),
-        "no config-free first-party connectors registered"
-    );
+    let manifests = all_manifests();
+    assert!(!manifests.is_empty(), "no first-party factories registered");
 
     let (mut validated, mut skipped) = (0usize, 0usize);
     let mut failures = Vec::new();
@@ -81,8 +71,9 @@ async fn test_every_builtin_recipe_renders_and_validates_action_params() {
                     continue;
                 }
             };
-            let checks =
-                check_rule_actions(&rule, |name| connectors.get(name).map(|c| c.actions()));
+            let checks = check_rule_actions(&rule, |name| {
+                manifests.get(name).map(|m| m.actions.as_slice())
+            });
             for check in checks {
                 match check.outcome {
                     ActionOutcome::Skipped => skipped += 1,
@@ -98,7 +89,7 @@ async fn test_every_builtin_recipe_renders_and_validates_action_params() {
 
     println!(
         "{} recipes: validated {validated} RunConnector steps, skipped {skipped} \
-         (connector requires config; no manifest without instantiation)",
+         (connector not among the first-party factories)",
         recipes.len()
     );
     assert!(
