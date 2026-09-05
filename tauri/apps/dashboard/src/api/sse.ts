@@ -19,7 +19,7 @@ import { getBaseUrl, post } from "./client";
 export type SseState = "open" | "closed";
 export type SseListener = (name: string, data: unknown) => void;
 
-const NAMED_EVENTS = ["event", "canvas", "cooperation", "approval"] as const;
+const NAMED_EVENTS = ["event", "canvas", "cooperation"] as const;
 const INITIAL_DELAY_MS = 1000;
 const MAX_DELAY_MS = 30_000;
 
