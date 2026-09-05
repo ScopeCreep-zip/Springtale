@@ -148,8 +148,8 @@ fd-lock          = "4"
 sqlx             = { version = "0.8",  features = ["postgres", "uuid", "chrono", "json", "migrate", "runtime-tokio"] }
 
 # ── WASM Sandbox ───────────────────────────────────────────────────────────────
-wasmtime         = { version = "44",   features = ["cranelift", "component-model", "parallel-compilation"] }
-wasmtime-wasi    = { version = "44",   features = ["p2"] }
+wasmtime         = { version = "47",   features = ["cranelift", "component-model", "parallel-compilation"] }
+wasmtime-wasi    = { version = "47",   features = ["p2"] }
 wat              = "1"
 
 # ── MCP Protocol ───────────────────────────────────────────────────────────────
