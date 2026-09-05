@@ -195,6 +195,19 @@ pub async fn run(
             consensus_proposals.push(task);
         }
 
+        // Attention is earned by acting (Army of Two aggro): a member with
+        // work in hand generates load this tick; idle members drain. Only
+        // the active-task term exists today — `ExecuteOutcome` carries no
+        // `duration_ms` and `FormationMember` has no `pending` slot.
+        let sample = if member.active_task.is_some() {
+            0.5
+        } else {
+            0.0
+        };
+        formation
+            .attention_broker
+            .observe(member.agent_id, sample, 0.3);
+
         let report = TickReport {
             agent_id: member.agent_id,
             tick_sequence: tick.sequence,
