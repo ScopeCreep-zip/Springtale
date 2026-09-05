@@ -390,6 +390,10 @@ impl MomentumState {
             }
             MomentumEvent::TickFailure => {
                 self.record_failure();
+                // A failing formation is active, not idle: decay measures
+                // inactivity, and the AGT rule is only that idle time
+                // cannot raise the score. Counters are unchanged by this.
+                self.record_activity();
             }
             MomentumEvent::IntentChanged(_new_intent) => {
                 self.consecutive_successes = 0;
@@ -520,9 +524,12 @@ mod tests {
             state.record_success();
         }
         assert_eq!(state.tier, MomentumTier::Warming);
-        state.record_failure();
+        state.last_activity = Instant::now() - std::time::Duration::from_secs(5);
+        state.apply_event(&MomentumEvent::TickFailure);
         assert_eq!(state.consecutive_successes, 0);
         assert_eq!(state.tier, MomentumTier::Cold);
+        // Failure is activity: the decay clock is refreshed.
+        assert!(state.last_activity.elapsed() < std::time::Duration::from_secs(1));
     }
 
     #[test]

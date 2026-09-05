@@ -117,8 +117,9 @@ pub struct FormationInfo {
     /// Consecutive successful ticks in the current run. Enables UI
     /// progress bars of the form "5/8 to Hot".
     pub momentum_consecutive_successes: i64,
-    /// Interference count accumulated in the current tier. Non-zero
-    /// blocks promotion; see `momentum.rs`.
+    /// Lifetime interference total (`MomentumState::interference_total`).
+    /// Informational only — a past interference never blocks promotion;
+    /// see `momentum.rs`. Wire name kept for the IPC/TS types.
     pub momentum_interference_count: i64,
     /// How many more consecutive successes (at zero interference) are
     /// required to promote to the next tier. `None` at `Fever` (top).
