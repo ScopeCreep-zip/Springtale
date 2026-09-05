@@ -28,6 +28,7 @@
 
 mod agent_pipeline;
 mod executor;
+mod fold_interference;
 mod state_drain;
 
 use springtale_cooperation::cadence::Tick;
@@ -72,12 +73,16 @@ pub async fn run(
         .last_tick_write_count
         .min(snapshot.write_log.len());
     let action_records = tick_processor::action_records_from_writes(&snapshot.write_log[cursor..]);
-    let result = tick_processor::process_tick_with_context(
+    let mut result = tick_processor::process_tick_with_context(
         member_reports,
         action_records,
         &snapshot.write_log[..cursor],
     );
     formation.last_tick_write_count = snapshot.write_log.len();
+
+    // 5b. Fold write-log interference back into the reports so awareness
+    // and the mental model see it on the report they store (plan §1.10).
+    fold_interference::run(&mut result);
 
     // 6. Rally supervisor drain.
     let drained = springtale_cooperation::rally::supervise::drain(&mut formation.rally);
