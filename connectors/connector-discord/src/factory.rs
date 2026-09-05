@@ -1,7 +1,7 @@
 use springtale_connector::Connector;
 use springtale_connector::error::ConnectorError;
 use springtale_connector::factory::{ConnectorFactory, FactoryEntry, FormField, PlatformForm};
-use springtale_connector::manifest::types::{ActionDecl, TriggerDecl};
+use springtale_connector::manifest::types::{ActionDecl, ConnectorManifest, TriggerDecl};
 
 struct DiscordFactory;
 
@@ -40,6 +40,12 @@ impl ConnectorFactory for DiscordFactory {
     }
     fn config_key(&self) -> &'static str {
         "discord"
+    }
+    fn manifest(&self) -> ConnectorManifest {
+        crate::connector::build_manifest(
+            &crate::triggers::trigger_declarations(),
+            &crate::actions::action_declarations(),
+        )
     }
     fn trigger_declarations(&self) -> Vec<TriggerDecl> {
         crate::triggers::trigger_declarations()

@@ -1,7 +1,7 @@
 use springtale_connector::Connector;
 use springtale_connector::error::ConnectorError;
 use springtale_connector::factory::{ConnectorFactory, FactoryEntry};
-use springtale_connector::manifest::types::ActionDecl;
+use springtale_connector::manifest::types::{ActionDecl, ConnectorManifest};
 
 struct ShellFactory;
 
@@ -12,6 +12,9 @@ impl ConnectorFactory for ShellFactory {
     }
     fn config_key(&self) -> &'static str {
         "shell"
+    }
+    fn manifest(&self) -> ConnectorManifest {
+        crate::connector::build_manifest(&crate::actions::action_declarations())
     }
     fn requires_config(&self) -> bool {
         false

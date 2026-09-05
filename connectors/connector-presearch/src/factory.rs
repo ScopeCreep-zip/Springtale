@@ -1,7 +1,7 @@
 use springtale_connector::Connector;
 use springtale_connector::error::ConnectorError;
 use springtale_connector::factory::{ConnectorFactory, FactoryEntry};
-use springtale_connector::manifest::types::ActionDecl;
+use springtale_connector::manifest::types::{ActionDecl, ConnectorManifest};
 
 struct PresearchFactory;
 
@@ -12,6 +12,10 @@ impl ConnectorFactory for PresearchFactory {
     }
     fn config_key(&self) -> &'static str {
         "presearch"
+    }
+    // Config-derived capabilities (allow-list) are omitted: the factory has no config.
+    fn manifest(&self) -> ConnectorManifest {
+        crate::connector::build_manifest(Vec::new(), &crate::actions::action_declarations())
     }
     fn action_declarations(&self) -> Vec<ActionDecl> {
         crate::actions::action_declarations()

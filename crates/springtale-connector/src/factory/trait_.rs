@@ -1,6 +1,6 @@
 use crate::Connector;
 use crate::error::ConnectorError;
-use crate::manifest::types::{ActionDecl, TriggerDecl};
+use crate::manifest::types::{ActionDecl, ConnectorManifest, TriggerDecl};
 
 /// Factory for creating connector instances from configuration.
 ///
@@ -64,6 +64,10 @@ pub trait ConnectorFactory: Send + Sync + 'static {
     fn action_declarations(&self) -> Vec<ActionDecl> {
         Vec::new()
     }
+
+    /// The connector's static manifest, identical to what `Connector::manifest()`
+    /// returns for an instance. Does not instantiate anything.
+    fn manifest(&self) -> ConnectorManifest;
 
     /// First-run onboarding form declaration. Platform connectors
     /// (telegram, discord, slack, signal) override to return

@@ -29,7 +29,7 @@ impl PresearchConnector {
     /// Create a new Presearch connector from config.
     pub fn new(config: PresearchConfig) -> Result<Self, crate::error::PresearchError> {
         let action_decls = actions::action_declarations();
-        let manifest = build_manifest(&config, &action_decls);
+        let manifest = build_manifest(config_capabilities(&config), &action_decls);
         let cache = ResultCache::new(config.cache_ttl());
         let client = PresearchClient::new(&config)?;
 
@@ -89,13 +89,20 @@ impl Connector for PresearchConnector {
     }
 }
 
-fn build_manifest(config: &PresearchConfig, actions: &[ActionDecl]) -> ConnectorManifest {
-    let capabilities = config
+fn config_capabilities(config: &PresearchConfig) -> Vec<Capability> {
+    config
         .all_network_hosts()
         .into_iter()
         .map(|host| Capability::NetworkOutbound { host })
-        .collect();
+        .collect()
+}
 
+/// Build the connector's manifest. The factory calls this with no config-derived
+/// parts so the manifest is available without instantiating the connector.
+pub(crate) fn build_manifest(
+    capabilities: Vec<Capability>,
+    actions: &[ActionDecl],
+) -> ConnectorManifest {
     ConnectorManifest {
         name: "connector-presearch".to_owned(),
         version: env!("CARGO_PKG_VERSION").to_owned(),
