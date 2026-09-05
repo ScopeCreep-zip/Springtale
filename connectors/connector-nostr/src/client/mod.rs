@@ -127,6 +127,28 @@ impl NostrClient {
     }
 }
 
+/// Build the NIP-17 rumor (kind 14, `p`-tagged to `recipient`) for `content`
+/// and gift-wrap it twice: `[to_recipient, to_self]`. Both wraps carry the
+/// same rumor; only the NIP-44 seal recipient differs.
+fn build_dm_gift_wraps(
+    keys: &Keys,
+    recipient: PublicKey,
+    content: &str,
+) -> Result<[Event; 2], NostrError> {
+    let rumor = EventBuilder::new(Kind::PrivateDirectMessage, content)
+        .tag(Tag::public_key(recipient))
+        .finalize_unsigned(keys.public_key());
+    let seal = |receiver: PublicKey, what: &str| {
+        GiftWrapBuilder::new(receiver, rumor.clone())
+            .finalize(keys)
+            .map_err(|e| NostrError::EncryptionError(format!("failed to seal DM {what}: {e}")))
+    };
+    Ok([
+        seal(recipient, "for recipient")?,
+        seal(keys.public_key(), "self-copy")?,
+    ])
+}
+
 #[async_trait]
 impl NostrApi for NostrClient {
     async fn publish_note(&self, content: &str) -> Result<String, NostrError> {
@@ -143,13 +165,15 @@ impl NostrApi for NostrClient {
             .map_err(|e| NostrError::InvalidInput(format!("invalid pubkey: {e}")))?;
 
         // NIP-17 private DM: the rumor is sealed with NIP-44 and gift-wrapped
-        // (NIP-59) for the recipient. NIP-04 is deprecated and never used.
-        // The config.dm_encryption field documents this choice but doesn't
-        // change behavior: NIP-44 is always used per spec requirement.
-        let event = PrivateDirectMessageBuilder::new(pubkey, content)
-            .finalize(&self.keys)
-            .map_err(|e| NostrError::EncryptionError(format!("failed to seal DM: {e}")))?;
-        self.broadcast(&event, "send DM").await
+        // (NIP-59) once for the recipient and once for the bot itself, so the
+        // bot's other clients see the outgoing side of the conversation
+        // (matches nostr-sdk 0.44's send_private_msg). NIP-04 is deprecated
+        // and never used. The config.dm_encryption field documents this
+        // choice but doesn't change behavior: NIP-44 is always used per spec.
+        let [to_recipient, to_self] = build_dm_gift_wraps(&self.keys, pubkey, content)?;
+        let event_id = self.broadcast(&to_recipient, "send DM").await?;
+        self.broadcast(&to_self, "send DM self-copy").await?;
+        Ok(event_id)
     }
 
     async fn react(&self, event_id: &str, reaction: &str) -> Result<String, NostrError> {
@@ -199,6 +223,42 @@ impl NostrApi for NostrClient {
             })
             .collect();
         Ok(out)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_dm_gift_wraps_seals_same_rumor_to_recipient_and_self()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let sender = Keys::generate();
+        let recipient = Keys::generate();
+
+        let [to_recipient, to_self] = build_dm_gift_wraps(&sender, recipient.public_key(), "hi")?;
+
+        assert_eq!(to_recipient.kind, Kind::GiftWrap);
+        assert_eq!(to_self.kind, Kind::GiftWrap);
+        assert_ne!(to_recipient.id, to_self.id);
+
+        // The recipient can open only their copy; the sender opens the self-copy.
+        assert!(UnwrappedGift::from_gift_wrap(&recipient, &to_self).is_err());
+        let theirs = UnwrappedGift::from_gift_wrap(&recipient, &to_recipient)?;
+        let mine = UnwrappedGift::from_gift_wrap(&sender, &to_self)?;
+
+        for gift in [&theirs, &mine] {
+            assert_eq!(gift.sender, sender.public_key());
+            assert_eq!(gift.rumor.kind, Kind::PrivateDirectMessage);
+            assert_eq!(gift.rumor.content, "hi");
+            assert!(
+                gift.rumor
+                    .tags
+                    .public_keys()
+                    .any(|pk| pk == recipient.public_key())
+            );
+        }
+        Ok(())
     }
 }
 
