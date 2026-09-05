@@ -419,6 +419,21 @@ fn substitute_template(s: &str, inputs: &RecipeInputs) -> String {
                 && !id.contains('.')
                 && let Some(v) = inputs.get(id)
             {
+                // A quoted placeholder that is the whole value (`"${id}"`)
+                // takes the input's own type: a number or boolean is
+                // emitted bare so the TOML value is typed, mirroring the
+                // rule engine's whole-string substitution at fire time.
+                // Strings stay quoted; every other position is textual.
+                let whole_quoted = i > 0
+                    && bytes[i - 1] == b'"'
+                    && bytes.get(i + end + 3) == Some(&b'"')
+                    && matches!(v, Value::Number(_) | Value::Bool(_));
+                if whole_quoted {
+                    out.pop();
+                    out.push_str(&json_to_display_string(v));
+                    i += end + 4;
+                    continue;
+                }
                 out.push_str(&json_to_display_string(v));
                 i += end + 3;
                 continue;
@@ -433,6 +448,27 @@ fn substitute_template(s: &str, inputs: &RecipeInputs) -> String {
         i += 1;
     }
     out
+}
+
+#[cfg(test)]
+mod typed_substitution_tests {
+    use super::*;
+
+    #[test]
+    fn whole_quoted_number_and_bool_become_bare_values() {
+        let mut inputs = RecipeInputs::empty();
+        inputs.insert(String::from("ttl"), serde_json::json!(60));
+        inputs.insert(String::from("on"), serde_json::json!(true));
+        inputs.insert(String::from("name"), serde_json::json!("x"));
+        let toml = substitute_template(
+            "seconds = \"${ttl}\"\nflag = \"${on}\"\nlabel = \"${name}\"\ntext = \"ttl=${ttl}\"\n",
+            &inputs,
+        );
+        assert_eq!(
+            toml,
+            "seconds = 60\nflag = true\nlabel = \"x\"\ntext = \"ttl=60\"\n"
+        );
+    }
 }
 
 fn json_to_display_string(value: &Value) -> String {

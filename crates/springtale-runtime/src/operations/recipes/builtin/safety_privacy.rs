@@ -932,7 +932,7 @@ action = "set_disappearing_timer"
 
 [actions.params]
 recipient = "${target_thread}"
-expires_in_seconds = ${ttl_seconds}
+expires_in_seconds = "${ttl_seconds}"
 "#
                 .into(),
             }],
