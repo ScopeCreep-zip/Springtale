@@ -188,7 +188,7 @@ their views of each other.
 
 ## Onboarding flow
 
-First-run experience: vault setup, passphrase, optional connector
+First-run experience: vault creation, passphrase, optional connector
 pairing.
 
 *Placeholder for: docs/logo/screenshots/onboarding-1-passphrase.png*

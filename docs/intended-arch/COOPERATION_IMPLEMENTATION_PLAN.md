@@ -95,7 +95,7 @@ Non-negotiable. Every design decision below passes all ten.
 6. **Secrets are never typed twice.** `springtale secret set telegram.token` reads from stdin once, stores in vault, agents reference by name.
 7. **Panic wipe is always one keystroke.** `Ctrl+Alt+P` wipes everything. Trust depends on this being reliable.
 8. **Capabilities are obvious before load.** Before loading a connector, the user sees exactly what it can do, with color-coded trust signals.
-9. **Observability is free.** Every bot gets tracing out of the box. `springtale logs <bot>` just works; no config.
+9. **Observability is free.** Every bot gets tracing out of the box. `springtale trace` just works; no config.
 10. **Progressive disclosure.** 3 beginner commands, 15 intermediate, 50 advanced. Never force a new user to learn the full surface.
 
 ---
@@ -1093,7 +1093,7 @@ Each week ends with something that compiles, runs, and demo's. No week is "infra
 
 **Week 9 — OpenClaw parity + UX polish**
 - `springtale init <template>` template generator with ≥10 starters (see §8)
-- `springtale logs`, `springtale trace`, `springtale inspect` CLI commands
+- `springtale trace`, `springtale inspect` CLI commands
 - Error ID system: every `CooperationError` variant has a stable ID (`COOP-001` through `COOP-0NN`); `springtale fix <id>` runs a remediation flow
 - Capability preview before connector load with color-coded trust (red/yellow/green)
 - First-run tutorial: `springtale tutorial` walks through CLI runner → LLM swarm → Telegram bot in 15 minutes

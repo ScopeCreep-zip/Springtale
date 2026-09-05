@@ -106,11 +106,16 @@ ceiling per cooperating group. The stricter layer always wins.
 
 The formation detail card on the colony canvas shows the current
 pacing phase (with a CSS class per phase — Peak gets the yellow glow),
-and `PacingPhaseChanged` events stream over `GET /cooperation/events`:
+and `PacingPhaseChanged` events arrive as `cooperation` frames on the
+multiplexed SSE stream (one-time ticket, never a token in the URL):
 
 ```bash
-curl -N "http://127.0.0.1:8080/cooperation/events?token=$TOKEN&formation_id=$FID"
+TICKET=$(curl -s -X POST "http://127.0.0.1:8080/stream/ticket" \
+  -H "Authorization: Bearer $TOKEN" | jq -r .ticket)
+curl -N "http://127.0.0.1:8080/stream?ticket=$TICKET" | grep -A1 "^event: cooperation"
 ```
+
+Filter on `"formation_id":"$FID"` in the frame data.
 
 `tracing` logs carry the same transitions for headless installs.
 

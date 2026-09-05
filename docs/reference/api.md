@@ -7,7 +7,7 @@
 - **Default bind:** `127.0.0.1:8080` (configurable via `[api] bind`)
 - **Transport:** HTTP (use a reverse proxy for remote TLS termination)
 - **Content type:** `application/json`
-- **Live streams:** Server-Sent Events on `/events/stream`, `/canvas/stream`, `/cooperation/events`, and `/chat/stream`
+- **Live streams:** one multiplexed Server-Sent Events endpoint, `GET /stream`, opened with a one-time ticket from `POST /stream/ticket` (see §1)
 
 ```
   Client                       springtaled
@@ -58,7 +58,7 @@ cannot originate a state-changing request.
 curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/connectors
 ```
 
-**SSE fallback.** `EventSource` cannot set custom headers, so `/events/stream` and `/canvas/stream` accept `?token=...` as a query parameter. This is safe because the daemon binds loopback only; the token is already tied to the passphrase.
+**SSE authentication.** `EventSource` cannot set custom headers, and the bearer token is never put in a URL. The client calls `POST /stream/ticket` (bearer-authenticated) for a one-time ticket valid for 30 seconds, then opens the single multiplexed `GET /stream` with it. A ticket is consumed on first use and expires unused.
 
 ---
 
@@ -150,7 +150,7 @@ Formations are cooperating groups of agents with a shared intent. See [`docs/gui
 | POST | `/formations/{id}/cycle-intent` | Cycle to the next intent template |
 | POST | `/formations/{id}/cycle-autonomy` | Cycle autonomy level of all members (observe → suggest → approve → autonomous → observe) |
 | POST | `/formations/{id}/toggle-guard` | Toggle the formation guard rails |
-| GET | `/cooperation/events` | SSE stream of formation lifecycle, momentum transitions, rally events, and interference events. Accepts `?token=...` and optional `?formation_id=...` filter. The dashboard's live cooperation overlay consumes this. |
+| GET | `/cooperation/events` | SSE stream of formation lifecycle, momentum transitions, rally events, and interference events. Carried on the multiplexed `GET /stream` (ticket from `POST /stream/ticket`); optional `?formation_id=...` filter. The dashboard's live cooperation overlay consumes this. |
 
 ### 3.5 Agents
 
@@ -171,7 +171,7 @@ The colony canvas is a live pixel-art visualisation of connectors, rules, agents
 |---|---|---|
 | GET | `/canvas` | Full canvas state (nodes + edges) |
 | GET | `/canvas/connections` | Just the edge metadata |
-| GET | `/canvas/stream` | SSE stream of canvas updates. Accepts `?token=...` |
+| GET | `/canvas/stream` | SSE stream of canvas updates. Carried on the multiplexed `GET /stream`; ticket from `POST /stream/ticket` |
 
 > **Note:** there is no `POST /canvas/update` HTTP endpoint. Canvas layout
 > changes (drag, reposition, re-wire) happen in the Tauri desktop via the
@@ -183,7 +183,7 @@ The colony canvas is a live pixel-art visualisation of connectors, rules, agents
 | Method | Path | Query params | Description |
 |---|---|---|---|
 | GET | `/events` | `limit`, `offset`, `connector` | Paginated event log |
-| GET | `/events/stream` | `?token=...` | SSE stream of new events |
+| GET | `/events/stream` | ticket | SSE stream of new events, carried on the multiplexed `GET /stream` |
 
 ### 3.8 Configuration
 
@@ -350,7 +350,7 @@ surface through the §3.18 endpoints.
   │   6. RateLimitLayer                100 req/s (configurable)    │
   │   7. TimeoutLayer                  30 s per request → 503      │
   │                                                                │
-  │   require_auth middleware          Bearer header or ?token=    │
+  │   require_auth middleware          Bearer header or stream ticket │
   │   ValidatedPath extractor          path segments ≤ 256 bytes   │
   │                                                                │
   └────────────────────────────────────────────────────────────────┘

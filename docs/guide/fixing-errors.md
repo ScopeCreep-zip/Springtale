@@ -101,7 +101,7 @@ Causes:
     cart threshold).
 Suggestions:
   1. The formation will escalate to orchestrator intervention.
-  2. Check `springtale logs` for the cascade reason.
+  2. Check `springtale trace` for the cascade reason.
 Auto-fix: none for this error.
 ```
 
@@ -112,8 +112,9 @@ useful to say, two fallbacks:
 
 - **`springtale doctor`** runs full diagnostics (store integrity,
   connector reachability, vault key presence, daemon liveness).
-- **`springtale logs`** streams the audit trail. Every action the
-  daemon takes is logged with the connector, rule, and duration.
+- **`springtale trace`** streams live execution — every trigger, action
+  dispatch, and sentinel verdict with the connector, rule, and duration.
+  `springtale events` lists what already happened.
 
 Both are read-only and safe to run on a live bot.
 
@@ -123,7 +124,7 @@ If you hit an error with no corresponding guide, file an issue at
 `https://github.com/anthropics/springtale/issues` with:
 
 - The exact error ID.
-- The last 200 lines of `springtale logs`.
+- The last 200 lines of `springtale trace` (or `springtale events --limit 200`).
 - What you were doing when it fired.
 
 We add new guides to `crates/springtale-runtime/src/operations/error_fixes.rs`

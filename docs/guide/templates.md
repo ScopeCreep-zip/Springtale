@@ -68,7 +68,8 @@ cron-runner-<timestamp>/
 
 Other templates add connector-specific stubs (see the table above for
 what each ships). No template ships secrets — every credential goes
-through the vault via `springtale vault set <name>`, never the TOML.
+through the connector setup flow (the connector's card in the dashboard,
+or the connector setup API) into the vault, never the TOML.
 
 ## AI adapters are optional
 

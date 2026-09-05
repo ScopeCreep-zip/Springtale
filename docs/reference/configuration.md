@@ -19,9 +19,7 @@ A minimal config is **empty** — every section has safe defaults. You only writ
   │     └── [transport.http]  listen_addr, tls_*         ─── §5.1
   ├── [api]                bind, rate_limit_per_sec     ─── §6
   │
-  ├── [ai_ollama]                                       ─── §7.1 ┐
-  ├── [ai_openai]                                       ─── §7.2 ├─ optional
-  ├── [ai_anthropic]                                    ─── §7.3 ┘  AI adapters
+  │   (AI adapters are not TOML — per colony/formation/agent, §7)
   │
   ├── [bot]                context_window, vault_timeout_secs  ─── §8
   │     └── [bot.persona]  name, tone, prefix          ─── §8.1
@@ -58,8 +56,9 @@ A minimal config is **empty** — every section has safe defaults. You only writ
 |---|---|---|---|
 | `path` | `PathBuf` | `~/.local/share/springtale/springtale.db` | SQLite database file path. Validated as a safe path. |
 | `ephemeral` | `bool` | `false` | In-memory backend. Lost on exit. Equivalent to the top-level `ephemeral` for just the store. |
-| `encryption_key_hex` | `Option<String>` | `None` | Hex-encoded 32-byte key for SQLite encryption at rest via SQLite3MultipleCiphers (ChaCha20-Poly1305). Normally derived from the vault passphrase during boot — setting this manually bypasses derivation. |
 | `retention_days` | `Option<u32>` | `None` | Purge events and audit logs older than N days. Hourly background task; `None` keeps forever. |
+
+The store is always encrypted at rest (SQLite3MultipleCiphers, ChaCha20-Poly1305) with a key derived from the vault passphrase at boot. There is no plaintext mode and no key field in the TOML. Opening a database never wipes it: a file whose `user_version` is newer than or unknown to the binary is refused untouched.
 
 ---
 
@@ -94,38 +93,44 @@ A minimal config is **empty** — every section has safe defaults. You only writ
 
 ## 7. AI Adapters
 
-All three are optional. If absent, `NoopAdapter` is used (the platform works fully without AI). Multiple may be configured — the active one is selected at runtime via `POST /config/ai` and can be hot-swapped.
+AI adapters are **not** configured in the TOML — there are no `[ai_*]` sections. An adapter is set per level: the whole colony, one formation, or one agent (rule). Three surfaces write the same setting:
 
-### 7.1 `[ai_ollama]`
+- the dashboard (colony settings, formation detail, or agent detail);
+- the API: `POST /config/ai/configure` with `{ "target": { "scope": … }, "config": … }`;
+- the CLI: `springtale config ai set --scope <colony|formation <id>|agent <rule-id>> --type <noop|ollama|openai|anthropic> [--model] [--base-url] [--api-key-stdin]`, and `springtale config ai get --scope …` to read it back.
+
+Where nothing is configured, `NoopAdapter` is used — the platform works fully without AI.
+
+### 7.1 `ollama`
 
 Local models via Ollama. Nothing leaves the device.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `base_url` | `String` | `"http://127.0.0.1:11434"` | Ollama HTTP endpoint |
-| `model` | `String` | `"llama3.2"` | Model name, e.g. `"llama3.2"`, `"llama3.1:8b"` |
+| Setting | Default | Description |
+|---|---|---|
+| base URL | `"http://127.0.0.1:11434"` | Ollama HTTP endpoint |
+| model | `"llama3.2"` | Model name, e.g. `"llama3.2"`, `"llama3.1:8b"` |
 
-### 7.2 `[ai_openai]`
+### 7.2 `openai`
 
 Any OpenAI-compatible endpoint (OpenAI, Gemini, DeepSeek, llama.cpp, vLLM).
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `base_url` | `String` | (required) | Base URL ending before `/chat/completions` |
-| `api_key` | `Secret<String>` | (required) | API key — stored encrypted in the vault, never serialized |
-| `model` | `String` | (required) | Model name |
+| Setting | Default | Description |
+|---|---|---|
+| base URL | (required) | Base URL ending before `/chat/completions` |
+| API key | (required) | `Secret<String>` — stored encrypted in the vault, never serialized; `--api-key-stdin` on the CLI |
+| model | (required) | Model name |
 
 SSE streaming is fully supported. Tool calling routes through `complete_with_tools()` (non-streaming) since argument JSON must be complete before tool execution — the streaming path returns text deltas and final `finish_reason`.
 
-### 7.3 `[ai_anthropic]`
+### 7.3 `anthropic`
 
 Anthropic Claude API.
 
-| Key | Type | Default | Description |
-|---|---|---|---|
-| `api_key` | `Secret<String>` | (required) | API key |
-| `model` | `String` | `"claude-sonnet-4-20250514"` | Model name |
-| `base_url` | `String` | `"https://api.anthropic.com"` | API base URL |
+| Setting | Default | Description |
+|---|---|---|
+| API key | (required) | `Secret<String>`, vault-stored |
+| model | `"claude-sonnet-4-20250514"` | Model name |
+| base URL | `"https://api.anthropic.com"` | API base URL |
 
 Full SSE streaming.
 
@@ -393,10 +398,6 @@ heartbeat_interval_secs = 1800
 [api]
 bind = "127.0.0.1:8080"
 rate_limit_per_sec = 100
-
-[ai_ollama]
-base_url = "http://127.0.0.1:11434"
-model = "llama3.1:8b"
 
 [telegram]
 bot_token = "123456:ABC-..."

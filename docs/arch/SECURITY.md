@@ -269,7 +269,7 @@ Request:  Authorization: Bearer <hex(token)>                              hex to
 
 - 32 B token, hex-encoded.
 - Comparison uses `subtle::ConstantTimeEq` — timing-attack resistant.
-- **SSE fallback**: `EventSource` cannot set custom headers, so `/events/stream` and `/canvas/stream` accept `?token=...`. Safe because the daemon binds `127.0.0.1:8080` by default.
+- **SSE tickets**: `EventSource` cannot set custom headers, and the token never goes in a URL. `POST /stream/ticket` (bearer-authenticated) returns `{ "ticket": "<64 hex chars>", "ttl_secs": 30 }`; the client opens the single multiplexed `GET /stream?ticket=…` with it. Tickets are single-use and expire after 30 seconds.
 - There is no separate API key. Rotating the API token requires rotating the vault passphrase.
 
 ### 7.2 Middleware stack
@@ -295,14 +295,14 @@ In outside-in composition order (`api/mod.rs`):
   ├──────────────────────────────────────────────────────┤
   │ 7. TimeoutLayer               30 s → 503             │
   ├──────────────────────────────────────────────────────┤
-  │    require_auth               Bearer / ?token=       │
+  │    require_auth               Bearer / stream ticket │
   │    ValidatedPath              segments ≤ 256 bytes   │
   └──────────────────────┬───────────────────────────────┘
                          ▼
                       handler
 ```
 
-*Fig. 3. Middleware stack. Applied to every route; SSE endpoints also honour `?token=` as an auth fallback.*
+*Fig. 3. Middleware stack. Applied to every route; SSE endpoints authenticate with a one-time ticket from `POST /stream/ticket` instead of the bearer header.*
 
 Webhook routes (`/webhook/{connector}/{trigger}`) go through the same `require_auth` layer as every other authenticated endpoint. The per-connector `Connector::verify_webhook()` method additionally checks a per-sender signature (HMAC-SHA256, RSA, etc.) on the body.
 

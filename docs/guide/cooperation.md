@@ -96,8 +96,10 @@ A formation's coherence is tracked as a four-tier state machine:
 | Fever | AI orchestration. Orchestrator decomposes intent into sub-tasks. |
 
 Tier transitions are driven by consecutive successes and interference
-events. Inactivity decays the tier back toward Cold. Momentum is persisted
-to the `formation_momentum` table every tick.
+events. An idle tick does not count as a success. An interference resets
+the combo and the formation climbs again from there. Inactivity decays
+the tier one step per decay interval. Momentum is persisted to the
+`formation_momentum` table every tick and survives a daemon restart.
 
 ## 4. Rally, recovery, supervision
 
@@ -162,11 +164,14 @@ per-agent:
 | Observe | Never acts. Posts observations for a human operator. |
 | Suggest | Proposes claims but does not act on them. |
 | Approve | Claims tasks and executes after approval. |
-| Autonomous | Claims and executes without approval. |
+| Autonomous | Claims and executes without approval. Default for a rule or member with no explicit setting. |
 
 The agent loop's `decide_agent_tick` function gates the action path on the
-configured autonomy level. Change autonomy via `POST
-/agents/{name}/autonomy` or via the bottom panel in the colony canvas.
+configured autonomy level. Autonomy is keyed by rule id, or set for a
+whole formation (`POST /formations/{id}/cycle-autonomy`) — never by
+name. Change it from the bottom panel in the colony canvas or with
+`springtale agent set-autonomy <rule> <level>` (a rule name or id; the
+CLI resolves a name to its id).
 
 ## 9. Tool calls
 

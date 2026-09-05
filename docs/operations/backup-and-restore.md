@@ -78,7 +78,11 @@ What it does:
 2. Prompts for the passphrase used at backup time.
 3. Decrypts the archive, verifies integrity, writes the directory.
 4. Runs schema-apply to bring the database forward if the binary is
-   newer than when the backup was taken.
+   newer than when the backup was taken. Opening a database never wipes
+   it: if the backup's schema (`user_version`) is newer than, or unknown
+   to, the binary, the open is refused and the file is left untouched —
+   upgrade the binary and retry. The current schema is version 1
+   (pre-launch reset).
 
 ## The other right way: cold copy
 

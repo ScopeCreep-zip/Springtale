@@ -15,10 +15,12 @@
      ├── trace [--connector --rule]   real-time execution trace
      ├── panic                        emergency wipe (no confirm)
      │
-     ├── connector { list, install PATH, enable NAME, disable NAME, remove NAME }
+     ├── connector { list, install PATH, sign PATH, enable NAME, disable NAME, remove NAME }
+     ├── author    { add [NAME] [PUBKEY] --self, list, remove NAME }
      ├── rule      { list, add FILE, toggle ID, run ID, update ID FILE, delete ID }
      ├── events    [--limit N --connector NAME]
-     ├── agent     set-autonomy NAME LEVEL
+     ├── agent     set-autonomy RULE LEVEL
+     ├── config    ai { get --scope, set --scope --type }
      │
      ├── vault     duress-setup
      ├── crypto    rotate-vault-key
@@ -29,13 +31,20 @@
      └── data      { export [--output --encrypt], import --input, purge }
 ```
 
-*Fig. 1. CLI surface at a glance. `--json` is a global flag on every subcommand.*
+*Fig. 1. CLI surface at a glance. `--json`, `--passphrase-file`, and `--passphrase-command` are global flags on every subcommand.*
 
 ## 1. Global Options
 
 | Flag | Description |
 |---|---|
 | `--json` | Output as JSON instead of formatted tables |
+| `--passphrase-file <path>` | Read the vault passphrase from a file. The file must be mode `0600`; anything more permissive is refused. |
+| `--passphrase-command <cmd>` | Run `<cmd>` and use its stdout as the vault passphrase (for OS keychains, `pass`, secret managers). |
+
+The store is always encrypted, so every store-backed command (connector, rule,
+events, agent, author, config, memory, data, …) plus `doctor` and `fix` needs
+the vault passphrase. With neither flag set the CLI prompts interactively on the
+terminal. The passphrase never goes through argv or the environment.
 
 ---
 
@@ -193,6 +202,53 @@ $ springtale connector remove connector-github
 Removed: connector-github
 ```
 
+### 4.4 `connector sign <manifest-path>`
+
+Sign a connector manifest with the local vault identity. Manifest signatures are
+required — `connector install` rejects an unsigned manifest or one signed by an
+author that is not registered (see §4.5). Run `author add --self` once so your
+own key is trusted, then sign every manifest you build.
+
+```
+$ springtale connector sign ./connector-kick.toml
+Signed: ./connector-kick.toml (author: local)
+```
+
+---
+
+## 4.5. `springtale author`
+
+Trusted authors are the Ed25519 public keys a manifest signature may come from.
+
+### 4.5.1 `author add [name] [pubkey] --self`
+
+Register a trusted author. With `--self`, registers the local vault identity —
+the key `connector sign` uses — under `name` (default `local`). Without
+`--self`, `name` and `pubkey` are both required and register a third-party key.
+
+```
+$ springtale author add --self
+Added author: local
+
+$ springtale author add alice <ed25519-public-key>
+Added author: alice
+```
+
+### 4.5.2 `author list`
+
+```
+$ springtale author list
+┌───────┬──────────────────────────────────────────────┐
+│ NAME  │ PUBLIC KEY                                   │
+├───────┼──────────────────────────────────────────────┤
+│ local │ …                                            │
+└───────┴──────────────────────────────────────────────┘
+```
+
+### 4.5.3 `author remove <name>`
+
+Manifests signed by a removed author fail verification on the next load.
+
 ---
 
 ## 5. `springtale rule`
@@ -270,9 +326,11 @@ $ springtale events --limit 10 --connector connector-kick
 
 ## 7. `springtale agent`
 
-### 7.1 `agent set-autonomy <name> <level>`
+### 7.1 `agent set-autonomy <rule> <level>`
 
+`<rule>` is a rule name or a rule id; the level is stored against the rule id.
 Autonomy levels: `observe`, `suggest`, `act-with-approval`, `act-autonomously`.
+A rule with no explicit setting runs at `act-autonomously`.
 
 ```
 $ springtale agent set-autonomy watcher observe
@@ -420,6 +478,36 @@ If the input was produced with `data export --encrypt`, decrypt first or use `sp
 ### 13.3 `data purge`
 
 Delete all user data (rules, events, memory, formations) without touching the vault.
+
+---
+
+## 14. `springtale config`
+
+### 14.1 `config ai get --scope <scope>`
+
+Show the AI adapter configured at one level. `--scope` is `colony`,
+`formation <id>`, or `agent <rule-id>`. AI is per level — there is no global
+adapter and no `[ai_*]` TOML section; the same settings are reachable from the
+dashboard and `POST /config/ai/configure`.
+
+```
+$ springtale config ai get --scope agent 7c1e…
+type: ollama
+model: llama3.1:8b
+base_url: http://127.0.0.1:11434
+```
+
+### 14.2 `config ai set --scope <scope> --type <type> [--model] [--base-url] [--api-key-stdin]`
+
+`--type` is `noop`, `ollama`, `openai`, or `anthropic`. `--api-key-stdin` reads
+the API key from stdin (never argv) and stores it in the vault.
+
+```
+$ springtale config ai set --scope colony --type ollama --model llama3.1:8b
+AI adapter (colony): ollama / llama3.1:8b
+
+$ springtale config ai set --scope formation 3 --type anthropic --model claude-sonnet-4-6 --api-key-stdin < key.txt
+```
 
 ---
 

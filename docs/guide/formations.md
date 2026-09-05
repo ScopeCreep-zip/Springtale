@@ -74,8 +74,11 @@ Formations start at `Cold`. Successful cooperation drives the tier up:
 | Hot | ≥8 successful ticks, 0 interference | Environment writes + synchronized commit |
 | Fever | ≥15 successful ticks, 0 interference | Consensus + AI orchestration + recruit |
 
+Only ticks that did real work count — an idle tick is not a success.
 Interference (two agents writing the same key, one undoing another's
-work) drops the tier. Idle formations decay.
+work) resets the combo: the tier drops and the formation starts
+climbing again from there. Idle formations decay one step per decay
+interval, not straight to Cold.
 
 The tier isn't a slider you set — it's a consequence of how well the
 formation cooperates.
@@ -134,6 +137,14 @@ Formations dissolve gracefully: `POST /formations/{id}/dissolve`. The
 dissolve runs through the cadence tick loop once more to persist final
 state, then drops. Members that were exclusively in this formation
 become free; members in multiple formations keep running.
+
+## Persistence
+
+Formations persist. Membership, intent, guard state, and momentum are
+written to the store and restored when the daemon restarts — a
+formation only goes away when it is dissolved. Autonomy is keyed by
+rule id (or set for a whole formation), never by name; a member without
+an explicit setting runs at act-autonomously.
 
 ## Worked examples
 
@@ -234,8 +245,9 @@ attention rules.
 
 Every formation has a guard toggle. When guard is **engaged**, the
 formation refuses destructive actions even if the autonomy level would
-otherwise permit them — Dissolve, force-Rally, ChangeIntent, and member
-removal all require the guard to be off first. Guard surfaces in the
+otherwise permit them — dissolve, intent change, member removal, and
+rally are each refused with an error while the guard is on, and nothing
+changes; disengage the guard first. Guard surfaces in the
 canvas as a badge on the formation detail card and is toggled via
 `POST /formations/{id}/toggle-guard`.
 

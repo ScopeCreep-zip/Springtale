@@ -59,7 +59,7 @@ Fifteen first-party connectors ship today. You wire them together with rules —
 | `connector-irc` | IRC | native IRC client, channels, messages |
 | `connector-nostr` | Nostr | NIP-44 relays, notes, encrypted DMs |
 | `connector-signal` | Signal | signal-cli bridge, messages, groups |
-| `connector-browser` | Headless browser | Chromium via WASM, navigate, click, screenshot |
+| `connector-browser` | Headless browser | Chromium over the DevTools protocol (`chromiumoxide`), navigate, click, screenshot |
 
 `connector-matrix` is deferred — `matrix-sdk` pins a `rusqlite` with an open heap-leak CVE; Springtale uses the patched version. We'll ship it once upstream catches up.
 

@@ -50,12 +50,10 @@ prints the full path when it finishes.
 ## Drop your tokens in the vault
 
 The starter TOML contains `YOUR_TOKEN` placeholders on purpose. Don't
-edit the file. Put the real values in the vault:
-
-```bash
-springtale vault set telegram.bot_token
-# (paste token when prompted — stdin only, never argv, never env)
-```
+edit the file. Put the real values in the vault through the connector
+setup flow: open the connector's card in the dashboard (or call the
+connector setup API) and paste the token there. It never goes through
+argv or env.
 
 Every connector the template uses lists the vault keys it needs in a
 comment at the top of `springtale.toml`. The vault keeps tokens at rest
@@ -67,7 +65,7 @@ with authenticated encryption; you never re-type them after this.
 springtale server start
 ```
 
-The daemon boots in ≤5s on a laptop. `springtale logs` streams what
+The daemon boots in ≤5s on a laptop. `springtale trace` streams what
 it's doing. The colony canvas at `http://127.0.0.1:8080/dashboard`
 shows every bot, every tick, live.
 

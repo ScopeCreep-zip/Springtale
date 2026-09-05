@@ -33,41 +33,34 @@ Local-first option (Ollama):
 # Install Ollama, pull a model:
 ollama pull llama3.1:8b
 
-# Tell Springtale to use it:
-cat >> springtale.toml <<'EOF'
-[ai_ollama]
-base_url = "http://127.0.0.1:11434"
-model = "llama3.1:8b"
-EOF
+# Tell Springtale to use it for the whole colony:
+springtale-cli config ai set --scope colony --type ollama \
+  --base-url http://127.0.0.1:11434 --model llama3.1:8b
 ```
 
 Or API option (Anthropic):
 
 ```bash
-springtale-cli vault set anthropic.api_key
-
-cat >> springtale.toml <<'EOF'
-[ai_anthropic]
-model = "claude-sonnet-4-6"
-EOF
+# --api-key-stdin reads the key from stdin — never argv, never env, never TOML
+springtale-cli config ai set --scope colony --type anthropic \
+  --model claude-sonnet-4-6 --api-key-stdin
 ```
 
-Either way, restart `springtaled` so it picks up the new config.
+AI adapters are per level, not global: `--scope formation <id>` or
+`--scope agent <rule-id>` gives one formation or one agent its own
+adapter, and the dashboard exposes the same settings.
 
 Verify:
 
 ```bash
-springtale-cli connector list   # not relevant
-springtale-cli ai status        # shows which adapter is loaded
+springtale-cli config ai get --scope colony   # shows which adapter is configured
 ```
 
 ## Step 2 — Set up the Presearch connector
 
-```bash
-springtale-cli vault set presearch.api_key
-```
-
-API key from [presearch.com](https://presearch.com).
+Paste the API key into the Presearch connector's card in the dashboard
+(or the connector setup API). API key from
+[presearch.com](https://presearch.com).
 
 Verify:
 

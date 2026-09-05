@@ -82,6 +82,11 @@ Each check is a pluggable function in
 | `cron_sane` | Cron expressions parse and the schedule isn't pathological |
 | `host_allowlist` | URLs in `Extract::Css` / browser steps are on the connector's host allow-list |
 
+On top of these, preflight and apply validate every `RunConnector`
+step's `params` against the connector's action schema. A param that is
+a whole `${…}` placeholder is typed by the schema; a wrong field name or
+a nonexistent action is refused before anything is created.
+
 Adding a new check is a Rust patch — see
 [`docs/contributing/extension-points.md`](../contributing/extension-points.md).
 
