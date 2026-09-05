@@ -9,11 +9,29 @@
 //! separate modules avoids accidentally letting tick logic leak into
 //! command-driven mutations.
 
+use crate::cooperation::formation::Formation;
 use crate::cooperation::lifecycle;
 use crate::runtime::lifecycle::Bot;
 use springtale_cooperation::cadence::AgentId;
 use springtale_cooperation::command::FormationCommand;
 use springtale_cooperation::rally::{RallyResult, cascade};
+
+/// Guard-mode veto for destructive/disruptive formation commands (finding
+/// 78, `formations.md`): guard blocks Dissolve, ChangeIntent, RemoveMember,
+/// and Rally even when momentum/autonomy would otherwise allow them.
+/// Mirrors the existing `Recruit` arm's `constraints.guard_mode` check.
+fn guarded(formation: &Formation, verb: &str) -> bool {
+    if formation.constraints.guard_mode {
+        tracing::info!(
+            id = %formation.id.0,
+            verb,
+            "denied — guard mode engaged; run formation:guard first"
+        );
+        true
+    } else {
+        false
+    }
+}
 
 pub async fn handle_formation_command(bot: &mut Bot, cmd: FormationCommand) {
     match cmd {
@@ -47,6 +65,9 @@ pub async fn handle_formation_command(bot: &mut Bot, cmd: FormationCommand) {
             // accumulated conventions / patterns / vocabulary survive the
             // dissolve (`COOPERATION.md §21`).
             if let Some(f) = formations.iter().find(|f| f.id == formation_id) {
+                if guarded(f, "dissolve") {
+                    return;
+                }
                 if let Err(e) = lifecycle::persist_mental_model(f, &bot.store).await {
                     tracing::warn!(
                         id = %formation_id,
@@ -131,6 +152,9 @@ pub async fn handle_formation_command(bot: &mut Bot, cmd: FormationCommand) {
         } => {
             let mut formations = bot.formations.write().await;
             if let Some(formation) = formations.iter_mut().find(|f| f.id == formation_id) {
+                if guarded(formation, "intent") {
+                    return;
+                }
                 crate::orchestrator::intent::apply_intent(formation, intent);
                 tracing::info!(id = %formation_id, "formation intent updated");
             } else {
@@ -278,6 +302,9 @@ pub async fn handle_formation_command(bot: &mut Bot, cmd: FormationCommand) {
         } => {
             let mut formations = bot.formations.write().await;
             if let Some(formation) = formations.iter_mut().find(|f| f.id == formation_id) {
+                if guarded(formation, "remove_member") {
+                    return;
+                }
                 if let Some(agent_id) = formation
                     .members
                     .iter()
@@ -304,6 +331,9 @@ pub async fn handle_formation_command(bot: &mut Bot, cmd: FormationCommand) {
         FormationCommand::Rally { formation_id } => {
             let mut formations = bot.formations.write().await;
             if let Some(formation) = formations.iter_mut().find(|f| f.id == formation_id) {
+                if guarded(formation, "rally") {
+                    return;
+                }
                 // Manual rally — find the lowest-attention agent and rally
                 // around them. Mirrors the cascade-driven path
                 // (`tick_steps/check_cascade.rs`) but is operator-initiated.
