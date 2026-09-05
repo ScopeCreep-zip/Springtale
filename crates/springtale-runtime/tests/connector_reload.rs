@@ -30,6 +30,9 @@ async fn boot() -> RuntimeState {
 #[tokio::test]
 async fn reload_of_installed_connector_succeeds() {
     let state = boot().await;
+    // No-config connectors (filesystem, shell) load at boot; the count must
+    // not grow after a setup-then-reload of one of them.
+    let before = state.registry.read().await.list().len();
 
     let installed = setup_connector(&state, NAME, serde_json::json!({}))
         .await
@@ -47,7 +50,7 @@ async fn reload_of_installed_connector_succeeds() {
     assert!(entry.enabled, "reload preserves the enabled flag");
     assert_eq!(
         registry.list().len(),
-        1,
+        before,
         "reload replaces the entry rather than adding a second one"
     );
 }

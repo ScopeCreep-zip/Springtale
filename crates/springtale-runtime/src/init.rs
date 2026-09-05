@@ -671,18 +671,11 @@ async fn init_registry(
         .filter_map(|(k, _)| k.strip_prefix("connector:").map(|s| s.to_owned()))
         .collect();
 
-    // First run detection: if onboarding hasn't completed yet, don't
-    // auto-load no-config connectors (shell, filesystem). A fresh vault
-    // should land on a blank canvas so the OOBE flow can guide the user.
-    // After onboarding (or if the user explicitly adds connectors), these
-    // will load normally on subsequent boots.
-    let onboarded = _store
-        .get_config("onboarded")
-        .await
-        .ok()
-        .flatten()
-        .map(|v| v.trim_matches('"') == "true")
-        .unwrap_or(false);
+    // No-config connectors (shell, filesystem) auto-load whenever the user
+    // has not explicitly configured or removed them. They are not a privacy
+    // risk on first run: both are fenced by their own capability allow-lists
+    // and go through the sentinel like any other connector action, so
+    // loading them by default does not widen what a fresh vault can do.
 
     for entry in inventory::iter::<FactoryEntry> {
         let factory = entry.factory;
@@ -720,7 +713,7 @@ async fn init_registry(
                     );
                 }
             }
-        } else if !factory.requires_config() && onboarded && !ui_configured_keys.contains(key) {
+        } else if !factory.requires_config() && !ui_configured_keys.contains(key) {
             match factory
                 .create(serde_json::Value::Object(Default::default()))
                 .await
