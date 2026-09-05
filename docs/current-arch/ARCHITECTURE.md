@@ -2330,7 +2330,7 @@ springtale registry migrate --to-dht  # Phase 3: PostgreSQL → Veilid DHT
 | Passphrase in terminal history | Vault passphrase read via `rpassword` crate (no echo, not stored in shell history). Never passed as CLI argument. |
 | `agent set-autonomy` privilege escalation | Autonomy elevation requires vault unlock (passphrase). Cannot elevate above connector's `max_autonomy` from manifest. L3/L4 require explicit `--confirm-autonomous` flag. |
 | Config file injection via `--config` | Custom config paths validated: must be absolute path, must exist, must be owned by current user. Symlinks rejected. |
-| `data export` output unencrypted | `data export` writes to stdout or `--output` file. File created with `0o600` permissions. WARNING emitted if output path is in a shared directory. `--encrypt` flag available to wrap output in vault-encrypted blob. |
+| `data export` output in plaintext | `data export` writes to stdout or `--output` file. File created with `0o600` permissions. WARNING emitted if output path is in a shared directory. `--encrypt` flag available to wrap output in vault-encrypted blob. |
 | `rule add` from untrusted TOML | TOML parsed with strict schema validation. Template variables sanitized (no nested `${}`). `ShellExec` actions in imported rules trigger confirmation prompt. |
 
 **Privacy audit for `springtale-cli`:**

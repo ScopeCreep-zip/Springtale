@@ -35,7 +35,7 @@ Positive:
   fake async wrapping a thread pool.
 - ChaCha20-Poly1305 cipher matches our vault crypto (consistency).
 - `PRAGMA key=…` lets the schema-apply machinery treat encrypted and
-  unencrypted databases identically modulo the key step.
+  plaintext databases identically modulo the key step.
 - Vendoring means no system SQLite dependency at runtime.
 
 Negative:

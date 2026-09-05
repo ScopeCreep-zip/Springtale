@@ -800,8 +800,9 @@ stdin EOF.
 ## 9. HTTP API Surface
 
 Defined in `apps/springtaled/src/api/`. Router built at `api/mod.rs:93`.
-All authenticated routes require `Authorization: Bearer <token>` or
-`?token=` query param (SSE fallback). Middleware stack: rate limit
+All authenticated routes require `Authorization: Bearer <token>`; SSE
+streams take a one-time ticket from `POST /stream/ticket` instead (the
+token never goes in a URL). Middleware stack: rate limit
 (default 100 req/s, `tower::limit::RateLimitLayer`), 1 MiB body cap,
 30 s timeout, CSP headers, `X-Frame-Options: DENY`.
 
@@ -1047,9 +1048,11 @@ tauri/
 - Subscribe methods return `() => void` unsubscribe fns.
 - **Desktop**: `createDesktopProvider()` wraps `invoke()`; real-time via
   Tauri `listen("event-fired")` and `listen("canvas-update")`.
-- **Web**: `createWebProvider()` wraps fetch + `EventSource` on
-  `/events/stream?token=...` and `/canvas/stream?token=...`. Token lives
-  in the query param because `EventSource` cannot set custom headers.
+- **Web**: `createWebProvider()` wraps fetch + `EventSource` on the
+  multiplexed `GET /stream?ticket=...` (`event` / `canvas` /
+  `cooperation` frames). It fetches a single-use 30-second ticket from
+  `POST /stream/ticket` first, because `EventSource` cannot set custom
+  headers and the bearer token never goes in a URL.
 - Rule from `.claude/rules/frontend/solidjs-conventions.md`: components
   never call `invoke()` directly — always through the provider.
 

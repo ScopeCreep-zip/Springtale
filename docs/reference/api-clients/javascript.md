@@ -118,26 +118,42 @@ project or symlink them.
 
 ## SSE streams
 
-Browser:
+The bearer token never goes in a URL. `EventSource` can't set custom
+headers, so first `fetch` a one-time ticket (single-use, expires after
+30 seconds) with the bearer header, then open the stream with it.
+
+```typescript
+async function streamTicket(): Promise<string> {
+  const res = await fetch(`${host}/stream/ticket`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const { ticket } = (await res.json()) as { ticket: string; ttl_secs: number };
+  return ticket; // 64 hex chars
+}
+```
+
+Browser — `GET /stream` is one multiplexed stream; the frame's `event:`
+name (`event`, `canvas`, `cooperation`) says which feed it belongs to:
 
 ```typescript
 const source = new EventSource(
-  `${host}/events/stream?token=${encodeURIComponent(token)}`,
+  `${host}/stream?ticket=${encodeURIComponent(await streamTicket())}`,
 );
 
-source.addEventListener("connector_event", (e) => {
+source.addEventListener("event", (e) => {
   const payload = JSON.parse(e.data);
-  console.log("connector event:", payload);
+  console.log("connector event / rule outcome:", payload);
 });
 
-source.addEventListener("rule_fired", (e) => {
-  const payload = JSON.parse(e.data);
-  console.log("rule fired:", payload);
+source.addEventListener("canvas", (e) => {
+  const delta = JSON.parse(e.data);
+  applyCanvasDelta(delta);
 });
 
 source.onerror = (e) => {
   console.error("SSE error:", e);
-  source.close();
+  source.close(); // reconnecting needs a fresh ticket — they are single-use
 };
 ```
 
@@ -147,26 +163,21 @@ Node (with `eventsource` polyfill):
 import EventSource from "eventsource";
 
 const source = new EventSource(
-  `${host}/events/stream?token=${encodeURIComponent(token)}`,
+  `${host}/stream?ticket=${encodeURIComponent(await streamTicket())}`,
 );
 // ...same handlers as browser...
 ```
 
 ## Watching cooperation events
 
+Cooperation events arrive on the same multiplexed stream as `cooperation`
+frames; filter on `formation_id` client-side:
+
 ```typescript
-const source = new EventSource(
-  `${host}/cooperation/events?token=${encodeURIComponent(token)}&formation_id=research-squad`,
-);
-
-source.addEventListener("momentum_transition", (e) => {
-  const { from, to, formation_id } = JSON.parse(e.data);
-  updateDashboardBar(formation_id, from, to);
-});
-
-source.addEventListener("rally_burned", (e) => {
-  const { formation_id, tokens_remaining } = JSON.parse(e.data);
-  updateRallyPips(formation_id, tokens_remaining);
+source.addEventListener("cooperation", (e) => {
+  const payload = JSON.parse(e.data);
+  if (payload.formation_id !== "research-squad") return;
+  updateCooperationOverlay(payload);
 });
 ```
 
@@ -183,9 +194,10 @@ await fetch(`${host}/chat`, {
   body: JSON.stringify({ text: "what's running right now?" }),
 });
 
-// Stream the bot's replies (default `message` events, no custom name):
+// Stream the bot's replies (default `message` events, no custom name).
+// Same ticket flow — a fresh one per stream:
 const chat = new EventSource(
-  `${host}/chat/stream?token=${encodeURIComponent(token)}`,
+  `${host}/chat/stream?ticket=${encodeURIComponent(await streamTicket())}`,
 );
 chat.onmessage = (e) => {
   const { session, text } = JSON.parse(e.data);

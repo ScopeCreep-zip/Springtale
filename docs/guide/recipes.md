@@ -155,6 +155,7 @@ Substitution rules:
              │                        - all Required filled?
              │                        - all placeholders bound?
              │                        - capabilities available?
+             │                        - RunConnector params match the action schema?
              │                        - any blocking precondition?
              ▼
    POST /recipes/{id}/preview     ─►  render summary, show diff
@@ -166,6 +167,14 @@ Substitution rules:
              ▼
    ApplyReport { connectors_upserted, rules_created, … }
 ```
+
+Preflight and apply both validate every `RunConnector` step's `params`
+against the connector's declared action schema. A param whose whole
+value is a `${…}` placeholder is typed by the schema — the bound input
+has to fit the field it lands in. A recipe that names a field the
+action doesn't have, or an action the connector doesn't declare, is
+refused before anything is created: no connector upserted, no rule
+written.
 
 Preflight is cheap and idempotent — call it as the user types if you
 want live "ready to deploy" feedback. Apply has side effects and

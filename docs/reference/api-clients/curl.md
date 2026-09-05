@@ -83,41 +83,37 @@ curl -X POST "http://127.0.0.1:8080/connectors/connector-mything/reload" \
 
 ## Subscribe to live events via SSE
 
+The bearer token never goes in a URL. `EventSource` can't set custom
+headers, so streams are opened with a one-time ticket instead: ask
+for one with the bearer header, then open the stream with it.
+
 ```bash
-curl -N "http://127.0.0.1:8080/events/stream?token=$TOKEN"
+# 1. Get a ticket — single-use, expires after 30 seconds:
+TICKET=$(curl -s -X POST "http://127.0.0.1:8080/stream/ticket" \
+  -H "Authorization: Bearer $TOKEN" | jq -r .ticket)
+# → { "ticket": "<64 hex chars>", "ttl_secs": 30 }
+
+# 2. Open the multiplexed stream with it:
+curl -N "http://127.0.0.1:8080/stream?ticket=$TICKET"
 ```
 
-SSE accepts the token via query string because some browsers don't
-let you set custom headers on EventSource. The `?token=` is hashed
-into the audit log and treated identically to the header form.
-
-Each event is:
+`GET /stream` is one multiplexed stream. Each frame's `event:` name says
+which feed it belongs to:
 
 ```
-event: connector_event
+event: event
 data: {"connector":"connector-telegram","event":"message_received","payload":{...}}
 
-event: rule_fired
-data: {"rule_id":"...","name":"flag-slurs","outcome":"success"}
+event: canvas
+data: {...delta to the colony canvas as formations / connectors / rules change...}
+
+event: cooperation
+data: {"formation_id":"research-squad",...formation lifecycle, momentum
+       transitions, rally events, interference events...}
 ```
 
-## Watch the colony canvas state
-
-```bash
-curl -N "http://127.0.0.1:8080/canvas/stream?token=$TOKEN"
-```
-
-Delta updates to the canvas as formations / connectors / rules
-change.
-
-## Watch cooperation events
-
-```bash
-curl -N "http://127.0.0.1:8080/cooperation/events?token=$TOKEN&formation_id=research-squad"
-```
-
-Formation lifecycle, momentum transitions, rally events, interference
-events — the same stream the dashboard consumes for live overlays.
+The `cooperation` frames are the same feed the dashboard consumes for
+live overlays; filter on `formation_id` client-side.
 
 ## Toggle a safety setting
 
@@ -157,8 +153,10 @@ curl -X POST http://127.0.0.1:8080/chat \
   -H "Content-Type: application/json" \
   -d '{"text": "send me the weather in Tucson every morning"}'
 
-# Stream the bot's replies (SSE):
-curl -N "http://127.0.0.1:8080/chat/stream?token=$TOKEN"
+# Stream the bot's replies (SSE) — a fresh ticket per stream, as above:
+TICKET=$(curl -s -X POST "http://127.0.0.1:8080/stream/ticket" \
+  -H "Authorization: Bearer $TOKEN" | jq -r .ticket)
+curl -N "http://127.0.0.1:8080/chat/stream?ticket=$TICKET"
 ```
 
 Each stream event's data is `{"session": "in-app", "text": "..."}`.

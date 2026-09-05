@@ -21,7 +21,7 @@ Springtale ships in five phases. Each phase builds on the last — no phase skip
 | 1a | Framework + Connectors | Daemon, CLI, 14 library crates, 8 baseline connectors (kick, presearch, bluesky, github, filesystem, shell, http, opencode), SQLite (declarative schema v1 in `schema/sql/`), crypto vault, WASM sandbox, MCP bridge | Present. Connector roster grew to 15 first-party through Phases 1b/2a. |
 | 1b | Bot Foundations | `springtale-bot`, command router (prefix / pattern / alias), cooperation framework, `connector-telegram`, session memory | Present. Cooperation framework extracted to its own `springtale-cooperation` crate (40 pub modules) and wired into a 14-step formation tick; see §3.2. |
 | 2a | Chat + AI | Discord, Slack, IRC, Signal, Nostr connectors. Anthropic / Ollama / OpenAI-compat adapters (all three stream). `HttpTransport` (rustls mTLS). `springtale-sentinel`. Tool-calling across all AI adapters. | Present. Matrix is held on upstream `rusqlite` CVE. |
-| 2b | Desktop + Safety | Tauri 2 shell, SolidJS dashboard + colony canvas (RTS formation visualisation), duress vault, panic wipe, travel mode. Visual rule builder, i18n, a11y. | Shell, dashboard, colony canvas (with formation command grid, rally pips, attention bar, liveness/health encoding), duress, panic wipe, travel mode present. Visual rule builder, i18n, a11y not implemented. |
+| 2b | Desktop + Safety | Tauri 2 shell, SolidJS dashboard + colony canvas (RTS formation visualisation), duress vault, panic wipe, travel mode. Visual rule builder, i18n, a11y. | Shell, dashboard, colony canvas (with formation command grid, rally pips, attention bar, liveness/health encoding), duress, panic wipe, travel mode present. Visual rule builder (`RuleBuilderOverlay`), i18n (eight locales), quick-hide, and lock-screen content protection present. a11y not implemented. |
 | 3 | Veilid Mesh | `VeilidTransport`, P2P mesh, distributed registry, Rekindle integration | Not implemented. `VeilidTransport` exists as a stub — every method returns `TransportError::NotConnected`. |
 
 ---
@@ -207,11 +207,9 @@ Tauri 2 desktop shell with a SolidJS frontend that renders an RTS-inspired colon
 
 ### 5.2. Not Implemented
 
-- Visual rule builder (drag-and-drop trigger / condition / action)
 - Accessibility: screen readers (WAI-ARIA), keyboard nav, high contrast, font scaling
-- i18n: English, Spanish, Portuguese, French, Arabic, Thai, Tagalog, Japanese
 - Mobile (iOS + Android) via Tauri mobile
-- App disguise, quick-hide gesture, lock-screen content protection
+- App disguise
 
 ---
 

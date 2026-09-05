@@ -33,20 +33,18 @@ We need four connectors. Set their credentials in the vault:
 # Kick: OAuth 2.1 PKCE flow — the CLI walks you through it.
 springtale-cli connector setup kick
 
-# Bluesky: ATProto session — needs handle + app password.
-# Create an app password at https://bsky.app/settings/app-passwords
-springtale-cli vault set bluesky.handle           # your.handle.bsky.social
-springtale-cli vault set bluesky.app_password
-
-# Discord: bot token from https://discord.com/developers/applications
-springtale-cli vault set discord.bot_token
-
-# Telegram: from BotFather, same as tutorial 01
-springtale-cli vault set telegram.bot_token
 ```
 
-Each `vault set` prompts for the value from stdin. Tokens never go
-through argv or env.
+The other three take their credentials through the connector setup
+flow — each connector's card in the dashboard, or the connector setup
+API:
+
+- Bluesky: ATProto session — handle (`your.handle.bsky.social`) plus an
+  app password from https://bsky.app/settings/app-passwords
+- Discord: bot token from https://discord.com/developers/applications
+- Telegram: token from BotFather, same as tutorial 01
+
+Tokens never go through argv, env, or the TOML.
 
 Verify all four loaded:
 

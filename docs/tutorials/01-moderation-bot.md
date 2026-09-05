@@ -79,12 +79,9 @@ we'll add real moderation rules in step 4.
 
 ## Step 3 — Put the token in the vault
 
-```bash
-springtale-cli vault set telegram.bot_token
-```
-
-This prompts for the token (paste it; stdin only, never argv, never
-env). The token is encrypted at rest using your vault passphrase
+Open the Telegram connector's card in the dashboard (or call the
+connector setup API) and paste the token there — never argv, never
+env. The token is encrypted at rest using your vault passphrase
 from the `init` step and isn't readable except by the running daemon.
 
 Now start the daemon:
@@ -261,7 +258,7 @@ Expected:
 
 | Concept | Where it appeared |
 |---|---|
-| Connector configuration via vault | Step 3 — `vault set` |
+| Connector configuration via vault | Step 3 — connector setup flow |
 | Rule structure (trigger / conditions / actions) | Step 4 |
 | Variable interpolation (`${trigger.…}`) | Step 4 actions |
 | Regex conditions | Step 4 — `(?i)\b…\b` pattern |

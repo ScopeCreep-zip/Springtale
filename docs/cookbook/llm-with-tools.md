@@ -30,10 +30,12 @@ allow = [
   "connector-presearch__search",
 ]
 max_iterations = 5
-
-[ai_anthropic]
-api_key = "sk-ant-..."
 ```
+
+The AI adapter is not in the TOML. Set it per level — for the whole
+colony here, `springtale config ai set --scope colony --type anthropic
+--api-key-stdin` — or per formation / per agent, from the CLI, the
+dashboard, or `POST /config/ai/configure`.
 
 What happens:
 
