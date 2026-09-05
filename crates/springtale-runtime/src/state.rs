@@ -88,6 +88,11 @@ pub struct RuntimeState {
     /// `Notify`/`SendMessage` recipe fires and the user receives
     /// nothing.
     pub notification_tx: broadcast::Sender<crate::notification::NotificationEvent>,
+    /// Event-log broadcast behind `GET /events/stream` (daemon SSE) and
+    /// the desktop `event-fired` listener. Owned here (plan 6.7) so the
+    /// approval announcer can publish `approval_required` entries; the
+    /// daemon's `AppState.event_tx` is a clone of this.
+    pub event_tx: broadcast::Sender<springtale_store::schema::events::EventEntry>,
     /// ConnectorEvent subscription registry (`crate::triggers`). Empty
     /// until `bootstrap_embedded` runs — it owns the `trigger_tx` the
     /// registry needs, so it builds the registry, wires every enabled

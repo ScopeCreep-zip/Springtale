@@ -19,6 +19,7 @@ import type {
   WriteReport,
 } from "@springtale/types";
 import type {
+  ApprovalInfo,
   ConnectorOutput,
   DataProvider,
   FormationDetail,
@@ -239,6 +240,16 @@ export function createWebProvider(): DataProvider {
     async subscribeToChatDiscovered(_callback) {
       // No-op on web — no Tauri event bus.
       return () => {};
+    },
+    // Plan 6.7 — chat-gate approval queue.
+    async listApprovals() {
+      const r = await get<{ pending: ApprovalInfo[] }>("/approvals");
+      return r.pending;
+    },
+    async resolveApproval(id, approve) {
+      await post(`/approvals/${encodeURIComponent(id)}`, {
+        decision: approve ? "approve" : "deny",
+      });
     },
     subscribeToEvents(callback) {
       const token = getToken();

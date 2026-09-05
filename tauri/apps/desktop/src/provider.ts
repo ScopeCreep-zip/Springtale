@@ -169,6 +169,15 @@ export function createDesktopProvider(): DataProvider {
 
     // Events
     listEvents,
+    // Plan 6.7 — the desktop has no command that lists the runtime chat
+    // gate's queue yet; its sentinel prompts arrive as `approval-required`
+    // Tauri events (App.tsx overlay) and are answered via `respond_to_approval`.
+    async listApprovals() {
+      return [];
+    },
+    async resolveApproval(id, approve) {
+      await invoke("respond_to_approval", { requestId: id, approve });
+    },
     subscribeToEvents(callback) {
       let unlisten: (() => void) | undefined;
       listen<EventEntry>("event-fired", (e) => callback(e.payload))

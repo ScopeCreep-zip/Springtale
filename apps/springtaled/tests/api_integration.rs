@@ -109,6 +109,7 @@ fn build_test_app(ready: bool) -> (Router, String) {
         canvas,
         canvas_tx,
         notification_tx,
+        event_tx: event_tx.clone(),
         trigger_registry: std::sync::Arc::new(std::sync::OnceLock::new()),
         cooperation_tx,
         formation_cmd_tx,

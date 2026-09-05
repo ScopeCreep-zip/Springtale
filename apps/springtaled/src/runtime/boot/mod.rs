@@ -190,8 +190,9 @@ pub async fn boot(
 
     let ready_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-    // Broadcast channel for SSE event streaming to dashboard
-    let (event_tx, _event_rx) = tokio::sync::broadcast::channel(256);
+    // Plan 6.7 — the runtime owns the events broadcast so runtime-side
+    // announcers (approval gate) reach `GET /events/stream`.
+    let event_tx = runtime.event_tx.clone();
 
     let state = api::state::AppState {
         runtime: runtime.clone(),

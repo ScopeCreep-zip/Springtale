@@ -3,7 +3,7 @@ use std::time::Duration;
 
 use dashmap::DashSet;
 use springtale_connector::manifest::types::Capability;
-use springtale_core::policy::{ApprovalPolicy, AutonomyLevel};
+use springtale_core::policy::{ApprovalPolicy, AutonomyLevel, ChatOrigin};
 use springtale_core::rule::action::Action;
 use springtale_store::StorageBackend;
 
@@ -43,6 +43,9 @@ pub struct EvaluateRequest<'a> {
     pub policy: ApprovalPolicy,
     /// The firing member's autonomy (`ActAutonomously` for global rules).
     pub autonomy: AutonomyLevel,
+    /// Chat channel that triggered the fire, if any — forwarded to the
+    /// approval gate so the card lands where the request came from.
+    pub origin: Option<&'a ChatOrigin>,
 }
 
 /// Runtime behavioral monitor.
@@ -194,6 +197,7 @@ impl Sentinel {
                     "{connector_name} is about to run {action_type} (impact {impact:?}, policy {:?}, autonomy {:?})",
                     req.policy, req.autonomy
                 ),
+                origin: req.origin.cloned(),
             };
             if !self.approval.request_approval(request).await {
                 let verdict =
@@ -283,6 +287,7 @@ mod tests {
             action_name: None,
             policy: ApprovalPolicy::AutoApprove,
             autonomy: AutonomyLevel::ActAutonomously,
+            origin: None,
         }
     }
 
@@ -607,6 +612,7 @@ mod tests {
         let verdict = sentinel
             .evaluate(EvaluateRequest {
                 autonomy: AutonomyLevel::ActWithApproval,
+                origin: None,
                 ..req(&action, "system", ThrottleTier::Warming)
             })
             .await;
@@ -618,6 +624,7 @@ mod tests {
         let verdict = denying
             .evaluate(EvaluateRequest {
                 autonomy: AutonomyLevel::ActWithApproval,
+                origin: None,
                 ..req(&action, "system", ThrottleTier::Warming)
             })
             .await;

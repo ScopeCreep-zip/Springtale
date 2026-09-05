@@ -23,6 +23,7 @@ export type { AiSchemaEditorProps } from "./colony/AiSchemaEditor";
 export { AiSchemaEditor } from "./colony/AiSchemaEditor";
 export type { ApprovalCardProps } from "./colony/ApprovalCard";
 export { ApprovalCard } from "./colony/ApprovalCard";
+export { PendingApprovals } from "./colony/PendingApprovals";
 export { AppSettingsPanel } from "./colony/AppSettingsPanel";
 export { BottomPanel } from "./colony/BottomPanel";
 export type { ChatDockProps } from "./colony/ChatDock";
@@ -133,6 +134,7 @@ export type {
   CooperationEvent,
   CooperationEventEnvelope,
   DashboardState,
+  ApprovalInfo,
   DataProvider,
   Difficulty,
   FieldKind,

@@ -10,6 +10,7 @@ import type {
 } from "@springtale/ui";
 import {
   AiConfigPanel,
+  PendingApprovals,
   BottomPanel,
   ChatPanel,
   COMMANDS,
@@ -604,6 +605,10 @@ export const App = () => {
 
   // ── Unified overlay — settings → confirm → hatch → sessions ──
   const shellOverlay = () => {
+    // Plan 6.7 — a pending approval gets focus over everything else.
+    if (db.pendingApprovals().length > 0) {
+      return <PendingApprovals />;
+    }
     // F5 — member picker takes precedence so destructive flow gets focus.
     const pickerFor = memberPickerFor();
     if (pickerFor) {
