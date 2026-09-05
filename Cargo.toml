@@ -290,7 +290,10 @@ connector-signal      = { path = "connectors/connector-signal", version = "0.1.0
 connector-browser     = { path = "connectors/connector-browser", version = "0.1.0" }
 
 # ── Nostr Protocol ─────────────────────────────────────────────────────────────
-nostr-sdk            = { version = "0.44", features = ["nip44", "nip59"] }
+nostr-sdk            = "0.45"
+# NIP-44/59 (sealed, gift-wrapped DMs) are opt-in features of the `nostr`
+# crate that nostr-sdk 0.45 no longer enables on our behalf.
+nostr                = { version = "0.45", features = ["nip44", "nip59"] }
 
 # ── IRC Protocol ───────────────────────────────────────────────────────────────
 # Privacy: ctcp feature DISABLED to suppress all CTCP replies (VERSION, TIME, PING).
