@@ -122,8 +122,16 @@ fn code_review() -> Recipe {
                 hint: Some("Needed to post review comments.".into()),
             },
             InputField {
-                id: "repo".into(),
-                label: "Repository (owner/name)".into(),
+                id: "owner".into(),
+                label: "Repository owner".into(),
+                kind: FieldKind::Text,
+                visibility: FieldVisibility::Required,
+                default: None,
+                hint: Some("e.g. octocat/hello-world".into()),
+            },
+            InputField {
+                id: "repo_name".into(),
+                label: "Repository name".into(),
                 kind: FieldKind::Text,
                 visibility: FieldVisibility::Required,
                 default: None,
@@ -149,7 +157,7 @@ fn code_review() -> Recipe {
                 connector_name: "connector-github".into(),
                 config: json!({
                     "access_token": "${github_token}",
-                    "watched_repos": ["${repo}"]
+                    "watched_repos": ["${owner}/${repo_name}"]
                 }),
             }],
             rules: vec![RuleStep {
@@ -172,11 +180,12 @@ prompt = "Review this PR in ${review_style} style: ${trigger.title}\n${trigger.b
 [[actions]]
 type = "RunConnector"
 connector = "connector-github"
-action = "create_review_comment"
+action = "post_comment"
 
 [actions.params]
-repo = "${repo}"
-pr_number = "${trigger.number}"
+owner = "${owner}"
+repo = "${repo_name}"
+issue_number = "${trigger.number}"
 body = "${last_ai_output}"
 "#
                 .into(),

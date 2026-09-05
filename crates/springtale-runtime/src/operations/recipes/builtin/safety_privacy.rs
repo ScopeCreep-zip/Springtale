@@ -931,8 +931,8 @@ connector = "connector-signal"
 action = "set_disappearing_timer"
 
 [actions.params]
-to = "${target_thread}"
-seconds = "${ttl_seconds}"
+recipient = "${target_thread}"
+expires_in_seconds = ${ttl_seconds}
 "#
                 .into(),
             }],
@@ -1134,6 +1134,7 @@ connector = "connector-kick"
 action = "send_chat"
 
 [actions.params]
+channel_id = "${trigger.broadcaster.user_id}"
 message = "${warning_text}"
 "#
                 .into(),
