@@ -47,6 +47,7 @@ pub async fn run(
     tick: &Tick,
     bridge: &springtale_runtime::CapabilityBridge,
     sentinel: &Arc<springtale_sentinel::Sentinel>,
+    registry: &Arc<tokio::sync::RwLock<springtale_connector::registry::store::ConnectorRegistry>>,
     store: &Arc<dyn springtale_store::StorageBackend>,
     reports_sender: &mpsc::Sender<TickReport>,
     cooperation_tx: Option<
@@ -162,6 +163,7 @@ pub async fn run(
             formation_id: formation.id.0,
             formation_momentum,
             destructive_policy: formation.constraints.destructive_action_policy,
+            registry,
             blackboard: formation.blackboard.as_ref(),
             shared_env: formation.shared_env.as_ref(),
             surfaces: formation.surfaces.as_ref(),

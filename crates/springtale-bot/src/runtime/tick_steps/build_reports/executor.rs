@@ -22,8 +22,12 @@
 
 use std::sync::Arc;
 
+use tokio::sync::RwLock;
+
+use springtale_connector::registry::store::ConnectorRegistry;
 use springtale_cooperation::AutonomyLevel;
 use springtale_cooperation::MomentumTier;
+use springtale_cooperation::action::SubTask;
 use springtale_cooperation::action_state::ActiveTask;
 use springtale_cooperation::cadence::{ActionDescriptor, Tick};
 use springtale_cooperation::sacrifice::SacrificeAction;
@@ -51,6 +55,10 @@ pub struct ExecuteCtx<'a> {
     pub autonomy: AutonomyLevel,
     pub bridge: &'a springtale_runtime::CapabilityBridge,
     pub sentinel: &'a Arc<springtale_sentinel::Sentinel>,
+    /// Connector registry — consulted for the manifest's advisory action
+    /// hints (`read_only`) when deciding whether a task is destructive
+    /// and therefore subject to the formation's destructive-action policy.
+    pub registry: &'a Arc<RwLock<ConnectorRegistry>>,
     /// W3 push handoff (§20.1): when this member's result unblocks a
     /// dependent task that carries an `assigned_to` hint, the task is
     /// pushed straight to that agent's inbox (the inbox step preempts
@@ -75,6 +83,31 @@ pub struct ExecuteCtx<'a> {
     pub cooperation_tx: Option<
         &'a tokio::sync::broadcast::Sender<springtale_cooperation::CooperationEventEnvelope>,
     >,
+}
+
+impl ExecuteCtx<'_> {
+    /// Manifest-declared hints for the task's action, looked up the same
+    /// way dispatch resolves the connector: registry entry by connector
+    /// name, then the `ActionDecl` by action name. `None` means the
+    /// connector is not installed or does not declare the action — the
+    /// caller must treat an unknown action as destructive.
+    pub async fn action_hints_for(
+        &self,
+        task: &SubTask,
+    ) -> Option<springtale_sentinel::ActionHints> {
+        let registry = self.registry.read().await;
+        let entry = registry.get(&task.target_connector.name)?;
+        entry
+            .host
+            .manifest()
+            .actions
+            .iter()
+            .find(|decl| decl.name == task.action_name)
+            .map(|decl| springtale_sentinel::ActionHints {
+                read_only: decl.read_only,
+                destructive: decl.destructive,
+            })
+    }
 }
 
 pub struct ExecuteOutcome {
@@ -198,47 +231,45 @@ pub async fn execute(ctx: ExecuteCtx<'_>) -> ExecuteOutcome {
         ctx.tick.sequence,
     ));
 
-    // B7 — destructive actions classified RequireConsensus must be voted
-    // on at Fever tier instead of executing. Lower tiers fall through to
-    // autonomy-based execution.
-    let auto_execute = ctx.autonomy == AutonomyLevel::ActAutonomously;
-    let needs_consensus = matches!(ctx.destructive_policy, ApprovalPolicy::RequireConsensus)
-        && springtale_cooperation::authority::allows(
-            ctx.formation_momentum,
-            springtale_cooperation::layer::LayerId::L4Contested,
-        );
-    if auto_execute && needs_consensus && !ctx.consensus_approved.remove(&task.id) {
+    // B7 — a destructive task under `RequireConsensus` is voted on before
+    // it executes, at every momentum tier. COOPERATION.pdf §3.3: the
+    // destructive-action policy is "always L1" and "cooperation cannot
+    // weaken" it — a momentum tier is a cooperation state, so it never
+    // switches the vote off. The vote is a formation decision, so the
+    // member's autonomy level does not gate it either.
+    // A task whose action is unknown to the registry is destructive.
+    let destructive = ctx
+        .action_hints_for(&task)
+        .await
+        .is_none_or(|hints| !hints.read_only && hints.destructive != Some(false));
+    let needs_consensus =
+        destructive && matches!(ctx.destructive_policy, ApprovalPolicy::RequireConsensus);
+    if needs_consensus && !ctx.consensus_approved.remove(&task.id) {
         // No one-shot approval permit for this task. Release the claim so
         // the task stays available, then either wait on the open vote or
         // open one.
         ctx.blackboard.release_task(&task.id.to_string());
         ctx.member.active_task = None;
-        if ctx.awaiting_consensus.contains_key(&task.id) {
+        return if ctx.awaiting_consensus.contains_key(&task.id) {
             // Vote already open — guard against re-proposing every tick.
-            return ExecuteOutcome {
+            ExecuteOutcome {
                 action_descriptor: None,
                 alignment: 0.8,
                 consensus_task: None,
-            };
-        }
-        return ExecuteOutcome {
-            action_descriptor: Some(descriptor),
-            alignment: 0.8,
-            consensus_task: Some(task),
+            }
+        } else {
+            ExecuteOutcome {
+                action_descriptor: Some(descriptor),
+                alignment: 0.8,
+                consensus_task: Some(task),
+            }
         };
     }
 
-    // Approve mode: claim but stay in Requested for later approval.
-    if !auto_execute {
-        if let Some(active) = ctx.member.active_task.as_mut() {
-            active.request();
-        }
-        return ExecuteOutcome {
-            action_descriptor: None,
-            alignment: 0.8,
-            consensus_task: None,
-        };
-    }
+    // AlwaysRequire / ApproveOnce / AutoApprove and ActWithApproval are all
+    // enforced by the sentinel gate inside dispatch_action (0.1). The
+    // executor no longer decides approval; it only decides consensus,
+    // which is a formation vote and therefore cooperation's job.
 
     // Autonomous: dispatch immediately.
     if let Some(active) = ctx.member.active_task.as_mut() {
@@ -484,6 +515,10 @@ mod tests {
 
     impl CountingConnector {
         fn new(executions: Arc<AtomicUsize>) -> Self {
+            Self::with_read_only(executions, false)
+        }
+
+        fn with_read_only(executions: Arc<AtomicUsize>, read_only: bool) -> Self {
             Self {
                 manifest: ConnectorManifest {
                     name: "consensus-target".into(),
@@ -501,7 +536,7 @@ mod tests {
                         description: "destructive action gated by consensus".into(),
                         input_schema: None,
                         output_schema: None,
-                        read_only: false,
+                        read_only,
                         destructive: None,
                     }],
                     data_disclosure: vec![],
@@ -601,7 +636,8 @@ mod tests {
         registry
             .install_native(Box::new(CountingConnector::new(executions.clone())))
             .unwrap();
-        let bridge = CapabilityBridge::new(Arc::new(RwLock::new(registry)));
+        let registry = Arc::new(RwLock::new(registry));
+        let bridge = CapabilityBridge::new(registry.clone());
         let store: Arc<dyn springtale_store::StorageBackend> = Arc::new(InMemoryBackend::new());
         let sentinel = Arc::new(Sentinel::new(SentinelConfig::default(), store));
 
@@ -665,6 +701,7 @@ mod tests {
             autonomy: springtale_cooperation::AutonomyLevel::ActAutonomously,
             bridge: &bridge,
             sentinel: &sentinel,
+            registry: &registry,
             direct_inbox: direct_inbox.as_ref(),
             sacrifice: None,
             awaiting_consensus: &formation.awaiting_consensus,
@@ -708,6 +745,7 @@ mod tests {
             autonomy: springtale_cooperation::AutonomyLevel::ActAutonomously,
             bridge: &bridge,
             sentinel: &sentinel,
+            registry: &registry,
             direct_inbox: direct_inbox.as_ref(),
             sacrifice: None,
             awaiting_consensus: &formation.awaiting_consensus,
@@ -752,6 +790,7 @@ mod tests {
             autonomy: springtale_cooperation::AutonomyLevel::ActAutonomously,
             bridge: &bridge,
             sentinel: &sentinel,
+            registry: &registry,
             direct_inbox: direct_inbox.as_ref(),
             sacrifice: None,
             awaiting_consensus: &formation.awaiting_consensus,
@@ -775,6 +814,149 @@ mod tests {
         assert!(
             blackboard.read_result(task.id).is_some(),
             "result posted to the blackboard"
+        );
+    }
+
+    /// Cold-tier `RequireConsensus` formation over one connector whose
+    /// single action `wipe` carries the given `read_only` manifest hint.
+    fn cold_consensus_fixture(
+        read_only: bool,
+    ) -> (
+        Arc<AtomicUsize>,
+        Arc<RwLock<ConnectorRegistry>>,
+        CapabilityBridge,
+        Arc<Sentinel>,
+        Formation,
+    ) {
+        let executions = Arc::new(AtomicUsize::new(0));
+        let mut registry = ConnectorRegistry::new(CapabilityPolicy::AllowAll);
+        registry
+            .install_native(Box::new(CountingConnector::with_read_only(
+                executions.clone(),
+                read_only,
+            )))
+            .unwrap();
+        let registry = Arc::new(RwLock::new(registry));
+        let bridge = CapabilityBridge::new(registry.clone());
+        let store: Arc<dyn springtale_store::StorageBackend> = Arc::new(InMemoryBackend::new());
+        let sentinel = Arc::new(Sentinel::new(SentinelConfig::default(), store));
+        let members: Vec<FormationMember> = (0..3)
+            .map(|_| FormationMember::from_strings(AgentId::new(), vec!["consensus-target".into()]))
+            .collect();
+        let formation = Formation::new_disconnected(
+            members,
+            IntentPattern::Execute { plan_id: None },
+            FormationConstraints {
+                destructive_action_policy: ApprovalPolicy::RequireConsensus,
+                ..FormationConstraints::default()
+            },
+        );
+        assert_eq!(formation.momentum.tier, MomentumTier::Cold);
+        (executions, registry, bridge, sentinel, formation)
+    }
+
+    /// One executor call for an autonomous member at Cold tier.
+    async fn execute_at_cold(
+        formation: &mut Formation,
+        registry: &Arc<RwLock<ConnectorRegistry>>,
+        bridge: &CapabilityBridge,
+        sentinel: &Arc<Sentinel>,
+        member: &mut FormationMember,
+        task: &SubTask,
+    ) -> super::ExecuteOutcome {
+        let tick = make_tick();
+        let mut pacing = PacingManager::default();
+        let blackboard = formation.blackboard.clone();
+        let shared_env = formation.shared_env.clone();
+        let surfaces = formation.surfaces.clone();
+        let fuel = formation.fuel.clone();
+        let direct_inbox = formation.direct_inbox.clone();
+        execute(ExecuteCtx {
+            formation_id: formation.id.0,
+            formation_momentum: MomentumTier::Cold,
+            destructive_policy: ApprovalPolicy::RequireConsensus,
+            blackboard: blackboard.as_ref(),
+            shared_env: shared_env.as_ref(),
+            surfaces: surfaces.as_ref(),
+            fuel: fuel.as_ref(),
+            pacing: &mut pacing,
+            member,
+            tick: &tick,
+            chosen_task: Some(task.clone()),
+            tick_action: None,
+            autonomy: springtale_cooperation::AutonomyLevel::ActAutonomously,
+            bridge,
+            sentinel,
+            registry,
+            direct_inbox: direct_inbox.as_ref(),
+            sacrifice: None,
+            awaiting_consensus: &formation.awaiting_consensus,
+            consensus_approved: &mut formation.consensus_approved,
+            cooperation_tx: None,
+        })
+        .await
+    }
+
+    #[tokio::test]
+    async fn test_execute_cold_destructive_require_consensus_proposes_without_dispatch() {
+        let (executions, registry, bridge, sentinel, mut formation) = cold_consensus_fixture(false);
+        let task = destructive_task();
+        let mut member = formation.members[0].clone();
+        let other = formation.members[1].agent_id;
+
+        let outcome = execute_at_cold(
+            &mut formation,
+            &registry,
+            &bridge,
+            &sentinel,
+            &mut member,
+            &task,
+        )
+        .await;
+
+        let proposal = outcome
+            .consensus_task
+            .expect("Cold tier opens a vote — momentum never skips consensus");
+        assert_eq!(proposal.id, task.id);
+        assert_eq!(
+            executions.load(Ordering::SeqCst),
+            0,
+            "no dispatch without a vote"
+        );
+        assert!(member.active_task.is_none(), "member dropped the task");
+        assert!(
+            formation
+                .blackboard
+                .claim_task(&task.id.to_string(), other, formation.fuel.as_ref())
+                .is_ok(),
+            "blackboard claim released — another member can claim it"
+        );
+    }
+
+    #[tokio::test]
+    async fn test_execute_cold_read_only_require_consensus_dispatches_without_vote() {
+        let (executions, registry, bridge, sentinel, mut formation) = cold_consensus_fixture(true);
+        let task = destructive_task();
+        let mut member = formation.members[0].clone();
+
+        let outcome = execute_at_cold(
+            &mut formation,
+            &registry,
+            &bridge,
+            &sentinel,
+            &mut member,
+            &task,
+        )
+        .await;
+
+        assert!(
+            outcome.consensus_task.is_none(),
+            "read-only manifest hint: nothing to vote on"
+        );
+        assert_eq!(
+            executions.load(Ordering::SeqCst),
+            1,
+            "dispatched immediately"
         );
     }
 }
