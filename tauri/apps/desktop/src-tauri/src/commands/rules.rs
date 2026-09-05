@@ -68,15 +68,22 @@ pub async fn create_rule(
 
     let rule: Rule = serde_json::from_value(rule).map_err(|e| format!("invalid rule: {e}"))?;
 
-    let id = springtale_runtime::operations::rules::create_rule(rt, rule)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    // Activate the new rule's triggers so it actually fires (cron tick,
-    // connector event) — not just persisted to the store.
-    if let Some(created) = lookup_rule(rt, &id).await {
-        activate_triggers(&state, rt, &created).await;
+    // Persist-then-activate through the shared runtime lifecycle — the
+    // SAME sequence the daemon's HTTP handler performs. If the scheduler /
+    // registry aren't up yet (vault still locked) the rule is persisted
+    // only, exactly as before (activation was already a no-op then).
+    let sched = state.scheduler.read().await;
+    let reg = state.trigger_registry.read().await;
+    let id = match (sched.as_ref(), reg.as_ref()) {
+        (Some(scheduler), Some(registry)) => {
+            springtale_runtime::operations::rules::create_and_activate(
+                rt, scheduler, registry, rule,
+            )
+            .await
+        }
+        _ => springtale_runtime::operations::rules::create_rule(rt, rule).await,
     }
+    .map_err(|e| e.to_string())?;
 
     Ok(id.to_string())
 }
@@ -124,14 +131,21 @@ pub async fn delete_rule(state: State<'_, AppState>, id: String) -> Result<(), S
         .map(RuleId)
         .map_err(|e| format!("invalid rule ID: {e}"))?;
 
-    // Tear down its triggers BEFORE the rule leaves the store.
-    if let Some(rule) = lookup_rule(rt, &rule_id).await {
-        deactivate_triggers(&state, rt, &rule).await;
+    // Deactivate-then-delete through the shared runtime lifecycle (same as
+    // the daemon). Scheduler / registry not up yet (vault locked): delete
+    // from the store only, exactly as before.
+    let sched = state.scheduler.read().await;
+    let reg = state.trigger_registry.read().await;
+    match (sched.as_ref(), reg.as_ref()) {
+        (Some(scheduler), Some(registry)) => {
+            springtale_runtime::operations::rules::delete_and_deactivate(
+                rt, scheduler, registry, &rule_id,
+            )
+            .await
+        }
+        _ => springtale_runtime::operations::rules::delete_rule(rt, &rule_id).await,
     }
-
-    springtale_runtime::operations::rules::delete_rule(rt, &rule_id)
-        .await
-        .map_err(|e| e.to_string())
+    .map_err(|e| e.to_string())
 }
 
 /// Update a rule (replace).
@@ -152,18 +166,21 @@ pub async fn update_rule(
 
     let rule: Rule = serde_json::from_value(rule).map_err(|e| format!("invalid rule: {e}"))?;
 
-    // Detach the old trigger wiring, swap the rule, re-attach the new —
-    // the update = detach-old + attach-new pattern (HA/n8n).
-    if let Some(old) = lookup_rule(rt, &rule_id).await {
-        deactivate_triggers(&state, rt, &old).await;
+    // Detach-old + persist + attach-new through the shared runtime
+    // lifecycle (same as the daemon). Scheduler / registry not up yet
+    // (vault locked): update the store only, exactly as before.
+    let sched = state.scheduler.read().await;
+    let reg = state.trigger_registry.read().await;
+    match (sched.as_ref(), reg.as_ref()) {
+        (Some(scheduler), Some(registry)) => {
+            springtale_runtime::operations::rules::update_and_reactivate(
+                rt, scheduler, registry, &rule_id, rule,
+            )
+            .await
+        }
+        _ => springtale_runtime::operations::rules::update_rule(rt, &rule_id, rule).await,
     }
-
-    springtale_runtime::operations::rules::update_rule(rt, &rule_id, rule.clone())
-        .await
-        .map_err(|e| e.to_string())?;
-
-    activate_triggers(&state, rt, &rule).await;
-    Ok(())
+    .map_err(|e| e.to_string())
 }
 
 /// Dry-run a rule — evaluate without executing actions.
