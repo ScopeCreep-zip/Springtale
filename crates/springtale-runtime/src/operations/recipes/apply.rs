@@ -48,6 +48,8 @@ pub enum ApplyError {
          conditions; raise the cron expression to ≥1 minute"
     )]
     ScheduleTooFast { expr: String },
+    #[error("action `{step}` was rejected by the connector's input schema: {reason}")]
+    ActionSchema { step: String, reason: String },
     #[error("backend operation failed: {0}")]
     Operation(#[from] OperationError),
     #[error(transparent)]
@@ -301,6 +303,22 @@ async fn apply_blueprint(
         let toml = substitute_template(&step.toml, inputs);
         let rule: springtale_core::rule::types::Rule =
             toml::from_str(&toml).map_err(|e| ApplyError::InvalidRuleToml(e.to_string()))?;
+        // Gate: the rendered params must satisfy the connector action's
+        // input_schema, or the connector would reject the rule at dispatch.
+        // Connectors not in the registry are skipped — preflight already
+        // reported them.
+        {
+            let registry = state.registry.read().await;
+            let checks = super::action_schema::check_rule_actions(&rule, |name| {
+                registry.get(name).map(|entry| entry.host.actions())
+            });
+            if let Some((step, reason)) = checks.into_iter().find_map(|c| match c.outcome {
+                super::action_schema::ActionOutcome::Invalid(reason) => Some((c.step, reason)),
+                _ => None,
+            }) {
+                return Err(ApplyError::ActionSchema { step, reason });
+            }
+        }
         let id = crate::operations::rules::create_rule(state, rule).await?;
         rules_created.push(id.0.to_string());
     }
