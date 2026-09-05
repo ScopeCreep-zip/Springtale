@@ -137,6 +137,7 @@ rust-embed       = { version = "8", features = ["interpolate-folder-path"] }
 
 # ── HTTP Client ────────────────────────────────────────────────────────────────
 reqwest          = { version = "0.13", default-features = false, features = ["json", "multipart", "rustls", "stream"] }
+octocrab         = { version = "0.54", default-features = false, features = ["default-client", "follow-redirect", "retry", "rustls", "rustls-ring", "timeout", "jwt-aws-lc-rs"] }  # rustls+ring only; `opentls` never enabled. JWT backend is aws-lc-rs (already in graph) because jwt-rust-crypto pulls the banned `rsa` crate
 
 # ── Database (local-first) ─────────────────────────────────────────────────────
 rusqlite         = { version = "0.39", features = ["bundled", "vtab"] }
