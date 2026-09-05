@@ -85,7 +85,9 @@ pub fn verify_manifest(manifest: &ConnectorManifest) -> Result<(), ConnectorErro
 }
 
 /// Build the JSON value used for signing — all manifest fields except `signature`.
-fn signable_manifest_json(
+///
+/// Shared with [`super::sign::sign_manifest`] so both sides cover the same bytes.
+pub fn signable_manifest_json(
     manifest: &ConnectorManifest,
 ) -> Result<serde_json::Value, ConnectorError> {
     let mut json =
