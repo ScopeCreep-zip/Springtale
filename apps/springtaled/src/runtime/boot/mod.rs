@@ -1,5 +1,6 @@
 mod bot;
 mod crypto;
+mod formations;
 mod sentinel;
 mod transport;
 
@@ -82,6 +83,9 @@ pub async fn boot(
     // receiver goes to bot (event loop materializes/removes formations).
     let (formation_cmd_tx, formation_cmd_rx) =
         tokio::sync::mpsc::channel::<springtale_cooperation::command::FormationCommand>(32);
+    // Kept for restoring persisted formations after `init_bot` spawns the
+    // event loop that owns `formation_cmd_rx` below (§6.11 / finding 119).
+    let formation_cmd_tx_for_restore = formation_cmd_tx.clone();
 
     // Create the shared formations handle BEFORE runtime init.
     // The BotBuilder will use this same Arc, and BotFormationReader reads from it.
@@ -156,6 +160,17 @@ pub async fn boot(
         formations_handle,
     )
     .await?;
+
+    // ── Step 7a2: Restore formations persisted from a previous run ──
+    // `init_bot` has already spawned the event loop that owns
+    // `formation_cmd_rx`, so these sends queue behind it rather than
+    // blocking boot (§6.11 / finding 119).
+    let formations_restored =
+        formations::restore_formations(&runtime.store, &formation_cmd_tx_for_restore).await?;
+    tracing::info!(
+        formations_restored,
+        "formation restore step complete at boot"
+    );
 
     // ── Step 7b: ConnectorEvent handlers are wired inside
     // `bootstrap_embedded` (shared with desktop), which publishes the
