@@ -106,7 +106,7 @@ impl Report {
 
 /// Run all diagnostic checks using default paths.
 pub async fn run_default_checks(context: CallerContext) -> Report {
-    run_checks(&DiagnosticPaths::default(), context).await
+    run_checks(&DiagnosticPaths::default(), None, context).await
 }
 
 /// Paths that diagnostics inspect. Overridable for tests and alt installs.
@@ -130,12 +130,20 @@ impl Default for DiagnosticPaths {
 }
 
 /// Run all diagnostics against the supplied paths.
-pub async fn run_checks(paths: &DiagnosticPaths, context: CallerContext) -> Report {
+///
+/// `encryption_key_hex` is the store key when the caller has the vault
+/// unlocked; without it the integrity check is skipped and reported,
+/// never run against a plaintext open (plan 0.5).
+pub async fn run_checks(
+    paths: &DiagnosticPaths,
+    encryption_key_hex: Option<&str>,
+    context: CallerContext,
+) -> Report {
     let mut checks = Vec::new();
 
     let config_text = check_config(&paths.config, &mut checks);
     check_vault(&paths.vault, &mut checks);
-    check_database(&paths.database, &mut checks);
+    check_database(&paths.database, encryption_key_hex, &mut checks);
     check_data_dir(&paths.data_dir, &mut checks);
     if context == CallerContext::Cli {
         check_api_port(&mut checks);
@@ -230,7 +238,7 @@ fn check_vault(path: &Path, checks: &mut Vec<Check>) {
     }
 }
 
-fn check_database(path: &Path, checks: &mut Vec<Check>) {
+fn check_database(path: &Path, encryption_key_hex: Option<&str>, checks: &mut Vec<Check>) {
     if !path.exists() {
         checks.push(Check::fail(
             "db.exists",
@@ -244,7 +252,16 @@ fn check_database(path: &Path, checks: &mut Vec<Check>) {
         format!("Database: {}", path.display()),
     ));
 
-    match springtale_store::backend::sqlite::SqliteBackend::open(path) {
+    let Some(key) = encryption_key_hex else {
+        checks.push(Check::warn(
+            "db.integrity",
+            "Database integrity: not checked; store is encrypted; rerun with the vault unlocked",
+            "Unlock the vault (pass the passphrase) and run diagnostics again.",
+        ));
+        return;
+    };
+
+    match springtale_store::backend::sqlite::SqliteBackend::open_encrypted(path, key) {
         Ok(_) => checks.push(Check::ok("db.integrity", "Database integrity: valid")),
         Err(e) => {
             checks.push(

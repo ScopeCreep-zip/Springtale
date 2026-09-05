@@ -51,10 +51,12 @@ pub struct SqliteBackend {
 }
 
 impl SqliteBackend {
-    /// Open or create a SQLite database at the given path.
+    /// Open or create an **unencrypted** SQLite database at the given path.
     ///
-    /// Sets file permissions to 0o600, enables WAL mode, and runs migrations.
-    /// Database is unencrypted — use `open_encrypted` for encryption at rest.
+    /// Test-only (plan 0.5): production stores are always encrypted, so
+    /// this constructor exists for unit tests that need a file-backed
+    /// store without a key. Use `open_encrypted` everywhere else.
+    #[cfg(test)]
     pub fn open(path: impl AsRef<Path>) -> Result<Self, StoreError> {
         Self::open_with_key(path, None)
     }

@@ -23,7 +23,8 @@ async fn quota_counter_survives_handle_drop() {
     // First "boot": open a backend, build a quota, reserve some
     // tokens, drop everything.
     {
-        let backend: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open(&path).unwrap());
+        let backend: Arc<dyn StorageBackend> =
+            Arc::new(SqliteBackend::open_encrypted(&path, TEST_KEY_HEX).unwrap());
         let quota = SqliteTokenQuota::new(backend, Some(1_000));
         let r = quota.check_and_reserve("bot-1", 300).await.unwrap();
         assert!(matches!(r, QuotaCheck::Allowed { remaining: 700 }));
@@ -34,7 +35,8 @@ async fn quota_counter_survives_handle_drop() {
     // counter must persist so the bot can't get a fresh 1,000-token
     // budget across a restart.
     {
-        let backend: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open(&path).unwrap());
+        let backend: Arc<dyn StorageBackend> =
+            Arc::new(SqliteBackend::open_encrypted(&path, TEST_KEY_HEX).unwrap());
         let quota = SqliteTokenQuota::new(backend, Some(1_000));
         assert_eq!(quota.usage("bot-1").await.unwrap(), 300);
 
@@ -70,7 +72,8 @@ async fn concurrent_commits_do_not_lose_updates() {
 
     let dir = tempdir().unwrap();
     let path = dir.path().join("quota.db");
-    let backend: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open(&path).unwrap());
+    let backend: Arc<dyn StorageBackend> =
+        Arc::new(SqliteBackend::open_encrypted(&path, TEST_KEY_HEX).unwrap());
     let quota = Arc::new(SqliteTokenQuota::new(backend, None));
 
     let total_reservation: u64 = 1000;
@@ -109,7 +112,8 @@ async fn concurrent_commits_do_not_lose_updates() {
 async fn quota_unlimited_observes_usage_without_denial() {
     let dir = tempdir().unwrap();
     let path = dir.path().join("quota.db");
-    let backend: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open(&path).unwrap());
+    let backend: Arc<dyn StorageBackend> =
+        Arc::new(SqliteBackend::open_encrypted(&path, TEST_KEY_HEX).unwrap());
     let quota = SqliteTokenQuota::new(backend, None);
 
     let r = quota.check_and_reserve("bot-x", 50_000).await.unwrap();
@@ -120,3 +124,7 @@ async fn quota_unlimited_observes_usage_without_denial() {
     quota.commit("bot-x", 50_000, 8_000).await.unwrap();
     assert_eq!(quota.usage("bot-x").await.unwrap(), 8_000);
 }
+
+/// Production stores are always encrypted (plan 0.5), so file-backed
+/// tests open with a fixed key. Never used outside tests.
+const TEST_KEY_HEX: &str = "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f";
