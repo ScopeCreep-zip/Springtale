@@ -15,7 +15,7 @@ use super::economy::AttentionEconomy;
 /// Thread-safe broker for the formation's attention economy.
 ///
 /// Agents call `current()` on every tick (lock-free read via ArcSwap::load).
-/// Mutations go through `absorb()` / `release()` which use `rcu` (read-copy-update)
+/// Mutations go through `observe()` / `absorb()` / `release()` which use `rcu` (read-copy-update)
 /// to atomically swap the underlying `AttentionEconomy`.
 pub struct AttentionBroker {
     state: ArcSwap<AttentionEconomy>,
@@ -56,6 +56,18 @@ impl AttentionBroker {
         self.state.rcu(|prev| {
             let mut new = (**prev).clone();
             new.shift_away(&agent, delta);
+            Arc::new(new)
+        });
+    }
+
+    /// Fold one observed load sample toward the agent's share (EMA), then
+    /// renormalize so the economy stays zero-sum. Army of Two: you generate
+    /// aggro by firing; here, by working. Called once per member per tick
+    /// from the agent pipeline; `release` remains the rally transfer.
+    pub fn observe(&self, agent: AgentId, sample: f32, alpha: f32) {
+        self.state.rcu(|prev| {
+            let mut new = (**prev).clone();
+            new.observe(&agent, sample, alpha);
             Arc::new(new)
         });
     }
@@ -168,6 +180,26 @@ mod tests {
 
         let snapshot = broker.current();
         assert!((snapshot.load(&agents[0]) - 0.5).abs() < f32::EPSILON);
+    }
+
+    #[test]
+    fn observe_earns_attention_by_acting_without_rally() {
+        let agents = vec![AgentId::new(), AgentId::new()];
+        let broker = AttentionBroker::for_agents(&agents);
+
+        for _ in 0..5 {
+            broker.observe(agents[0], 1.0, 0.3);
+            broker.observe(agents[1], 0.0, 0.3);
+        }
+
+        let snapshot = broker.current();
+        let worker = snapshot.load(&agents[0]);
+        let idle = snapshot.load(&agents[1]);
+        assert!(worker > 0.6, "worker share {worker} should exceed 0.6");
+        assert!(
+            (worker + idle - 1.0).abs() < 1e-6,
+            "shares must stay zero-sum: {worker} + {idle}"
+        );
     }
 
     #[test]

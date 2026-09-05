@@ -183,6 +183,17 @@ impl AttentionEconomy {
         }
     }
 
+    /// Fold one observed load sample toward the agent's share (EMA), then
+    /// renormalize so the economy stays zero-sum. Army of Two: you generate
+    /// aggro by firing; here, by working. Idle agents drain toward the floor.
+    pub fn observe(&mut self, agent_id: &AgentId, sample: f32, alpha: f32) {
+        let alpha = alpha.clamp(0.0, 1.0);
+        if let Some(v) = self.distribution.get_mut(agent_id) {
+            *v = (*v * (1.0 - alpha) + sample.clamp(0.0, 1.0) * alpha).max(0.01);
+        }
+        self.renormalize();
+    }
+
     /// Renormalize distribution so all values sum to 1.0.
     pub fn renormalize(&mut self) {
         let sum: f32 = self.distribution.values().sum();
