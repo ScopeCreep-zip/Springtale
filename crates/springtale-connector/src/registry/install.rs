@@ -151,6 +151,22 @@ mod tests {
         fn config_key(&self) -> &'static str {
             "github"
         }
+        fn manifest(&self) -> ConnectorManifest {
+            ConnectorManifest {
+                name: "connector-github".to_owned(),
+                version: "0.1.0".into(),
+                author: "test".into(),
+                description: "test".into(),
+                capabilities: vec![],
+                triggers: vec![],
+                actions: vec![],
+                data_disclosure: vec![],
+                roles: vec![],
+                wasm_hash: None,
+                signature_alg: SignatureAlgorithm::default(),
+                signature: None,
+            }
+        }
         async fn create(
             &self,
             _config: serde_json::Value,

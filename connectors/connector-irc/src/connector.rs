@@ -59,50 +59,7 @@ impl IrcConnector {
         let trigger_decls = triggers::trigger_declarations();
         let action_decls = actions::action_declarations();
 
-        let manifest = ConnectorManifest {
-            name: "connector-irc".to_owned(),
-            version: env!("CARGO_PKG_VERSION").to_owned(),
-            author: "Springtale".to_owned(),
-            description: "IRC connector — lightweight TLS chat. WARNING: No E2E encryption."
-                .to_owned(),
-            capabilities: vec![Capability::NetworkOutbound {
-                host: config.server.clone(),
-            }],
-            triggers: trigger_decls.clone(),
-            actions: action_decls.clone(),
-            data_disclosure: vec![
-                DataDisclosure {
-                    data_type: "all messages (plaintext)".to_owned(),
-                    purpose: "IRC protocol — messages sent unencrypted".to_owned(),
-                    destination: format!(
-                        "IRC server ({}), visible to server operators and network observers",
-                        config.server
-                    ),
-                },
-                DataDisclosure {
-                    data_type: "connection metadata (nick, IP, channels)".to_owned(),
-                    purpose: "IRC protocol requirement".to_owned(),
-                    destination: "IRC server and WHOIS queries (use VPN/bouncer for IP privacy)"
-                        .to_owned(),
-                },
-                DataDisclosure {
-                    data_type: "channel membership".to_owned(),
-                    purpose: "joining and messaging channels".to_owned(),
-                    destination: "visible to all channel members".to_owned(),
-                },
-                DataDisclosure {
-                    data_type: "nick identity and presence".to_owned(),
-                    purpose: "IRC identification".to_owned(),
-                    destination: "nick is persistent and visible — do NOT reuse across networks. \
-                         Scrapers and adversaries can link nicks to build identity profiles."
-                        .to_owned(),
-                },
-            ],
-            roles: vec![],
-            wasm_hash: None,
-            signature_alg: SignatureAlgorithm::default(),
-            signature: None,
-        };
+        let manifest = build_manifest(Some(&config.server), &trigger_decls, &action_decls);
 
         Ok(Self {
             client,
@@ -229,6 +186,65 @@ fn build_irc_config(
         max_messages_in_burst: Some(15),
         ..irc::client::data::Config::default()
     })
+}
+
+/// Build the connector's manifest. The factory calls this with no config-derived
+/// parts so the manifest is available without instantiating the connector.
+pub(crate) fn build_manifest(
+    server: Option<&str>,
+    triggers: &[TriggerDecl],
+    actions: &[ActionDecl],
+) -> ConnectorManifest {
+    ConnectorManifest {
+        name: "connector-irc".to_owned(),
+        version: env!("CARGO_PKG_VERSION").to_owned(),
+        author: "Springtale".to_owned(),
+        description: "IRC connector — lightweight TLS chat. WARNING: No E2E encryption."
+            .to_owned(),
+        capabilities: server
+            .map(|host| Capability::NetworkOutbound {
+                host: host.to_owned(),
+            })
+            .into_iter()
+            .collect(),
+        triggers: triggers.to_vec(),
+        actions: actions.to_vec(),
+        data_disclosure: vec![
+            DataDisclosure {
+                data_type: "all messages (plaintext)".to_owned(),
+                purpose: "IRC protocol — messages sent unencrypted".to_owned(),
+                destination: match server {
+                    Some(server) => format!(
+                        "IRC server ({server}), visible to server operators and network observers"
+                    ),
+                    None => "the configured IRC server, visible to server operators and network observers"
+                        .to_owned(),
+                },
+            },
+            DataDisclosure {
+                data_type: "connection metadata (nick, IP, channels)".to_owned(),
+                purpose: "IRC protocol requirement".to_owned(),
+                destination: "IRC server and WHOIS queries (use VPN/bouncer for IP privacy)"
+                    .to_owned(),
+            },
+            DataDisclosure {
+                data_type: "channel membership".to_owned(),
+                purpose: "joining and messaging channels".to_owned(),
+                destination: "visible to all channel members".to_owned(),
+            },
+            DataDisclosure {
+                data_type: "nick identity and presence".to_owned(),
+                purpose: "IRC identification".to_owned(),
+                destination: "nick is persistent and visible — do NOT reuse across networks. \
+                     Scrapers and adversaries can link nicks to build identity profiles."
+                    .to_owned(),
+            },
+        ],
+        roles: vec![],
+        wasm_hash: None,
+        signature_alg: SignatureAlgorithm::default(),
+        signature: None,
+    }
 }
 
 #[cfg(test)]

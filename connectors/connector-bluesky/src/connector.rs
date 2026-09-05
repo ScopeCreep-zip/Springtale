@@ -134,7 +134,12 @@ impl Connector for BlueskyConnector {
     }
 }
 
-fn build_manifest(triggers: &[TriggerDecl], actions: &[ActionDecl]) -> ConnectorManifest {
+/// Build the connector's manifest. The factory calls this with no config-derived
+/// parts so the manifest is available without instantiating the connector.
+pub(crate) fn build_manifest(
+    triggers: &[TriggerDecl],
+    actions: &[ActionDecl],
+) -> ConnectorManifest {
     ConnectorManifest {
         name: "connector-bluesky".to_owned(),
         version: env!("CARGO_PKG_VERSION").to_owned(),

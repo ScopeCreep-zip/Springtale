@@ -1,7 +1,7 @@
 use springtale_connector::Connector;
 use springtale_connector::error::ConnectorError;
 use springtale_connector::factory::{ConnectorFactory, FactoryEntry};
-use springtale_connector::manifest::types::{ActionDecl, TriggerDecl};
+use springtale_connector::manifest::types::{ActionDecl, ConnectorManifest, TriggerDecl};
 
 struct FilesystemFactory;
 
@@ -12,6 +12,14 @@ impl ConnectorFactory for FilesystemFactory {
     }
     fn config_key(&self) -> &'static str {
         "filesystem"
+    }
+    // Config-derived capabilities (allow-list) are omitted: the factory has no config.
+    fn manifest(&self) -> ConnectorManifest {
+        crate::connector::build_manifest(
+            Vec::new(),
+            &crate::triggers::trigger_declarations(),
+            &crate::actions::action_declarations(),
+        )
     }
     fn requires_config(&self) -> bool {
         false

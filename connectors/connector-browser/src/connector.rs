@@ -65,44 +65,7 @@ impl BrowserConnector {
             config.stealth_profile,
         );
 
-        let manifest = ConnectorManifest {
-            name: "connector-browser".to_owned(),
-            version: env!("CARGO_PKG_VERSION").to_owned(),
-            author: "Springtale".to_owned(),
-            description: "Browser automation — headless Chromium with domain allow-list. \
-                         WARNING: Navigated pages may execute JavaScript."
-                .to_owned(),
-            capabilities,
-            triggers: trigger_decls.clone(),
-            actions: action_decls.clone(),
-            data_disclosure: vec![
-                DataDisclosure {
-                    data_type: "web page content from allowed domains".to_owned(),
-                    purpose: "browser automation (navigate, fill forms, extract text)".to_owned(),
-                    destination: "local process only — headless Chrome runs on this machine. \
-                                 Web pages are loaded in memory, not persisted."
-                        .to_owned(),
-                },
-                DataDisclosure {
-                    data_type: "network requests to allowed domains".to_owned(),
-                    purpose: "loading web pages".to_owned(),
-                    destination: "direct HTTPS connections to allowed domains. \
-                                 Server operators see your IP address. Use a VPN."
-                        .to_owned(),
-                },
-                DataDisclosure {
-                    data_type: "JavaScript execution context".to_owned(),
-                    purpose: "page rendering and interaction".to_owned(),
-                    destination: "local process — JavaScript runs in headless Chrome sandbox. \
-                                 Pages may attempt to load resources from third-party domains."
-                        .to_owned(),
-                },
-            ],
-            roles: vec![],
-            wasm_hash: None,
-            signature_alg: SignatureAlgorithm::default(),
-            signature: None,
-        };
+        let manifest = build_manifest(capabilities, &trigger_decls, &action_decls);
 
         Ok(Self {
             client,
@@ -196,6 +159,53 @@ impl Connector for BrowserConnector {
 
     fn manifest(&self) -> &ConnectorManifest {
         &self.manifest
+    }
+}
+
+/// Build the connector's manifest. The factory calls this with no config-derived
+/// parts so the manifest is available without instantiating the connector.
+pub(crate) fn build_manifest(
+    capabilities: Vec<Capability>,
+    triggers: &[TriggerDecl],
+    actions: &[ActionDecl],
+) -> ConnectorManifest {
+    ConnectorManifest {
+        name: "connector-browser".to_owned(),
+        version: env!("CARGO_PKG_VERSION").to_owned(),
+        author: "Springtale".to_owned(),
+        description: "Browser automation — headless Chromium with domain allow-list. \
+                     WARNING: Navigated pages may execute JavaScript."
+            .to_owned(),
+        capabilities,
+        triggers: triggers.to_vec(),
+        actions: actions.to_vec(),
+        data_disclosure: vec![
+            DataDisclosure {
+                data_type: "web page content from allowed domains".to_owned(),
+                purpose: "browser automation (navigate, fill forms, extract text)".to_owned(),
+                destination: "local process only — headless Chrome runs on this machine. \
+                             Web pages are loaded in memory, not persisted."
+                    .to_owned(),
+            },
+            DataDisclosure {
+                data_type: "network requests to allowed domains".to_owned(),
+                purpose: "loading web pages".to_owned(),
+                destination: "direct HTTPS connections to allowed domains. \
+                             Server operators see your IP address. Use a VPN."
+                    .to_owned(),
+            },
+            DataDisclosure {
+                data_type: "JavaScript execution context".to_owned(),
+                purpose: "page rendering and interaction".to_owned(),
+                destination: "local process — JavaScript runs in headless Chrome sandbox. \
+                             Pages may attempt to load resources from third-party domains."
+                    .to_owned(),
+            },
+        ],
+        roles: vec![],
+        wasm_hash: None,
+        signature_alg: SignatureAlgorithm::default(),
+        signature: None,
     }
 }
 

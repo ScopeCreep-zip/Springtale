@@ -26,7 +26,7 @@ impl HttpConnector {
     /// Create a new HTTP connector with the given configuration.
     pub fn new(config: HttpConfig) -> Result<Self, crate::error::HttpError> {
         let action_decls = actions::action_declarations();
-        let manifest = build_manifest(&config, &action_decls);
+        let manifest = build_manifest(config_capabilities(&config), &action_decls);
         let client = HttpClient::new(config)?;
 
         Ok(Self {
@@ -85,13 +85,20 @@ impl Connector for HttpConnector {
 }
 
 /// Build the connector manifest from config and declarations.
-fn build_manifest(config: &HttpConfig, actions: &[ActionDecl]) -> ConnectorManifest {
-    let capabilities = config
+fn config_capabilities(config: &HttpConfig) -> Vec<Capability> {
+    config
         .allowed_hosts
         .iter()
         .map(|host| Capability::NetworkOutbound { host: host.clone() })
-        .collect();
+        .collect()
+}
 
+/// Build the connector's manifest. The factory calls this with no config-derived
+/// parts so the manifest is available without instantiating the connector.
+pub(crate) fn build_manifest(
+    capabilities: Vec<Capability>,
+    actions: &[ActionDecl],
+) -> ConnectorManifest {
     ConnectorManifest {
         name: "connector-http".to_owned(),
         version: env!("CARGO_PKG_VERSION").to_owned(),

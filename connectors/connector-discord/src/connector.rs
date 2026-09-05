@@ -59,60 +59,7 @@ impl DiscordConnector {
 
         let client = DiscordClient::new(token, config.message_jitter_secs);
 
-        let manifest = ConnectorManifest {
-            name: "connector-discord".to_owned(),
-            version: env!("CARGO_PKG_VERSION").to_owned(),
-            author: "Springtale".to_owned(),
-            description: "Discord connector — slash commands, messaging. \
-                         WARNING: Discord complies with government data requests."
-                .to_owned(),
-            capabilities: vec![
-                Capability::NetworkOutbound {
-                    host: "discord.com".to_owned(),
-                },
-                Capability::NetworkOutbound {
-                    host: "gateway.discord.gg".to_owned(),
-                },
-            ],
-            triggers: trigger_decls.clone(),
-            actions: action_decls.clone(),
-            data_disclosure: vec![
-                DataDisclosure {
-                    data_type: "all messages and interactions".to_owned(),
-                    purpose: "messaging and slash commands".to_owned(),
-                    destination: "Discord servers (discord.com) — Discord retains data \
-                                 indefinitely and complies with government data requests \
-                                 including DHS subpoenas"
-                        .to_owned(),
-                },
-                DataDisclosure {
-                    data_type: "bot token and connection metadata".to_owned(),
-                    purpose: "authentication and gateway connection".to_owned(),
-                    destination: "Discord API (discord.com, gateway.discord.gg) — \
-                                 IP address logged on every connection"
-                        .to_owned(),
-                },
-                DataDisclosure {
-                    data_type: "guild membership and channel access".to_owned(),
-                    purpose: "receiving events from joined servers".to_owned(),
-                    destination: "Discord — server admins can see ALL channels \
-                                 including 'private' ones"
-                        .to_owned(),
-                },
-                DataDisclosure {
-                    data_type: "message content (if MESSAGE_CONTENT intent enabled)".to_owned(),
-                    purpose: "reading messages for automation triggers".to_owned(),
-                    destination: "Discord API — bot reads ALL messages in ALL channels \
-                                 it can access. Disable enable_message_content and use \
-                                 slash commands instead for privacy."
-                        .to_owned(),
-                },
-            ],
-            roles: vec![],
-            wasm_hash: None,
-            signature_alg: SignatureAlgorithm::default(),
-            signature: None,
-        };
+        let manifest = build_manifest(&trigger_decls, &action_decls);
 
         Ok(Self {
             client,
@@ -213,6 +160,68 @@ impl Connector for DiscordConnector {
 
     fn mention_extractor(&self) -> Option<&dyn springtale_connector::mention::MentionExtractor> {
         Some(&crate::mention::DISCORD_MENTION_EXTRACTOR)
+    }
+}
+
+/// Build the connector's manifest. The factory calls this with no config-derived
+/// parts so the manifest is available without instantiating the connector.
+pub(crate) fn build_manifest(
+    triggers: &[TriggerDecl],
+    actions: &[ActionDecl],
+) -> ConnectorManifest {
+    ConnectorManifest {
+        name: "connector-discord".to_owned(),
+        version: env!("CARGO_PKG_VERSION").to_owned(),
+        author: "Springtale".to_owned(),
+        description: "Discord connector — slash commands, messaging. \
+                     WARNING: Discord complies with government data requests."
+            .to_owned(),
+        capabilities: vec![
+            Capability::NetworkOutbound {
+                host: "discord.com".to_owned(),
+            },
+            Capability::NetworkOutbound {
+                host: "gateway.discord.gg".to_owned(),
+            },
+        ],
+        triggers: triggers.to_vec(),
+        actions: actions.to_vec(),
+        data_disclosure: vec![
+            DataDisclosure {
+                data_type: "all messages and interactions".to_owned(),
+                purpose: "messaging and slash commands".to_owned(),
+                destination: "Discord servers (discord.com) — Discord retains data \
+                             indefinitely and complies with government data requests \
+                             including DHS subpoenas"
+                    .to_owned(),
+            },
+            DataDisclosure {
+                data_type: "bot token and connection metadata".to_owned(),
+                purpose: "authentication and gateway connection".to_owned(),
+                destination: "Discord API (discord.com, gateway.discord.gg) — \
+                             IP address logged on every connection"
+                    .to_owned(),
+            },
+            DataDisclosure {
+                data_type: "guild membership and channel access".to_owned(),
+                purpose: "receiving events from joined servers".to_owned(),
+                destination: "Discord — server admins can see ALL channels \
+                             including 'private' ones"
+                    .to_owned(),
+            },
+            DataDisclosure {
+                data_type: "message content (if MESSAGE_CONTENT intent enabled)".to_owned(),
+                purpose: "reading messages for automation triggers".to_owned(),
+                destination: "Discord API — bot reads ALL messages in ALL channels \
+                             it can access. Disable enable_message_content and use \
+                             slash commands instead for privacy."
+                    .to_owned(),
+            },
+        ],
+        roles: vec![],
+        wasm_hash: None,
+        signature_alg: SignatureAlgorithm::default(),
+        signature: None,
     }
 }
 

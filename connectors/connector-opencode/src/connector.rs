@@ -23,7 +23,7 @@ pub struct OpenCodeConnector {
 impl OpenCodeConnector {
     pub fn new(config: OpenCodeConfig) -> Result<Self, crate::error::OpenCodeError> {
         let action_decls = actions::action_declarations();
-        let manifest = build_manifest(&config, &action_decls);
+        let manifest = build_manifest(config_capabilities(&config), &action_decls);
         let client = OpenCodeClient::new(config)?;
         Ok(Self {
             client,
@@ -95,7 +95,18 @@ fn outbound_host(base_url: &str) -> String {
         .to_owned()
 }
 
-fn build_manifest(config: &OpenCodeConfig, actions: &[ActionDecl]) -> ConnectorManifest {
+fn config_capabilities(config: &OpenCodeConfig) -> Vec<Capability> {
+    vec![Capability::NetworkOutbound {
+        host: outbound_host(&config.base_url),
+    }]
+}
+
+/// Build the connector's manifest. The factory calls this with no config-derived
+/// parts so the manifest is available without instantiating the connector.
+pub(crate) fn build_manifest(
+    capabilities: Vec<Capability>,
+    actions: &[ActionDecl],
+) -> ConnectorManifest {
     ConnectorManifest {
         name: "connector-opencode".to_owned(),
         version: env!("CARGO_PKG_VERSION").to_owned(),
@@ -103,9 +114,7 @@ fn build_manifest(config: &OpenCodeConfig, actions: &[ActionDecl]) -> ConnectorM
         description:
             "Drive a local `opencode serve` daemon for agentic coding tasks over its HTTP API."
                 .to_owned(),
-        capabilities: vec![Capability::NetworkOutbound {
-            host: outbound_host(&config.base_url),
-        }],
+        capabilities,
         triggers: vec![],
         actions: actions.to_vec(),
         data_disclosure: vec![DataDisclosure {
