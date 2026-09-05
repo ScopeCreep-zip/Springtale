@@ -77,7 +77,7 @@ impl GithubApi for MockGithubClient {
         _repo: &str,
         _branch: &str,
         _path: &str,
-        _content_b64: &str,
+        _content: &[u8],
         _message: &str,
         _existing_sha: Option<&str>,
     ) -> Result<serde_json::Value, GithubError> {

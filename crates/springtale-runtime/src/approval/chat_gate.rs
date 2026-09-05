@@ -177,6 +177,8 @@ impl ApprovalGate for ChatApprovalGate {
                         .map(springtale_cooperation::cadence::AgentId),
                     summary: r.summary,
                     requested_at: chrono::DateTime::from_timestamp_millis(r.requested_at)?,
+                    origin: None,
+                    expires_at: chrono::DateTime::from_timestamp_millis(r.expires_at),
                 })
             })
             .collect()
@@ -193,10 +195,12 @@ mod tests {
         ApprovalRequest {
             id: ApprovalRequestId::new(),
             connector_name: "connector-shell".into(),
-            capability: Capability::ShellExec,
+            capability: crate::approval::GatedCapability::Manifest(Capability::ShellExec),
             agent_id: None,
             summary: "exec: echo hi".into(),
             requested_at: Utc::now(),
+            origin: None,
+            expires_at: None,
         }
     }
 

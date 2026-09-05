@@ -4,16 +4,13 @@ pub mod auth;
 pub mod authors;
 pub mod bot;
 pub mod canvas;
-pub mod canvas_stream;
 pub mod chat;
 pub mod config_api;
 pub mod connectors;
-pub mod cooperation_stream;
 pub mod dashboard;
 pub mod data;
 pub mod diagnostics;
 pub mod events;
-pub mod events_stream;
 pub mod extractors;
 pub mod fixes;
 pub mod formations;
@@ -26,6 +23,7 @@ pub mod safety;
 pub mod send;
 pub mod sessions;
 pub mod state;
+pub mod stream;
 pub mod templates;
 pub mod webhooks;
 
@@ -106,7 +104,6 @@ pub fn build_router(state: AppState) -> Router {
         .route("/rules/connector", post(rules::create_connector_rule))
         .route("/rules/connector/{name}", get(rules::list_for_connector))
         .route("/events", get(events::list))
-        .route("/events/stream", get(events_stream::stream))
         .route("/sessions", get(sessions::list))
         .route(
             "/config/heartbeat",
@@ -114,8 +111,6 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/canvas", get(canvas::get_canvas))
         .route("/canvas/connections", get(canvas::get_connections))
-        .route("/canvas/stream", get(canvas_stream::stream))
-        .route("/cooperation/events", get(cooperation_stream::stream))
         .route("/webhook/{connector}/{trigger}", post(webhooks::receive))
         .route("/send", post(send::send))
         .route("/diagnostics", get(diagnostics::list))
@@ -245,7 +240,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/approvals", get(approvals::list_pending))
         .route("/approvals/{id}", post(approvals::resolve))
         .route("/chat", post(chat::send))
-        .route("/chat/stream", get(chat::stream))
+        // One-time ticket for the SSE routes below (plan 0.7).
+        .route("/stream/ticket", post(auth::issue_stream_ticket))
         .layer(middleware::from_fn(auth::require_csrf_protection))
         .layer(middleware::from_fn_with_state(
             state.clone(),
@@ -263,9 +259,23 @@ pub fn build_router(state: AppState) -> Router {
         .route("/ui", get(dashboard::serve_dashboard_index))
         .route("/ui/{*path}", get(dashboard::serve_dashboard));
 
+    // SSE routes — EventSource cannot send headers, so these take a
+    // one-time 30 s ticket (`POST /stream/ticket`, bearer-authenticated)
+    // in the query string instead of a bearer token. Read-only GETs, so
+    // no CSRF layer. `/stream` multiplexes events/canvas/cooperation;
+    // `/chat/stream` stays separate because it is per-session.
+    let streams = Router::new()
+        .route("/stream", get(stream::stream))
+        .route("/chat/stream", get(chat::stream))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::require_stream_ticket,
+        ));
+
     Router::new()
         .merge(public)
         .merge(authenticated)
+        .merge(streams)
         .merge(dashboard)
         .layer(
             ServiceBuilder::new()

@@ -1,18 +1,24 @@
 //! Agent operations — autonomy, state aggregation.
 //!
-//! Autonomy levels stored via the bot alias table as a key-value store.
+//! Autonomy is one setting per level, stored in the config KV and keyed by
+//! the thing it governs: `autonomy:agent:{rule_id}` for a single rule/agent,
+//! `autonomy:formation:{id}` for a formation. Nothing is keyed by name, so a
+//! rename orphans nothing. [`resolve_autonomy`] is the one read every
+//! dispatch makes (ALIGNMENT-PLAN §6.2).
+//!
 //! Agent state aggregates rules + recent events + autonomy into a single
 //! response for the frontend to render without computing business logic.
 
 use serde::Serialize;
 use specta::Type;
+use springtale_cooperation::AutonomyLevel;
 use springtale_store::StorageBackend;
 use springtale_store::schema::events::{EventEntry, EventFilter};
 
 use crate::error::OperationError;
 use crate::state::RuntimeState;
 
-/// Valid autonomy levels (ARCHITECTURE.md §5.3).
+/// Valid autonomy level strings (ARCHITECTURE.md §5.3), lowest to highest.
 const VALID_LEVELS: &[&str] = &[
     "observe",           // L0
     "suggest",           // L1
@@ -20,45 +26,127 @@ const VALID_LEVELS: &[&str] = &[
     "act-autonomously",  // L3
 ];
 
-/// Set the autonomy level for an agent.
+/// What an autonomy setting governs.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum AutonomyTarget {
+    /// A formation, keyed by its id string.
+    Formation { id: String },
+    /// A single agent, keyed by the id of the rule it fires.
+    Agent { rule_id: uuid::Uuid },
+}
+
+impl AutonomyTarget {
+    /// Config-store key for this target.
+    fn config_key(&self) -> String {
+        match self {
+            Self::Formation { id } => format!("autonomy:formation:{id}"),
+            Self::Agent { rule_id } => format!("autonomy:agent:{rule_id}"),
+        }
+    }
+}
+
+/// Strict parse: `None` on unrecognized input. (`AutonomyLevel::parse`
+/// falls back to `Suggest`, which would turn a corrupt row into a policy.)
+fn parse_level_opt(s: &str) -> Option<AutonomyLevel> {
+    VALID_LEVELS.contains(&s).then(|| AutonomyLevel::parse(s))
+}
+
+/// Read one config row as a level; `None` when unset, unreadable, or invalid.
+async fn read_level(store: &dyn StorageBackend, key: &str) -> Option<AutonomyLevel> {
+    match store.get_config(key).await {
+        Ok(Some(raw)) => parse_level_opt(&raw),
+        _ => None,
+    }
+}
+
+/// Resolve the name-or-id an operator typed to an agent target.
+///
+/// A UUID is taken as the rule id directly; anything else is looked up as a
+/// rule name in the engine. Only the id is ever written to the store.
+pub async fn resolve_agent_target(
+    state: &RuntimeState,
+    name_or_id: &str,
+) -> Result<AutonomyTarget, OperationError> {
+    if let Ok(rule_id) = uuid::Uuid::parse_str(name_or_id) {
+        return Ok(AutonomyTarget::Agent { rule_id });
+    }
+    let engine = state.engine.read().await;
+    let rule_id = engine
+        .list_rules()
+        .into_iter()
+        .find(|r| r.name == name_or_id)
+        .map(|r| r.id.0)
+        .ok_or_else(|| OperationError::NotFound(format!("rule '{name_or_id}' not found")))?;
+    Ok(AutonomyTarget::Agent { rule_id })
+}
+
+/// Set the autonomy level for a target.
 ///
 /// Valid levels: "observe" (L0), "suggest" (L1), "act-with-approval" (L2),
 /// "act-autonomously" (L3).
 pub async fn set_autonomy(
     store: &dyn StorageBackend,
-    agent_name: &str,
+    target: &AutonomyTarget,
     level: &str,
 ) -> Result<(), OperationError> {
-    if !VALID_LEVELS.contains(&level) {
-        return Err(OperationError::Validation(format!(
+    let level = parse_level_opt(level).ok_or_else(|| {
+        OperationError::Validation(format!(
             "invalid autonomy level '{level}': must be one of: {}",
             VALID_LEVELS.join(", ")
-        )));
-    }
-
-    let alias_key = format!("autonomy:{agent_name}");
+        ))
+    })?;
     store
-        .upsert_alias(&alias_key, level, "cli")
+        .set_config(&target.config_key(), level.as_str())
         .await
-        .map_err(OperationError::Store)?;
-    Ok(())
+        .map_err(OperationError::Store)
 }
 
-/// Get the current autonomy level for an agent.
-///
-/// Returns "suggest" (L1) if no level has been set.
+/// Get the level set on a target. `ActAutonomously` when none has been set.
 pub async fn get_autonomy(
     store: &dyn StorageBackend,
-    agent_name: &str,
-) -> Result<String, OperationError> {
-    let alias_key = format!("autonomy:{agent_name}");
-    let aliases = store.list_aliases().await.map_err(OperationError::Store)?;
-    let level = aliases
-        .iter()
-        .find(|(k, _)| k == &alias_key)
-        .map(|(_, v)| v.clone())
-        .unwrap_or_else(|| "suggest".to_owned());
-    Ok(level)
+    target: &AutonomyTarget,
+) -> Result<AutonomyLevel, OperationError> {
+    let raw = store
+        .get_config(&target.config_key())
+        .await
+        .map_err(OperationError::Store)?;
+    Ok(raw
+        .as_deref()
+        .and_then(parse_level_opt)
+        .unwrap_or(AutonomyLevel::ActAutonomously))
+}
+
+/// The one read every dispatch makes: the agent row wins, then the owning
+/// formation's row, then `ActAutonomously`.
+pub async fn resolve_autonomy(
+    store: &dyn StorageBackend,
+    rule_id: &uuid::Uuid,
+    formation_id: Option<&str>,
+) -> AutonomyLevel {
+    let keys = [
+        Some(AutonomyTarget::Agent { rule_id: *rule_id }.config_key()),
+        formation_id.map(|id| AutonomyTarget::Formation { id: id.to_owned() }.config_key()),
+    ];
+    for key in keys.into_iter().flatten() {
+        if let Some(level) = read_level(store, &key).await {
+            return level;
+        }
+    }
+    AutonomyLevel::ActAutonomously
+}
+
+/// Formation-level resolve for members that have no rule of their own yet
+/// (synthesized formation rules are owned by the formation, not a member).
+pub async fn resolve_formation_autonomy(
+    store: &dyn StorageBackend,
+    formation_id: &str,
+) -> AutonomyLevel {
+    let target = AutonomyTarget::Formation {
+        id: formation_id.to_owned(),
+    };
+    read_level(store, &target.config_key())
+        .await
+        .unwrap_or(AutonomyLevel::ActAutonomously)
 }
 
 /// Step the autonomy level up or down.
@@ -67,32 +155,22 @@ pub async fn get_autonomy(
 /// L3 for up), returns the current level unchanged.
 pub async fn step_autonomy(
     store: &dyn StorageBackend,
-    agent_name: &str,
+    target: &AutonomyTarget,
     direction: AutonomyDirection,
 ) -> Result<String, OperationError> {
-    let current = get_autonomy(store, agent_name).await?;
-    let idx = VALID_LEVELS.iter().position(|l| *l == current).unwrap_or(1); // default to "suggest" index
+    let idx = usize::from(autonomy_to_index(get_autonomy(store, target).await?));
 
     let new_idx = match direction {
-        AutonomyDirection::Up => {
-            if idx < VALID_LEVELS.len() - 1 {
-                idx + 1
-            } else {
-                idx
-            }
-        }
-        AutonomyDirection::Down => {
-            if idx > 0 {
-                idx - 1
-            } else {
-                idx
-            }
-        }
+        AutonomyDirection::Up => (idx + 1).min(VALID_LEVELS.len() - 1),
+        AutonomyDirection::Down => idx.saturating_sub(1),
     };
 
-    let new_level = VALID_LEVELS[new_idx];
+    let new_level = VALID_LEVELS
+        .get(new_idx)
+        .copied()
+        .unwrap_or("act-autonomously");
     if new_idx != idx {
-        set_autonomy(store, agent_name, new_level).await?;
+        set_autonomy(store, target, new_level).await?;
     }
 
     Ok(new_level.to_owned())
@@ -202,14 +280,13 @@ fn compute_activity(
     "waiting"
 }
 
-/// Autonomy level string to index.
-fn autonomy_to_index(level: &str) -> u8 {
+/// Autonomy level to its L0–L3 index.
+fn autonomy_to_index(level: AutonomyLevel) -> u8 {
     match level {
-        "observe" => 0,
-        "suggest" => 1,
-        "act-with-approval" => 2,
-        "act-autonomously" => 3,
-        _ => 1, // default to suggest
+        AutonomyLevel::Observe => 0,
+        AutonomyLevel::Suggest => 1,
+        AutonomyLevel::ActWithApproval => 2,
+        AutonomyLevel::ActAutonomously => 3,
     }
 }
 
@@ -224,7 +301,7 @@ struct LiveAgentEnrichment {
 /// List aggregated agent states for all rules.
 ///
 /// Joins rule data (from engine) with recent events (from store)
-/// and autonomy levels (from alias table) into a single response
+/// and autonomy levels (from the config store) into a single response
 /// the frontend can render without computing any business logic.
 ///
 /// When `state.live_formations` is available, cross-references agents
@@ -244,10 +321,10 @@ pub async fn list_agent_states(state: &RuntimeState) -> Result<Vec<AgentState>, 
         .await
         .map_err(OperationError::Store)?;
 
-    // Fetch all autonomy levels
-    let aliases = state
+    // Fetch all config rows once; autonomy is keyed `autonomy:agent:{rule_id}`.
+    let config = state
         .store
-        .list_aliases()
+        .list_config()
         .await
         .map_err(OperationError::Store)?;
 
@@ -279,12 +356,12 @@ pub async fn list_agent_states(state: &RuntimeState) -> Result<Vec<AgentState>, 
     let agents = rules
         .iter()
         .map(|r| {
-            let autonomy_key = format!("autonomy:{}", r.name);
-            let autonomy_str = aliases
+            let autonomy_key = format!("autonomy:agent:{}", r.id);
+            let autonomy = config
                 .iter()
                 .find(|(k, _)| k == &autonomy_key)
-                .map(|(_, v)| v.as_str())
-                .unwrap_or("suggest");
+                .and_then(|(_, v)| parse_level_opt(v))
+                .unwrap_or(AutonomyLevel::ActAutonomously);
 
             let activity = compute_activity(&r.connector_name, &r.trigger_type, &r.status, &events);
             let task_display = if activity == "idle" {
@@ -293,13 +370,12 @@ pub async fn list_agent_states(state: &RuntimeState) -> Result<Vec<AgentState>, 
                 format!("{} → {}", r.trigger_type, activity)
             };
 
-            let autonomy_idx = autonomy_to_index(autonomy_str);
+            let autonomy_idx = autonomy_to_index(autonomy);
             let autonomy_label = match autonomy_idx {
                 0 => "OBSERVE",
                 1 => "SUGGEST",
                 2 => "APPROVE",
-                3 => "AUTONOMOUS",
-                _ => "SUGGEST",
+                _ => "AUTONOMOUS",
             }
             .to_owned();
 
@@ -342,4 +418,52 @@ pub async fn list_agent_states(state: &RuntimeState) -> Result<Vec<AgentState>, 
         .collect();
 
     Ok(agents)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use springtale_store::backend::InMemoryBackend;
+
+    #[tokio::test]
+    async fn test_resolve_autonomy_prefers_agent_over_formation_and_defaults_autonomous() {
+        let store = InMemoryBackend::new();
+        let rule_id = uuid::Uuid::new_v4();
+        let formation_id = uuid::Uuid::new_v4().to_string();
+
+        // Nothing set: defaults to ActAutonomously.
+        let level = resolve_autonomy(&store, &rule_id, Some(&formation_id)).await;
+        assert_eq!(level, AutonomyLevel::ActAutonomously);
+
+        // Formation row only: the member inherits it.
+        let formation = AutonomyTarget::Formation {
+            id: formation_id.clone(),
+        };
+        set_autonomy(&store, &formation, "suggest").await.unwrap();
+        let level = resolve_autonomy(&store, &rule_id, Some(&formation_id)).await;
+        assert_eq!(level, AutonomyLevel::Suggest);
+        assert_eq!(
+            resolve_formation_autonomy(&store, &formation_id).await,
+            AutonomyLevel::Suggest
+        );
+
+        // Agent row wins over the formation row.
+        let agent = AutonomyTarget::Agent { rule_id };
+        set_autonomy(&store, &agent, "observe").await.unwrap();
+        let level = resolve_autonomy(&store, &rule_id, Some(&formation_id)).await;
+        assert_eq!(level, AutonomyLevel::Observe);
+
+        // No formation id: agent row still applies; another rule defaults.
+        assert_eq!(
+            resolve_autonomy(&store, &rule_id, None).await,
+            AutonomyLevel::Observe
+        );
+        assert_eq!(
+            resolve_autonomy(&store, &uuid::Uuid::new_v4(), None).await,
+            AutonomyLevel::ActAutonomously
+        );
+
+        // Invalid level is rejected at write time.
+        assert!(set_autonomy(&store, &agent, "yolo").await.is_err());
+    }
 }

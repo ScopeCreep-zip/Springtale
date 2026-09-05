@@ -5,6 +5,7 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
@@ -109,6 +110,7 @@ fn build_test_app(ready: bool) -> (Router, String) {
         canvas,
         canvas_tx,
         notification_tx,
+        event_tx: event_tx.clone(),
         trigger_registry: std::sync::Arc::new(std::sync::OnceLock::new()),
         cooperation_tx,
         formation_cmd_tx,
@@ -147,6 +149,7 @@ fn build_test_app(ready: bool) -> (Router, String) {
         bot_msg_tx,
         trigger_registry,
         chat_tx,
+        stream_tickets: Arc::new(Mutex::new(HashMap::new())),
     };
 
     let router = build_router(state);
@@ -530,10 +533,12 @@ async fn test_create_connector_rule() {
 #[tokio::test]
 async fn test_step_autonomy_up_down() {
     let (router, token) = build_test_app(true);
+    // Autonomy is keyed by rule id; an id needs no engine lookup.
+    let rule_id = uuid::Uuid::new_v4();
 
-    // Step up from default "suggest" to "act-with-approval"
-    let body = serde_json::json!({ "direction": "up" });
-    let req = Request::post("/agents/test-agent/autonomy/step")
+    // Step down from default "act-autonomously" to "act-with-approval"
+    let body = serde_json::json!({ "direction": "down" });
+    let req = Request::post(format!("/agents/{rule_id}/autonomy/step"))
         .header("Authorization", format!("Bearer {token}"))
         .header("Content-Type", "application/json")
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
@@ -542,16 +547,16 @@ async fn test_step_autonomy_up_down() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["level"], "act-with-approval");
 
-    // Step down back to "suggest"
-    let body = serde_json::json!({ "direction": "down" });
-    let req = Request::post("/agents/test-agent/autonomy/step")
+    // Step up back to "act-autonomously"
+    let body = serde_json::json!({ "direction": "up" });
+    let req = Request::post(format!("/agents/{rule_id}/autonomy/step"))
         .header("Authorization", format!("Bearer {token}"))
         .header("Content-Type", "application/json")
         .body(Body::from(serde_json::to_vec(&body).unwrap()))
         .unwrap();
     let (status, json) = send(router, req).await;
     assert_eq!(status, StatusCode::OK);
-    assert_eq!(json["level"], "suggest");
+    assert_eq!(json["level"], "act-autonomously");
 }
 
 #[tokio::test]
@@ -724,4 +729,83 @@ async fn test_propose_intent_and_cast_vote_routes() {
         .unwrap();
     let (status, _) = send(router, req).await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
+}
+
+// ────────────────────────────────────────────────────────────────────────────────
+// SSE stream auth — one-time ticket, never a bearer token in the URL (plan 0.7)
+// ────────────────────────────────────────────────────────────────────────────────
+
+/// Helper: status of a streaming route. Does not read the body — an SSE
+/// body never ends (keep-alive), so only the response head is inspected.
+async fn stream_status(router: Router, request: Request<Body>) -> StatusCode {
+    router.oneshot(request).await.unwrap().status()
+}
+
+#[tokio::test]
+async fn test_stream_bearer_in_query_returns_401() {
+    let (router, token) = build_test_app(true);
+
+    // The old `?token=` fallback is gone: a valid bearer token in the query
+    // string is not accepted on either the stream or an ordinary route.
+    let req = Request::get(format!("/stream?token={token}"))
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(
+        stream_status(router.clone(), req).await,
+        StatusCode::UNAUTHORIZED
+    );
+
+    let req = Request::get(format!("/connectors?token={token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, _) = send(router, req).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_stream_ticket_requires_bearer() {
+    let (router, _token) = build_test_app(true);
+    let req = Request::post("/stream/ticket").body(Body::empty()).unwrap();
+    let (status, _) = send(router, req).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}
+
+#[tokio::test]
+async fn test_stream_ticket_is_single_use() {
+    let (router, token) = build_test_app(true);
+
+    let req = Request::post("/stream/ticket")
+        .header("Authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, body) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::OK);
+    let ticket = body["ticket"].as_str().unwrap().to_owned();
+    assert_eq!(ticket.len(), 64, "32 random bytes, hex-encoded");
+    assert_eq!(body["ttl_secs"], 30);
+
+    // Fresh ticket opens the stream.
+    let req = Request::get(format!("/stream?ticket={ticket}"))
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(stream_status(router.clone(), req).await, StatusCode::OK);
+
+    // Same ticket again is rejected.
+    let req = Request::get(format!("/stream?ticket={ticket}"))
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(
+        stream_status(router.clone(), req).await,
+        StatusCode::UNAUTHORIZED
+    );
+
+    // Bearer header alone does not open a stream route; a ticket does.
+    let req = Request::get("/chat/stream")
+        .header("Authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(
+        stream_status(router.clone(), req).await,
+        StatusCode::UNAUTHORIZED
+    );
 }

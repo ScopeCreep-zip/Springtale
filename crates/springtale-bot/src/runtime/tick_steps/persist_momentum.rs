@@ -12,7 +12,9 @@ pub async fn run(store: &dyn StorageBackend, formation: &Formation) {
         formation_id: formation.id.0.to_string(),
         tier: format!("{:?}", formation.momentum.tier),
         consecutive_successes: formation.momentum.consecutive_successes as i64,
-        interference_count: formation.momentum.interference_count as i64,
+        // The `interference_count` column holds the lifetime total. The
+        // per-run counter is always 0 between events and is never stored.
+        interference_count: formation.momentum.interference_total as i64,
         updated_at: chrono::Utc::now(),
     };
     if let Err(e) = store.upsert_formation_momentum(&row).await {

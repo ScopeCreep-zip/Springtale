@@ -56,6 +56,7 @@ export type { CreateMode, ModeSelectOverlayProps } from "./colony/ModeSelectOver
 export { ModeSelectOverlay } from "./colony/ModeSelectOverlay";
 // Colony data mappers (DashboardState → colony visual model)
 export { mapAgents, mapFormations, mapNodes } from "./colony/mappers";
+export { PendingApprovals } from "./colony/PendingApprovals";
 export type { PreflightChecklistProps } from "./colony/PreflightChecklist";
 export { PreflightChecklist } from "./colony/PreflightChecklist";
 export type { PreviewPanelProps } from "./colony/PreviewPanel";
@@ -124,6 +125,7 @@ export type { MutationResult } from "./dashboard/query";
 export { createProviderMutation, createProviderQuery } from "./dashboard/query";
 export type {
   AgentHealthDetail,
+  ApprovalInfo,
   AvailableConnector,
   ChatStreamMessage,
   CommandDecl,

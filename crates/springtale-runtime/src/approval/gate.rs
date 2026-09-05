@@ -17,6 +17,7 @@ use uuid::Uuid;
 
 use springtale_connector::manifest::types::Capability;
 use springtale_cooperation::cadence::AgentId;
+use springtale_core::policy::ChatOrigin;
 
 /// Default deny-after timeout for a pending approval. Picked at one
 /// minute to give a maintainer time to react via a notification
@@ -50,6 +51,17 @@ impl std::fmt::Display for ApprovalRequestId {
 /// Inbound payload from the dispatch layer. The gate doesn't need to
 /// know the cooperation tier or the firing rule — those live in the
 /// audit row that flanks the request, not in the decision contract.
+/// What a pending approval is gating. Manifest capabilities come from the
+/// `CapabilityBridge` ShellExec gate; destructive actions come from the
+/// sentinel via [`super::SentinelChatGate`]. Untagged so rows persisted
+/// before plan 6.7 (`"ShellExec"`) still deserialize.
+#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[serde(untagged)]
+pub enum GatedCapability {
+    Manifest(Capability),
+    DestructiveAction { action_type: String },
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct ApprovalRequest {
     pub id: ApprovalRequestId,
@@ -59,7 +71,7 @@ pub struct ApprovalRequest {
     /// The exact capability being requested. Today this is always
     /// `ShellExec`; the contract is open for any future capability
     /// the workspace decides to gate.
-    pub capability: Capability,
+    pub capability: GatedCapability,
     /// Caller bot id, when the request originates from a firing rule.
     /// `None` for chat-command / CLI-direct paths where the user is
     /// the active caller already.
@@ -70,6 +82,17 @@ pub struct ApprovalRequest {
     pub summary: String,
     /// When this request was created.
     pub requested_at: DateTime<Utc>,
+    /// Chat channel the triggering message came from, when one did. The
+    /// announcer delivers the approval card there; `None` means the
+    /// dashboard is the only surface (deny-on-timeout still applies).
+    #[serde(default)]
+    pub origin: Option<ChatOrigin>,
+    /// When the gate's deny-by-default timeout fires. Stamped by the
+    /// store-backed gate from its persisted row; `None` for in-flight
+    /// requests that have not been stored yet. The UI renders a
+    /// countdown against it.
+    #[serde(default)]
+    pub expires_at: Option<DateTime<Utc>>,
 }
 
 /// User decision on a pending approval. `Approved` carries who

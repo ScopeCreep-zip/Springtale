@@ -400,6 +400,20 @@ export interface SafetyConfig {
  * Every method returns a Promise — callers never see platform details.
  * Subscribe methods return an unsubscribe function.
  */
+/** One pending chat-gate approval — the shape `GET /approvals` returns (plan 6.7). */
+export interface ApprovalInfo {
+  id: string;
+  connector_name: string;
+  /** `"ShellExec"`-style manifest capability, or `{ action_type }` for a sentinel destructive action. */
+  capability: string | Record<string, unknown>;
+  agent_id: string | null;
+  summary: string;
+  requested_at: string;
+  origin: { connector: string; channel_id: string } | null;
+  /** Deny-by-default deadline (ISO); `null` when the gate has not stamped one. */
+  expires_at: string | null;
+}
+
 export interface DataProvider {
   // Connectors
   listConnectors(): Promise<Array<{ name: string; enabled: boolean }>>;
@@ -435,6 +449,10 @@ export interface DataProvider {
 
   // Events
   listEvents(limit?: number): Promise<EventEntry[]>;
+  /** Plan 6.7 — pending chat-gate approvals (`GET /approvals`). */
+  listApprovals(): Promise<ApprovalInfo[]>;
+  /** Plan 6.7 — approve or deny one pending approval (`POST /approvals/{id}`). */
+  resolveApproval(id: string, approve: boolean): Promise<void>;
   subscribeToEvents(callback: (event: EventEntry) => void): () => void;
   /**
    * Phase H cooperation events stream — internal-state lifecycle envelopes
@@ -902,6 +920,10 @@ export interface DashboardState {
    * BottomPanel formation event log (per-formation filter).
    */
   cooperationEvents: () => CooperationEventEnvelope[];
+  /** Plan 6.7 — pending approvals, reloaded on `approval_required` events and after each resolve. */
+  pendingApprovals: () => ApprovalInfo[];
+  refreshApprovals: () => Promise<void>;
+  resolveApproval: (id: string, approve: boolean) => Promise<void>;
   error: () => string;
   loading: () => boolean;
   /**

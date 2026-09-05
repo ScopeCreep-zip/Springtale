@@ -157,7 +157,10 @@ pub async fn spawn_formation(
         formation.momentum.tier =
             springtale_cooperation::momentum::MomentumTier::parse(&momentum_row.tier);
         formation.momentum.consecutive_successes = momentum_row.consecutive_successes as u32;
-        formation.momentum.interference_count = momentum_row.interference_count as u32;
+        // The stored column is the lifetime total. The per-run counter
+        // (`interference_count`) starts a fresh clean run at 0 on restore
+        // and is never loaded from disk.
+        formation.momentum.interference_total = momentum_row.interference_count as u32;
     }
 
     // Restore rally state from DB (survives restarts). `FormationRally`
@@ -270,4 +273,70 @@ pub async fn persist_mental_model(
     .await
     .map_err(|e| BotError::Handler(format!("persist mental model: {e}")))?;
     Ok(())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    use springtale_connector::capability::grant::CapabilityPolicy;
+    use springtale_cooperation::awareness::InMemoryGossipStore;
+    use springtale_cooperation::mental_model::DomainEntry;
+    use springtale_store::SqliteBackend;
+    use springtale_store::schema::formations::FormationRow;
+
+    /// Plan §1.13 (finding 79): the model persisted on dissolve is loaded
+    /// on the next spawn of the same formation id.
+    #[tokio::test]
+    async fn test_spawn_formation_loads_model_persisted_by_prior_instance() {
+        let store: Arc<dyn StorageBackend> = Arc::new(SqliteBackend::open_in_memory().unwrap());
+        let id = uuid::Uuid::new_v4().to_string();
+        let now = chrono::Utc::now();
+        store
+            .insert_formation(&FormationRow {
+                id: id.clone(),
+                name: "F".into(),
+                intent: "reconnoiter".into(),
+                status: "active".into(),
+                created_at: now,
+                updated_at: now,
+            })
+            .await
+            .unwrap();
+        let registry = Arc::new(RwLock::new(ConnectorRegistry::new(
+            CapabilityPolicy::Interactive,
+        )));
+        let (bus, _reports_rx) = CadenceBus::new(Duration::from_millis(100), 16);
+        let cadence = Arc::new(bus);
+        let gossip: Arc<dyn GossipStore> = Arc::new(InMemoryGossipStore::new());
+
+        // First instance: starts empty, learns one domain entry, dissolves.
+        let mut first = spawn_formation(&id, &store, &registry, &cadence, &gossip, None, None)
+            .await
+            .unwrap();
+        assert!(first.mental_model.domain_knowledge.is_empty());
+        first.mental_model.domain_knowledge.insert(
+            "rate_limit".to_owned(),
+            DomainEntry {
+                description: "github: 5000/h".to_owned(),
+                learned_at: Instant::now(),
+                confidence: 0.9,
+            },
+        );
+        persist_mental_model(&first, &store).await.unwrap();
+        drop(first);
+
+        // Second instance with the same id warm-starts with the entry.
+        let second = spawn_formation(&id, &store, &registry, &cadence, &gossip, None, None)
+            .await
+            .unwrap();
+        let entry = second
+            .mental_model
+            .domain_knowledge
+            .get("rate_limit")
+            .expect("persisted domain entry loaded on respawn");
+        assert_eq!(entry.description, "github: 5000/h");
+    }
 }

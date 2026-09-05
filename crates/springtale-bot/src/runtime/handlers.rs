@@ -210,16 +210,6 @@ pub(super) async fn handle_incoming_message(
         channel_id: msg.channel_id.clone(),
     };
 
-    // W2 — remember the operator's most recent channel so approval cards
-    // (ChatApprovalGate notifier) land wherever they last talked to the bot.
-    // Allowed senders only (we just passed check_access).
-    let origin = serde_json::json!({
-        "connector": msg.source_connector,
-        "channel_id": msg.channel_id,
-    })
-    .to_string();
-    let _ = bot.store.set_config("approval:origin", &origin).await;
-
     // Store in conversation context
     let _ = bot.context.push(&session_key, "user", &msg.text).await;
 
@@ -293,6 +283,7 @@ pub(super) async fn handle_incoming_message(
                 let ctx = HandlerContext {
                     user_id: msg.user_id.clone(),
                     channel_id: msg.channel_id.clone(),
+                    source_connector: msg.source_connector.clone(),
                     store: bot.store.clone(),
                     registry: bot.registry.clone(),
                     engine: bot.engine.clone(),

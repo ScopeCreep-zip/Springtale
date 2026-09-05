@@ -20,6 +20,8 @@ sha2 = { workspace = true }
 ring = { workspace = true }
 rustls-pemfile = { workspace = true }
 base64 = { workspace = true }
+# RFC 3339 parsing of `Kick-Event-Message-Timestamp` for webhook replay protection.
+chrono = { workspace = true }
 springtale-connector = { workspace = true }
 springtale-transport = { workspace = true }
 # secret_use helpers (bearer_header, header_value, with_str, …) — recommended

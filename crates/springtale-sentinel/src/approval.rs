@@ -29,6 +29,8 @@
 use async_trait::async_trait;
 use std::time::Duration;
 
+use springtale_core::policy::ChatOrigin;
+
 /// Single approval request — what the gate sees.
 #[derive(Debug, Clone)]
 pub struct ApprovalRequest {
@@ -43,6 +45,9 @@ pub struct ApprovalRequest {
     /// ("`connector-github` is about to delete a branch"). The
     /// caller composes this; we don't try to synthesize it here.
     pub rationale: String,
+    /// Chat channel the triggering message arrived on, when one did.
+    /// Gates that can reach chat deliver the approval card there.
+    pub origin: Option<ChatOrigin>,
 }
 
 /// Trait the sentinel calls when a destructive action wants to run.
@@ -168,6 +173,7 @@ mod tests {
             connector_name: "test".into(),
             action_type: "DeleteFile".into(),
             rationale: "test".into(),
+            origin: None,
         }
     }
 

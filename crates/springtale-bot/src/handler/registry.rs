@@ -15,6 +15,9 @@ use crate::error::BotError;
 pub struct HandlerContext {
     pub user_id: String,
     pub channel_id: String,
+    /// Connector the command arrived on — with `channel_id`, the chat
+    /// origin approval cards are delivered to (plan 6.7).
+    pub source_connector: String,
     pub store: Arc<dyn StorageBackend>,
     pub registry: Arc<RwLock<ConnectorRegistry>>,
     pub engine: Arc<RwLock<RuleEngine>>,

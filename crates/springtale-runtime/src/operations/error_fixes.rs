@@ -68,9 +68,16 @@ pub fn all_guides() -> &'static [FixGuide] {
 /// return guidance. The CLI/Tauri frontends should call [`lookup`] first,
 /// show guidance, and only invoke [`auto_fix`] when the user opts in.
 pub async fn auto_fix(error_id: &str) -> FixOutcome {
+    auto_fix_with_key(error_id, None).await
+}
+
+/// [`auto_fix`] with the store key when the caller has the vault
+/// unlocked (plan 0.5). Without it, fixers that open the store report
+/// that the store is encrypted instead of opening plain.
+pub async fn auto_fix_with_key(error_id: &str, encryption_key_hex: Option<&str>) -> FixOutcome {
     let id = error_id.to_ascii_uppercase();
     match id.as_str() {
-        "E001" => fix_store_error().await,
+        "E001" => fix_store_error(encryption_key_hex).await,
         "E009" => fix_init_error().await,
         other => FixOutcome::new(interned_id(other)).push(format!(
             "No automated fix is available for {other}. Follow the suggestions above."
@@ -90,7 +97,7 @@ fn interned_id(candidate: &str) -> &'static str {
 
 // ---------- Automated fixers ----------
 
-async fn fix_store_error() -> FixOutcome {
+async fn fix_store_error(encryption_key_hex: Option<&str>) -> FixOutcome {
     let mut outcome = FixOutcome::new("E001");
     let paths = DiagnosticPaths::default();
     let db_path = &paths.database;
@@ -124,7 +131,8 @@ async fn fix_store_error() -> FixOutcome {
         }
     }
 
-    match try_open_db(db_path) {
+    // Never open plain (plan 0.5): without the key this reports instead.
+    match try_open_db(db_path, encryption_key_hex) {
         Ok(()) => outcome
             .push("Database opened successfully. The error may be transient.")
             .succeed(),
@@ -135,8 +143,11 @@ async fn fix_store_error() -> FixOutcome {
     }
 }
 
-fn try_open_db(path: &Path) -> Result<(), String> {
-    springtale_store::backend::sqlite::SqliteBackend::open(path)
+fn try_open_db(path: &Path, encryption_key_hex: Option<&str>) -> Result<(), String> {
+    let Some(key) = encryption_key_hex else {
+        return Err("store is encrypted; rerun with the vault unlocked".to_owned());
+    };
+    springtale_store::backend::sqlite::SqliteBackend::open_encrypted(path, key)
         .map(|_| ())
         .map_err(|e| e.to_string())
 }

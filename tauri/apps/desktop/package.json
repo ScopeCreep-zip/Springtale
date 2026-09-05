@@ -23,7 +23,7 @@
     "@types/node": "^22.0.0",
     "tailwindcss": "^4.0",
     "typescript": "^5.7",
-    "vite": "^6.4.2",
+    "vite": "^6.4.3",
     "vite-plugin-solid": "^2.11"
   }
 }

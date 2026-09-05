@@ -140,7 +140,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let (formation, _proto, _ack) = Formation::new(
         members,
         IntentPattern::Execute {
-            plan_id: Some(PlanId::from(format!("llm-swarm-{}", &args.prompt))),
+            plan_id: Some(PlanId::from(format!("llm-swarm-{}", args.prompt))),
         },
         FormationConstraints::default(),
         deps,

@@ -21,10 +21,12 @@
 mod chat_gate;
 mod default_deny;
 mod gate;
+mod sentinel_gate;
 
 pub use chat_gate::{CHAT_APPROVAL_TIMEOUT, ChatApprovalGate};
 pub use default_deny::DefaultDenyApprovalGate;
 pub use gate::{
     ApprovalDecision, ApprovalError, ApprovalGate, ApprovalRequest, ApprovalRequestId,
-    DEFAULT_APPROVAL_TIMEOUT,
+    DEFAULT_APPROVAL_TIMEOUT, GatedCapability,
 };
+pub use sentinel_gate::SentinelChatGate;

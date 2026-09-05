@@ -1,5 +1,6 @@
 mod bot;
 mod crypto;
+mod formations;
 mod sentinel;
 mod transport;
 
@@ -82,6 +83,9 @@ pub async fn boot(
     // receiver goes to bot (event loop materializes/removes formations).
     let (formation_cmd_tx, formation_cmd_rx) =
         tokio::sync::mpsc::channel::<springtale_cooperation::command::FormationCommand>(32);
+    // Kept for restoring persisted formations after `init_bot` spawns the
+    // event loop that owns `formation_cmd_rx` below (§6.11 / finding 119).
+    let formation_cmd_tx_for_restore = formation_cmd_tx.clone();
 
     // Create the shared formations handle BEFORE runtime init.
     // The BotBuilder will use this same Arc, and BotFormationReader reads from it.
@@ -157,6 +161,17 @@ pub async fn boot(
     )
     .await?;
 
+    // ── Step 7a2: Restore formations persisted from a previous run ──
+    // `init_bot` has already spawned the event loop that owns
+    // `formation_cmd_rx`, so these sends queue behind it rather than
+    // blocking boot (§6.11 / finding 119).
+    let formations_restored =
+        formations::restore_formations(&runtime.store, &formation_cmd_tx_for_restore).await?;
+    tracing::info!(
+        formations_restored,
+        "formation restore step complete at boot"
+    );
+
     // ── Step 7b: ConnectorEvent handlers are wired inside
     // `bootstrap_embedded` (shared with desktop), which publishes the
     // registry on `RuntimeState`. Clone it for AppState so the rule CRUD
@@ -190,8 +205,9 @@ pub async fn boot(
 
     let ready_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
 
-    // Broadcast channel for SSE event streaming to dashboard
-    let (event_tx, _event_rx) = tokio::sync::broadcast::channel(256);
+    // Plan 6.7 — the runtime owns the events broadcast so runtime-side
+    // announcers (approval gate) reach `GET /events/stream`.
+    let event_tx = runtime.event_tx.clone();
 
     let state = api::state::AppState {
         runtime: runtime.clone(),
@@ -205,6 +221,9 @@ pub async fn boot(
         trigger_registry,
         bot_msg_tx: api_bot_msg_tx,
         chat_tx,
+        stream_tickets: std::sync::Arc::new(tokio::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
     };
 
     let router = api::build_router(state);

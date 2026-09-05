@@ -226,14 +226,14 @@ mod tests {
         GithubConnector::new(config).unwrap()
     }
 
-    #[test]
-    fn test_manifest_name() {
+    #[tokio::test]
+    async fn test_manifest_name() {
         let connector = test_connector();
         assert_eq!(connector.manifest().name, "connector-github");
     }
 
-    #[test]
-    fn test_manifest_network_capability() {
+    #[tokio::test]
+    async fn test_manifest_network_capability() {
         let connector = test_connector();
         let has_github =
             connector.manifest().capabilities.iter().any(
@@ -242,14 +242,14 @@ mod tests {
         assert!(has_github);
     }
 
-    #[test]
-    fn test_four_triggers() {
+    #[tokio::test]
+    async fn test_four_triggers() {
         let connector = test_connector();
         assert_eq!(connector.triggers().len(), 4);
     }
 
-    #[test]
-    fn test_action_set() {
+    #[tokio::test]
+    async fn test_action_set() {
         let connector = test_connector();
         assert_eq!(connector.actions().len(), 6);
         let names: Vec<&str> = connector
@@ -309,8 +309,8 @@ mod tests {
         assert!(was_received);
     }
 
-    #[test]
-    fn test_data_disclosure() {
+    #[tokio::test]
+    async fn test_data_disclosure() {
         let connector = test_connector();
         assert_eq!(connector.manifest().data_disclosure.len(), 2);
     }

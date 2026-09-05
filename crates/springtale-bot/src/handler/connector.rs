@@ -67,6 +67,12 @@ impl Handler for ConnectorHandler {
                 WasmTier::Fever => MomentumTier::Fever,
             };
         }
+        // Plan 6.7 — approval cards for this command go back to the chat
+        // channel it came from.
+        execution.origin = Some(springtale_core::policy::ChatOrigin {
+            connector: ctx.source_connector.clone(),
+            channel_id: ctx.channel_id.clone(),
+        });
         let dispatch_outcome = springtale_runtime::dispatch::dispatch_action(
             &action,
             &ctx.capability_bridge,

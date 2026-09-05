@@ -32,7 +32,7 @@ import type {
   RuleItem,
   SwarmInfo,
 } from "../dashboard/model";
-import type { CooperationEventEnvelope, DashboardState, DataProvider } from "./types";
+import type { ApprovalInfo, CooperationEventEnvelope, DashboardState, DataProvider } from "./types";
 
 // ── Canvas update reducer ────────────────────────────────
 // Extracted from apps/dashboard/src/pages/Canvas.tsx
@@ -96,6 +96,22 @@ export function createDashboardState(provider: DataProvider): DashboardState {
     // Phase H — cooperation events ring (last 200 envelopes). Drives the
     // EventRibbon toast + BottomPanel formation event log.
     const [cooperationEvents, setCooperationEvents] = createSignal<CooperationEventEnvelope[]>([]);
+
+    // Plan 6.7 — pending approvals (chat gate queue). Reloaded when an
+    // `approval_required` event lands on the stream and after each resolve.
+    const [pendingApprovals, setPendingApprovals] = createSignal<ApprovalInfo[]>([]);
+    const refreshApprovals = async () => {
+      try {
+        setPendingApprovals(await provider.listApprovals());
+      } catch {
+        // Gate not wired or offline — keep the last known queue.
+      }
+    };
+    const resolveApproval = async (id: string, approve: boolean) => {
+      await provider.resolveApproval(id, approve);
+      await refreshApprovals();
+    };
+    void refreshApprovals();
     const [error, setError] = createSignal("");
     const [loading, setLoading] = createSignal(true);
 
@@ -116,6 +132,7 @@ export function createDashboardState(provider: DataProvider): DashboardState {
 
     // ── SSE subscriptions ──
     let unsubEvents = provider.subscribeToEvents((event: EventEntry) => {
+      if (event.trigger_type === "approval_required") void refreshApprovals();
       setEvents((prev: EventItem[]) =>
         [
           {
@@ -152,6 +169,7 @@ export function createDashboardState(provider: DataProvider): DashboardState {
       unsubCanvas();
       unsubCooperation();
       unsubEvents = provider.subscribeToEvents((event: EventEntry) => {
+        if (event.trigger_type === "approval_required") void refreshApprovals();
         setEvents((prev: EventItem[]) =>
           [
             {
@@ -420,6 +438,9 @@ export function createDashboardState(provider: DataProvider): DashboardState {
       agentStates,
       canvasState,
       cooperationEvents,
+      pendingApprovals,
+      refreshApprovals,
+      resolveApproval,
       error,
       loading,
       formationCommands: () => formationCommandsResource(),

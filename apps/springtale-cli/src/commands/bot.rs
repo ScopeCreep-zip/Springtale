@@ -6,12 +6,11 @@
 
 use anyhow::{Context, Result};
 
-use springtale_crypto::token::derive_db_encryption_key_hex;
+use crate::store::PassphraseOpts;
 use springtale_runtime::operations::pairing;
-use springtale_store::backend::sqlite::SqliteBackend;
 
-pub async fn pair_init() -> Result<()> {
-    let store = open_store()?;
+pub async fn pair_init(opts: &PassphraseOpts) -> Result<()> {
+    let store = crate::store::open_store(opts)?;
     let code = pairing::generate_pairing_code(&store)
         .await
         .context("failed to generate pairing code")?;
@@ -23,8 +22,8 @@ pub async fn pair_init() -> Result<()> {
     Ok(())
 }
 
-pub async fn panic_unpair() -> Result<()> {
-    let store = open_store()?;
+pub async fn panic_unpair(opts: &PassphraseOpts) -> Result<()> {
+    let store = crate::store::open_store(opts)?;
     let removed = pairing::panic_unpair(&store)
         .await
         .context("failed to revoke paired users")?;
@@ -36,21 +35,4 @@ pub async fn panic_unpair() -> Result<()> {
         println!("No paired users were found.");
     }
     Ok(())
-}
-
-fn open_store() -> Result<SqliteBackend> {
-    let db_path = springtale_store::paths::default_db_path();
-    if !db_path.exists() {
-        anyhow::bail!(
-            "Database not found at {}. Run `springtale init` first.",
-            db_path.display()
-        );
-    }
-
-    let passphrase = rpassword::read_password_from_tty(Some("Vault passphrase: "))
-        .context("failed to read passphrase")?;
-    let key_hex = derive_db_encryption_key_hex(passphrase.as_bytes());
-
-    SqliteBackend::open_encrypted(&db_path, &key_hex)
-        .context("failed to open encrypted database (wrong passphrase?)")
 }

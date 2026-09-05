@@ -7,7 +7,9 @@ use anyhow::Result;
 
 use springtale_runtime::operations::error_fixes::{self, FixGuide};
 
-pub async fn run(error_id: &str) -> Result<()> {
+use crate::store::{PassphraseOpts, derive_db_key_hex};
+
+pub async fn run(error_id: &str, opts: &PassphraseOpts) -> Result<()> {
     let Some(guide) = error_fixes::lookup(error_id) else {
         print_unknown(error_id);
         return Ok(());
@@ -16,8 +18,11 @@ pub async fn run(error_id: &str) -> Result<()> {
     print_guide(guide);
 
     if guide.has_auto_fix {
+        // Fixers that open the store need the key; the user has the
+        // passphrase at hand, so ask now instead of reporting "locked".
+        let key = derive_db_key_hex(opts)?;
         println!("\nAttempting automated fix...\n");
-        let outcome = error_fixes::auto_fix(guide.id).await;
+        let outcome = error_fixes::auto_fix_with_key(guide.id, Some(&key)).await;
         for msg in &outcome.messages {
             println!("  {msg}");
         }
