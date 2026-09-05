@@ -205,6 +205,9 @@ pub async fn boot(
         trigger_registry,
         bot_msg_tx: api_bot_msg_tx,
         chat_tx,
+        stream_tickets: std::sync::Arc::new(tokio::sync::Mutex::new(
+            std::collections::HashMap::new(),
+        )),
     };
 
     let router = api::build_router(state);

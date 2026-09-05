@@ -1,7 +1,12 @@
+use std::time::{Duration, Instant};
+
+use axum::Json;
+use axum::body::Body;
 use axum::extract::State;
 use axum::http::{Method, Request, StatusCode};
 use axum::middleware::Next;
 use axum::response::Response;
+use rand::RngCore;
 use subtle::ConstantTimeEq;
 
 use super::state::AppState;
@@ -20,21 +25,14 @@ pub async fn require_auth(
     request: Request<axum::body::Body>,
     next: Next,
 ) -> Result<Response, StatusCode> {
-    // Try Authorization header first (standard path)
-    // Fall back to ?token= query parameter for SSE (EventSource limitation —
-    // the browser EventSource API cannot send custom headers).
-    // This is safe because the dashboard binds 127.0.0.1 only.
+    // Bearer header only. SSE routes cannot send headers; they use a
+    // one-time ticket (`require_stream_ticket`) instead of a `?token=`
+    // fallback so the API token never lands in a URL.
     let token = request
         .headers()
         .get("authorization")
         .and_then(|v| v.to_str().ok())
         .and_then(|h| h.strip_prefix("Bearer "))
-        .or_else(|| {
-            request
-                .uri()
-                .query()
-                .and_then(|q| q.split('&').find_map(|pair| pair.strip_prefix("token=")))
-        })
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
     let token_bytes = hex::decode(token).map_err(|_| StatusCode::UNAUTHORIZED)?;
@@ -46,6 +44,42 @@ pub async fn require_auth(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
+    Ok(next.run(request).await)
+}
+
+/// Lifetime of a stream ticket.
+const STREAM_TICKET_TTL: Duration = Duration::from_secs(30);
+
+/// POST /stream/ticket — one-time, 30 s ticket for the SSE routes.
+pub async fn issue_stream_ticket(State(state): State<AppState>) -> Json<serde_json::Value> {
+    let mut bytes = [0u8; 32];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    let ticket = hex::encode(bytes);
+    state
+        .stream_tickets
+        .lock()
+        .await
+        .insert(ticket.clone(), Instant::now());
+    Json(serde_json::json!({ "ticket": ticket, "ttl_secs": STREAM_TICKET_TTL.as_secs() }))
+}
+
+/// Auth middleware for the SSE routes: requires `?ticket=<hex>` issued by
+/// `issue_stream_ticket`, unexpired and never used before. The ticket is
+/// removed on first use, so a leaked URL cannot be replayed.
+pub async fn require_stream_ticket(
+    State(state): State<AppState>,
+    request: Request<Body>,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    let t = request
+        .uri()
+        .query()
+        .and_then(|q| q.split('&').find_map(|p| p.strip_prefix("ticket=")))
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+    let mut tickets = state.stream_tickets.lock().await;
+    tickets.retain(|_, at| at.elapsed() < STREAM_TICKET_TTL);
+    tickets.remove(t).ok_or(StatusCode::UNAUTHORIZED)?; // single use
+    drop(tickets);
     Ok(next.run(request).await)
 }
 
