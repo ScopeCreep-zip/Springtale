@@ -27,7 +27,7 @@
 //! database already sorts by insert time.
 
 use serde::{Deserialize, Serialize};
-use springtale_core::policy::{ApprovalPolicy, AutonomyLevel};
+use springtale_core::policy::{ApprovalPolicy, AutonomyLevel, ChatOrigin};
 use springtale_core::rule::RuleId;
 
 use crate::cadence::AgentId;
@@ -118,6 +118,11 @@ pub struct ExecutionContext {
     /// Firing member's autonomy; `ActAutonomously` for global rules.
     #[serde(default)]
     pub autonomy: AutonomyLevel,
+    /// Chat channel that triggered this fire, when a chat message did.
+    /// Approval cards for the action are delivered here. `None` for
+    /// rule, cron, and formation dispatches.
+    #[serde(default)]
+    pub origin: Option<ChatOrigin>,
 }
 
 impl ExecutionContext {
@@ -135,6 +140,7 @@ impl ExecutionContext {
             mode,
             policy: ApprovalPolicy::default(),
             autonomy: AutonomyLevel::default(),
+            origin: None,
         }
     }
 
@@ -160,6 +166,7 @@ impl ExecutionContext {
             mode,
             policy,
             autonomy,
+            origin: None,
         }
     }
 
@@ -181,6 +188,7 @@ impl ExecutionContext {
             mode,
             policy: ApprovalPolicy::default(),
             autonomy: AutonomyLevel::default(),
+            origin: None,
         }
     }
 
@@ -265,6 +273,7 @@ mod tests {
             mode: ExecutionMode::DryRun,
             policy: ApprovalPolicy::default(),
             autonomy: AutonomyLevel::default(),
+            origin: None,
         };
         assert!(dry.is_dry_run());
         let live = ExecutionContext::for_global(RuleId(Uuid::new_v4()), ExecutionMode::Cron);

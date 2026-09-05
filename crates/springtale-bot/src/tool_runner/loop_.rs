@@ -147,8 +147,19 @@ pub async fn run_with_tools(
 
         // Execute each call and push a `tool` result message.
         for tool_call in &response.tool_calls {
-            let result =
-                execute_tool_call(deps.bridge, deps.sentinel, tool_call, call.formation_tier).await;
+            let result = execute_tool_call(
+                deps.bridge,
+                deps.sentinel,
+                tool_call,
+                call.formation_tier,
+                call.checkpoint
+                    .as_ref()
+                    .map(|c| springtale_core::policy::ChatOrigin {
+                        connector: c.origin_connector.clone(),
+                        channel_id: c.origin_channel.clone(),
+                    }),
+            )
+            .await;
             messages.push(result_message(tool_call, result));
         }
     }
@@ -171,6 +182,7 @@ async fn execute_tool_call(
     sentinel: &Arc<springtale_sentinel::Sentinel>,
     call: &ToolCall,
     formation_tier: Option<WasmTier>,
+    origin: Option<springtale_core::policy::ChatOrigin>,
 ) -> ExecutedResult {
     let Some((connector, action)) = split_tool_name(&call.name) else {
         return ExecutedResult {
@@ -208,6 +220,9 @@ async fn execute_tool_call(
     if let Some(tier) = formation_tier {
         execution.momentum = wasm_tier_to_momentum(tier);
     }
+    // Plan 6.7 — approval cards for this tool call go back to the chat
+    // channel the message came from.
+    execution.origin = origin;
     let outcome = springtale_runtime::dispatch::dispatch_action(
         &action,
         bridge,

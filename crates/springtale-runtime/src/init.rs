@@ -78,7 +78,14 @@ pub async fn init(
     )
     .await?;
     let ai_adapter_arc = init_adapter(config)?;
-    let sentinel = init_sentinel(config, &store, approval_gate);
+    // Plan 6.7 — the chat gate is built before the sentinel so a shell
+    // that supplies no UI gate (springtaled, CLI) prompts through chat +
+    // dashboard instead of sentinel-side default-deny. A caller-supplied
+    // gate (desktop UI) still wins.
+    let chat_gate = Arc::new(crate::approval::ChatApprovalGate::new(store.clone()));
+    let sentinel_gate: Arc<dyn springtale_sentinel::ApprovalGate> = approval_gate
+        .unwrap_or_else(|| Arc::new(crate::approval::SentinelChatGate::new(chat_gate.clone())));
+    let sentinel = init_sentinel(config, &store, sentinel_gate);
 
     // Start WASM epoch ticker — increments every 1s so wall-clock
     // timeouts actually fire. Without this, a malicious WASM module
@@ -173,6 +180,10 @@ pub async fn init(
     // notification) drain promptly. Lagged receivers drop the oldest
     // (broadcast semantics) — acceptable for best-effort delivery.
     let (notification_tx, _) = tokio::sync::broadcast::channel(256);
+    // Events broadcast behind `GET /events/stream` / desktop `event-fired`.
+    // Owned here (plan 6.7) so runtime-side announcers reach it.
+    let (event_tx, _) =
+        tokio::sync::broadcast::channel::<springtale_store::schema::events::EventEntry>(256);
 
     // W3.B — canvas state syncer. Subscribes to `canvas_tx` and
     // applies every broadcast update to the in-memory `canvas` state
@@ -236,7 +247,6 @@ pub async fn init(
     // the bot-side notifier turns into a 3-button chat card. Single Arc
     // shared across RuntimeState + bridge so `POST /approvals/:id` AND the
     // chat callback path resolve into the same gate the dispatcher awaits.
-    let chat_gate = Arc::new(crate::approval::ChatApprovalGate::new(store.clone()));
     // Boot sweep — 2026 durable-resume semantics (LangGraph thread pattern +
     // OWASP Agentic bind+expiry): pending approvals SURVIVE a restart; only
     // rows past their `expires_at` are denied here. Safety comes from the
@@ -286,30 +296,40 @@ pub async fn init(
         .with_approval_gate(approval_gate)
         .with_ai_guardrails(ai_guardrails);
 
-    // W2 — approval-card notifier. Turns each gate announcement into a
-    // 3-button card in the operator's most recent chat channel
-    // (`approval:origin`, recorded by the bot on every allowed message).
+    // Approval announcer (plan 6.7). Every gate announcement is published
+    // on the events stream first (`trigger_type = "approval_required"`) so
+    // whoever is watching a dashboard sees it; then, when the request
+    // carries a chat origin, a 3-button card goes to that channel.
     // Telegram gets a real inline keyboard; other connectors get a typed
     // `apr:<id>:y|n` reply fallback. Exactly three actions (Nintendo rule).
+    // Rule / formation fires have no origin — dashboard only.
     {
         let mut announcements = chat_gate.subscribe();
         let bridge = capability_bridge.clone();
-        let notifier_store = store.clone();
+        let announce_tx = event_tx.clone();
         tokio::spawn(async move {
             while let Ok(req) = announcements.recv().await {
-                let origin = crate::operations::config::get_config(
-                    notifier_store.as_ref(),
-                    "approval:origin",
-                )
-                .await
-                .unwrap_or(serde_json::Value::Null);
-                let (Some(conn), Some(chan)) = (
-                    origin.get("connector").and_then(|v| v.as_str()),
-                    origin.get("channel_id").and_then(|v| v.as_str()),
-                ) else {
-                    tracing::warn!(approval = %req.id, "no approval:origin — card undeliverable; deny-on-timeout applies");
+                let expires_at = req.requested_at
+                    + chrono::Duration::from_std(crate::approval::CHAT_APPROVAL_TIMEOUT)
+                        .unwrap_or_else(|_| chrono::Duration::seconds(900));
+                let _ = announce_tx.send(springtale_store::schema::events::EventEntry {
+                    id: uuid::Uuid::new_v4(),
+                    connector_name: req.connector_name.clone(),
+                    trigger_type: "approval_required".to_owned(),
+                    timestamp: chrono::Utc::now(),
+                    action_taken: serde_json::json!({
+                        "id": req.id.to_string(),
+                        "summary": req.summary,
+                        "expires_at": expires_at.to_rfc3339(),
+                    })
+                    .to_string(),
+                });
+                let Some(origin) = req.origin.as_ref() else {
+                    tracing::info!(approval = %req.id, "approval has no chat origin — dashboard only; deny-on-timeout applies");
                     continue;
                 };
+                let conn = origin.connector.as_str();
+                let chan = origin.channel_id.as_str();
                 let text = format!(
                     "⚠️ Approval needed\n{} wants to run:\n{}",
                     req.connector_name, req.summary
@@ -372,6 +392,7 @@ pub async fn init(
         canvas,
         canvas_tx,
         notification_tx,
+        event_tx,
         trigger_registry: Arc::new(std::sync::OnceLock::new()),
         cooperation_tx,
         formation_cmd_tx,
@@ -893,17 +914,15 @@ fn init_adapter(
 /// W1.F — the optional `approval_gate` lets the application shell
 /// (desktop / dashboard / future surfaces) supply a UI-backed
 /// `ChannelApprovalGate` so destructive actions prompt the user
-/// instead of silently denying. `None` falls back to the safe
-/// `DefaultDenyApprovalGate` — correct for CLI / headless runs where
-/// no human is on the other end.
+/// instead of silently denying. Headless shells get the
+/// `SentinelChatGate` adapter (plan 6.7) — chat card + dashboard — so
+/// someone is always asked; deny-on-timeout stays the safe default.
 fn init_sentinel(
     config: &RuntimeConfig,
     store: &Arc<dyn springtale_store::StorageBackend>,
-    approval_gate: Option<Arc<dyn springtale_sentinel::ApprovalGate>>,
+    gate: Arc<dyn springtale_sentinel::ApprovalGate>,
 ) -> Arc<springtale_sentinel::Sentinel> {
     let sentinel_config = config.sentinel.clone().unwrap_or_default();
-    let gate =
-        approval_gate.unwrap_or_else(|| Arc::new(springtale_sentinel::DefaultDenyApprovalGate));
     Arc::new(springtale_sentinel::Sentinel::with_approval_gate(
         sentinel_config,
         store.clone(),

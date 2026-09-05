@@ -146,6 +146,31 @@ pub async fn init_runtime(
         .await
         .map_err(|e| format!("failed to initialize runtime: {e}"))?;
 
+    // Plan 6.7 — forward the runtime's event stream to the webview as
+    // `event-fired`, the Tauri event the desktop provider's
+    // `subscribeToEvents` already listens on. This is the desktop
+    // counterpart of the daemon's `GET /events/stream` SSE: without it
+    // the shared dashboard state never sees `approval_required` and the
+    // pending-approvals panel would only refresh on launch / resolve.
+    {
+        use tauri::Emitter;
+        let app = app.clone();
+        let mut rx = runtime.event_tx.subscribe();
+        tokio::spawn(async move {
+            loop {
+                match rx.recv().await {
+                    Ok(entry) => {
+                        if let Err(e) = app.emit("event-fired", &entry) {
+                            tracing::warn!(error = %e, "event-fired emit failed");
+                        }
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
+                }
+            }
+        });
+    }
+
     // Track E — bring up the in-process scheduler + job queue + trigger
     // event loop. Same `bootstrap_embedded` the daemon uses, so cron
     // expressions registered through the desktop UI actually tick.

@@ -14,7 +14,7 @@
  * confirmation (icon + summary + buttons).
  */
 
-import type { Component } from "solid-js";
+import { type Component, createSignal, onCleanup, onMount, Show } from "solid-js";
 
 export interface ApprovalCardProps {
   /** Connector that originated the action (e.g. `connector-github`). */
@@ -23,11 +23,32 @@ export interface ApprovalCardProps {
   actionType: string;
   /** Plain-language rationale assembled by the backend. */
   rationale: string;
+  /** ISO timestamp of the gate's deny-by-default deadline; omit when unknown. */
+  expiresAt?: string | null;
   /** Fires when the user clicks Approve or Deny. */
   onDecision: (approve: boolean) => void;
 }
 
+/** `mm:ss` until `expiresAt`, `"expired"` once past, `null` when unknown. */
+function countdown(expiresAt: string | null | undefined, nowMs: number): string | null {
+  if (!expiresAt) return null;
+  const ms = Date.parse(expiresAt) - nowMs;
+  if (Number.isNaN(ms)) return null;
+  if (ms <= 0) return "expired";
+  const total = Math.floor(ms / 1000);
+  const mm = String(Math.floor(total / 60)).padStart(2, "0");
+  const ss = String(total % 60).padStart(2, "0");
+  return `${mm}:${ss}`;
+}
+
 export const ApprovalCard: Component<ApprovalCardProps> = (props) => {
+  // Tick once a second so the deadline reads as a live countdown.
+  const [now, setNow] = createSignal(Date.now());
+  onMount(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    onCleanup(() => clearInterval(timer));
+  });
+  const remaining = () => countdown(props.expiresAt, now());
   return (
     <div class="mx-auto max-w-lg rounded border-2 border-status-warn bg-soil-mid p-6">
       <p class="colony-text-md font-bold text-text-primary">⚠️ Destructive action</p>
@@ -40,6 +61,13 @@ export const ApprovalCard: Component<ApprovalCardProps> = (props) => {
           {props.connectorName.replace(/^connector-/, "")}
         </p>
       </div>
+      <Show when={remaining()}>
+        {(r) => (
+          <p class="colony-text-3xs mt-2 text-text-dim">
+            {r() === "expired" ? "Expired — denied by default" : `Auto-deny in ${r()}`}
+          </p>
+        )}
+      </Show>
       <p class="colony-text-3xs mt-3 text-text-dim">
         Approving will let this connector run the action once. The bot can request approval again
         for future identical actions.

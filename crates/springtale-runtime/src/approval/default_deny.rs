@@ -135,10 +135,12 @@ mod tests {
         ApprovalRequest {
             id: ApprovalRequestId::new(),
             connector_name: "connector-shell".into(),
-            capability: Capability::ShellExec,
+            capability: crate::approval::GatedCapability::Manifest(Capability::ShellExec),
             agent_id: None,
             summary: "test request".into(),
             requested_at: Utc::now(),
+            origin: None,
+            expires_at: None,
         }
     }
 
