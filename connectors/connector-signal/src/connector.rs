@@ -50,54 +50,7 @@ impl SignalConnector {
             config.message_jitter_secs,
         );
 
-        let manifest = ConnectorManifest {
-            name: "connector-signal".to_owned(),
-            version: env!("CARGO_PKG_VERSION").to_owned(),
-            author: "Springtale".to_owned(),
-            description: "Signal connector — signal-cli bridge, E2E encrypted messaging, \
-                         disappearing messages."
-                .to_owned(),
-            capabilities: vec![Capability::NetworkOutbound {
-                host: "localhost".to_owned(),
-            }],
-            triggers: trigger_decls.clone(),
-            actions: action_decls.clone(),
-            data_disclosure: vec![
-                DataDisclosure {
-                    data_type: "message content (E2E encrypted in transit)".to_owned(),
-                    purpose: "sending and receiving Signal messages".to_owned(),
-                    destination: "Signal server sees ciphertext only. Content readable \
-                                 only by sender and recipient."
-                        .to_owned(),
-                },
-                DataDisclosure {
-                    data_type: "signal-cli local data (message DB, encryption keys)".to_owned(),
-                    purpose: "Signal Protocol session management".to_owned(),
-                    destination: "local disk (~/.local/share/signal-cli/data/) — stored \
-                                 in PLAINTEXT. Anyone with filesystem access can read \
-                                 all messages and clone the account."
-                        .to_owned(),
-                },
-                DataDisclosure {
-                    data_type: "phone number".to_owned(),
-                    purpose: "Signal account registration".to_owned(),
-                    destination: "stored in signal-cli local data ONLY, NOT in Springtale \
-                                 config. Signal server knows the number."
-                        .to_owned(),
-                },
-                DataDisclosure {
-                    data_type: "connection metadata (IP, timestamps)".to_owned(),
-                    purpose: "Signal Protocol transport".to_owned(),
-                    destination: "Signal server logs connection metadata. \
-                                 Use a VPN to protect IP address."
-                        .to_owned(),
-                },
-            ],
-            roles: vec![],
-            wasm_hash: None,
-            signature_alg: SignatureAlgorithm::default(),
-            signature: None,
-        };
+        let manifest = build_manifest(&trigger_decls, &action_decls);
 
         Ok(Self {
             client,
@@ -192,6 +145,62 @@ impl Connector for SignalConnector {
 
     fn mention_extractor(&self) -> Option<&dyn springtale_connector::mention::MentionExtractor> {
         Some(&crate::mention::SIGNAL_MENTION_EXTRACTOR)
+    }
+}
+
+/// Build the connector's manifest. The factory calls this with no config-derived
+/// parts so the manifest is available without instantiating the connector.
+pub(crate) fn build_manifest(
+    triggers: &[TriggerDecl],
+    actions: &[ActionDecl],
+) -> ConnectorManifest {
+    ConnectorManifest {
+        name: "connector-signal".to_owned(),
+        version: env!("CARGO_PKG_VERSION").to_owned(),
+        author: "Springtale".to_owned(),
+        description: "Signal connector — signal-cli bridge, E2E encrypted messaging, \
+                     disappearing messages."
+            .to_owned(),
+        capabilities: vec![Capability::NetworkOutbound {
+            host: "localhost".to_owned(),
+        }],
+        triggers: triggers.to_vec(),
+        actions: actions.to_vec(),
+        data_disclosure: vec![
+            DataDisclosure {
+                data_type: "message content (E2E encrypted in transit)".to_owned(),
+                purpose: "sending and receiving Signal messages".to_owned(),
+                destination: "Signal server sees ciphertext only. Content readable \
+                             only by sender and recipient."
+                    .to_owned(),
+            },
+            DataDisclosure {
+                data_type: "signal-cli local data (message DB, encryption keys)".to_owned(),
+                purpose: "Signal Protocol session management".to_owned(),
+                destination: "local disk (~/.local/share/signal-cli/data/) — stored \
+                             in PLAINTEXT. Anyone with filesystem access can read \
+                             all messages and clone the account."
+                    .to_owned(),
+            },
+            DataDisclosure {
+                data_type: "phone number".to_owned(),
+                purpose: "Signal account registration".to_owned(),
+                destination: "stored in signal-cli local data ONLY, NOT in Springtale \
+                             config. Signal server knows the number."
+                    .to_owned(),
+            },
+            DataDisclosure {
+                data_type: "connection metadata (IP, timestamps)".to_owned(),
+                purpose: "Signal Protocol transport".to_owned(),
+                destination: "Signal server logs connection metadata. \
+                             Use a VPN to protect IP address."
+                    .to_owned(),
+            },
+        ],
+        roles: vec![],
+        wasm_hash: None,
+        signature_alg: SignatureAlgorithm::default(),
+        signature: None,
     }
 }
 

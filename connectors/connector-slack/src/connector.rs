@@ -62,60 +62,7 @@ impl SlackConnector {
         ));
         let client = SlackClient::new(bot_token, config.message_jitter_secs);
 
-        let manifest = ConnectorManifest {
-            name: "connector-slack".to_owned(),
-            version: env!("CARGO_PKG_VERSION").to_owned(),
-            author: "Springtale".to_owned(),
-            description: "Slack connector — Socket Mode, slash commands, Block Kit, threads. \
-                         WARNING: Workspace admins can read ALL messages."
-                .to_owned(),
-            capabilities: vec![
-                Capability::NetworkOutbound {
-                    host: "slack.com".to_owned(),
-                },
-                Capability::NetworkOutbound {
-                    host: "wss-primary.slack.com".to_owned(),
-                },
-            ],
-            triggers: trigger_decls.clone(),
-            actions: action_decls.clone(),
-            data_disclosure: vec![
-                DataDisclosure {
-                    data_type: "all messages sent by bot".to_owned(),
-                    purpose: "messaging and slash command responses".to_owned(),
-                    destination: "Slack workspace — workspace admins can read ALL messages \
-                                 including DMs. No notification when data is exported \
-                                 (changed 2018). Slack complies with government data requests."
-                        .to_owned(),
-                },
-                DataDisclosure {
-                    data_type: "bot tokens and connection metadata".to_owned(),
-                    purpose: "authentication and Socket Mode connection".to_owned(),
-                    destination: "Slack API (slack.com) — IP logged. Both tokens revocable \
-                                 by workspace admin at any time without notice."
-                        .to_owned(),
-                },
-                DataDisclosure {
-                    data_type: "channel membership and message history".to_owned(),
-                    purpose: "receiving events from channels bot is in".to_owned(),
-                    destination: "visible to workspace admins and Enterprise Grid \
-                                 compliance/eDiscovery tools. Full export includes \
-                                 all conversations."
-                        .to_owned(),
-                },
-                DataDisclosure {
-                    data_type: "message content in all channels bot is in".to_owned(),
-                    purpose: "automation triggers and command processing".to_owned(),
-                    destination: "admin-controlled retention. Users CANNOT control their \
-                                 own data retention. Do NOT use for sensitive organizing."
-                        .to_owned(),
-                },
-            ],
-            roles: vec![],
-            wasm_hash: None,
-            signature_alg: SignatureAlgorithm::default(),
-            signature: None,
-        };
+        let manifest = build_manifest(&trigger_decls, &action_decls);
 
         Ok(Self {
             client,
@@ -211,6 +158,68 @@ impl Connector for SlackConnector {
 
     fn mention_extractor(&self) -> Option<&dyn springtale_connector::mention::MentionExtractor> {
         Some(&crate::mention::SLACK_MENTION_EXTRACTOR)
+    }
+}
+
+/// Build the connector's manifest. The factory calls this with no config-derived
+/// parts so the manifest is available without instantiating the connector.
+pub(crate) fn build_manifest(
+    triggers: &[TriggerDecl],
+    actions: &[ActionDecl],
+) -> ConnectorManifest {
+    ConnectorManifest {
+        name: "connector-slack".to_owned(),
+        version: env!("CARGO_PKG_VERSION").to_owned(),
+        author: "Springtale".to_owned(),
+        description: "Slack connector — Socket Mode, slash commands, Block Kit, threads. \
+                     WARNING: Workspace admins can read ALL messages."
+            .to_owned(),
+        capabilities: vec![
+            Capability::NetworkOutbound {
+                host: "slack.com".to_owned(),
+            },
+            Capability::NetworkOutbound {
+                host: "wss-primary.slack.com".to_owned(),
+            },
+        ],
+        triggers: triggers.to_vec(),
+        actions: actions.to_vec(),
+        data_disclosure: vec![
+            DataDisclosure {
+                data_type: "all messages sent by bot".to_owned(),
+                purpose: "messaging and slash command responses".to_owned(),
+                destination: "Slack workspace — workspace admins can read ALL messages \
+                             including DMs. No notification when data is exported \
+                             (changed 2018). Slack complies with government data requests."
+                    .to_owned(),
+            },
+            DataDisclosure {
+                data_type: "bot tokens and connection metadata".to_owned(),
+                purpose: "authentication and Socket Mode connection".to_owned(),
+                destination: "Slack API (slack.com) — IP logged. Both tokens revocable \
+                             by workspace admin at any time without notice."
+                    .to_owned(),
+            },
+            DataDisclosure {
+                data_type: "channel membership and message history".to_owned(),
+                purpose: "receiving events from channels bot is in".to_owned(),
+                destination: "visible to workspace admins and Enterprise Grid \
+                             compliance/eDiscovery tools. Full export includes \
+                             all conversations."
+                    .to_owned(),
+            },
+            DataDisclosure {
+                data_type: "message content in all channels bot is in".to_owned(),
+                purpose: "automation triggers and command processing".to_owned(),
+                destination: "admin-controlled retention. Users CANNOT control their \
+                             own data retention. Do NOT use for sensitive organizing."
+                    .to_owned(),
+            },
+        ],
+        roles: vec![],
+        wasm_hash: None,
+        signature_alg: SignatureAlgorithm::default(),
+        signature: None,
     }
 }
 

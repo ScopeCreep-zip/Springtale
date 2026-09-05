@@ -85,7 +85,9 @@ impl Connector for ShellConnector {
 }
 
 /// Build the connector manifest.
-fn build_manifest(actions: &[ActionDecl]) -> ConnectorManifest {
+/// Build the connector's manifest. The factory calls this with no config-derived
+/// parts so the manifest is available without instantiating the connector.
+pub(crate) fn build_manifest(actions: &[ActionDecl]) -> ConnectorManifest {
     ConnectorManifest {
         name: "connector-shell".to_owned(),
         version: env!("CARGO_PKG_VERSION").to_owned(),

@@ -57,47 +57,7 @@ impl NostrConnector {
             })
             .collect();
 
-        let manifest = ConnectorManifest {
-            name: "connector-nostr".to_owned(),
-            version: env!("CARGO_PKG_VERSION").to_owned(),
-            author: "Springtale".to_owned(),
-            description:
-                "Nostr relay connector — pseudonymous notes, NIP-44 encrypted DMs. Best for vulnerable users."
-                    .to_owned(),
-            capabilities,
-            triggers: trigger_decls.clone(),
-            actions: action_decls.clone(),
-            data_disclosure: vec![
-                DataDisclosure {
-                    data_type: "public notes (kind 1)".to_owned(),
-                    purpose: "posting to Nostr network".to_owned(),
-                    destination: "Nostr relays (replicated across network)".to_owned(),
-                },
-                DataDisclosure {
-                    data_type: "encrypted DMs (NIP-44 content)".to_owned(),
-                    purpose: "E2E encrypted messaging".to_owned(),
-                    destination: "relays see ciphertext; content readable only by recipient"
-                        .to_owned(),
-                },
-                DataDisclosure {
-                    data_type: "event metadata (pubkeys, timestamps, tags)".to_owned(),
-                    purpose: "Nostr protocol requirement — cannot be hidden".to_owned(),
-                    destination:
-                        "visible to ALL relay operators and network observers".to_owned(),
-                },
-                DataDisclosure {
-                    data_type: "relationship graph (p-tags, e-tags)".to_owned(),
-                    purpose: "reply threading and mentions".to_owned(),
-                    destination:
-                        "visible to relay operators — reveals who communicates with whom"
-                            .to_owned(),
-                },
-            ],
-            roles: vec![],
-            wasm_hash: None,
-            signature_alg: SignatureAlgorithm::default(),
-            signature: None,
-        };
+        let manifest = build_manifest(capabilities, &trigger_decls, &action_decls);
 
         Ok(Self {
             client,
@@ -197,6 +157,56 @@ impl Connector for NostrConnector {
 
     fn mention_extractor(&self) -> Option<&dyn springtale_connector::mention::MentionExtractor> {
         Some(&crate::mention::NOSTR_MENTION_EXTRACTOR)
+    }
+}
+
+/// Build the connector's manifest. The factory calls this with no config-derived
+/// parts so the manifest is available without instantiating the connector.
+pub(crate) fn build_manifest(
+    capabilities: Vec<Capability>,
+    triggers: &[TriggerDecl],
+    actions: &[ActionDecl],
+) -> ConnectorManifest {
+    ConnectorManifest {
+        name: "connector-nostr".to_owned(),
+        version: env!("CARGO_PKG_VERSION").to_owned(),
+        author: "Springtale".to_owned(),
+        description:
+            "Nostr relay connector — pseudonymous notes, NIP-44 encrypted DMs. Best for vulnerable users."
+                .to_owned(),
+        capabilities,
+        triggers: triggers.to_vec(),
+        actions: actions.to_vec(),
+        data_disclosure: vec![
+            DataDisclosure {
+                data_type: "public notes (kind 1)".to_owned(),
+                purpose: "posting to Nostr network".to_owned(),
+                destination: "Nostr relays (replicated across network)".to_owned(),
+            },
+            DataDisclosure {
+                data_type: "encrypted DMs (NIP-44 content)".to_owned(),
+                purpose: "E2E encrypted messaging".to_owned(),
+                destination: "relays see ciphertext; content readable only by recipient"
+                    .to_owned(),
+            },
+            DataDisclosure {
+                data_type: "event metadata (pubkeys, timestamps, tags)".to_owned(),
+                purpose: "Nostr protocol requirement — cannot be hidden".to_owned(),
+                destination:
+                    "visible to ALL relay operators and network observers".to_owned(),
+            },
+            DataDisclosure {
+                data_type: "relationship graph (p-tags, e-tags)".to_owned(),
+                purpose: "reply threading and mentions".to_owned(),
+                destination:
+                    "visible to relay operators — reveals who communicates with whom"
+                        .to_owned(),
+            },
+        ],
+        roles: vec![],
+        wasm_hash: None,
+        signature_alg: SignatureAlgorithm::default(),
+        signature: None,
     }
 }
 

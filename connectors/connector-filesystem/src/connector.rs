@@ -40,7 +40,7 @@ impl FilesystemConnector {
         let trigger_decls = triggers::trigger_declarations();
         let action_decls = actions::action_declarations();
 
-        let manifest = build_manifest(&config, &trigger_decls, &action_decls);
+        let manifest = build_manifest(config_capabilities(&config), &trigger_decls, &action_decls);
 
         Self {
             config,
@@ -156,11 +156,7 @@ impl Connector for FilesystemConnector {
 }
 
 /// Build the connector manifest from config and declarations.
-fn build_manifest(
-    config: &FilesystemConfig,
-    triggers: &[TriggerDecl],
-    actions: &[ActionDecl],
-) -> ConnectorManifest {
+fn config_capabilities(config: &FilesystemConfig) -> Vec<Capability> {
     let mut capabilities = Vec::new();
 
     // Declare FilesystemRead capabilities for all read and watch paths
@@ -186,6 +182,16 @@ fn build_manifest(
         });
     }
 
+    capabilities
+}
+
+/// Build the connector's manifest. The factory calls this with no config-derived
+/// parts so the manifest is available without instantiating the connector.
+pub(crate) fn build_manifest(
+    capabilities: Vec<Capability>,
+    triggers: &[TriggerDecl],
+    actions: &[ActionDecl],
+) -> ConnectorManifest {
     ConnectorManifest {
         name: "connector-filesystem".to_owned(),
         version: env!("CARGO_PKG_VERSION").to_owned(),
