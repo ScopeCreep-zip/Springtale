@@ -35,6 +35,13 @@ pub struct KickConnector {
     /// Kick event types we've already subscribed to (avoid duplicate subscriptions).
     subscribed_events: Mutex<HashSet<String>>,
     sub_counter: SubscriptionCounter,
+    /// API base, needed to fetch Kick's webhook public key lazily.
+    api_base: String,
+    /// Cached PEM public key from `GET /public/v1/public-key`.
+    webhook_public_key: Mutex<Option<String>>,
+    /// Seen `Kick-Event-Message-Id`s for replay protection (in-memory:
+    /// the trait hands us no store; see `webhook::replay`).
+    replay_cache: Mutex<webhook::ReplayCache>,
 }
 
 /// Map a connector trigger name to the Kick event type(s) to subscribe to.
@@ -70,7 +77,23 @@ impl KickConnector {
             webhook_callback_url: config.webhook_callback_url.clone(),
             subscribed_events: Mutex::new(HashSet::new()),
             sub_counter: SubscriptionCounter::new(),
+            api_base: config.api_base.clone(),
+            webhook_public_key: Mutex::new(None),
+            replay_cache: Mutex::new(webhook::ReplayCache::default()),
         })
+    }
+
+    /// Kick's webhook signing public key, fetched once and cached for
+    /// the connector's lifetime. The lock is held across the fetch so a
+    /// burst of first webhooks issues a single request.
+    async fn webhook_public_key(&self) -> Result<String, crate::error::KickError> {
+        let mut cached = self.webhook_public_key.lock().await;
+        if let Some(pem) = cached.as_ref() {
+            return Ok(pem.clone());
+        }
+        let pem = KickClient::fetch_public_key(&self.api_base).await?;
+        *cached = Some(pem.clone());
+        Ok(pem)
     }
 
     /// Dispatch a webhook event to registered handlers by trigger name.
@@ -208,6 +231,33 @@ impl Connector for KickConnector {
             id,
             trigger: trigger.to_owned(),
         })
+    }
+
+    /// Verify a Kick webhook: RSA-PKCS1v15-SHA256 over
+    /// `{message_id}.{timestamp}.{body}` with Kick's published key, then
+    /// replay protection — the timestamp must be within five minutes and
+    /// the message id must not have been seen in the last hour. Signature
+    /// and body are never logged or echoed in errors.
+    async fn verify_webhook(
+        &self,
+        headers: &std::collections::HashMap<String, String>,
+        body: &[u8],
+    ) -> Result<(), ConnectorError> {
+        let message_id = webhook::required_header(headers, webhook::HEADER_MESSAGE_ID)?;
+        let timestamp = webhook::required_header(headers, webhook::HEADER_TIMESTAMP)?;
+        let signature = webhook::required_header(headers, webhook::HEADER_SIGNATURE)?;
+
+        let public_key = self.webhook_public_key().await?;
+        webhook::verify_webhook(&public_key, message_id, timestamp, body, signature)?;
+
+        // Replay checks run only after the signature is proven genuine so
+        // an attacker cannot pre-poison the seen-id cache.
+        webhook::check_timestamp(timestamp, chrono::Utc::now())?;
+        self.replay_cache
+            .lock()
+            .await
+            .check_and_record(message_id, std::time::Instant::now())?;
+        Ok(())
     }
 
     async fn remove_event(&self, sub: &Subscription) -> Result<(), ConnectorError> {
