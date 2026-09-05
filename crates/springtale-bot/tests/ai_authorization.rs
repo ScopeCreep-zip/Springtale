@@ -60,6 +60,7 @@ impl PermittedEchoConnector {
                 }],
                 actions: vec![ActionDecl {
                     read_only: false,
+                    destructive: None,
                     name: "echo".into(),
                     description: "echo back input".into(),
                     input_schema: None,

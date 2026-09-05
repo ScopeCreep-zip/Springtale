@@ -23,6 +23,7 @@ pub use approval::{
 };
 pub use config::SentinelConfig;
 pub use error::SentinelError;
-pub use sentinel::Sentinel;
+pub use impact::{ActionHints, ActionImpact};
+pub use sentinel::{EvaluateRequest, Sentinel};
 pub use throttle_tier::ThrottleTier;
 pub use verdict::Verdict;

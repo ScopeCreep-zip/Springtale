@@ -7,6 +7,7 @@ use crate::error::BrowserError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: true,
+        destructive: None,
         name: "screenshot".to_owned(),
         description: "Capture a screenshot of the current page.".to_owned(),
         input_schema: None,

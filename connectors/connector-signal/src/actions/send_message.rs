@@ -7,6 +7,7 @@ use crate::error::SignalError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: false,
+        destructive: None,
         name: "send_message".to_owned(),
         description: "Send an E2E encrypted Signal message to one or more recipients.".to_owned(),
         input_schema: Some(serde_json::json!({

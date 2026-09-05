@@ -118,6 +118,8 @@ fn build_test_app(ready: bool) -> (Router, String) {
         knowledge_store,
         // Single-process test fixture — no SWIM node.
         swim_node: None,
+        // In-memory store — no runtime lock.
+        _lock: None,
     };
 
     // EmbeddedScheduler replaced the old `springtaled::scheduler::AppScheduler`

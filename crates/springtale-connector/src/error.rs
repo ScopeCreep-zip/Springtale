@@ -5,6 +5,14 @@ pub enum ConnectorError {
     #[error("connector not found: {0}")]
     NotFound(String),
 
+    #[error(
+        "connector `{0}` is already registered; remove it before installing another with that name"
+    )]
+    AlreadyRegistered(String),
+
+    #[error("connector name `{0}` is reserved for a first-party connector")]
+    NameReserved(String),
+
     #[error("manifest validation failed: {0}")]
     ManifestInvalid(String),
 

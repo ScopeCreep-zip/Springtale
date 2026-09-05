@@ -140,6 +140,12 @@ pub struct RuntimeState {
     /// processes and emits `SwimEvent`s that awareness consumers
     /// subscribe to.
     pub swim_node: Option<Arc<springtale_cooperation::awareness::SwimNode>>,
+    /// Exclusive runtime lock on `<store path>.lock` (plan 0.6) — one
+    /// runtime per store. Held for the life of this state; released when
+    /// it drops or when the process dies (flock is kernel-owned). `Arc`
+    /// only because `RuntimeState: Clone`; every clone shares one guard.
+    /// `None` for ephemeral (in-memory) stores, which have no path.
+    pub _lock: Option<Arc<fd_lock::RwLockWriteGuard<'static, std::fs::File>>>,
 }
 
 impl RuntimeState {

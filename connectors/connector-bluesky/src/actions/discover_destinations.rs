@@ -19,6 +19,7 @@ use crate::error::BlueskyError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: true,
+        destructive: None,
         name: "discover_destinations".to_owned(),
         description:
             "Enumerate addressable destinations for this Bluesky session — returns the authenticated account as a single row."

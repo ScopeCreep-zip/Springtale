@@ -10,6 +10,7 @@ use crate::error::FilesystemError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: true,
+        destructive: None,
         name: "list_dir".to_owned(),
         description: "List the contents of a directory. Path must be within the read allow-list."
             .to_owned(),

@@ -12,7 +12,7 @@ pub mod safety;
 #[cfg(test)]
 mod tests;
 
-pub use apply::{SCHEMA_VERSION, apply as apply_schema, is_legacy_database};
+pub use apply::{SCHEMA_VERSION, apply as apply_schema};
 
 pub use ai_token_usage::AiTokenUsageRow;
 pub use audit::{AuditEntry, AuditFilter};

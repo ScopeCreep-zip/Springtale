@@ -7,6 +7,7 @@ use crate::error::SlackError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: false,
+        destructive: None,
         name: "edit_message".to_owned(),
         description: "Edit an existing Slack message.".to_owned(),
         input_schema: Some(serde_json::json!({

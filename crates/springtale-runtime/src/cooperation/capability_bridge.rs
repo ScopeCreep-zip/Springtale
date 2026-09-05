@@ -510,6 +510,7 @@ mod tests {
                     }],
                     actions: vec![ActionDecl {
                         read_only: false,
+                        destructive: None,
                         name: "echo".into(),
                         description: "echo".into(),
                         input_schema: None,

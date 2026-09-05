@@ -7,6 +7,7 @@ use crate::error::BrowserError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: false,
+        destructive: None,
         name: "navigate".to_owned(),
         description: "Navigate to a URL. Domain must be in the connector's allow-list.".to_owned(),
         input_schema: Some(serde_json::json!({

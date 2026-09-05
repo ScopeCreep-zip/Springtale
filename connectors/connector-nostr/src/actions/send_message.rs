@@ -7,6 +7,7 @@ use crate::error::NostrError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: false,
+        destructive: None,
         name: "send_message".to_owned(),
         description: "Send a message — routes to send_dm (if chat_id is a pubkey) or publish_note."
             .to_owned(),

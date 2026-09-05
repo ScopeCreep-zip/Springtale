@@ -7,6 +7,7 @@ use crate::error::IrcError;
 pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: false,
+        destructive: None,
         name: "set_topic".to_owned(),
         description: "Set or change a channel's topic.".to_owned(),
         input_schema: Some(serde_json::json!({
