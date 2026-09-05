@@ -4,13 +4,16 @@
 //!
 //! Plan §A2 layer order: L0 sense → L3 inbox → L2 react → L1 scan. Each
 //! step is the trait-bounded function in
-//! `springtale-cooperation::agent::step::*`. First non-None for an
-//! action-producing step wins (early-exit). React folds bus state messages
-//! into awareness without producing a tick action.
+//! `springtale-cooperation::agent::step::*`. An inbox hit early-exits
+//! (the handoff is the tick's task); a surface reaction does not — the
+//! scan still runs so a primed surface never starves task pickup
+//! (plan 1.9 / finding 40). React folds bus state messages into
+//! awareness without producing a tick action.
 //!
 //! - **L0 sense (B4):** primed-surface reaction via `SurfaceSensor`.
 //!   Returns Some without `task_claimed` when a surface fires; the tick
-//!   reports the surface_reaction action and skips L1 scan.
+//!   reports the surface_reaction action unless L1 scan claims a task,
+//!   in which case the report carries the task.
 //! - **L3 inbox (B6):** direct-handoff via `TaskRouter::poll_assigned`.
 //!   Narrows to one assigned SubTask.
 //! - **L2 react:** drains pre-collected bus state messages via
@@ -112,9 +115,11 @@ pub async fn run(
                 awareness: &member.awareness,
             };
             if let Some(r) = step::sense::run(surfaces.as_ref(), &member.awareness, &agent_ctx) {
+                // A surface reaction is not a task claim: it must not
+                // starve task pickup, so the scan still runs below
+                // (plan 1.9 / finding 40). Only an inbox hit skips it.
                 tick_action = r.action;
                 chosen_task = r.task_claimed; // None for surface_reaction
-                needs_scan = false;
             } else if let Some(r) = step::inbox::run(task_router.as_ref(), &agent_ctx).await {
                 tick_action = r.action;
                 chosen_task = r.task_claimed;
