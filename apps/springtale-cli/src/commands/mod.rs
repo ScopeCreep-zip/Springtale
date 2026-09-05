@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod author;
 pub mod bot;
+pub mod config;
 pub mod connector;
 pub mod crypto;
 pub mod data;

@@ -125,6 +125,9 @@ async fn main() -> Result<()> {
                 Command::Agent { action } => {
                     commands::agent::run(action, &store).await?;
                 }
+                Command::Config { action } => {
+                    commands::config::run(action, &store).await?;
+                }
                 Command::Author { action } => {
                     commands::author::run(action, &store, cli.json).await?;
                 }

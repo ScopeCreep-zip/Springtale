@@ -14,6 +14,30 @@ use springtale_store::StorageBackend;
 use crate::error::OperationError;
 use crate::state::RuntimeState;
 
+/// Colony-level AI config key — the default every agent inherits.
+pub const AI_COLONY_KEY: &str = "ai:colony";
+
+/// One level of the AI command hierarchy. One config key per level:
+/// `ai:colony`, `ai:formation:{formation_id}`, `ai:agent:{rule_id}`.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[serde(tag = "scope", rename_all = "snake_case")]
+pub enum AiTarget {
+    Colony,
+    Formation { id: String },
+    Agent { rule_id: uuid::Uuid },
+}
+
+impl AiTarget {
+    /// The config-store key for this level.
+    pub fn key(&self) -> String {
+        match self {
+            Self::Colony => AI_COLONY_KEY.to_owned(),
+            Self::Formation { id } => format!("ai:formation:{id}"),
+            Self::Agent { rule_id } => format!("ai:agent:{rule_id}"),
+        }
+    }
+}
+
 /// Get a config value by key.
 pub async fn get_config(store: &dyn StorageBackend, key: &str) -> Result<Value, OperationError> {
     let raw = store.get_config(key).await.map_err(OperationError::Store)?;
@@ -107,28 +131,6 @@ pub async fn build_adapter(
     Ok(adapter)
 }
 
-/// Set the AI adapter config and hot-swap the runtime (global) adapter.
-///
-/// Config JSON must have a "type" field: "noop", "ollama", "openai", "anthropic".
-/// On success, the new adapter is atomically swapped into RuntimeState.
-pub async fn set_ai_adapter(state: &RuntimeState, config: Value) -> Result<(), OperationError> {
-    let adapter_type = config
-        .get("type")
-        .and_then(|v| v.as_str())
-        .unwrap_or("noop")
-        .to_owned();
-
-    // Persist to config store
-    set_config(&*state.store, "ai_adapter", config.clone()).await?;
-
-    // Build via the shared factory and hot-swap (atomic, lock-free).
-    let new_adapter = build_adapter(&config).await?;
-    state.ai_adapter.store(Arc::new(new_adapter));
-    tracing::info!(adapter = adapter_type, "AI adapter hot-swapped");
-
-    Ok(())
-}
-
 /// Store a connector config for future loading.
 ///
 /// Does NOT instantiate the connector immediately — that requires
@@ -144,53 +146,46 @@ pub async fn set_connector_config(
     Ok(())
 }
 
-/// Configure AI adapter — persists config under a target key and hot-swaps.
+/// Configure the AI adapter at one level of the hierarchy.
 ///
-/// Supports multi-level AI config (RTS-style stance inheritance):
-/// - `"ai:global"` — canvas-level default for all agents
-/// - `"ai:formation:{id}"` — formation-level override
-/// - `"ai:{agentId}"` — individual agent override
-///
-/// Only hot-swaps the global adapter when target is `"ai:global"`.
-/// Per-agent/formation configs are resolved at dispatch time via `resolve_ai_config`.
+/// Builds the adapter first so an invalid config is never persisted,
+/// stores it under [`AiTarget::key`], hot-swaps the colony adapter when
+/// the target is [`AiTarget::Colony`], and clears the bridge's built-adapter
+/// cache so the next dispatch re-resolves from the store.
 pub async fn configure_ai_adapter(
     state: &RuntimeState,
-    target: &str,
+    target: AiTarget,
     config: Value,
 ) -> Result<(), OperationError> {
-    set_config(&*state.store, target, config.clone()).await?;
-    // Only hot-swap global adapter if target is canvas-level
-    if target == "ai:global" {
-        set_ai_adapter(state, config).await?;
+    let adapter = build_adapter(&config).await?;
+    set_config(&*state.store, &target.key(), config).await?;
+    if matches!(target, AiTarget::Colony) {
+        state.ai_adapter.store(Arc::new(adapter));
+        tracing::info!("colony AI adapter hot-swapped");
     }
+    state.capability_bridge.invalidate_ai_cache().await;
     Ok(())
 }
 
-/// Resolve AI config: agent → formation → canvas, first non-null wins.
-///
-/// RTS pattern: individual stance overrides group stance overrides global.
-/// Each level stores config in the config store; `None`/null means "inherit."
+/// Resolve the AI config for a firing rule: rule → formation → colony,
+/// first non-null wins. `Null` when no level is configured.
 pub async fn resolve_ai_config(
-    store: &dyn springtale_store::StorageBackend,
-    agent_id: &str,
+    store: &dyn StorageBackend,
+    rule_id: &uuid::Uuid,
     formation_id: Option<&str>,
 ) -> Result<Value, OperationError> {
-    // Agent level
-    let agent_config = get_config(store, &format!("ai:{agent_id}")).await?;
-    if !agent_config.is_null() {
-        return Ok(agent_config);
-    }
-
-    // Formation level
-    if let Some(fid) = formation_id {
-        let formation_config = get_config(store, &format!("ai:formation:{fid}")).await?;
-        if !formation_config.is_null() {
-            return Ok(formation_config);
+    let keys = [
+        Some(format!("ai:agent:{rule_id}")),
+        formation_id.map(|f| format!("ai:formation:{f}")),
+        Some(AI_COLONY_KEY.to_owned()),
+    ];
+    for key in keys.into_iter().flatten() {
+        let v = get_config(store, &key).await?;
+        if !v.is_null() {
+            return Ok(v);
         }
     }
-
-    // Canvas (global) level
-    get_config(store, "ai:global").await
+    Ok(Value::Null)
 }
 
 /// Upsert connector config — setup if new, update config if already loaded.
@@ -234,4 +229,40 @@ pub async fn toggle_formation_guard(
         set_config(&*state.store, &key, serde_json::json!({ "enabled": true })).await?;
     }
     Ok(!is_enabled) // returns new state
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use springtale_store::backend::sqlite::SqliteBackend;
+
+    #[tokio::test]
+    async fn test_resolve_ai_config_precedence_agent_over_formation_over_colony() {
+        let store = SqliteBackend::open_in_memory().unwrap();
+        let rule = uuid::Uuid::new_v4();
+        let agent_key = AiTarget::Agent { rule_id: rule }.key();
+        let formation_key = AiTarget::Formation { id: "f1".into() }.key();
+        let colony = serde_json::json!({ "type": "noop", "level": "colony" });
+        let formation = serde_json::json!({ "type": "noop", "level": "formation" });
+        let agent = serde_json::json!({ "type": "noop", "level": "agent" });
+
+        let resolve = |fid: Option<&'static str>| resolve_ai_config(&store, &rule, fid);
+
+        assert_eq!(resolve(Some("f1")).await.unwrap(), Value::Null);
+
+        set_config(&store, AI_COLONY_KEY, colony.clone())
+            .await
+            .unwrap();
+        assert_eq!(resolve(Some("f1")).await.unwrap(), colony);
+
+        set_config(&store, &formation_key, formation.clone())
+            .await
+            .unwrap();
+        assert_eq!(resolve(Some("f1")).await.unwrap(), formation);
+        // No formation in the firing context ⇒ the formation row is skipped.
+        assert_eq!(resolve(None).await.unwrap(), colony);
+
+        set_config(&store, &agent_key, agent.clone()).await.unwrap();
+        assert_eq!(resolve(Some("f1")).await.unwrap(), agent);
+    }
 }

@@ -125,6 +125,7 @@ export type { MutationResult } from "./dashboard/query";
 export { createProviderMutation, createProviderQuery } from "./dashboard/query";
 export type {
   AgentHealthDetail,
+  AiTarget,
   ApprovalInfo,
   AvailableConnector,
   ChatStreamMessage,

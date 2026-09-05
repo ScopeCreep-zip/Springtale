@@ -291,7 +291,7 @@ pub struct RecipeBlueprint {
     /// Rules to create.
     #[serde(default)]
     pub rules: Vec<RuleStep>,
-    /// AI adapter config to apply, scoped to `ai:global`, an agent,
+    /// AI adapter config to apply, scoped to the colony, an agent,
     /// or a formation.
     #[serde(default)]
     pub ai_config: Option<AiConfigStep>,
@@ -345,8 +345,8 @@ pub struct RuleStep {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 pub struct AiConfigStep {
-    /// Target key (`"ai:global"`, `"ai:{agent_id}"`, `"ai:formation:{id}"`).
-    pub target: String,
+    /// Which level the config applies to (colony, formation, or agent).
+    pub target: crate::operations::config::AiTarget,
     pub config: serde_json::Value,
 }
 

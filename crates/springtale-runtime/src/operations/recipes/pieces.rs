@@ -81,7 +81,7 @@ fn extract_pieces(recipe: &Recipe) -> Vec<RecipePieceSummary> {
     if let Some(ai) = &recipe.blueprint.ai_config {
         out.push(RecipePieceSummary {
             id: "ai_config:0".into(),
-            label: format!("AI config ({})", ai.target),
+            label: format!("AI config ({})", ai.target.key()),
             piece: RecipePiece::AiConfig { step: ai.clone() },
         });
     }

@@ -132,6 +132,11 @@ pub enum Command {
         #[command(subcommand)]
         action: AgentAction,
     },
+    /// Runtime configuration (AI adapters per level).
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
+    },
     /// Cryptographic operations.
     Crypto {
         #[command(subcommand)]
@@ -308,6 +313,47 @@ pub enum DataAction {
     },
     /// Delete all user data (rules, events, sessions, memory) without destroying the vault.
     Purge,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ConfigAction {
+    /// AI adapter config — one socket per level (colony, formation, agent).
+    Ai {
+        #[command(subcommand)]
+        action: AiConfigAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum AiConfigAction {
+    /// Print the AI config a level resolves to (API key redacted).
+    Get {
+        /// Level: colony, formation, or agent.
+        #[arg(long, value_parser = ["colony", "formation", "agent"])]
+        scope: String,
+        /// Formation id (scope=formation) or rule id (scope=agent).
+        id: Option<String>,
+    },
+    /// Set the AI config for a level. The API key is read from stdin, never argv.
+    Set {
+        /// Level: colony, formation, or agent.
+        #[arg(long, value_parser = ["colony", "formation", "agent"])]
+        scope: String,
+        /// Formation id (scope=formation) or rule id (scope=agent).
+        id: Option<String>,
+        /// Adapter type.
+        #[arg(long = "type", value_parser = ["noop", "ollama", "openai", "anthropic"])]
+        adapter_type: String,
+        /// Model name.
+        #[arg(long)]
+        model: Option<String>,
+        /// Provider base URL.
+        #[arg(long)]
+        base_url: Option<String>,
+        /// Read the API key from the first line of stdin.
+        #[arg(long)]
+        api_key_stdin: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]

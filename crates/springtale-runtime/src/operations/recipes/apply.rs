@@ -325,7 +325,8 @@ async fn apply_blueprint(
 
     if let Some(step) = &blueprint.ai_config {
         let resolved = substitute_value(&step.config, inputs);
-        crate::operations::config::configure_ai_adapter(state, &step.target, resolved).await?;
+        crate::operations::config::configure_ai_adapter(state, step.target.clone(), resolved)
+            .await?;
         ai_configured = true;
     }
 
@@ -461,7 +462,7 @@ fn render_toml(blueprint: &RecipeBlueprint, inputs: &RecipeInputs) -> String {
         out.push_str("\n\n");
     }
     if let Some(step) = &blueprint.ai_config {
-        out.push_str(&format!("# ── AI config: {} ──\n", step.target));
+        out.push_str(&format!("# ── AI config: {} ──\n", step.target.key()));
         let resolved = substitute_value(&step.config, inputs);
         out.push_str(&serde_json::to_string_pretty(&resolved).unwrap_or_else(|_| "{}".into()));
         out.push('\n');

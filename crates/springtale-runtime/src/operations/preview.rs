@@ -131,7 +131,7 @@ pub fn preview_blueprint(recipe: &Recipe, inputs: &RecipeInputs) -> PreviewRepor
     if let Some(ai) = &recipe.blueprint.ai_config {
         steps.push(PreviewStep {
             speaker: "system".into(),
-            narrative: format!("Configure AI ({}).", ai.target),
+            narrative: format!("Configure AI ({}).", ai.target.key()),
             would_send_to: None,
         });
     }

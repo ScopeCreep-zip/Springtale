@@ -39,7 +39,7 @@ use springtale_connector::ActionResult;
 use springtale_connector::manifest::types::Capability;
 use springtale_connector::registry::store::ConnectorRegistry;
 use springtale_connector::tier::WasmTier;
-use springtale_cooperation::cadence::AgentId;
+use springtale_cooperation::execution::ExecutionContext;
 use springtale_cooperation::momentum::MomentumTier;
 use springtale_store::StorageBackend;
 
@@ -107,9 +107,8 @@ pub enum BridgeError {
 /// through the same single-dispatch point as connector actions.
 /// Per-bot adapter selection (per the product-model rule "AI adapter
 /// (optional, per-bot — defaults to NoopAdapter)") routes through
-/// `ai_adapter_for(agent_id, explicit_adapter)` — today it returns
-/// the global adapter, leaving room for per-agent overrides when
-/// per-agent adapter storage lands.
+/// `ai_adapter_for(ctx)`, which resolves `ai:agent:{rule_id}` →
+/// `ai:formation:{id}` → `ai:colony` from the store at dispatch.
 #[derive(Clone)]
 pub struct CapabilityBridge {
     registry: Arc<RwLock<ConnectorRegistry>>,
@@ -117,7 +116,7 @@ pub struct CapabilityBridge {
     /// don't wire AI — `ai_adapter_for` returns `NoopAdapter` in that
     /// case. Production paths in `init.rs` call `with_ai_adapter` to
     /// hand over the same `Arc<ArcSwap<...>>` held on `RuntimeState`
-    /// so `set_ai_adapter` swaps are visible to dispatch through the
+    /// so colony `configure_ai_adapter` swaps are visible to dispatch through the
     /// bridge.
     ai_adapter: Option<Arc<ArcSwap<Arc<dyn AiAdapter>>>>,
     /// Shared storage backend. `None` for test builds that don't
@@ -127,13 +126,11 @@ pub struct CapabilityBridge {
     /// [`Self::with_store`] with the same `Arc<dyn StorageBackend>`
     /// `RuntimeState.store` holds.
     store: Option<Arc<dyn StorageBackend>>,
-    /// Per-agent AI adapter cache — the **unit layer** of the AI command
-    /// hierarchy. Keyed by the agent's STABLE `AgentId` (= formation-member id).
-    /// Resolved lazily from config key `ai:{agent_id}` by [`Self::ai_adapter_for`]
-    /// and cached so the Ollama model-pin check runs at most once per agent.
-    /// Empty / unset key ⇒ that agent falls through to the global adapter.
-    agent_adapters:
-        Arc<tokio::sync::RwLock<std::collections::HashMap<AgentId, Arc<dyn AiAdapter>>>>,
+    /// Built-adapter cache keyed by the resolved config JSON, so rules
+    /// sharing one formation/colony config share one adapter and the
+    /// Ollama model-pin check runs once per distinct config. Cleared by
+    /// [`Self::invalidate_ai_cache`] whenever any level is reconfigured.
+    agent_adapters: Arc<tokio::sync::RwLock<std::collections::HashMap<String, Arc<dyn AiAdapter>>>>,
     /// Executions log recorder (Phase B). `None` for test builds
     /// without persistence — the dispatcher falls back to a
     /// `NoopRecorder` so chain dispatch keeps working unobserved.
@@ -287,85 +284,92 @@ impl CapabilityBridge {
         &self.registry
     }
 
-    /// Resolve the AI adapter for a given firing context.
+    /// Resolve the AI adapter for a firing context.
     ///
-    /// Lookup order:
-    ///   1. (future) per-agent override resolved from `agent_id` —
-    ///      not yet implemented; per-agent adapter storage lands
-    ///      alongside the bot-config UI.
-    ///   2. Global adapter from the handle wired by
-    ///      [`Self::with_ai_adapter`] (the
-    ///      `RuntimeState.ai_adapter` snapshot at this instant).
-    ///   3. [`NoopAdapter`] — the safe default when no adapter is
-    ///      configured (`feedback_no_adapter_dependency`).
-    ///
-    /// Step 1 is the **unit layer** of the AI command hierarchy: the agent's own
-    /// adapter from `ai:{agent_id}`, resolved from the store and cached. The
-    /// result is wrapped in the guardrail middleware (OWASP LLM Top-10) when
-    /// guardrails + a calling agent id are present.
-    pub async fn ai_adapter_for(
-        &self,
-        agent_id: Option<&AgentId>,
-        _explicit_adapter: Option<&str>,
-    ) -> Arc<dyn AiAdapter> {
-        let inner = match agent_id {
-            Some(id) => self.resolve_agent_adapter(id).await,
-            None => self.global_adapter(),
+    /// Reads `ai:agent:{rule_id}` → `ai:formation:{id}` → `ai:colony` from
+    /// the store (first non-null wins), builds the adapter and caches it by
+    /// its config, and falls through to the colony handle (or
+    /// [`NoopAdapter`]) when no level is configured, no store is wired, or
+    /// the build fails. The result is wrapped in the guardrail middleware
+    /// (OWASP LLM Top-10) when guardrails are wired; the quota label is the
+    /// agent id when present, else the rule id.
+    pub async fn ai_adapter_for(&self, ctx: &ExecutionContext) -> Arc<dyn AiAdapter> {
+        let Some(store) = &self.store else {
+            return self.wrap_guardrails(self.global_adapter(), ctx);
         };
-
-        // Wrap in the guardrail middleware when both guardrail dependencies AND
-        // a calling agent id are present. No agent id ⇒ chat-command / one-shot
-        // CLI path ⇒ per-bot quota doesn't apply.
-        match (&self.ai_guardrails, agent_id) {
-            (Some(handles), Some(agent_id)) => {
-                let guard = springtale_ai::GuardrailAdapter::new(inner)
-                    .with_output_cap(handles.output_cap_bytes)
-                    .with_refusal_counter(handles.refusal_counter.clone())
-                    .with_quota(Arc::clone(&handles.quota), agent_id.to_string());
-                Arc::new(guard)
+        let fid = ctx.formation_id.as_ref().map(|f| f.0.to_string());
+        let cfg = crate::operations::config::resolve_ai_config(
+            store.as_ref(),
+            &ctx.rule_id.0,
+            fid.as_deref(),
+        )
+        .await
+        .unwrap_or(Value::Null);
+        let inner = if cfg.is_null() {
+            self.global_adapter()
+        } else {
+            let key = cfg.to_string();
+            let cached = self.agent_adapters.read().await.get(&key).map(Arc::clone);
+            match cached {
+                Some(adapter) => adapter,
+                None => {
+                    let built = match crate::operations::config::build_adapter(&cfg).await {
+                        Ok(adapter) => adapter,
+                        Err(e) => {
+                            tracing::warn!(
+                                rule = %ctx.rule_id.0,
+                                error = %e,
+                                "AI adapter build failed; using colony adapter"
+                            );
+                            self.global_adapter()
+                        }
+                    };
+                    self.agent_adapters
+                        .write()
+                        .await
+                        .insert(key, Arc::clone(&built));
+                    built
+                }
             }
-            _ => inner,
-        }
+        };
+        self.wrap_guardrails(inner, ctx)
     }
 
-    /// The global (canvas-default) adapter snapshot, or [`NoopAdapter`] when
-    /// none is wired.
-    fn global_adapter(&self) -> Arc<dyn AiAdapter> {
+    /// Drop every cached built adapter so the next dispatch re-resolves
+    /// from the store. Called after any level is reconfigured.
+    pub async fn invalidate_ai_cache(&self) {
+        self.agent_adapters.write().await.clear();
+    }
+
+    /// The colony (global) adapter snapshot, or [`NoopAdapter`] when none
+    /// is wired. Preflight inspects the colony default through this.
+    pub fn global_adapter(&self) -> Arc<dyn AiAdapter> {
         match &self.ai_adapter {
             Some(handle) => Arc::clone(&handle.load()),
             None => Arc::new(NoopAdapter),
         }
     }
 
-    /// Resolve (and cache) an agent's own adapter from `ai:{agent_id}`. Falls
-    /// through to the global adapter when the agent has no key set, no store is
-    /// wired, or the build fails — so the unit layer is AI-optional per agent.
-    async fn resolve_agent_adapter(&self, id: &AgentId) -> Arc<dyn AiAdapter> {
-        if let Some(found) = self.agent_adapters.read().await.get(id) {
-            return Arc::clone(found);
-        }
-        let Some(store) = &self.store else {
-            return self.global_adapter();
+    /// Wrap in the guardrail middleware when guardrails are wired. The
+    /// quota is charged to the agent for agent-scoped fires, else to the
+    /// rule.
+    fn wrap_guardrails(
+        &self,
+        inner: Arc<dyn AiAdapter>,
+        ctx: &ExecutionContext,
+    ) -> Arc<dyn AiAdapter> {
+        let Some(handles) = &self.ai_guardrails else {
+            return inner;
         };
-        let cfg = match crate::operations::config::get_config(store.as_ref(), &format!("ai:{id}"))
-            .await
-        {
-            Ok(v) if !v.is_null() => v,
-            _ => return self.global_adapter(),
+        let label = match &ctx.agent_id {
+            Some(agent) => agent.to_string(),
+            None => ctx.rule_id.0.to_string(),
         };
-        match crate::operations::config::build_adapter(&cfg).await {
-            Ok(adapter) => {
-                self.agent_adapters
-                    .write()
-                    .await
-                    .insert(*id, Arc::clone(&adapter));
-                adapter
-            }
-            Err(e) => {
-                tracing::warn!(agent = %id, error = %e, "per-agent AI adapter build failed; using global");
-                self.global_adapter()
-            }
-        }
+        let guard = springtale_ai::GuardrailAdapter::new(inner)
+            .with_output_cap(handles.output_cap_bytes)
+            .with_refusal_counter(handles.refusal_counter.clone())
+            .with_quota(Arc::clone(&handles.quota), label);
+        Arc::new(guard)
     }
 
     /// Execute a connector action at the formation's current momentum
@@ -492,6 +496,12 @@ impl CapabilityBridge {
 mod tests {
     use super::*;
     use async_trait::async_trait;
+    use springtale_cooperation::execution::ExecutionMode;
+    use springtale_core::rule::RuleId;
+
+    fn global_ctx() -> ExecutionContext {
+        ExecutionContext::for_global(RuleId(uuid::Uuid::new_v4()), ExecutionMode::Cron)
+    }
     use springtale_connector::ConnectorError;
     use springtale_connector::capability::grant::CapabilityPolicy;
     use springtale_connector::connector::subscription::{Subscription, SubscriptionId};
@@ -670,7 +680,7 @@ mod tests {
         )));
         let bridge = CapabilityBridge::new(registry);
         // No `.with_ai_adapter` → fallback is NoopAdapter.
-        let adapter = bridge.ai_adapter_for(None, None).await;
+        let adapter = bridge.ai_adapter_for(&global_ctx()).await;
         // We can't downcast `dyn AiAdapter` to NoopAdapter directly,
         // but the type-erased fallback path is the only one that
         // returns without a wired handle, so the call succeeding is
@@ -692,11 +702,11 @@ mod tests {
         let bridge = CapabilityBridge::new(registry).with_ai_adapter(handle.clone());
 
         // First call resolves to the wired adapter.
-        let first = bridge.ai_adapter_for(None, None).await;
+        let first = bridge.ai_adapter_for(&global_ctx()).await;
         // Hot-swap a different adapter and confirm the bridge sees
         // the swap (the same handle is shared with `RuntimeState`).
         handle.store(Arc::new(Arc::new(NoopAdapter) as Arc<dyn AiAdapter>));
-        let second = bridge.ai_adapter_for(None, None).await;
+        let second = bridge.ai_adapter_for(&global_ctx()).await;
         // Pointer-equality check would require concrete typing; just
         // confirm both calls succeed and produce a usable Arc.
         let _: Arc<dyn AiAdapter> = first;
@@ -710,8 +720,8 @@ mod tests {
         //   1. Bridge wires a real AiAdapter + a per-bot quota
         //   2. ai_adapter_for(Some(agent_id)) returns a GuardrailAdapter
         //   3. Calling that adapter charges THE BOT'S row in the quota
-        //   4. ai_adapter_for(None) returns the raw adapter (no
-        //      wrapping when there's no bot id — chat-command path).
+        //   4. A global (no-agent) context is charged to the rule id,
+        //      never to the bot's row.
         use arc_swap::ArcSwap;
         use springtale_ai::{AiOptions, AiRequest, InMemoryTokenQuota, RefusalCounter};
         use springtale_cooperation::cadence::AgentId;
@@ -737,9 +747,9 @@ mod tests {
 
         let bot = AgentId::new();
 
-        // Without a bot id, the adapter is unwrapped (chat-command
-        // path doesn't burden the cooperation per-bot quota).
-        let unbot = bridge.ai_adapter_for(None, None).await;
+        // Without a bot id the quota label is the rule id, so the
+        // bot's row is untouched.
+        let unbot = bridge.ai_adapter_for(&global_ctx()).await;
         let _ = unbot
             .complete(
                 AiRequest::Complete {
@@ -755,7 +765,13 @@ mod tests {
         // routes through the quota — the NoopAdapter returns
         // AiError::Disabled, so commit rolls back to 0, but the
         // refusal counter records the attempt.
-        let bot_adapter = bridge.ai_adapter_for(Some(&bot), None).await;
+        let bot_ctx = ExecutionContext::for_agent(
+            RuleId(uuid::Uuid::new_v4()),
+            bot,
+            MomentumTier::Warming,
+            ExecutionMode::Cron,
+        );
+        let bot_adapter = bridge.ai_adapter_for(&bot_ctx).await;
         let _ = bot_adapter
             .complete(
                 AiRequest::Complete {
@@ -765,7 +781,9 @@ mod tests {
             )
             .await;
         let snap = counter.snapshot();
-        assert_eq!(snap.total_calls, 1, "guardrail must record one call");
+        // Two guarded calls: the global-context one (labelled by rule id)
+        // and the bot one (labelled by agent id).
+        assert_eq!(snap.total_calls, 2, "guardrail must record both calls");
         // NoopAdapter errors → reservation rolls back → usage stays 0.
         let used_with_id = quota.usage(&bot.to_string()).await.unwrap();
         assert_eq!(used_with_id, 0, "failed Noop call rolls back reservation");

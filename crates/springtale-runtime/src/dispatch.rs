@@ -631,7 +631,7 @@ async fn run_step_inner(
             })
         }
 
-        Action::AiComplete { prompt, adapter } => {
+        Action::AiComplete { prompt, .. } => {
             // Resolve `${...}` placeholders in the prompt before the
             // model sees it. Critical: this is how `${last_connector_output}`
             // ends up in the prompt for "summarize this fetched
@@ -660,9 +660,7 @@ async fn run_step_inner(
             // when no adapter is wired. NoopAdapter returns
             // `AiError::Disabled`, which we surface as a step error
             // (not a silent stub).
-            let adapter_arc = bridge
-                .ai_adapter_for(execution.agent_id.as_ref(), adapter.as_deref())
-                .await;
+            let adapter_arc = bridge.ai_adapter_for(execution).await;
             let request = AiRequest::Complete {
                 prompt: resolved_prompt.clone(),
             };
@@ -715,9 +713,7 @@ async fn run_step_inner(
             // The AI adapter for LlmSchema extraction. We pass it
             // through opt-in — Phase A only fires non-LLM tiers;
             // Phase B activates LlmSchema and the adapter is read.
-            let adapter_arc = bridge
-                .ai_adapter_for(execution.agent_id.as_ref(), None)
-                .await;
+            let adapter_arc = bridge.ai_adapter_for(execution).await;
             let ai_ref: Option<&dyn springtale_ai::AiAdapter> = Some(&*adapter_arc);
 
             let extracted =

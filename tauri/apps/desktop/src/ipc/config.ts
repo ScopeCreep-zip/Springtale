@@ -3,6 +3,7 @@
  *
  * Agent autonomy moved to ipc/agents.ts.
  */
+import type { AiTarget } from "@springtale/ui";
 import { invoke } from "@tauri-apps/api/core";
 
 // Config
@@ -30,7 +31,7 @@ export async function setConnectorConfig(
 }
 
 export async function configureAiAdapter(
-  target: string,
+  target: AiTarget,
   config: Record<string, unknown>,
 ): Promise<void> {
   return invoke("configure_ai_adapter", { target, config });

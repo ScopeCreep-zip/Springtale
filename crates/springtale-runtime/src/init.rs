@@ -77,7 +77,7 @@ pub async fn init(
         &wasm_tier_cache,
     )
     .await?;
-    let ai_adapter_arc = init_adapter(config)?;
+    let ai_adapter_arc = init_adapter(&store).await?;
     // Plan 6.7 — the chat gate is built before the sentinel so a shell
     // that supplies no UI gate (springtaled, CLI) prompts through chat +
     // dashboard instead of sentinel-side default-deny. A caller-supplied
@@ -897,16 +897,29 @@ async fn init_registry(
     Ok(Arc::new(RwLock::new(registry)))
 }
 
-/// Create an AI adapter from config. Uses the factory from springtale-ai.
-fn init_adapter(
-    config: &RuntimeConfig,
+/// Build the colony AI adapter from the store's `ai:colony` row. A
+/// missing row builds `NoopAdapter` — the platform runs without AI.
+/// A stored row that no longer builds (the provider went away after
+/// `configure_ai_adapter` validated it) also falls back to `NoopAdapter`
+/// so boot never depends on an AI provider.
+async fn init_adapter(
+    store: &Arc<dyn springtale_store::StorageBackend>,
 ) -> Result<Arc<dyn springtale_ai::AiAdapter>, OperationError> {
-    springtale_ai::create_adapter(
-        config.ai_ollama.as_ref(),
-        config.ai_openai.as_ref(),
-        config.ai_anthropic.as_ref(),
+    let cfg = crate::operations::config::get_config(
+        store.as_ref(),
+        crate::operations::config::AI_COLONY_KEY,
     )
-    .map_err(|e| OperationError::Init(format!("failed to create AI adapter: {e}")))
+    .await?;
+    match crate::operations::config::build_adapter(&cfg).await {
+        Ok(adapter) => Ok(adapter),
+        Err(e) => {
+            tracing::warn!(
+                error = %e,
+                "ai:colony config could not be built; running without AI until it is reconfigured"
+            );
+            crate::operations::config::build_adapter(&serde_json::Value::Null).await
+        }
+    }
 }
 
 /// Initialize the sentinel behavioral monitor.

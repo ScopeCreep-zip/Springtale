@@ -71,14 +71,18 @@ pub async fn set_config(
     Ok(StatusCode::OK)
 }
 
-/// POST /config/ai — set AI adapter and hot-swap.
+/// POST /config/ai — set the colony AI adapter and hot-swap.
 pub async fn set_ai_adapter(
     State(state): State<AppState>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    operations::config::set_ai_adapter(&state.runtime, body)
-        .await
-        .map_err(|_| StatusCode::BAD_REQUEST)?;
+    operations::config::configure_ai_adapter(
+        &state.runtime,
+        operations::config::AiTarget::Colony,
+        body,
+    )
+    .await
+    .map_err(|_| StatusCode::BAD_REQUEST)?;
     Ok(Json(serde_json::json!({ "status": "swapped" })))
 }
 
@@ -94,17 +98,19 @@ pub async fn set_connector_config(
     Ok(Json(serde_json::json!({ "status": "stored" })))
 }
 
-/// POST /config/ai/configure — configure AI adapter with target key.
+/// Body of `POST /config/ai/configure`.
+#[derive(serde::Deserialize)]
+pub struct ConfigureAiBody {
+    pub target: operations::config::AiTarget,
+    pub config: serde_json::Value,
+}
+
+/// POST /config/ai/configure — configure AI at one level of the hierarchy.
 pub async fn configure_ai_adapter(
     State(state): State<AppState>,
-    Json(body): Json<serde_json::Value>,
+    Json(body): Json<ConfigureAiBody>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let target = body["target"].as_str().unwrap_or("ai:global");
-    let config = body
-        .get("config")
-        .cloned()
-        .unwrap_or(serde_json::Value::Null);
-    operations::config::configure_ai_adapter(&state.runtime, target, config)
+    operations::config::configure_ai_adapter(&state.runtime, body.target, body.config)
         .await
         .map_err(|_| StatusCode::BAD_REQUEST)?;
     Ok(Json(serde_json::json!({ "status": "configured" })))
