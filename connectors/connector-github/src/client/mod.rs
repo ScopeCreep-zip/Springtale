@@ -1,6 +1,10 @@
+use std::time::Duration;
+
 use async_trait::async_trait;
-use secrecy::SecretBox;
-use springtale_connector::client::handle_json_response;
+use octocrab::Octocrab;
+use octocrab::models::repos::Object;
+use octocrab::params::repos::Reference;
+use secrecy::SecretString;
 
 use crate::config::GithubConfig;
 use crate::error::GithubError;
@@ -9,7 +13,8 @@ use crate::error::GithubError;
 ///
 /// Actions depend on this trait, not the concrete client. This enables
 /// mock implementations in tests (per testing.md: "mock at the client
-/// layer, not at reqwest level").
+/// layer, not at reqwest level"). Responses are the SDK's typed models
+/// re-encoded as JSON so actions and their mocks share one shape.
 #[async_trait]
 pub trait GithubApi: Send + Sync {
     async fn create_issue(
@@ -55,15 +60,15 @@ pub trait GithubApi: Send + Sync {
         sha: &str,
     ) -> Result<serde_json::Value, GithubError>;
 
-    /// Create or update one file on a branch
-    /// (`PUT /contents/{path}`, content base64-encoded by the caller).
+    /// Create or update one file on a branch (`PUT /contents/{path}`).
+    /// `content` is the raw file bytes; the SDK base64-encodes them.
     async fn commit_file(
         &self,
         owner: &str,
         repo: &str,
         branch: &str,
         path: &str,
-        content_b64: &str,
+        content: &[u8],
         message: &str,
         existing_sha: Option<&str>,
     ) -> Result<serde_json::Value, GithubError>;
@@ -80,35 +85,42 @@ pub trait GithubApi: Send + Sync {
     ) -> Result<serde_json::Value, GithubError>;
 }
 
-/// GitHub REST API v3 client.
+/// GitHub REST API client backed by [`octocrab`].
 ///
-/// All GitHub API calls go through this client. It sets the required
-/// authentication and accept headers per GitHub's API docs.
+/// Transport is hyper + rustls (ring) — the workspace's `native-tls` /
+/// `openssl` stubs guarantee no other TLS stack can be linked.
 pub struct GithubClient {
-    inner: reqwest::Client,
-    api_base: String,
-    auth_token: SecretBox<String>,
+    inner: Octocrab,
 }
 
 impl GithubClient {
     /// Create a new GitHub API client from config.
+    ///
+    /// Must be called inside a Tokio runtime: octocrab spawns its request
+    /// buffer worker at build time (the factory's `create` is `async`).
     pub fn new(config: &GithubConfig) -> Result<Self, GithubError> {
-        let inner = springtale_transport::safe_http::builder()
-            .timeout(std::time::Duration::from_secs(30))
-            .build()
-            .map_err(|e| GithubError::RequestFailed(format!("failed to build client: {e}")))?;
+        // SECURITY: expose needed to hand the PAT to octocrab, which keeps it
+        // as a `SecretString`; the plaintext never outlives this closure.
+        let token = springtale_crypto::secret_use::with_str(&config.token, |t| {
+            SecretString::from(t.to_owned())
+        });
 
-        Ok(Self {
-            inner,
-            api_base: config.api_base.clone(),
-            auth_token: config.token_clone(),
-        })
-    }
+        let inner = Octocrab::builder()
+            .personal_token(token)
+            .base_uri(config.api_base.as_str())?
+            .set_connect_timeout(Some(Duration::from_secs(5)))
+            .set_read_timeout(Some(Duration::from_secs(30)))
+            .set_write_timeout(Some(Duration::from_secs(30)))
+            .build()?;
 
-    /// Build the Authorization header value at point of use.
-    fn auth_header(&self) -> String {
-        springtale_crypto::secret_use::bearer_header(&self.auth_token)
+        Ok(Self { inner })
     }
+}
+
+/// Re-encode a typed SDK model as JSON for the trait boundary.
+fn to_json<T: serde::Serialize>(value: T) -> Result<serde_json::Value, GithubError> {
+    serde_json::to_value(value)
+        .map_err(|e| GithubError::RequestFailed(format!("failed to encode response: {e}")))
 }
 
 #[async_trait]
@@ -120,25 +132,14 @@ impl GithubApi for GithubClient {
         title: &str,
         body: &str,
     ) -> Result<serde_json::Value, GithubError> {
-        let url = format!("{}/repos/{owner}/{repo}/issues", self.api_base);
-
-        let response = self
+        let issue = self
             .inner
-            .post(&url)
-            .header("Authorization", self.auth_header())
-            .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "Springtale")
-            .header("X-GitHub-Api-Version", "2022-11-28")
-            .json(&serde_json::json!({
-                "title": title,
-                "body": body,
-            }))
+            .issues(owner, repo)
+            .create(title)
+            .body(body)
             .send()
             .await?;
-
-        handle_json_response(response)
-            .await
-            .map_err(GithubError::RequestFailed)
+        to_json(issue)
     }
 
     /// Post a comment on an issue or pull request.
@@ -149,27 +150,12 @@ impl GithubApi for GithubClient {
         issue_number: u64,
         body: &str,
     ) -> Result<serde_json::Value, GithubError> {
-        let url = format!(
-            "{}/repos/{owner}/{repo}/issues/{issue_number}/comments",
-            self.api_base
-        );
-
-        let response = self
+        let comment = self
             .inner
-            .post(&url)
-            .header("Authorization", self.auth_header())
-            .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "Springtale")
-            .header("X-GitHub-Api-Version", "2022-11-28")
-            .json(&serde_json::json!({
-                "body": body,
-            }))
-            .send()
+            .issues(owner, repo)
+            .create_comment(issue_number, body)
             .await?;
-
-        handle_json_response(response)
-            .await
-            .map_err(GithubError::RequestFailed)
+        to_json(comment)
     }
 
     /// Get the diff for a pull request.
@@ -179,33 +165,7 @@ impl GithubApi for GithubClient {
         repo: &str,
         pull_number: u64,
     ) -> Result<String, GithubError> {
-        let url = format!("{}/repos/{owner}/{repo}/pulls/{pull_number}", self.api_base);
-
-        let response = self
-            .inner
-            .get(&url)
-            .header("Authorization", self.auth_header())
-            .header("Accept", "application/vnd.github.diff")
-            .header("User-Agent", "Springtale")
-            .header("X-GitHub-Api-Version", "2022-11-28")
-            .send()
-            .await?;
-
-        if !response.status().is_success() {
-            let status = response.status().as_u16();
-            let body = response
-                .text()
-                .await
-                .unwrap_or_else(|_| "unknown error".to_owned());
-            return Err(GithubError::RequestFailed(format!(
-                "GitHub API returned {status}: {body}"
-            )));
-        }
-
-        response
-            .text()
-            .await
-            .map_err(|e| GithubError::RequestFailed(format!("failed to read diff: {e}")))
+        Ok(self.inner.pulls(owner, repo).get_diff(pull_number).await?)
     }
 
     async fn get_ref_sha(
@@ -214,26 +174,15 @@ impl GithubApi for GithubClient {
         repo: &str,
         branch: &str,
     ) -> Result<String, GithubError> {
-        let url = format!(
-            "{}/repos/{owner}/{repo}/git/ref/heads/{branch}",
-            self.api_base
-        );
-        let response = self
+        let git_ref = self
             .inner
-            .get(&url)
-            .header("Authorization", self.auth_header())
-            .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "Springtale")
-            .header("X-GitHub-Api-Version", "2022-11-28")
-            .send()
+            .repos(owner, repo)
+            .get_ref(&Reference::Branch(branch.to_owned()))
             .await?;
-        let json = handle_json_response(response)
-            .await
-            .map_err(GithubError::RequestFailed)?;
-        json.pointer("/object/sha")
-            .and_then(|s| s.as_str())
-            .map(str::to_owned)
-            .ok_or_else(|| GithubError::RequestFailed("ref response missing object.sha".into()))
+        match git_ref.object {
+            Object::Commit { sha, .. } => Ok(sha),
+            _ => Err(GithubError::UnexpectedRef),
+        }
     }
 
     async fn create_branch(
@@ -243,23 +192,12 @@ impl GithubApi for GithubClient {
         branch: &str,
         sha: &str,
     ) -> Result<serde_json::Value, GithubError> {
-        let url = format!("{}/repos/{owner}/{repo}/git/refs", self.api_base);
-        let response = self
+        let created = self
             .inner
-            .post(&url)
-            .header("Authorization", self.auth_header())
-            .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "Springtale")
-            .header("X-GitHub-Api-Version", "2022-11-28")
-            .json(&serde_json::json!({
-                "ref": format!("refs/heads/{branch}"),
-                "sha": sha,
-            }))
-            .send()
+            .repos(owner, repo)
+            .create_ref(&Reference::Branch(branch.to_owned()), sha)
             .await?;
-        handle_json_response(response)
-            .await
-            .map_err(GithubError::RequestFailed)
+        to_json(created)
     }
 
     async fn commit_file(
@@ -268,32 +206,17 @@ impl GithubApi for GithubClient {
         repo: &str,
         branch: &str,
         path: &str,
-        content_b64: &str,
+        content: &[u8],
         message: &str,
         existing_sha: Option<&str>,
     ) -> Result<serde_json::Value, GithubError> {
-        let url = format!("{}/repos/{owner}/{repo}/contents/{path}", self.api_base);
-        let mut body = serde_json::json!({
-            "message": message,
-            "content": content_b64,
-            "branch": branch,
-        });
-        if let (Some(sha), Some(obj)) = (existing_sha, body.as_object_mut()) {
-            obj.insert("sha".into(), serde_json::Value::String(sha.to_owned()));
-        }
-        let response = self
-            .inner
-            .put(&url)
-            .header("Authorization", self.auth_header())
-            .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "Springtale")
-            .header("X-GitHub-Api-Version", "2022-11-28")
-            .json(&body)
-            .send()
-            .await?;
-        handle_json_response(response)
-            .await
-            .map_err(GithubError::RequestFailed)
+        let repos = self.inner.repos(owner, repo);
+        let request = match existing_sha {
+            Some(sha) => repos.update_file(path, message, content, sha),
+            None => repos.create_file(path, message, content),
+        };
+        let updated = request.branch(branch).send().await?;
+        to_json(updated)
     }
 
     async fn create_pr(
@@ -305,25 +228,14 @@ impl GithubApi for GithubClient {
         base: &str,
         body: &str,
     ) -> Result<serde_json::Value, GithubError> {
-        let url = format!("{}/repos/{owner}/{repo}/pulls", self.api_base);
-        let response = self
+        let pr = self
             .inner
-            .post(&url)
-            .header("Authorization", self.auth_header())
-            .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "Springtale")
-            .header("X-GitHub-Api-Version", "2022-11-28")
-            .json(&serde_json::json!({
-                "title": title,
-                "head": head,
-                "base": base,
-                "body": body,
-            }))
+            .pulls(owner, repo)
+            .create(title, head, base)
+            .body(body)
             .send()
             .await?;
-        handle_json_response(response)
-            .await
-            .map_err(GithubError::RequestFailed)
+        to_json(pr)
     }
 }
 
@@ -333,8 +245,8 @@ mod tests {
     use super::*;
     use secrecy::SecretBox;
 
-    #[test]
-    fn test_client_creation() {
+    #[tokio::test]
+    async fn test_client_creation() {
         let config = GithubConfig {
             token: SecretBox::new(Box::new("ghp_test".to_owned())),
             webhook_secret: None,

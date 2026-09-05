@@ -1,4 +1,3 @@
-use base64::Engine;
 use springtale_connector::connector::trait_::ActionResult;
 use springtale_connector::manifest::types::ActionDecl;
 
@@ -48,15 +47,13 @@ pub async fn execute(
     let message = require_str(input, "message")?;
     let existing_sha = input.get("existing_sha").and_then(|v| v.as_str());
 
-    // GitHub's contents API requires base64-encoded content.
-    let content_b64 = base64::engine::general_purpose::STANDARD.encode(content.as_bytes());
     let response = client
         .commit_file(
             owner,
             repo,
             branch,
             path,
-            &content_b64,
+            content.as_bytes(),
             message,
             existing_sha,
         )
