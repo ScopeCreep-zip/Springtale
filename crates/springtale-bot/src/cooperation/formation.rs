@@ -338,6 +338,10 @@ pub struct Formation {
     /// `Stabilize` intent change or `ForcedDissolve` per
     /// `crates/springtale-bot/src/orchestrator/intervention/evaluator/rules.rs`.
     pub cascade_hit_streak: u32,
+    /// Members a rally token has been spent on, still owing a beat that
+    /// shows they came back. `rally::cascade::recovered` reads this to
+    /// raise `RallyResult::Recovered`; cleared when one of them does.
+    pub rallied: std::collections::HashSet<springtale_cooperation::cadence::AgentId>,
     /// Set by `tick_steps/supervision.rs` when the supervisor returns
     /// `SupervisionAction::Escalate`. Read by `check_interventions.rs`
     /// next tick and folded into the intervention signals; cleared after
@@ -535,6 +539,7 @@ impl Formation {
             last_tick_write_count: 0,
             last_broadcast_tier: MomentumTier::Cold,
             cascade_hit_streak: 0,
+            rallied: std::collections::HashSet::new(),
             escalation_pending: None,
             cfp_channels,
             cfp_initiator,

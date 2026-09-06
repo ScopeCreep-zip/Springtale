@@ -29,6 +29,20 @@ pub async fn run(
     store: &dyn StorageBackend,
     cooperation_tx: Option<&broadcast::Sender<CooperationEventEnvelope>>,
 ) {
+    // A member a token was spent on finished work this beat: the rally
+    // worked. This is the only place `RallyResult::Recovered` is raised —
+    // it is a later beat's answer to an earlier rally, not an outcome
+    // `attempt_self_rally` can return.
+    if let Some(recovery) = cascade::recovered(&formation.rallied, result) {
+        log_rally_result(&formation.id.0.to_string(), &recovery);
+        formation.rallied.clear();
+        springtale_cooperation::utterance::utter(
+            &mut formation.utter_ctx(cooperation_tx),
+            None,
+            springtale_cooperation::UtteranceKind::Rally,
+        );
+    }
+
     if result.all_succeeded {
         // Successful tick clears the cascade streak so the L6 evaluator
         // (`check_interventions.rs`) doesn't trip on a long-resolved
@@ -105,6 +119,8 @@ pub async fn run(
         cascade::attempt_self_rally(&formation.rally, &formation.attention_broker, failing_agent);
     log_rally_result(&formation.id.0.to_string(), &rally_result);
     if matches!(rally_result, RallyResult::StabilizedWithCost { .. }) {
+        // Owed a beat that shows the member came back (fix 3).
+        formation.rallied.insert(failing_agent);
         springtale_cooperation::utterance::utter(
             &mut formation.utter_ctx(cooperation_tx),
             None,

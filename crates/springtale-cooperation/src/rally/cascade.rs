@@ -9,8 +9,9 @@
 //!   3. Reduce momentum tier to match reduced coherence
 //!   4. Consume rally token (limited, like Monster Hunter carts)
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
+use crate::action_state::ActionState;
 use crate::attention::AttentionBroker;
 use crate::awareness::{LocalAwareness, SHATTERED_MORALE};
 use crate::cadence::AgentId;
@@ -110,6 +111,27 @@ pub fn select_rally_target(
     best.map(|(agent, _)| agent)
 }
 
+/// Did a member we spent a rally token on come back?
+///
+/// `RallyResult::Recovered` is the answer to a rally on a LATER beat:
+/// the token bought the member a chance and it finished work with it.
+/// `rallied` is the set of members with a token spent on them since the
+/// last recovery; `Some(Recovered)` means the caller should clear it.
+pub fn recovered(rallied: &HashSet<AgentId>, result: &FormationTickResult) -> Option<RallyResult> {
+    if rallied.is_empty() {
+        return None;
+    }
+    result
+        .reports
+        .iter()
+        .any(|r| {
+            rallied.contains(&r.agent_id)
+                && matches!(r.state, ActionState::Success)
+                && r.intent_alignment > 0.5
+        })
+        .then_some(RallyResult::Recovered)
+}
+
 /// Attempt formation self-rally before escalating to orchestrator.
 ///
 /// Per §15.2 (Monster Hunter cart system):
@@ -179,7 +201,6 @@ pub fn attempt_self_rally(
 mod tests {
     use super::*;
     use crate::cadence::TickReport;
-    use crate::action_state::ActionState;
     use crate::momentum::MomentumState;
     use std::time::Duration;
 
@@ -380,4 +401,38 @@ mod tests {
         assert_eq!(select_rally_target(&map, &[dead, shattered]), None);
     }
 
+    /// Fix 3 — `Recovered` is emitted when a rallied member finishes work
+    /// on a later beat, and only then.
+    #[test]
+    fn test_recovered_only_when_a_rallied_member_completes_work() {
+        let rallied_agent = AgentId::new();
+        let other = AgentId::new();
+        let mut rallied = HashSet::new();
+        rallied.insert(rallied_agent);
+
+        let still_trying = FormationTickResult {
+            reports: vec![make_stated(rallied_agent, 0.8, ActionState::Requested)],
+            interferences: vec![],
+            all_succeeded: false,
+        };
+        assert!(recovered(&rallied, &still_trying).is_none());
+
+        let someone_else = FormationTickResult {
+            reports: vec![make_report(other, 1.0)],
+            interferences: vec![],
+            all_succeeded: true,
+        };
+        assert!(recovered(&rallied, &someone_else).is_none());
+
+        let came_back = FormationTickResult {
+            reports: vec![make_report(rallied_agent, 1.0)],
+            interferences: vec![],
+            all_succeeded: true,
+        };
+        assert!(matches!(
+            recovered(&rallied, &came_back),
+            Some(RallyResult::Recovered)
+        ));
+        assert!(recovered(&HashSet::new(), &came_back).is_none());
+    }
 }
