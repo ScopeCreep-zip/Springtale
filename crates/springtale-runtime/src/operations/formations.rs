@@ -439,6 +439,17 @@ pub async fn add_member(
     formation_id: &str,
     connector_name: &str,
 ) -> Result<(), OperationError> {
+    // A member is its connector: rules bind to their member through the
+    // connector name (plan 1.11) and `remove_member` deletes by it. Adding the
+    // same connector twice is a no-op, not a second member.
+    let existing = state
+        .store
+        .list_formation_members(formation_id)
+        .await
+        .map_err(OperationError::Store)?;
+    if existing.iter().any(|m| m.connector_name == connector_name) {
+        return Ok(());
+    }
     let member = springtale_store::FormationMemberRow {
         id: uuid::Uuid::new_v4().to_string(),
         formation_id: formation_id.to_owned(),

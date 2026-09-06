@@ -23,6 +23,14 @@ CREATE TABLE IF NOT EXISTS formation_members (
     role_hint      TEXT
 );
 
+-- A member is identified by its connector: `deploy_team` derives members from
+-- the unique connector names, `delete_formation_member` deletes by connector,
+-- and a member-owned rule (`RuleOwner::FormationMember`) is bound to its member
+-- through that name. Enforce the invariant so a second row cannot make that
+-- binding ambiguous.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_formation_members_connector
+    ON formation_members(formation_id, connector_name);
+
 CREATE TABLE IF NOT EXISTS formation_momentum (
     formation_id          TEXT    PRIMARY KEY REFERENCES formations(id) ON DELETE CASCADE,
     tier                  TEXT    NOT NULL DEFAULT 'Cold',

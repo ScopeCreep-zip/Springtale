@@ -65,7 +65,18 @@ impl InMemoryBackend {
         &self,
         row: &FormationMemberRow,
     ) -> Result<(), StoreError> {
-        self.formation_members.write().await.push(row.clone());
+        // One member per connector per formation, matching the unique index
+        // the SQLite schema declares: a member-owned rule finds its member
+        // through the connector name, so a second row would make that
+        // binding ambiguous.
+        let mut members = self.formation_members.write().await;
+        if members
+            .iter()
+            .any(|m| m.formation_id == row.formation_id && m.connector_name == row.connector_name)
+        {
+            return Ok(());
+        }
+        members.push(row.clone());
         Ok(())
     }
 
