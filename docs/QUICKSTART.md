@@ -86,15 +86,32 @@ docker build -t springtale .
 
 ### 3.2. Run
 
+The passphrase goes in a **file**, never in the environment. `docker-compose.yml`
+mounts it as a Docker secret and points `SPRINGTALE_PASSPHRASE_FILE` at the
+mount, which is the first source `get_passphrase()` consults at boot.
+
 ```bash
-mkdir -p data
+mkdir -p data secrets
 cp springtale.toml.example springtale.toml
 
-# Set your vault passphrase
-export SPRINGTALE_PASSPHRASE="your-secure-passphrase"
+# Write the passphrase to the secret file. `-n` matters: no trailing
+# newline. Leading `space` keeps it out of shell history on bash/zsh
+# with HISTCONTROL=ignorespace / setopt HIST_IGNORE_SPACE.
+ printf '%s' 'your-secure-passphrase' > secrets/passphrase.txt
+chmod 600 secrets/passphrase.txt
+
+# Create the vault before the first `up`
+docker compose run --rm springtaled springtale init
 
 docker compose up -d
 ```
+
+Do **not** use `export SPRINGTALE_PASSPHRASE=...`. Any process running as
+the same user can read another process's environment out of
+`/proc/<pid>/environ`, `docker inspect` prints it back in the clear, and it
+is inherited by every child process. `SPRINGTALE_PASSPHRASE` still exists as
+a development-only fallback; production and anything holding real user data
+should use the file.
 
 The container runs as a non-root user with read-only root filesystem, all capabilities dropped, and `no-new-privileges` enforced.
 
@@ -102,11 +119,16 @@ The container runs as a non-root user with read-only root filesystem, all capabi
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SPRINGTALE_PASSPHRASE` | (required) | Vault encryption passphrase |
+| `SPRINGTALE_PASSPHRASE_FILE` | `/run/secrets/springtale_passphrase` | Path to the file holding the vault passphrase. Read as bytes, trailing whitespace trimmed, zeroized after use. **Preferred.** |
+| `SPRINGTALE_PASSPHRASE` | — | Vault passphrase inline. Development only — visible in `/proc/<pid>/environ` and `docker inspect`. Consulted only if `SPRINGTALE_PASSPHRASE_FILE` is unset |
 | `SPRINGTALE_STORE__PATH` | `/data/springtale.db` | Database path inside container |
 | `SPRINGTALE_CRYPTO__VAULT_PATH` | `/data/vault.bin` | Vault path inside container |
+| `SPRINGTALE_TRANSPORT__SOCKET_PATH` | `/data/springtale.sock` | Control socket path inside container |
 | `SPRINGTALE_API__BIND` | `0.0.0.0:8080` | API bind address |
 | `RUST_LOG` | `info` | Log level |
+
+> `secrets/passphrase.txt` is the one file that must never be committed or
+> included in a backup image. Keep it out of the build context.
 
 ### 3.3. Verify
 

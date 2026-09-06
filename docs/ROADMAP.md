@@ -21,7 +21,7 @@ Springtale ships in five phases. Each phase builds on the last — no phase skip
 | 1a | Framework + Connectors | Daemon, CLI, 14 library crates, 8 baseline connectors (kick, presearch, bluesky, github, filesystem, shell, http, opencode), SQLite (declarative schema v1 in `schema/sql/`), crypto vault, WASM sandbox, MCP endpoint | Present. Connector roster grew to 15 first-party through Phases 1b/2a. |
 | 1b | Bot Foundations | `springtale-bot`, command router (prefix / pattern / alias), cooperation framework, `connector-telegram`, session memory | Present. Cooperation framework extracted to its own `springtale-cooperation` crate (42 pub modules) and wired into a 25-step formation tick; see §3.2. |
 | 2a | Chat + AI | Discord, Slack, IRC, Signal, Nostr connectors. Anthropic / Ollama / OpenAI-compat adapters (all three stream). `HttpTransport` (rustls mTLS). `springtale-sentinel`. Tool-calling across all AI adapters. | Present. Matrix is held on upstream `rusqlite` CVE. |
-| 2b | Desktop + Safety | Tauri 2 shell, SolidJS dashboard + colony canvas (RTS formation visualisation), duress vault, panic wipe, travel mode. Visual rule builder, i18n, a11y. | Shell, dashboard, colony canvas (with formation command grid, rally pips, attention bar, liveness/health encoding), duress, panic wipe, travel mode present. Visual rule builder (`RuleBuilderOverlay`), i18n (eight locales), quick-hide, and lock-screen content protection present. a11y not implemented. |
+| 2b | Desktop + Safety | Tauri 2 shell, SolidJS dashboard + colony canvas (RTS formation visualisation), duress vault, panic wipe, travel mode. Visual rule builder, i18n, a11y. | Shell, dashboard, colony canvas (with formation command grid, rally pips, attention bar, liveness/health encoding), duress, panic wipe, travel mode present. Visual rule builder (`RuleBuilderOverlay`), i18n (eight locales), quick-hide, and lock-screen content protection present. a11y present — see §5.1: skip link (`ColonyShell`), `aria-live` regions, `role="application"` + `tabindex` + per-sprite `aria-label`s on the colony canvas with keyboard selection handled at the document level, a 7 px floor on the colony text scale, and `prefers-reduced-motion` / `prefers-contrast` styles. User-controlled font scaling is the one a11y item still missing (§5.2). |
 | 3 | Veilid Mesh | `VeilidTransport`, P2P mesh, distributed registry, Rekindle integration | Not implemented. `VeilidTransport` exists as a stub — every method returns `TransportError::NotConnected`. |
 
 ---
@@ -241,9 +241,14 @@ Tauri 2 desktop shell with a SolidJS frontend that renders an RTS-inspired colon
   the window contents.
 - **i18n** — 8 locales (en, es, pt, fr, ar, th, tl, ja) via `@solid-primitives/i18n`,
   RTL-aware, switchable from app settings.
-- **Accessibility** — skip link, `aria-live` regions on the safety panel, event ribbon,
-  rule builder, canvas, travel mode and sessions; screen-reader navigation over the
-  canvas; `prefers-reduced-motion` and high-contrast styles in `theme.css`.
+- **Accessibility** — skip link (`ColonyShell`), `aria-live` regions on the safety panel,
+  event ribbon, rule builder, canvas, travel mode and sessions; the canvas root is
+  `role="application"` with `tabindex={0}` and an `aria-label`, every sprite, fuel/HP bar
+  and formation zone carries its own `aria-label`, and keystrokes (Escape, 1-9) are handled
+  at the document level rather than consumed by screen-reader navigation; a 7 px floor on
+  the colony text scale (`.colony-text-4xs`, scaled up from the v8 reference);
+  `prefers-reduced-motion` and high-contrast (`prefers-contrast: more`) styles in
+  `theme.css`.
 
 ### 5.2. Not Implemented
 

@@ -381,14 +381,35 @@ Duress vault configured.
 
 ## 9. `springtale crypto rotate-vault-key`
 
-Re-encrypt the vault with a new passphrase. The API bearer token changes as a side effect — the token is `HMAC-SHA256(passphrase, "springtale-api-token")`.
+Re-encrypt the vault with a new passphrase. It opens the vault with the old
+passphrase, copies every entry into a fresh vault created under the new one,
+and rewrites the vault file. Nothing outside the vault file is touched.
 
 ```
 $ springtale crypto rotate-vault-key
 Enter current passphrase: ********
 Enter new passphrase: ********
-Vault re-encrypted. Update API clients with the new token.
+Vault re-encrypted.
 ```
+
+**No API token is rotated by this.** Bearer tokens are minted from the OS
+CSPRNG at login, not derived from the passphrase (see
+[`api.md` §2](api.md#2-authentication)). What the new passphrase changes:
+
+- **The login verifier.** `POST /auth/login` compares the presented
+  passphrase against a hash the daemon computed once, at boot, from the
+  passphrase it started with. A daemon that is already running keeps that
+  old value in memory, so it keeps accepting the **old** passphrase at
+  `/auth/login` until it is restarted (or the vault locked and unlocked)
+  with the new one. Restart the daemon after rotating.
+- **Live sessions** are unaffected while the daemon runs — they are keyed
+  by `sha256(token)` in process memory, with no link to the passphrase.
+  Locking the vault or restarting the daemon drops all of them, so every
+  client will have to log in again with the new passphrase.
+- **Long-lived named tokens** (`POST /auth/tokens`) survive rotation
+  entirely: their hashes live in the `api_tokens` table, which this command
+  never touches. If you are rotating in response to a compromise, revoke
+  them explicitly with `DELETE /auth/tokens/{id}`.
 
 ---
 
