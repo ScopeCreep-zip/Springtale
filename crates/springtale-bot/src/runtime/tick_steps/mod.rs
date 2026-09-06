@@ -3,7 +3,7 @@
 //! the old `event_loop.rs::handle_cadence_tick` (was 1462 lines; per
 //! `pure-noodling-biscuit.md` lines 1843–1849 the target is <150).
 //!
-//! Step order matches `docs/ROADMAP.md §3.2` (the canonical 14-step
+//! Step order matches `docs/ROADMAP.md §3.2` (the canonical 25-step
 //! pipeline). Steps are added incrementally — each B-series task moves
 //! one piece of logic out of `event_loop.rs` into its own file here.
 
@@ -54,12 +54,12 @@ pub use shutdown::log_shutdown_snapshot;
 use crate::cooperation::cadence::Tick;
 use crate::cooperation::formation::Formation;
 
-/// One formation's full 14-step pipeline. Order matches `docs/ROADMAP.md
+/// One formation's full 25-step pipeline. Order matches `docs/ROADMAP.md
 /// §3.2`. Each step is one named module under `tick_steps/`.
 pub async fn run_tick(formation: &mut Formation, tick: &Tick, deps: &mut TickDeps<'_>) {
     // §22 frequency modulation — the pacing divider skips bus ticks so a
-    // formation's effective tick rate tracks its phase (Peak ÷1 … Recovery
-    // ÷6). Skipping is safe: momentum decay, commit deadlines, and vote
+    // formation's effective tick rate tracks its phase (BuildUp and
+    // SustainPeak ÷1, PeakFade ÷2, Relax ÷4). Skipping is safe: momentum decay, commit deadlines, and vote
     // deadlines are all wall-clock based and settle on the next processed
     // tick.
     if !tick

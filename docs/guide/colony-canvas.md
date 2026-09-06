@@ -4,8 +4,10 @@ The colony canvas is the primary UI for Springtale. It's an RTS-style live
 view of your running connectors, rules, agents, and formations. Same
 component tree runs in two places:
 
-- **Tauri desktop** (`tauri/apps/desktop`) — talks to `springtaled` through
-  IPC commands that call directly into `springtale-runtime`.
+- **Tauri desktop** (`tauri/apps/desktop`) — a sidecar client. `springtaled` is
+  spawned on unlock and owns all state; the shell talks to it over HTTP on
+  loopback through the same provider the dashboard uses. Tauri IPC is reserved
+  for what the OS owns (vault unlock, tray, quick hide, content protection).
 - **Web dashboard** (`tauri/apps/dashboard`) — SPA served by `springtaled`,
   talks through HTTP + SSE.
 
@@ -23,8 +25,25 @@ Every visual signal maps to real backend state. No decorative fake data.
   Pipelines → mycelium     (SVG paths between nodes)
 ```
 
-Springtails move when their rules fire. Nodes pulse on incoming events.
+Springtails move toward what they are doing. `getAgentPosition`
+(`tauri/packages/ui/src/colony/geometry.ts`) places an agent one of three
+ways: an agent with no connector sits on a deterministic seeded floor
+spread; an agent whose activity is `firing` **and** which names an action
+connector is interpolated 35 % of the way along the mycelium toward that
+target node (`WALK_FRACTION`); otherwise it parks near its home node at a
+standoff that widens with its attention load. Movement is a CSS transition
+(`left` / `top`, 0.8 s), and a position change of more than 0.5 % adds an
+`is-walking` walk-cycle class for 850 ms. Nodes pulse on incoming events.
 Mycelium thickens when throughput is high.
+
+Activity is not polled from a status field — it is the newest unexpired
+**utterance** (`activityOf`, `dashboard/activity.ts`), whose vocabulary is a
+closed Rust enum (`UtteranceKind` in
+`crates/springtale-cooperation/src/utterance/types.rs`: Firing, Working,
+Listening, Idle, Failed, Down, Claimed, Yield, Helping, Rally, Cascade).
+That string becomes the sprite's CSS class directly. When every utterance
+has expired the agent falls back to `listening`. There is no `Math.random()`
+anywhere in the frontend data path.
 
 ## 2. The three-pane layout
 
@@ -36,12 +55,13 @@ Mycelium thickens when throughput is high.
   │              │                                            │
   │ ConnectorBar │    Viewport (ColonyCanvas)                 │
   │              │                                            │
-  │ nodes list   │    • pan / zoom                            │
-  │ install ctl  │    • click to select                       │
-  │              │    • drag to reposition                    │
+  │ nodes list   │    • wheel = zoom (cursor-anchored)        │
+  │ install ctl  │    • middle-drag = pan                     │
+  │              │    • left-click select, left-drag moves    │
+  │              │      a node                                │
   │              │    • 1-9 select agents                     │
+  │              │    • O cycles the overlay                  │
   │              │    • Esc deselects                         │
-  │              │                                            │
   ├──────────────┴────────────────────────────────────────────┤
   │  BottomPanel (selection-context command grid)             │
   │                                                           │
@@ -49,10 +69,40 @@ Mycelium thickens when throughput is high.
   └───────────────────────────────────────────────────────────┘
 ```
 
+The viewport is a transform wrapper, not a scroll container: `Viewport.tsx`
+applies `translate(x, y) scale(z)` with `transform-origin: 0 0`. Wheel zoom
+is anchored on the cursor and clamped to 0.5×–3× in 1.1× steps. Panning is
+**middle-button drag only** — left-drag is reserved for repositioning nodes.
+There is no reset-to-1× control; the only programmatic camera move is
+`centerOn`, which the alert stack uses when you click an entry to jump to
+its subject, and it preserves the current zoom.
+
+Pressing `O` cycles the canvas overlay through `none` → `momentum` →
+`attention` → `fuel`. An overlay recolours sprites by tinting them with
+`--colony-overlay`; a sprite with no reading for that overlay is dimmed
+(opacity 0.25, desaturated) rather than given an invented colour.
+
+The top-right event feed shows the last five raw events. The **event
+ribbon** below it is an alert stack, not a toast queue: every entry is
+derived from live state on each render, so it disappears the moment its
+condition stops holding, and no entry is on a wall-clock timer. It raises
+five conditions — pending approvals (with inline APPROVE / DENY),
+cascade hits, sentinel quarantines, members marked down (cleared by a later
+recovery action for the same agent), and unexpired `failed` utterances —
+deduplicated newest-per-subject, sorted error → warn → ok, capped at eight.
+Dismissing an entry is forgotten once its condition ends, so a recurrence
+alerts again.
+
 ## 3. The command grid
 
-The 3×3 command grid at the bottom changes with selection context
-(StarCraft-style). Every button does something real — no empty slots.
+The command grid at the bottom is a fixed 3×3 and changes with selection
+context (StarCraft-style). All nine slots are always laid out; a slot with
+no command for the current context renders as an empty cell
+(`<div aria-hidden="true" />`), never as an empty button, so a verb never
+moves between contexts. Bottom-right is the only destructive cell and always
+goes through a confirm dialog. A repo lint
+(`tauri/scripts/check-command-verbs.mjs`) fails the build if a declared verb
+has no handler.
 
 **No selection:** App-level commands — Settings, Safety, Vault, Data
 export, Panic wipe.
@@ -72,12 +122,18 @@ Disable, Test, Remove.
   └─────────┴─────────┴─────────┘
 ```
 
-Buttons map to `/formations/*` endpoints, which in turn push a
-`FormationCommand::{Deploy, Pause, Resume, ChangeIntent, AddMember,
-RemoveMember, Rally, Dissolve}` onto the bot's command channel.
+The formation grid is the one context that is not a static table: the
+backend sends `CommandDecl[]` (`crates/springtale-runtime/src/operations/commands.rs`)
+carrying each verb's `enabled` flag and `disabled_reason`, and the grid
+renders what it is given. Buttons map to `/formations/*` endpoints, which in
+turn push a `FormationCommand::{Deploy, Pause, Resume, ChangeIntent,
+AddMember, RemoveMember, Rally, Dissolve}` onto the bot's command channel.
 
-**Agent selected:** Agent-level commands — Autonomy cycle (observe →
-suggest → approve → autonomous), view health, step through decisions.
+**Agent selected:** Agent-level commands — all nine slots filled. Autonomy
+cycles through four levels: `Observe`, `Suggest`, `ActWithApproval`,
+`ActAutonomously` (`AutonomyLevel` in `crates/springtale-core/src/policy.rs`),
+labelled OBSERVE / SUGGEST / APPROVE / AUTONOMOUS in the UI and rendered as
+four pips.
 
 ## 4. Formation detail card
 

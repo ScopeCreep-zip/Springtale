@@ -145,7 +145,7 @@ their approach (ad-hoc, per-service MCP servers) obsolete.
 | **Code review burden** | Review entire server per service | Review connector code only; framework is trusted |
 | **Supply chain** | npm packages, no vetting | Ed25519 signed manifests, WASM sandbox, capability allow-list |
 | **Secret handling** | Environment variables, config files | `Secret<T>` types, vault encryption, zeroize on drop |
-| **MCP compatibility** | Native MCP servers | Any Connector auto-becomes MCP server via `springtale-mcp` |
+| **MCP compatibility** | Native MCP servers, one process each | One authenticated `/mcp` endpoint on the daemon covering every installed connector |
 
 ### 1.5.3 MCP Protocol Security Context
 

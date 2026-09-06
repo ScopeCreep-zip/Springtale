@@ -30,12 +30,20 @@ Each formation has its own `SharedMentalModel` containing:
   usually handles X while agent B handles Y").
 - **`graph`** — a `petgraph` knowledge graph linking the above.
 
-This model persists across **restarts of the same formation** — when
-the bot stops and starts, the formation's accumulated knowledge
-survives. It does **not** persist across formation dissolves; a fresh
-formation starts with an empty per-formation model.
+This model survives both a dissolve and a daemon restart, keyed by
+`formation_id`. On `Dissolve` the command handler calls
+`lifecycle::persist_mental_model` before the `Formation` is dropped
+(`crates/springtale-bot/src/cooperation/lifecycle.rs`), and
+`spawn_formation` reloads it when a formation is next deployed against the
+same id — so a formation warm-starts with what its predecessors learned, at
+Cold momentum.
 
-Storage key: `mental_model:<formation_id>` in the config_store table.
+The reload also covers a daemon restart:
+`runtime::boot::formations::restore_formations` re-deploys every formation
+that was `active` or `paused` at shutdown, and each of those deploys pulls
+the mental model, momentum row and rally tokens back out of the store.
+
+Storage key: `mental_model:<formation_id>`.
 Owner: `crates/springtale-cooperation/src/mental_model/store/`.
 
 ### 2. Global cross-formation knowledge store (G2)

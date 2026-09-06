@@ -853,7 +853,7 @@
     <div class="phase phase-1a">
       <div class="phase-tag">Phase 1a — Active</div>
       <div class="phase-title">Framework + Connectors</div>
-      <div class="phase-desc">Typed, signed, sandboxed connector framework. 7 first-party connectors. MCP bridge. SQLite storage. TOML rules.</div>
+      <div class="phase-desc">Typed, signed, sandboxed connector framework. 15 first-party connectors. SQLite storage. TOML rules. MCP over the whole registry at the daemon's authenticated <code>/mcp</code> endpoint.</div>
       <div class="phase-meta">
         <div class="kill">⊗ kills nosytlabs.com</div>
         <div class="transport">→ LocalTransport · NoopAdapter</div>
@@ -1536,7 +1536,7 @@
         <tr>
           <td class="threat-name">Unsigned / tampered connector</td>
           <td><span class="sev sev-high">High</span></td>
-          <td class="threat-fix">Ed25519 signature verified against author pubkey before any load attempt. Registry maintains pubkey→author map. No unsigned connectors can load — hard error, not a warning.</td>
+          <td class="threat-fix">Ed25519 signature verified against author pubkey before any load attempt. Registry maintains pubkey→author map. No unsigned connectors can load — hard error, not a warning (<code>operations/connectors/install.rs</code>; an unknown author is a hard error too). Caveat: first-party native connectors register through <code>inventory</code> at compile time and never pass through this gate — it covers installed and WASM connectors.</td>
         </tr>
         <tr>
           <td class="threat-name">Credential exfiltration via connector</td>
@@ -1646,7 +1646,7 @@
         <div style="color: var(--txt3); font-size: 10px;">example commands:</div>
         <div><span class="note">agent connector install ./kick.toml</span></div>
         <div><span class="note">agent rule add --trigger cron --schedule "0 9 * * *"</span></div>
-        <div><span class="note">agent mcp serve &nbsp;&nbsp;&nbsp;# connectors as MCP tools</span></div>
+        <div><span class="note">GET/POST 127.0.0.1:{port}/mcp &nbsp;&nbsp;&nbsp;# whole registry as MCP tools, Origin + bearer</span></div>
         <div><span class="note">agent doctor &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;# check all subsystems</span></div>
       </div>
     </div>

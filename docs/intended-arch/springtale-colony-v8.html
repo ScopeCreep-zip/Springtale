@@ -1,4 +1,20 @@
 <!DOCTYPE html>
+<!--
+  VISUAL REFERENCE ONLY — mock data and random intervals; not the
+  implementation.
+
+  Every tree, formation and springtail in this file is a hardcoded literal
+  (`const trees`, `const formations`, `const agents`). Four setInterval
+  loops drive it with Math.random(): the cadence waveform, fuel drain,
+  simlish bubbles and mushroom spawns. The shipped colony canvas
+  (tauri/packages/ui/src/colony/) has no Math.random() in any data path —
+  sprite activity there comes from the closed UtteranceKind enum in
+  crates/springtale-cooperation/src/utterance/types.rs, and layout jitter
+  is a deterministic seeded hash.
+
+  Read this for the look. Read docs/guide/colony-canvas.md for the
+  behaviour.
+-->
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -798,7 +814,7 @@
       scout: "var(--role-scout)", worker: "var(--role-worker)", guard: "var(--role-guard)",
       analyst: "var(--role-analyst)", sentinel: "var(--role-sentinel)",
     };
-    const AUTONOMY_LABELS = ["OBSERVE", "SUGGEST", "APPROVE", "AUTONOMOUS", "SELF-DIRECT"];
+    const AUTONOMY_LABELS = ["OBSERVE", "SUGGEST", "APPROVE", "AUTONOMOUS"];
     const AUTONOMY_COLORS = [
       "var(--status-ok)", "var(--role-scout)", "var(--status-warn)",
       "var(--status-error)", "var(--role-analyst)",
@@ -1230,7 +1246,7 @@
               </div>
               ${agent.pipeline ? `<div class="detail-pipeline">PIPELINE: ${agent.pipeline}</div>` : ""}
               <div class="autonomy-row">
-                ${[0,1,2,3,4].map(i => `<div class="autonomy-pip ${agent.autonomy === i ? "is-active" : ""}" data-level="${i}" onclick="setAutonomy('${agent.id}',${i})">${i}</div>`).join("")}
+                ${[0,1,2,3].map(i => `<div class="autonomy-pip ${agent.autonomy === i ? "is-active" : ""}" data-level="${i}" onclick="setAutonomy('${agent.id}',${i})">${i}</div>`).join("")}
               </div>
               <div class="autonomy-label" style="color:${autoColor}">${AUTONOMY_LABELS[agent.autonomy]}</div>
             </div>

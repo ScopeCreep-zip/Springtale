@@ -34,7 +34,7 @@ deploy connectors, dispatch actions — use the HTTP API instead. See
 
 - The runtime (`springtaled` itself).
 - Transport, sentinel, connector dispatch.
-- The 14-step cooperation tick.
+- The 25-step cooperation tick.
 - AI adapters.
 - The vault, crypto layer, anything secret-bearing.
 

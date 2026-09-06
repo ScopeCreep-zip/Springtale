@@ -26,7 +26,7 @@ Every crate has a single responsibility. Dependencies flow strictly downward —
                                │       ┌──────────────────┐   │
                                │       │springtale-       │   │
                                │       │cooperation       │   │
-                               │       │ 40 pub modules   │   │
+                               │       │ 42 pub modules   │   │
                                │       │(cadence, rally,  │   │
                                │       │ momentum, …)     │   │
                                │       │zero internal deps│   │
@@ -99,11 +99,11 @@ Every crate has a single responsibility. Dependencies flow strictly downward —
 | `springtale-store` | SQLite backend (SQLite3MultipleCiphers) with WAL mode, declarative schema (`PRAGMA user_version`), AEAD-encrypted bot memory, cooperation + mental model schema |
 | `springtale-scheduler` | Cron executor, filesystem watcher, job queue, heartbeat monitor, exponential backoff |
 | `springtale-ai` | `AiAdapter` trait + Noop / Ollama / OpenAI-compat / Anthropic adapters + OWASP sanitiser + tool-calling (`ToolCall` / `ToolResult` / `ToolPolicy`) |
-| `springtale-mcp` | MCP protocol bridge (`rmcp` 1.x) — wraps any `Connector` as an MCP server automatically. Handler module split; each handler owns its capability check |
+| `springtale-mcp` | MCP server (`rmcp` 1.x) over the whole connector registry (`SpringtaleMcp`), mounted by `springtaled` at `/mcp`. Handler module split; each handler owns its capability check |
 | `springtale-sentinel` | Behavioural monitor, toxic-pair capability detection, audit trail |
-| `springtale-cooperation` | Cooperation framework crate — 40 pub modules covering cadence, momentum, formations, rally, recovery, supervision, stigmergy, contract net, consensus, commit, interference, transformation, mental model, role dynamics, pacing, handoff, attention, awareness, authority, cross-formation gossip, persistent memory, and more. Zero internal Springtale dependencies. See [cooperation.md](cooperation.md) |
+| `springtale-cooperation` | Cooperation framework crate — 42 pub modules covering cadence, momentum, formations, rally, recovery, supervision, stigmergy, contract net, consensus, commit, interference, transformation, mental model, role dynamics, pacing, handoff, attention, awareness, authority, cross-formation gossip, persistent memory, and more. Zero internal Springtale dependencies. See [cooperation.md](cooperation.md) |
 | `springtale-runtime` | Shared init / dispatch / operations layer used by both the daemon and the Tauri desktop app. Hosts `LiveFormationReader` trait for UI formation state |
-| `springtale-bot` | Bot runtime, command router, handler registry, session memory, tool_runner, orchestrator (composer + intervention), and the 14-step cooperation tick pipeline |
+| `springtale-bot` | Bot runtime, command router, handler registry, session memory, tool_runner, orchestrator (composer + intervention), and the 25-step cooperation tick pipeline |
 | `springtale-wit` | G3 — WIT world for WASM Component Model embedding (Bevy, Unity, wasmCloud, custom hosts). Ships the `.wit` artifact only |
 | `springtale-py` | G3 — pyo3 Python bindings (cdylib + rlib). Stable ABI works on Python 3.9+. Wrap with `maturin` to produce a distributable wheel |
 
@@ -308,32 +308,40 @@ Output defaults to formatted tables. Pass `--json` for machine-readable output. 
 
 ## 6. The Cooperation Tick
 
-Every active formation runs a **14-step tick pipeline** when the cadence bus fires (`springtale-bot::runtime::event_loop::handle_cadence_tick`):
+Every active formation runs a **25-step tick pipeline** when the cadence bus fires. `springtale-bot::runtime::event_loop::handle_cadence_tick` acquires the locks and loops over formations; the pipeline itself is `springtale-bot::runtime::tick_steps::run_tick`, one named module per step:
 
 ```
-  1.  per-agent loop        (sense → scan → react → respond-cfp → inbox)
-  1b. drain async reports   from cadence reports channel
-  2.  tick_processor        action records + interference detection
-  2b. rally supervisor      drain member outcomes → rally events
-  3.  momentum decay        inactivity check
-  4.  momentum update       success / interference / failure
-  4a-h. liveness, supervisor checks, per-member fuel, implicit signals,
-        state broadcasts, cohesion signals
-  5.  persist momentum      → formation_momentum table
-  6.  broadcast context     to members watching FormationContext
-  7.  update awareness      via gossip substrate (Warming+)
-  7b. log interference      events
-  8.  evaluate pacing       phase transitions (GCRA / L4D Director)
-  9.  cascade detection     + self-rally (burn rally token)
-  9b. recovery              distress → helper selection
-  10. role transformation   failing members swap role
-  11. check consensus       deadlines
-  12. expire commit         barriers (completed or timed-out)
-  13. update mental model   from reports + interferences
-  14. orchestrate           decompose intent (Fever tier only)
+  pacing gate  the divider skips bus ticks whose sequence the formation's
+               current phase does not admit
+  1.  build_reports          run every member's agent loop, collect reports
+  2.  momentum decay         inactivity check
+  3.  update momentum        success / interference / failure
+  4.  liveness               mark members down or recovered
+  5.  supervision            supervisor checks, rally events
+  6.  fuel                   per-member fuel drain
+  7.  implicit signals       derive signals from the tick's reports
+  8.  state broadcast        member state out to the formation
+  9.  persist momentum       → formation_momentum table
+ 10.  publish context        FormationContext to watching members
+ 11.  gossip awareness       awareness via the gossip substrate (Warming+)
+ 12.  log interference       interference events
+ 13.  check pacing           phase transition from the tick's stress sample
+ 14.  check cascade          cascade detection + self-rally
+ 15.  check interventions    L6 commander override
+ 16.  recovery               distress → helper selection
+ 17.  transformation         failing members swap role
+ 18.  replan (CBBA)          global task reallocation
+ 19.  resolve consensus      vote deadlines
+ 20.  tick commits           advance commit barriers
+ 21.  expire commits         completed or timed-out barriers
+ 22.  update mental model    from reports + interferences
+ 23.  orchestrate            decompose intent (Fever tier only)
+ 24.  publish formation view cross-formation gossip bus
+ 25.  emit canvas update     per-tick canvas summary — only when a canvas
+                            sender is wired (skipped in headless builds)
 ```
 
-Every cooperation module is exercised somewhere in this pipeline or in the agent-side 5-step loop (`sense`, `scan`, `react`, `respond_cfp`, `inbox` in `springtale-cooperation::agent::step::*`). See [guide/cooperation.md](cooperation.md) for a user-facing tour.
+Step 1 runs the agent-side loop for each member: `sense` → `inbox` → `react` (awareness only) → `scan`, in `springtale-cooperation::agent::step::*`. `respond_cfp` is not a fifth in-order step — it fires reactively from the runner when a call for proposals arrives. Two cooperation modules are not called from this pipeline: `agent_loop::AgentLoop::tick()` scaffolding, and `sacrifice`, which runs from the agent step module rather than the formation tick. See [guide/cooperation.md](cooperation.md) for a user-facing tour.
 
 ---
 

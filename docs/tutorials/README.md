@@ -27,7 +27,7 @@ Each tutorial:
   read [`docs/guide/rules.md`](../guide/rules.md) and the per-connector
   reference under [`docs/reference/connectors/`](../reference/connectors/).
 - **Architecture explanations.** If you want to know *why* the
-  cooperation tick is 14 steps, read [`docs/guide/cooperation.md`](../guide/cooperation.md)
+  cooperation tick is 25 steps, read [`docs/guide/cooperation.md`](../guide/cooperation.md)
   or [`docs/intended-arch/COOPERATION.md`](../intended-arch/COOPERATION.md).
 - **Production deployment guides.** Tutorials run locally on your
   laptop. For server deployment see [`docs/operations/`](../operations/)

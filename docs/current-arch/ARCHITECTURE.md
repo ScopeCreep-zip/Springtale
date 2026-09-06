@@ -1827,7 +1827,7 @@ lives. Four options, configured in the mobile app:
 ### 6.8 `springtale-mcp`
 
 **Purpose:** Adapt the connector framework to the MCP protocol. Any `Connector`
-becomes an MCP server. Replaces NosytLabs' hand-written per-connector MCP servers.
+is reachable through the daemon's single `/mcp` endpoint. Replaces NosytLabs' hand-written per-connector MCP servers.
 
 The MCP security model follows the spec's own guidelines (MCP Security Best
 Practices) and CoSAI's MCP threat categories (published January 2026) rather
@@ -1859,7 +1859,7 @@ defined by the spec:
 |---|---|
 | **Tool poisoning** (malicious descriptions) | Tool descriptions generated from connector manifest `ActionDecl` — not user-editable at runtime. Schema hash recorded at install time in signed manifest. |
 | **Rug pull** (schema changes post-install) | Connector manifest is Ed25519 signed. Schema hash is part of the signature. Runtime schema changes invalidate the signature → connector suspended. |
-| **Cross-server shadowing** | Each MCP server wraps one connector. Connectors run in isolated WASM sandboxes with separate `PipelineContext`. No shared state between connectors. |
+| **Cross-server shadowing** | One MCP server covers the registry, but each tool call dispatches to exactly one connector. Connectors run in isolated WASM sandboxes with separate `PipelineContext`. No shared state between connectors. |
 | **Sampling abuse** (server requests LLM completions) | MCP sampling disabled by default. Opt-in per connector in manifest. When enabled, sampling requests route through the user's AI adapter with same `AiRequest` boundary. |
 | **Token passthrough** | No token passthrough. Each connector authenticates to its own API with its own credentials from the vault. MCP server never receives or forwards user tokens. |
 | **Localhost trust assumption** | No implicit localhost trust. All MCP connections authenticated. (CVE-2026-25253 exploited this assumption in OpenClaw.) |
@@ -2304,25 +2304,54 @@ lifecycle, rule evaluation, scheduler, and the management HTTP API.
 
 ### 8.2 `springtale-cli`
 
-Local CLI runner. Uses `clap` derive with subcommands. Output in table
-format (default) or JSON (`--json` flag) via `tabled` + `serde_json`.
+Mostly a **client of `springtaled`**, not a second runtime. `clap` derive,
+29 top-level command families, output in table format (default) or JSON
+(`--json`, a global flag) via `tabled` + `serde_json`.
+
+Most families build an HTTP client and a bearer token and talk to the
+daemon; if it is unreachable they fail rather than falling back to the
+store. A small set is genuinely offline — it touches only the vault, the
+local encrypted store, or local files:
 
 ```
-springtale connector install <path-to-manifest>
-springtale connector list
-springtale connector remove <name>
-springtale connector enable <name>
-springtale connector disable <name>
-springtale rule add --trigger cron --schedule "0 9 * * *" --action notify --title "Morning"
-springtale rule list
-springtale rule toggle <id>
-springtale rule run <id>
+# offline (daemon may be stopped)
+springtale init
+springtale new <template>
+springtale doctor
+springtale fix <error-id>
+springtale vault duress-setup
+springtale crypto rotate-vault-key
+springtale travel prepare --backup-to <path>
+springtale panic
+springtale cooperation ...
+springtale author add|list|remove
+springtale connector sign <manifest.toml>
+springtale bot pair-init
+springtale bot panic-unpair        # opens the encrypted DB directly, by design
+
+# daemon clients
+springtale connector install|list|enable|disable|remove
+springtale rule add|list|toggle|update|delete|run
 springtale events --limit 50 --connector kick
-springtale server start          # starts springtaled inline (dev mode)
-springtale memory audit           # inspect + purge memory entries
-springtale memory compact         # force context compaction
-springtale registry migrate --to-dht  # Phase 3: PostgreSQL → Veilid DHT
+springtale agent|config|formation|recipe|approval|chat|session|safety|canvas
+springtale memory audit|compact
+springtale data export|import|purge
+springtale bot settings get|set    # persona, context window, tool policy
+springtale trace
+
+# these are the daemon
+springtale server start
+springtale run
+
+# probe: unauthenticated GET /health, needs a running daemon
+springtale healthcheck [--url BASE_URL]
 ```
+
+There is no `springtale mcp serve`, and none is needed: MCP is served by the
+daemon at `/mcp` over the whole connector registry, so an MCP client talks to
+`springtaled` directly rather than through the CLI. See
+[reference/cli.md §1.1](../reference/cli.md) for the full family map and for
+which commands accept `--json` but ignore it.
 
 **Security audit for `springtale-cli`:**
 

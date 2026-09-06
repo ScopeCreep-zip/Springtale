@@ -1,3 +1,27 @@
+> **Springtale note — read this first.**
+>
+> This directory is **not** upstream `rusqlite`. It is a vendored
+> `libsqlite3-sys` whose bundled amalgamation is
+> [SQLite3MultipleCiphers](https://github.com/utelle/SQLite3MultipleCiphers)
+> (`sqlite3mc`), which is what gives Springtale its encrypted store
+> (`PRAGMA cipher = 'chacha20'`, ChaCha20-Poly1305, no OpenSSL).
+>
+> Two things about the version numbers will look wrong and are deliberate:
+>
+> - The crate is labelled `version = "0.37.0"` in `Cargo.toml`, matching the
+>   upstream `libsqlite3-sys` release it was forked from.
+> - The workspace depends on `rusqlite = "0.39"`, and this crate is injected
+>   underneath it through `[patch.crates-io] libsqlite3-sys = { path =
+>   "crates/libsqlite3-sys-mc" }` in the root `Cargo.toml`. So a 0.37.0-labelled
+>   `libsqlite3-sys` is patched over rusqlite 0.39.
+>
+> The rest of this file is the **upstream rusqlite README, kept verbatim**. Its
+> instructions (`rusqlite = "0.39.0"`, "the bundled source is SQLite 3.51.3")
+> describe upstream, not this fork — this fork's bundled source is the sqlite3mc
+> amalgamation. Do not follow it as setup instructions for Springtale.
+
+---
+
 # Rusqlite
 
 [![Latest Version](https://img.shields.io/crates/v/rusqlite.svg)](https://crates.io/crates/rusqlite)

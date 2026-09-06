@@ -35,20 +35,27 @@ From this point the two members draw from one GCRA budget. There is no
 
 ## How the budget is decided
 
-The formation's current **pacing phase** picks the quota
-(`crates/springtale-cooperation/src/pacing/quotas.rs`):
+There is **no per-phase actions-per-minute quota**. There is no
+`pacing/quotas.rs`; the pacing module is `manager.rs` + `types.rs`, and it
+controls frequency two ways only:
 
-| Phase | Actions/min | When |
-|---|---:|---|
-| `Preparation` | 2 | build-up, information gathering |
-| `Active` | 10 | normal work pace |
-| `Peak` | 30 | brief maximum-throughput burst |
-| `Recovery` | 1 | cooldown, consolidation only |
-| `Disruption` | hard-block | sentinel-detected anomaly |
+| Phase | Effect |
+|---|---|
+| `BuildUp` | tick divider 1 — every bus tick is processed |
+| `SustainPeak` | tick divider 1 |
+| `PeakFade` | tick divider 2 — half the bus ticks are skipped |
+| `Relax` | tick divider 4, **and** only read-only actions are admitted |
+| `Disruption` | resets to `BuildUp` on the next observed tick |
 
-Phase transitions are evaluated every cooperation tick (step 8,
-`check_pacing`) from formation state — momentum tier, cascade signals,
-objective progress — not wall clock. See
+`PacingManager::tick_divider()` supplies the divider and
+`PacingManager::allows(read_only)` supplies the Relax gate. Nothing else in
+pacing counts actions.
+
+Phase transitions are evaluated every cooperation tick (step 13,
+`check_pacing`) from a `StressSample` folded out of that tick's reports —
+failures, interferences, sentinel throttles, approval denials, and whether
+any member was engaged — not from wall clock and not from objective
+progress. See
 [`guide/pacing.md`](../guide/pacing.md) for the full phase model and
 transition rules.
 

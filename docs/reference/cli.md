@@ -37,7 +37,7 @@
 
 | Flag | Description |
 |---|---|
-| `--json` | Output as JSON instead of formatted tables |
+| `--json` | Output as JSON instead of formatted tables. Declared `global = true`, so it parses on every subcommand — but see the note below. |
 | `--passphrase-file <path>` | Read the vault passphrase from a file. The file must be mode `0600`; anything more permissive is refused. |
 | `--passphrase-command <cmd>` | Run `<cmd>` and use its stdout as the vault passphrase (for OS keychains, `pass`, secret managers). |
 
@@ -47,6 +47,60 @@ the vault passphrase. With neither flag set the CLI prompts interactively on the
 terminal. The passphrase never goes through argv or the environment.
 
 ---
+
+## 1.1. Command families, and which need the daemon
+
+`springtale` has 29 top-level command families
+(`apps/springtale-cli/src/cli.rs`). They split three ways.
+
+**Daemon clients.** These build an HTTP client from the config and send a
+bearer token; if `springtaled` is not reachable they fail with
+`UNREACHABLE` and do not fall back to the local store:
+
+`connector` (except `sign`), `rule`, `events`, `trace`, `memory`, `data`,
+`agent`, `config`, `formation`, `recipe`, `approval`, `chat`, `session`,
+`safety`, `canvas`, `bot settings`.
+
+**Offline.** These use the vault, the local encrypted store, or local files
+only, and work with the daemon stopped:
+
+`init`, `new`, `doctor`, `fix`, `panic`, `travel`, `vault`, `crypto`,
+`cooperation`, `author`, `connector sign`, `bot pair-init`,
+`bot panic-unpair`.
+
+`bot panic-unpair` opens the encrypted database directly on purpose, so it
+still works when the daemon is down.
+
+**Neither.** `server start` and `run` *are* the daemon — they boot
+`springtaled` in-process. `healthcheck` is an unauthenticated `GET /health`
+probe: it is not offline, it needs a running daemon, it just needs no token.
+
+### `--json` coverage
+
+`--json` is a single global flag (`cli.rs`), rendered through
+`output::emit`. It is threaded into: `connector`, `rule`, `events`,
+`memory`, `agent`, `config`, `formation`, `recipe`, `approval`, `chat`,
+`session`, `safety`, `canvas`, `author`, `bot settings`.
+
+It **parses but is ignored** everywhere else. `data` always writes JSON to
+stdout for export and human text to stderr for import/purge regardless;
+`trace` always prints its own event lines; `canvas --stream` prints raw SSE
+`data:` payloads and only honours `--json` on the non-streaming path; and
+every offline / daemon-boot command (`init`, `new`, `doctor`, `fix`,
+`panic`, `travel`, `vault`, `crypto`, `cooperation`, `server`, `run`,
+`healthcheck`, `bot pair-init`, `bot panic-unpair`, `connector sign`)
+ignores it.
+
+### `springtale bot settings`
+
+Bot persona, context window and tool policy are settings with a route and a
+command — not a TOML file. `springtale bot settings get` and
+`springtale bot settings set` read and write `GET`/`PUT /bot/settings`.
+`set` takes `--name`, `--tone`, `--prefix` (persona), `--context_window`,
+and a repeatable `--allow` (tool policy; passing any `--allow` replaces the
+whole allow-list). It is a read-modify-write against the endpoint on
+purpose: a direct store write would not be seen until the daemon restarted.
+
 
 ## 2. `springtale init`
 

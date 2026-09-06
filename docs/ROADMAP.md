@@ -18,8 +18,8 @@ Springtale ships in five phases. Each phase builds on the last — no phase skip
 
 | Phase | Name | Deliverables | State |
 |---|---|---|---|
-| 1a | Framework + Connectors | Daemon, CLI, 14 library crates, 8 baseline connectors (kick, presearch, bluesky, github, filesystem, shell, http, opencode), SQLite (declarative schema v1 in `schema/sql/`), crypto vault, WASM sandbox, MCP bridge | Present. Connector roster grew to 15 first-party through Phases 1b/2a. |
-| 1b | Bot Foundations | `springtale-bot`, command router (prefix / pattern / alias), cooperation framework, `connector-telegram`, session memory | Present. Cooperation framework extracted to its own `springtale-cooperation` crate (40 pub modules) and wired into a 14-step formation tick; see §3.2. |
+| 1a | Framework + Connectors | Daemon, CLI, 14 library crates, 8 baseline connectors (kick, presearch, bluesky, github, filesystem, shell, http, opencode), SQLite (declarative schema v1 in `schema/sql/`), crypto vault, WASM sandbox, MCP endpoint | Present. Connector roster grew to 15 first-party through Phases 1b/2a. |
+| 1b | Bot Foundations | `springtale-bot`, command router (prefix / pattern / alias), cooperation framework, `connector-telegram`, session memory | Present. Cooperation framework extracted to its own `springtale-cooperation` crate (42 pub modules) and wired into a 25-step formation tick; see §3.2. |
 | 2a | Chat + AI | Discord, Slack, IRC, Signal, Nostr connectors. Anthropic / Ollama / OpenAI-compat adapters (all three stream). `HttpTransport` (rustls mTLS). `springtale-sentinel`. Tool-calling across all AI adapters. | Present. Matrix is held on upstream `rusqlite` CVE. |
 | 2b | Desktop + Safety | Tauri 2 shell, SolidJS dashboard + colony canvas (RTS formation visualisation), duress vault, panic wipe, travel mode. Visual rule builder, i18n, a11y. | Shell, dashboard, colony canvas (with formation command grid, rally pips, attention bar, liveness/health encoding), duress, panic wipe, travel mode present. Visual rule builder (`RuleBuilderOverlay`), i18n (eight locales), quick-hide, and lock-screen content protection present. a11y not implemented. |
 | 3 | Veilid Mesh | `VeilidTransport`, P2P mesh, distributed registry, Rekindle integration | Not implemented. `VeilidTransport` exists as a stub — every method returns `TransportError::NotConnected`. |
@@ -43,7 +43,7 @@ The foundation. A single-binary daemon, CLI, rule engine, crypto vault, WASM san
 | `springtale-store` | library | SQLite backend (SQLite3MultipleCiphers) with WAL mode, declarative schema (`PRAGMA user_version`), AEAD-encrypted bot memory, cooperation schema |
 | `springtale-scheduler` | library | Cron executor, file watcher, job queue, heartbeat monitor, retry with backoff |
 | `springtale-ai` | library | AI adapter trait + NoopAdapter (default). Adapters added in Phase 2a |
-| `springtale-mcp` | library | MCP protocol bridge (`rmcp` 1.x) — any connector becomes an MCP server |
+| `springtale-mcp` | library | MCP server (`rmcp` 1.x) over the whole connector registry; mounted by `springtaled` at `/mcp` |
 | `springtale-runtime` | library | Shared runtime init, dispatch, operations layer, `LiveFormationReader` trait |
 | `connector-kick` | connector | Kick streaming — OAuth 2.1 PKCE, chat, streams, webhooks |
 | `connector-presearch` | connector | Presearch — search + scrape with caching |
@@ -65,7 +65,8 @@ The foundation. A single-binary daemon, CLI, rule engine, crypto vault, WASM san
 - Capability-based permission system with toxic pair detection
 - RESTful management API with HMAC bearer auth and rate limiting
 - Cron scheduling + filesystem watching + webhook ingestion
-- Any connector auto-exposed as MCP server via stdio
+- MCP over Streamable HTTP at `/mcp`, covering the whole registry, behind the
+  daemon's Origin check and bearer auth (`apps/springtaled/src/api/mcp.rs`)
 - Docker deployment with hardened security (read-only root, drop all caps)
 - CI pipeline: fmt, clippy, nextest, cargo-deny, cargo-audit, gitleaks
 
@@ -88,36 +89,46 @@ Classical bot runtime with deterministic command routing. No AI needed — `/sea
 
 ### 3.2. Cooperation wiring state
 
-In April 2026 the cooperation architecture was lifted out of `springtale-bot` into its own crate, `springtale-cooperation` (37 public modules). The crate has zero internal Springtale dependencies and is consumed by `springtale-bot` and `springtale-runtime`. See [`docs/guide/cooperation.md`](guide/cooperation.md) for a user-facing tour.
+In April 2026 the cooperation architecture was lifted out of `springtale-bot` into its own crate, `springtale-cooperation` (42 public modules). The crate has zero internal Springtale dependencies and is consumed by `springtale-bot` and `springtale-runtime`. See [`docs/guide/cooperation.md`](guide/cooperation.md) for a user-facing tour.
 
-The formation tick runs a **14-step pipeline** inside `springtale-bot::runtime::event_loop::handle_cadence_tick`:
+The formation tick runs a **25-step pipeline**. `springtale-bot::runtime::event_loop::handle_cadence_tick` is the driver — it takes the locks, calls `springtale-bot::runtime::tick_steps::run_tick` once per active formation, then runs the tail passes. `run_tick` is the pipeline, one named module per step:
 
 ```
-  1.  per-agent loop (sense / scan / react / respond-cfp / inbox)
-  1b. drain async tick reports from cadence reports channel
-  2.  tick_processor — action records + interference detection
-  2b. rally supervisor drain (member outcomes → rally events)
-  3.  momentum decay check (inactivity)
-  4.  momentum update (success / interference / failure)
-  4a-h. liveness, supervisor checks, per-member fuel, implicit signals,
-        state broadcasts, cohesion signals
-  5.  persist momentum row to SQLite
-  6.  broadcast FormationContext to watchers
-  7.  update awareness via gossip substrate (Warming+ only)
-  7b. log interference events
-  8.  evaluate pacing phase transitions
-  9.  cascade detection + self-rally
-  9b. recovery evaluation (distress → helper selection)
-  10. role transformation for failing members
-  11. check consensus deadlines
-  12. expire completed / timed-out commit barriers
-  13. update mental model from observed reports + interferences
-  14. orchestrate — decompose intent into sub-tasks (Fever tier only)
+  pacing gate  the divider skips bus ticks whose sequence the formation's
+               current phase does not admit
+  1.  build_reports          run every member's agent loop, collect reports
+  2.  momentum decay         inactivity check
+  3.  update momentum        success / interference / failure
+  4.  liveness               mark members down or recovered
+  5.  supervision            supervisor checks, rally events
+  6.  fuel                   per-member fuel drain
+  7.  implicit signals       derive signals from the tick's reports
+  8.  state broadcast        member state out to the formation
+  9.  persist momentum       → formation_momentum table
+ 10.  publish context        FormationContext to watching members
+ 11.  gossip awareness       awareness via the gossip substrate (Warming+)
+ 12.  log interference       interference events
+ 13.  check pacing           phase transition from the tick's stress sample
+ 14.  check cascade          cascade detection + self-rally
+ 15.  check interventions    L6 commander override
+ 16.  recovery               distress → helper selection
+ 17.  transformation         failing members swap role
+ 18.  replan (CBBA)          global task reallocation
+ 19.  resolve consensus      vote deadlines
+ 20.  tick commits           advance commit barriers
+ 21.  expire commits         completed or timed-out barriers
+ 22.  update mental model    from reports + interferences
+ 23.  orchestrate            decompose intent (Fever tier only)
+ 24.  publish formation view cross-formation gossip bus
+ 25.  emit canvas update     per-tick canvas summary — only when a canvas
+                            sender is wired (skipped in headless builds)
 ```
 
-**Every cooperation module is wired.** Modules participating in the tick: `cadence`, `momentum`, `attention`, `awareness`, `mental_model`, `consensus`, `commit`, `interference`, `transformation`, `capability`, `rally`, `recovery`, `sacrifice`, `comms`, `handoff`, `pacing`, `supervision`, `stigmergy`, `contract_net`, `routing`, `role`, `dissemination`, `tick_processor`, plus state / agent / authority / layer / utility / replan support modules.
+Step 1 runs each member's agent loop: `sense` → `inbox` → `react` (awareness only) → `scan`. `respond_cfp` fires reactively when a call for proposals arrives, not at a fixed point in the tick.
 
-Not invoked from the bot hot path (deliberate — they are ancillary helpers or consumed elsewhere): `agent_loop::AgentLoop::tick()` scaffolding, `replan::cbba` (wired only when orchestrator is present and needs a global replan).
+Modules participating in the tick: `cadence`, `momentum`, `attention`, `awareness`, `mental_model`, `consensus`, `commit`, `interference`, `transformation`, `capability`, `rally`, `recovery`, `comms`, `handoff`, `pacing`, `supervision`, `stigmergy`, `contract_net`, `routing`, `role`, `dissemination`, `replan::cbba`, `tick_processor`, plus state / agent / authority / layer / utility support modules.
+
+Not invoked from the formation tick: `agent_loop::AgentLoop::tick()` scaffolding, and `sacrifice`, which runs from the agent step module (`agent::step::sacrifice`) rather than from `run_tick`.
 
 Full detail: [`docs/arch/AUDIT-NOTES.md §3`](arch/AUDIT-NOTES.md).
 
@@ -196,7 +207,18 @@ Tauri 2 desktop shell with a SolidJS frontend that renders an RTS-inspired colon
 
 ### 5.1. Present
 
-- **Tauri 2 desktop shell** — `tauri/apps/desktop`. IPC via `invoke()` into the shared `springtale-runtime` crate. 33 command modules (agent, approval, authors, bot, canvas, chat, config, connectors, cooperation, data, diagnostics, drift, events, executions, fixes, formations, heartbeat, memory, onboarding, panic, quick_hide, recipes, rules, safety, selector_picker, send, sessions, templates, test_step, travel, tray, vault, workspaces, plus runtime_guard).
+- **Tauri 2 desktop shell** — `tauri/apps/desktop`, a **sidecar client**. It does
+  not host the runtime: on unlock it spawns `springtaled` as a Tauri sidecar
+  (`--bind 127.0.0.1:0 --passphrase-stdin`, passphrase over stdin, waits for
+  `READY {port}`), and the frontend then talks to it over HTTP on loopback
+  through the same provider the dashboard uses. The API token is derived from
+  the passphrase on both sides and never transmitted. The desktop crate depends
+  on only `springtale-crypto` and `springtale-transport`, and exposes five Tauri
+  IPC command modules for what the OS owns: `vault`, `tray`, `quick_hide`,
+  `safety`, `selector_picker`. The only local state it keeps is
+  `{data_dir}/shell-prefs.json` (mode 0600, holding `window_title` so the
+  disguise name is right on the first frame of a cold start) plus the unlocked
+  vault and the auto-lock timer in memory.
 - **Web dashboard** — `tauri/apps/dashboard`. SPA served by `springtaled`, bearer-token auth, SSE for live event and canvas streams.
 - **Shared component library** — `tauri/packages/ui` with `DataProvider` abstraction. Desktop wraps Tauri IPC; web wraps HTTP + SSE.
 - **Colony canvas** — RTS-style pixel-art ecosystem view: connectors → nodes, rules/agents → springtails, formations → zones, pipelines → mycelium. Live state over `/canvas/stream` (SSE) + `LiveFormationReader` for formation detail. Formation command grid (DEPLOY / PAUSE / RESUME / REMOVE), rally pips (Monster Hunter carts), attention distribution bar (Army of Two aggro), guard status badge, agent liveness / health encoding. See [`docs/guide/colony-canvas.md`](guide/colony-canvas.md).
@@ -204,12 +226,30 @@ Tauri 2 desktop shell with a SolidJS frontend that renders an RTS-inspired colon
 - **Duress passphrase** — dual encrypted regions, constant 131,152-byte file size, VeraCrypt-style plausible deniability.
 - **Panic wipe** — single-pass random overwrite + fsync + unlink, <3 s on 1 MB vault.
 - **Travel mode** — `springtale travel prepare --backup-to` and `travel restore --from`.
+- **MCP endpoint** — Model Context Protocol is served by **the daemon**, over the whole connector registry, at an authenticated loopback endpoint. `springtale-mcp` exposes `SpringtaleMcp::new(runtime)` (every installed connector) and `SpringtaleMcp::for_connector` (one), and `springtaled` mounts it at `/mcp` as a Streamable HTTP service (`apps/springtaled/src/api/mcp.rs`). Requests pass `auth::require_local_origin` and then the daemon's own bearer check on *every* request; `Mcp-Session-Id` is a transport correlator, never authentication. Tool calls dispatch through the same sentinel, approval gate and executions recorder as a rule action. The per-connector stdio subprocess transport is gone — there is no `mcp` CLI subcommand, and none is needed.
+- **Visual rule builder** — `tauri/packages/ui/src/colony/RuleBuilderOverlay.tsx`, a guided
+  multi-step form (trigger → condition → action → preview), wired into both the desktop
+  and dashboard apps. Not drag-and-drop.
+- **Quick-hide** — OS-wide global shortcut that hides the window
+  (`tauri/apps/desktop/src-tauri/src/commands/quick_hide.rs`), with a fallback combo;
+  the shortcut is persisted in the `safety` table.
+- **Content protection** — `window.set_content_protected` blocks screen capture
+  (`commands/safety.rs`). Tauri 2 does not support it on Linux; the command returns an
+  error there.
+- **App disguise** — tray icon and app name swap across four icon profiles
+  (`commands/tray.rs`, `POST /safety/disguise/profile`). It disguises the tray entry, not
+  the window contents.
+- **i18n** — 8 locales (en, es, pt, fr, ar, th, tl, ja) via `@solid-primitives/i18n`,
+  RTL-aware, switchable from app settings.
+- **Accessibility** — skip link, `aria-live` regions on the safety panel, event ribbon,
+  rule builder, canvas, travel mode and sessions; screen-reader navigation over the
+  canvas; `prefers-reduced-motion` and high-contrast styles in `theme.css`.
 
 ### 5.2. Not Implemented
 
-- Accessibility: screen readers (WAI-ARIA), keyboard nav, high contrast, font scaling
 - Mobile (iOS + Android) via Tauri mobile
-- App disguise
+- User-controlled font scaling (the rest of the accessibility work listed in §5.1 has
+  landed; font scaling is the one item with no implementation)
 
 ---
 

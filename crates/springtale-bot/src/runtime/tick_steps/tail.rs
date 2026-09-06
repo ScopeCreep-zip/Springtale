@@ -1,4 +1,4 @@
-//! Per-tick cleanup that runs after every formation finishes its 14-step
+//! Per-tick cleanup that runs after every formation finishes its 25-step
 //! pipeline. Three independent passes:
 //!
 //! - **Reclaim dead members.** L4D pattern: recoverable-dead members stay

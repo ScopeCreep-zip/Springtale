@@ -721,6 +721,25 @@ parallel. Use `watch` only for current steady-state tier.
 
 ## 7. Momentum System
 
+> **ERRATUM (docs pass, Sept 2026).** This section leans on "the Patapon Fever
+> mechanic" as though Springtale reproduced it. Patapon's actual rule is: the
+> player drums a four-beat command in time with the metronome; each command
+> entered on the beat extends a combo counter, and reaching **ten consecutive
+> on-beat commands** enters Fever, in which the army's attacks are stronger.
+> **A single mistimed or missed beat breaks the combo and drops Fever
+> immediately** — there is no partial credit and no rate.
+>
+> Springtale's momentum is *not* that. `RunWindow`
+> (`crates/springtale-cooperation/src/momentum.rs`) promotes on **rates over the
+> current clean run** — minimum action count, minimum success rate, maximum
+> duplicate rate (Cold→Warming 3 / 0.80 / 1.00, Warming→Hot 8 / 0.90 / 0.30,
+> Hot→Fever 15 / 0.95 / 0.10) — not on a counter of consecutive perfect inputs.
+> What Springtale does keep from Patapon is the *break*: any interference
+> demotes Fever→Hot and restarts the run, and any failed tick breaks Fever.
+> `consecutive_successes` is still tracked, but only as a UI hint; it no longer
+> decides promotion. An idle tick is a no-op — it neither promotes nor refreshes
+> the decay clock.
+>
 > **PDF section:** §7. Game sources: Patapon Fever, Total War veterans, Monster
 > Hunter topple windows.
 >
@@ -1085,6 +1104,25 @@ level.
 
 ## 9. Attention Economy
 
+> **ERRATUM (docs pass, Sept 2026).** Treat this section as **inspiration, not
+> a specification derived from a known system.** Appendix A.3 states the caveat
+> against its own source and it applies here in full: Army of Two has no GDC
+> talk, no developer postmortem on aggro, no source and no reverse-engineering
+> project; the two published interviews contain zero implementation detail. The
+> "single shared scalar in [-1, +1] with per-shot increments and decay toward
+> zero" model that this section builds on is, in A.3's own words,
+> "**reconstruction, not fact**", and any pseudocode using it should be read as
+> inference.
+>
+> What Springtale actually implements is its own design, and is a zero-sum
+> distribution rather than a two-player bar: `AttentionEconomy`
+> (`crates/springtale-cooperation/src/attention/economy.rs`) holds a
+> per-agent map summing to 1.0; attention is **earned from observed load** by an
+> EMA fold in `observe(agent, sample, alpha)`, with the sample computed at the
+> single call site as `0.5` for having work in hand or in flight plus up to
+> `0.3` for connector-call duration, renormalised after every fold. Idle members
+> drain toward a 0.01 floor. Rally moves a fixed 0.2 away from an agent.
+>
 > **PDF section:** §9. Game source: Army of Two aggro system.
 >
 > **LFCG status: genuinely novel Springtale extension.** LFCG implicitly treats
@@ -2694,6 +2732,28 @@ their persistence patterns before committing, read `rig-core/src/vector_store` a
 
 ## 22. Tempo & Pacing
 
+> **ERRATUM (docs pass, Sept 2026).** This section's reading of the L4D AI
+> Director is inverted. Michael Booth, *Replayable Cooperative Game Design:
+> Left 4 Dead* (GDC 2009), **slides 79–92**, describes the Director as tracking
+> an **emotional intensity** value that rises from *stress inflicted on the
+> player* — damage taken, being incapacitated or grabbed, and proximity of
+> threats — and **decays over time**. It is not a measure of how much work the
+> player has done. The pacing cycle on those slides is
+> **Build Up → Sustain Peak (3–5 s) → Peak Fade → Relax (30–45 s)**, then back
+> to Build Up, and the Director varies the *frequency* of population, never the
+> amplitude of any single encounter.
+>
+> The code follows Booth, not this section. `PacingPhase`
+> (`crates/springtale-cooperation/src/pacing/types.rs`) is exactly
+> `BuildUp`, `SustainPeak`, `PeakFade`, `Relax`, plus a `Disruption` escape
+> hatch. `PacingManager::observe` folds a `StressSample` — failures,
+> interferences, sentinel throttles, approval denials, all divided by member
+> count, weighted 0.3 / 0.4 / 0.1 / 0.2 — into an intensity that **decays at
+> 0.05/s whenever no member was engaged**. Peak threshold 0.6, sustain 4 s,
+> relax 35 s. Frequency-only modulation is `tick_divider()`: BuildUp and
+> SustainPeak ÷1, PeakFade ÷2, Relax ÷4, and in Relax only read-only actions
+> are admitted. There are no per-phase action quotas.
+>
 > **PDF section:** §22. Game sources: L4D Adaptive Dramatic Pacing, Total War
 > fatigue, Siege timer, Patapon BPM.
 
@@ -3149,8 +3209,7 @@ remaining drift. Recorded here so the as-built shape stays auditable:
   elapsed time is now true wall-clock between processed ticks (the old code
   reused the ×4 agent commit window as elapsed — pacing clocks ran 4× fast).
 - **§22 frequency modulation is real.** `PacingManager::tick_divider()` skips
-  bus ticks per phase (Peak ÷1, Active ÷2, Preparation/Disruption ÷3, Recovery
-  ÷6) — L4D's "amplitude is not changed, frequency is" — replacing the unwired
+  bus ticks per phase (BuildUp and SustainPeak ÷1, PeakFade ÷2, Relax ÷4) — L4D's "amplitude is not changed, frequency is" — replacing the unwired
   `tick_interval_modifier`.
 - **Decision #6 rally falloff implemented non-spatially.** WH3's 70/×1.5 linear
   aura maps onto snapshot **Age of Information**: neighbor influence in
@@ -5632,7 +5691,14 @@ LFCG's bibliography is the cleanest academic lineage for cooperative-game patter
 
 **LFCG-gap set (Springtale genuinely novel):** §7 Momentum, §9 Attention Economy — 2 sections. See D.6.
 
-### C.6 What Springtale extends beyond LFCG (the novel contribution)
+### C.6 What Springtale extends beyond LFCG (the extension)
+
+> **ERRATUM (docs pass, Sept 2026).** This appendix was headed "the novel
+> contribution". Nothing here has been measured against LFCG or against any
+> baseline; the numbers it rests on (momentum thresholds, attention weights,
+> pacing constants) are Springtale's own starting values, chosen to be tuned
+> after use, not results. "Extension" is the accurate word until an evaluation
+> exists. The claim can be upgraded when there are measured results to cite.
 
 LFCG's own **§5.4 Limitations** and **§6 Outlook** explicitly acknowledge:
 
