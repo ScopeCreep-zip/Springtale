@@ -34,6 +34,10 @@ pub const MORALE_MIN_STEP: f32 = 0.01;
 /// (decisions §11 #7). The WH3 `max_routing_enemies_to_consider = 5` cap has no
 /// analog in a cooperative (non-adversarial) formation, so only this cap applies.
 pub const MAX_CONTAGION_DISTRESSED: usize = 4;
+/// Total War's shattered floor (§15.2): below this morale a unit is past
+/// rallying — the general's call cannot reach it. `rally::cascade` refuses
+/// to spend a rally token on a member at or under it.
+pub const SHATTERED_MORALE: f32 = 0.1;
 
 /// §A.4 rally falloff (decisions §11 #6), non-spatial analog. WH3's rally
 /// aura is full-strength out to `general_aura_radius = 70` units, then
@@ -486,6 +490,7 @@ mod tests {
             latency: std::time::Duration::from_millis(10),
             intent_alignment: 0.8,
             interference_with: vec![my_id],
+            state: crate::action_state::ActionState::Success,
         };
 
         awareness.record_tick_reports(vec![report]);

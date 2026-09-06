@@ -22,7 +22,6 @@
 
 use springtale_cooperation::attention::AttentionBroker;
 use springtale_cooperation::cadence::AgentId;
-use springtale_cooperation::momentum::MomentumState;
 use springtale_cooperation::rally::cascade::attempt_self_rally;
 use springtale_cooperation::rally::{FormationRally, RallyEvent, RallyResult};
 
@@ -45,7 +44,6 @@ fn cascade_consumes_tokens_then_escalates() {
 
     let rally = FormationRally::new(TOKEN_BUDGET, EVENT_CAP);
     let attention = AttentionBroker::for_agents(&agents);
-    let mut momentum = MomentumState::default();
 
     // Sanity check: every agent is registered with the broker before
     // we begin so attention.release() has a valid neighbour set to
@@ -71,7 +69,7 @@ fn cascade_consumes_tokens_then_escalates() {
     let expected_remaining: Vec<u32> = (0..TOKEN_BUDGET).rev().map(|n| n as u32).collect();
     let mut seen_remaining = Vec::new();
     for _ in 0..TOKEN_BUDGET {
-        let result = attempt_self_rally(&rally, &attention, &mut momentum, a);
+        let result = attempt_self_rally(&rally, &attention, a);
         match result {
             RallyResult::StabilizedWithCost { tokens_remaining } => {
                 seen_remaining.push(tokens_remaining);
@@ -89,7 +87,7 @@ fn cascade_consumes_tokens_then_escalates() {
     assert_eq!(rally.tokens.remaining(), 0);
     assert!(!rally.tokens.can_rally());
 
-    let escalation = attempt_self_rally(&rally, &attention, &mut momentum, b);
+    let escalation = attempt_self_rally(&rally, &attention, b);
     match escalation {
         RallyResult::EscalateToOrchestrator { reason } => {
             assert!(reason.contains("exhausted"), "got reason: {reason}");
@@ -161,8 +159,7 @@ fn restore_tokens_reflects_persisted_state() {
     assert_eq!(rally.tokens.remaining(), 1);
 
     let attention = AttentionBroker::for_agents(&[a]);
-    let mut momentum = MomentumState::default();
-    let first = attempt_self_rally(&rally, &attention, &mut momentum, a);
+    let first = attempt_self_rally(&rally, &attention, a);
     assert!(matches!(
         first,
         RallyResult::StabilizedWithCost {
@@ -171,6 +168,6 @@ fn restore_tokens_reflects_persisted_state() {
     ));
 
     // Latch closed — restored exhausted state stays exhausted.
-    let second = attempt_self_rally(&rally, &attention, &mut momentum, a);
+    let second = attempt_self_rally(&rally, &attention, a);
     assert!(matches!(second, RallyResult::EscalateToOrchestrator { .. }));
 }

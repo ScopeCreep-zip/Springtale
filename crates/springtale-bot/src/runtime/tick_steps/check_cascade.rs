@@ -37,6 +37,9 @@ pub async fn run(
         return;
     }
 
+    // Only operational members: `is_operational` is false for
+    // `Incapacitated` and `Dead`, and a member that cannot respond must
+    // never be handed a rally token.
     let awareness_map: HashMap<AgentId, &LocalAwareness> = formation
         .members
         .iter()
@@ -47,6 +50,21 @@ pub async fn run(
     let Some(risk) = cascade::detect_cascade(&awareness_map, result) else {
         return;
     };
+
+    // Total War (§15.2): the rally goes to the member who can still
+    // answer it — the lowest morale still above the shattered floor — not
+    // to whichever failing report happened to come first. A shattered,
+    // incapacitated or dead member gets no token: `select_rally_target`
+    // returns `None` and we spend nothing. Resolved here so the awareness
+    // borrow ends before the formation is written to below.
+    let failing: Vec<AgentId> = result
+        .reports
+        .iter()
+        .filter(|r| r.intent_alignment <= 0.5)
+        .map(|r| r.agent_id)
+        .collect();
+    let target = cascade::select_rally_target(&awareness_map, &failing);
+    drop(awareness_map);
 
     // Increment the streak — this is the cascade_hits signal the L6
     // intervention evaluator reads next. Saturating add so a perpetually
@@ -74,21 +92,17 @@ pub async fn run(
         },
     );
 
-    let Some(failing_agent) = result
-        .reports
-        .iter()
-        .find(|r| r.intent_alignment <= 0.5)
-        .map(|r| r.agent_id)
-    else {
+    let Some(failing_agent) = target else {
+        tracing::debug!(
+            formation = %formation.id.0,
+            failing = failing.len(),
+            "cascade detected but no member can be rallied — token withheld"
+        );
         return;
     };
 
-    let rally_result = cascade::attempt_self_rally(
-        &formation.rally,
-        &formation.attention_broker,
-        &mut formation.momentum,
-        failing_agent,
-    );
+    let rally_result =
+        cascade::attempt_self_rally(&formation.rally, &formation.attention_broker, failing_agent);
     log_rally_result(&formation.id.0.to_string(), &rally_result);
     if matches!(rally_result, RallyResult::StabilizedWithCost { .. }) {
         springtale_cooperation::utterance::utter(

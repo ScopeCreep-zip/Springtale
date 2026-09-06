@@ -383,7 +383,6 @@ pub async fn handle_formation_command(bot: &mut Bot, cmd: FormationCommand) {
                     let rally_result = cascade::attempt_self_rally(
                         &formation.rally,
                         &formation.attention_broker,
-                        &mut formation.momentum,
                         agent,
                     );
                     match &rally_result {
