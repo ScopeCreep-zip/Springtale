@@ -99,7 +99,7 @@ Every crate has a single responsibility. Dependencies flow strictly downward —
 | `springtale-store` | SQLite backend (SQLite3MultipleCiphers) with WAL mode, declarative schema (`PRAGMA user_version`), AEAD-encrypted bot memory, cooperation + mental model schema |
 | `springtale-scheduler` | Cron executor, filesystem watcher, job queue, heartbeat monitor, exponential backoff |
 | `springtale-ai` | `AiAdapter` trait + Noop / Ollama / OpenAI-compat / Anthropic adapters + OWASP sanitiser + tool-calling (`ToolCall` / `ToolResult` / `ToolPolicy`) |
-| `springtale-mcp` | MCP protocol bridge (`rmcp` 1.x) — wraps any `Connector` as an MCP server automatically. Handler module split; each handler owns its capability check |
+| `springtale-mcp` | MCP server (`rmcp` 1.x) over the whole connector registry (`SpringtaleMcp`), mounted by `springtaled` at `/mcp`. Handler module split; each handler owns its capability check |
 | `springtale-sentinel` | Behavioural monitor, toxic-pair capability detection, audit trail |
 | `springtale-cooperation` | Cooperation framework crate — 42 pub modules covering cadence, momentum, formations, rally, recovery, supervision, stigmergy, contract net, consensus, commit, interference, transformation, mental model, role dynamics, pacing, handoff, attention, awareness, authority, cross-formation gossip, persistent memory, and more. Zero internal Springtale dependencies. See [cooperation.md](cooperation.md) |
 | `springtale-runtime` | Shared init / dispatch / operations layer used by both the daemon and the Tauri desktop app. Hosts `LiveFormationReader` trait for UI formation state |

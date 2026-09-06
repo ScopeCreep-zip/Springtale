@@ -63,7 +63,7 @@ Fifteen first-party connectors ship today. You wire them together with rules —
 
 `connector-matrix` is deferred — `matrix-sdk` pins a `rusqlite` with an open heap-leak CVE; Springtale uses the patched version. We'll ship it once upstream catches up.
 
-Any connector automatically becomes an MCP server via `springtale-mcp`. One framework, not N hand-written servers.
+Every installed connector is reachable as an MCP tool through the daemon's authenticated `/mcp` endpoint (`springtale-mcp` over Streamable HTTP). One server, not N hand-written ones, and no subprocess per connector.
 
 ### Example: Kick Stream → Bluesky Post
 

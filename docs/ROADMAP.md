@@ -43,7 +43,7 @@ The foundation. A single-binary daemon, CLI, rule engine, crypto vault, WASM san
 | `springtale-store` | library | SQLite backend (SQLite3MultipleCiphers) with WAL mode, declarative schema (`PRAGMA user_version`), AEAD-encrypted bot memory, cooperation schema |
 | `springtale-scheduler` | library | Cron executor, file watcher, job queue, heartbeat monitor, retry with backoff |
 | `springtale-ai` | library | AI adapter trait + NoopAdapter (default). Adapters added in Phase 2a |
-| `springtale-mcp` | library | MCP protocol bridge (`rmcp` 1.x) — any connector becomes an MCP server |
+| `springtale-mcp` | library | MCP server (`rmcp` 1.x) over the whole connector registry; mounted by `springtaled` at `/mcp` |
 | `springtale-runtime` | library | Shared runtime init, dispatch, operations layer, `LiveFormationReader` trait |
 | `connector-kick` | connector | Kick streaming — OAuth 2.1 PKCE, chat, streams, webhooks |
 | `connector-presearch` | connector | Presearch — search + scrape with caching |

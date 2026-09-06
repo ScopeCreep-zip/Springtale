@@ -135,14 +135,16 @@ collector pauses around secret zeroing".
 
 ## Why not just use MCP servers directly
 
-MCP servers run as separate processes per connector. Each one is a
+MCP servers usually run as separate processes per connector. Each one is a
 fresh attack surface. The OSS landscape currently has 1,000+ MCP
 servers with no signing, no capability declarations, no sandbox —
 everything OpenClaw made famous.
 
-Springtale's `springtale-mcp` crate turns any first-party connector
-into an MCP server automatically, with the same capability checks
-and signed manifests as direct dispatch. Same security posture
+Springtale exposes every installed connector through a single MCP
+server — `springtale-mcp` over the whole registry, mounted by the
+daemon at `/mcp` behind an Origin check and bearer auth, with the same
+capability checks and signed manifests as direct dispatch. One process,
+not one per connector. Same security posture
 whether the caller is your bot, a CLI command, or an external AI
 calling via MCP.
 

@@ -1827,7 +1827,7 @@ lives. Four options, configured in the mobile app:
 ### 6.8 `springtale-mcp`
 
 **Purpose:** Adapt the connector framework to the MCP protocol. Any `Connector`
-becomes an MCP server. Replaces NosytLabs' hand-written per-connector MCP servers.
+is reachable through the daemon's single `/mcp` endpoint. Replaces NosytLabs' hand-written per-connector MCP servers.
 
 The MCP security model follows the spec's own guidelines (MCP Security Best
 Practices) and CoSAI's MCP threat categories (published January 2026) rather
@@ -1859,7 +1859,7 @@ defined by the spec:
 |---|---|
 | **Tool poisoning** (malicious descriptions) | Tool descriptions generated from connector manifest `ActionDecl` — not user-editable at runtime. Schema hash recorded at install time in signed manifest. |
 | **Rug pull** (schema changes post-install) | Connector manifest is Ed25519 signed. Schema hash is part of the signature. Runtime schema changes invalidate the signature → connector suspended. |
-| **Cross-server shadowing** | Each MCP server wraps one connector. Connectors run in isolated WASM sandboxes with separate `PipelineContext`. No shared state between connectors. |
+| **Cross-server shadowing** | One MCP server covers the registry, but each tool call dispatches to exactly one connector. Connectors run in isolated WASM sandboxes with separate `PipelineContext`. No shared state between connectors. |
 | **Sampling abuse** (server requests LLM completions) | MCP sampling disabled by default. Opt-in per connector in manifest. When enabled, sampling requests route through the user's AI adapter with same `AiRequest` boundary. |
 | **Token passthrough** | No token passthrough. Each connector authenticates to its own API with its own credentials from the vault. MCP server never receives or forwards user tokens. |
 | **Localhost trust assumption** | No implicit localhost trust. All MCP connections authenticated. (CVE-2026-25253 exploited this assumption in OpenClaw.) |
