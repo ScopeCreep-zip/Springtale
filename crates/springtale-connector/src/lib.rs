@@ -5,6 +5,7 @@
 )]
 
 pub mod capability;
+pub mod chat;
 pub mod client;
 pub mod config;
 pub mod connector;
@@ -21,6 +22,7 @@ pub mod tier;
 pub mod wasm;
 pub mod workspace_key;
 
+pub use chat::{ChatMessage, ChatSource, SharedChatSource};
 pub use connector::subscription::{Subscription, SubscriptionCounter, SubscriptionId};
 pub use connector::trait_::{ActionResult, Connector, EventHandler};
 pub use error::ConnectorError;

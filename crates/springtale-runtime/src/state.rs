@@ -158,6 +158,20 @@ pub struct RuntimeState {
     /// processes and emits `SwimEvent`s that awareness consumers
     /// subscribe to.
     pub swim_node: Option<Arc<springtale_cooperation::awareness::SwimNode>>,
+    /// Inbound chat ingress. Every connector `ChatSource` pushes here
+    /// (through `operations::connectors::chat::wire_chat`); the bot's
+    /// event loop is the consumer. Owned by the runtime rather than the
+    /// daemon so a connector installed at runtime is wired the same way
+    /// as one configured in TOML at boot.
+    pub chat_tx: mpsc::Sender<springtale_connector::chat::ChatMessage>,
+    /// Receiving half of `chat_tx`, taken exactly once by whichever
+    /// surface owns the bot (daemon boot, desktop shell). `None` after
+    /// the first `take_chat_rx()`.
+    pub chat_rx:
+        Arc<tokio::sync::Mutex<Option<mpsc::Receiver<springtale_connector::chat::ChatMessage>>>>,
+    /// Running chat loops: connector name → shutdown signal. Flipping
+    /// the sender stops that connector's `ChatSource::run`.
+    pub chat_tasks: Arc<dashmap::DashMap<String, tokio::sync::watch::Sender<bool>>>,
     /// Exclusive runtime lock on `<store path>.lock` (plan 0.6) — one
     /// runtime per store. Held for the life of this state; released when
     /// it drops or when the process dies (flock is kernel-owned). `Arc`
@@ -167,6 +181,14 @@ pub struct RuntimeState {
 }
 
 impl RuntimeState {
+    /// Take the inbound chat receiver. Returns `Some` exactly once —
+    /// the bot event loop owns it; later callers get `None`.
+    pub async fn take_chat_rx(
+        &self,
+    ) -> Option<mpsc::Receiver<springtale_connector::chat::ChatMessage>> {
+        self.chat_rx.lock().await.take()
+    }
+
     /// Diagnostic: the SWIM node's local bind address when cross-process
     /// mode is active. Returns `None` for single-process deployments
     /// (which never spawn a SWIM node). Exposed so observability /

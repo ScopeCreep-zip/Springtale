@@ -8,7 +8,6 @@ mod transport;
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
-use tokio::sync::mpsc;
 
 use crate::api;
 use crate::config::SpringtaleConfig;
@@ -48,14 +47,7 @@ pub async fn boot(
         transport: transport_config,
         api: api_config,
         heartbeat_interval_secs,
-        telegram: telegram_config,
         sentinel,
-        nostr: nostr_config,
-        irc: irc_config,
-        discord: discord_config,
-        slack: slack_config,
-        signal: signal_config,
-        bluesky: bluesky_config,
     } = config;
 
     // ── Step 2: Initialize crypto vault (before runtime, no dependencies) ──
@@ -130,29 +122,22 @@ pub async fn boot(
     let trigger_tx = embedded_scheduler.trigger_tx.clone();
 
     // ── Step 7: Initialize bot + connector gateways ──
-    let (bot_msg_tx, bot_msg_rx) = mpsc::channel::<springtale_bot::IncomingMessage>(256);
-    // Clone for AppState so webhook handlers can route chat messages to the bot
-    // in webhook mode (polling gateways use the original sender directly).
-    let api_bot_msg_tx = bot_msg_tx.clone();
+    // Chat ingress lives on the runtime (plan 6.4): connector chat loops
+    // are wired off the registry, so the daemon only takes the receiving
+    // end for the bot and clones the sender for webhook ingress.
+    let bot_msg_rx = runtime
+        .take_chat_rx()
+        .await
+        .context("runtime chat receiver already taken")?;
+    let api_bot_msg_tx = runtime.chat_tx.clone();
     // W5 in-app chat broadcast — created here so both the bot response
     // dispatcher (producer) and AppState's `GET /chat/stream` (consumers)
     // share the same channel.
     let (chat_tx, _chat_rx) = tokio::sync::broadcast::channel::<api::chat::ChatStreamMessage>(256);
-    let connector_wiring = bot::ConnectorWiring {
-        bluesky: bluesky_config,
-        telegram: telegram_config,
-        nostr: nostr_config,
-        irc: irc_config,
-        discord: discord_config,
-        slack: slack_config,
-        signal: signal_config,
-    };
-    let (bot_handle, connector_shutdowns) = bot::init_bot(
+    let bot_handle = bot::init_bot(
         &runtime,
         embedded_scheduler.clone(),
-        &connector_wiring,
         bot::BotChannels {
-            bot_msg_tx,
             bot_msg_rx,
             chat_tx: chat_tx.clone(),
         },
@@ -266,17 +251,11 @@ pub async fn boot(
         _ = bot_handle => tracing::info!("bot event loop stopped"),
     }
 
-    // Signal every connector gateway (Telegram polling, Discord, IRC, ...)
-    // to drain its in-flight work and exit. Without this, tasks that own
-    // persistent WebSocket/polling loops keep running until the runtime
-    // is dropped, which can leave outbound messages half-sent. The plan
-    // called this out explicitly: "Telegram shutdown handle lost (no
-    // graceful stop)".
-    for tx in &connector_shutdowns {
-        if let Err(e) = tx.send(true) {
-            tracing::warn!(error = %e, "connector shutdown channel already closed");
-        }
-    }
+    // Signal every connector chat loop (Telegram polling, Discord, IRC,
+    // ...) to drain its in-flight work and exit. Without this, tasks that
+    // own persistent WebSocket/polling loops keep running until the
+    // runtime is dropped, which can leave outbound messages half-sent.
+    springtale_runtime::operations::connectors::unwire_all_chat(&runtime);
 
     // Cleanup
     drop(vault);

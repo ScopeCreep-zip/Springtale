@@ -57,6 +57,16 @@ pub trait ConnectorHost: Send + Sync + 'static {
         body: &[u8],
     ) -> Result<(), ConnectorError>;
 
+    /// The connector's chat ingestion half (see
+    /// [`crate::chat::ChatSource`]), exposed through the host so the
+    /// runtime can start and stop the loop without downcasting.
+    /// Native hosts delegate to the inner connector; WASM hosts return
+    /// `None` (a sandbox-side chat hook can follow, like
+    /// `mention_extractor`).
+    fn chat_source(&self) -> Option<crate::chat::SharedChatSource> {
+        None
+    }
+
     /// Per-connector mention extractor (D1) — exposed through the
     /// host so the universal harvester can call it without
     /// downcasting. Native hosts delegate to the inner connector's

@@ -3,6 +3,7 @@
 //! Runtime operations take `&RuntimeState` (need engine/registry).
 //! Store operations take `&dyn StorageBackend` (CLI uses these).
 
+pub mod chat;
 mod install;
 mod reload;
 mod schema;
@@ -16,6 +17,7 @@ use crate::state::RuntimeState;
 use specta::Type;
 
 // Re-export everything public from submodules
+pub use chat::{send_chat, unwire_all_chat, unwire_chat, wire_all_chat, wire_chat};
 pub use install::{install_connector, install_wasm_connector};
 pub use reload::reload_connector;
 pub use schema::{
@@ -52,14 +54,21 @@ pub async fn list_connectors(state: &RuntimeState) -> Vec<ConnectorInfo> {
 
 /// Enable a connector by name.
 pub async fn enable_connector(state: &RuntimeState, name: &str) -> Result<(), OperationError> {
-    let mut registry = state.registry.write().await;
-    registry
-        .enable(name)
-        .map_err(|e| OperationError::Connector(format!("failed to enable {name}: {e}")))
+    {
+        let mut registry = state.registry.write().await;
+        registry
+            .enable(name)
+            .map_err(|e| OperationError::Connector(format!("failed to enable {name}: {e}")))?;
+    }
+    // Enabling a chat connector starts its receive loop.
+    chat::wire_chat(state, name).await
 }
 
 /// Disable a connector by name.
 pub async fn disable_connector(state: &RuntimeState, name: &str) -> Result<(), OperationError> {
+    // Stop the receive loop first: a disabled connector must not keep
+    // pushing messages at the bot.
+    chat::unwire_chat(state, name);
     let mut registry = state.registry.write().await;
     registry
         .disable(name)
@@ -75,6 +84,9 @@ pub async fn remove_connector(state: &RuntimeState, name: &str) -> Result<(), Op
     // 21) before removing the manifest — once the manifest is gone we
     // can't look up the role names.
     deregister_manifest_roles_for(state, name).await;
+
+    // Stop the chat loop before the host is dropped from the registry.
+    chat::unwire_chat(state, name);
 
     // Remove from in-memory registry
     {
@@ -147,6 +159,9 @@ pub async fn remove_connector_cascade(
 
     // Drop community roles before the manifest is removed.
     deregister_manifest_roles_for(state, name).await;
+
+    // Stop the chat loop before the host is dropped from the registry.
+    chat::unwire_chat(state, name);
 
     // Remove connector from registry
     {

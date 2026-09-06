@@ -6,6 +6,7 @@
 
 pub mod actions;
 pub mod auth;
+pub mod chat;
 pub mod client;
 pub mod config;
 pub mod connector;
@@ -15,6 +16,7 @@ pub mod gateway;
 pub mod mention;
 pub mod triggers;
 
+pub use chat::SignalChatSource;
 pub use config::SignalConfig;
 pub use connector::SignalConnector;
 pub use error::SignalError;

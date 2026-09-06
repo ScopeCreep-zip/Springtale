@@ -5,6 +5,7 @@
 )]
 
 pub mod actions;
+pub mod chat;
 pub mod client;
 pub mod config;
 pub mod connector;
@@ -15,6 +16,7 @@ pub mod gateway;
 pub mod mention;
 pub mod triggers;
 
+pub use chat::BlueskyChatSource;
 pub use client::BlueskyApi;
 pub use config::BlueskyConfig;
 pub use connector::BlueskyConnector;
