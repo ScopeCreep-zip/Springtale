@@ -105,3 +105,38 @@ mod tests {
         assert_eq!(parse_ready(b"INFO springtaled starting"), None);
     }
 }
+
+/// Log in to the freshly started daemon and return the bearer token it
+/// issues (plan 6.6, finding 109).
+///
+/// The shell used to compute `HMAC(passphrase)` and use that as the
+/// bearer: deterministic, unrotatable, and a passphrase equivalent. Now
+/// the passphrase is presented exactly once, to `POST /auth/login`, and
+/// the daemon mints a random 32-byte session token for it. The
+/// passphrase never becomes a credential and the token can be dropped
+/// (`POST /auth/logout`) without touching the vault.
+pub async fn login(port: u16, passphrase: &secrecy::SecretString) -> Result<String, String> {
+    use secrecy::ExposeSecret as _;
+
+    let http = springtale_transport::safe_http::client()
+        .map_err(|e| format!("could not build an HTTP client: {e}"))?;
+    let response = http
+        .post(format!("http://127.0.0.1:{port}/auth/login"))
+        // SECURITY: expose needed for the one request that carries the
+        // passphrase — the login itself. It is not stored anywhere.
+        .json(&serde_json::json!({ "passphrase": passphrase.expose_secret() }))
+        .send()
+        .await
+        .map_err(|e| format!("could not reach the daemon to log in: {e}"))?;
+    if !response.status().is_success() {
+        return Err(format!("daemon rejected the login: {}", response.status()));
+    }
+    let body: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|e| format!("unreadable login response: {e}"))?;
+    body.get("token")
+        .and_then(|v| v.as_str())
+        .map(str::to_owned)
+        .ok_or_else(|| "login response carried no token".to_owned())
+}

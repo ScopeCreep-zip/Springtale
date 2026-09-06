@@ -17,6 +17,7 @@ pub mod extractors;
 pub mod fixes;
 pub mod formations;
 pub mod health;
+pub mod login;
 pub mod mcp;
 pub mod memory;
 pub mod onboarding;
@@ -34,6 +35,9 @@ pub mod workspaces;
 
 /// Maximum length for API path parameters. Prevents DoS via oversized route strings.
 const MAX_PATH_SEGMENT_LEN: usize = 256;
+
+/// Requests per second allowed against the unauthenticated login route.
+const LOGIN_RATE_LIMIT_PER_SEC: u64 = 5;
 
 /// Body limit for WASM connector uploads — the sandbox memory ceiling is
 /// 64 MiB, so nothing larger could run anyway.
@@ -81,6 +85,25 @@ pub fn build_router(state: AppState) -> Router {
     let public = Router::new()
         .route("/health", get(health::health))
         .route("/ready", get(health::ready));
+
+    // Login — unauthenticated by definition, so it gets its own, much
+    // tighter rate limit on top of the global one (plan 6.6). Five
+    // attempts a second against a 32-byte-entropy verifier is not a
+    // brute-force budget. CSRF still applies: it is a mutating POST.
+    let login_route = Router::new()
+        .route("/auth/login", post(login::login))
+        .layer(middleware::from_fn(auth::require_csrf_protection))
+        .layer(
+            ServiceBuilder::new()
+                .layer(axum::error_handling::HandleErrorLayer::new(
+                    |_err: tower::BoxError| async move { StatusCode::TOO_MANY_REQUESTS },
+                ))
+                .layer(BufferLayer::new(32))
+                .layer(RateLimitLayer::new(
+                    LOGIN_RATE_LIMIT_PER_SEC,
+                    Duration::from_secs(1),
+                )),
+        );
 
     // Authenticated routes — require Bearer token
     let authenticated = Router::new()
@@ -277,6 +300,13 @@ pub fn build_router(state: AppState) -> Router {
         .route("/approvals", get(approvals::list_pending))
         .route("/approvals/{id}", post(approvals::resolve))
         .route("/chat", post(chat::send))
+        // Session + long-lived token management (plan 6.6).
+        .route("/auth/logout", post(login::logout))
+        .route(
+            "/auth/tokens",
+            get(login::list_tokens).post(login::create_token),
+        )
+        .route("/auth/tokens/{id}", delete(login::delete_token))
         // One-time ticket for the SSE routes below (plan 0.7).
         .route("/stream/ticket", post(auth::issue_stream_ticket))
         .layer(middleware::from_fn(auth::require_csrf_protection))
@@ -332,6 +362,7 @@ pub fn build_router(state: AppState) -> Router {
 
     let limited = Router::new()
         .merge(public)
+        .merge(login_route)
         .merge(authenticated)
         .merge(streams)
         .merge(dashboard)

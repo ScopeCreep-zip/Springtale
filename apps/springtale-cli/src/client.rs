@@ -10,6 +10,9 @@
 //! silent fallback is exactly how "the daemon never saw my edit" comes
 //! back. When springtaled is not reachable, every call fails with
 //! [`UNREACHABLE`], the way `docker`, `kubectl`, and `systemctl` do.
+//!
+//! The bearer comes from `springtale login` (plan 6.6) — a token the
+//! daemon issued — never from the vault passphrase.
 
 use std::path::Path;
 
@@ -18,9 +21,7 @@ use secrecy::{ExposeSecret, SecretString};
 use serde::Serialize;
 use serde::de::DeserializeOwned;
 
-use springtale_runtime::client_config::{
-    self, ClientConfigError, looks_like_hex_token, token_from_env, token_from_passphrase,
-};
+use springtale_runtime::client_config::{self, ClientConfigError, token_from_env};
 
 /// The one message every daemon-backed subcommand fails with when
 /// springtaled is not answering. Single string, single place.
@@ -132,26 +133,20 @@ impl Client {
     }
 }
 
-/// Resolve the API token from env or an interactive prompt.
+/// Resolve the API token the CLI authenticates with.
 ///
-/// Order: `SPRINGTALE_API_TOKEN` → `SPRINGTALE_PASSPHRASE` → TTY prompt.
-/// A user-typed value is treated as a raw hex token if it looks like one,
-/// otherwise it goes through the same HMAC the daemon uses.
+/// Order: `SPRINGTALE_API_TOKEN` → the token `springtale login` saved.
+/// There is no passphrase path any more (plan 6.6): a passphrase is
+/// exchanged for a token by `springtale login`, and only tokens the
+/// daemon issued are accepted as bearers.
 pub fn resolve_token() -> Result<SecretString> {
     if let Some(token) = token_from_env() {
         return Ok(SecretString::new(token.into()));
     }
-    let input = rpassword::read_password_from_tty(Some("API token (or vault passphrase): "))
-        .map_err(|e| anyhow!("failed to read token: {e}"))?;
-    if input.is_empty() {
-        return Err(anyhow!(ClientConfigError::NoToken));
+    if let Some(saved) = client_config::read_token_file()? {
+        return Ok(SecretString::new(saved.token.into()));
     }
-    if looks_like_hex_token(&input) {
-        Ok(SecretString::new(input.into()))
-    } else {
-        let secret = SecretString::new(input.into());
-        Ok(SecretString::new(token_from_passphrase(&secret).into()))
-    }
+    Err(anyhow!(ClientConfigError::NoToken))
 }
 
 #[cfg(test)]

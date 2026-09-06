@@ -88,6 +88,11 @@ pub enum Command {
         /// research-assistant, code-review-swarm, meeting-summarizer.
         template: String,
     },
+    /// Log in to springtaled: prompts for the vault passphrase, exchanges
+    /// it for a long-lived API token, and saves it (mode 0600).
+    Login,
+    /// Revoke the saved API token and delete it.
+    Logout,
     /// Diagnose configuration and connectivity issues.
     Doctor,
     /// Attempt to fix a Springtale error by its ID (E001-E009).
