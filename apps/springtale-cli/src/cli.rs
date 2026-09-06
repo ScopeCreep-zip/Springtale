@@ -157,6 +157,204 @@ pub enum Command {
         #[command(subcommand)]
         action: CooperationAction,
     },
+    /// Formations — composition, intent, constraints, intervention.
+    ///
+    /// There is deliberately no `assign` verb: you steer a formation,
+    /// you do not hand work to a named member (the drum rule).
+    Formation {
+        #[command(subcommand)]
+        action: FormationAction,
+    },
+    /// Recipes — the shipped automation starters.
+    Recipe {
+        #[command(subcommand)]
+        action: RecipeAction,
+    },
+    /// Approval queue — the blocking gate for dangerous capabilities.
+    Approval {
+        #[command(subcommand)]
+        action: ApprovalAction,
+    },
+    /// Send a chat message to the bot runtime.
+    Chat {
+        /// The message text.
+        message: String,
+        /// Session id (defaults to the local in-app session).
+        #[arg(long)]
+        session: Option<String>,
+    },
+    /// Chat sessions.
+    Session {
+        #[command(subcommand)]
+        action: SessionAction,
+    },
+    /// Safety configuration — disguise, panic taps.
+    Safety {
+        #[command(subcommand)]
+        action: SafetyAction,
+    },
+    /// Colony canvas — trees, agents, formations as the UI sees them.
+    Canvas {
+        /// Follow live canvas updates instead of printing a snapshot.
+        #[arg(long)]
+        stream: bool,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum FormationAction {
+    /// List formations.
+    List,
+    /// Show one formation.
+    Get {
+        /// Formation id.
+        id: String,
+    },
+    /// Deploy a whole team from a JSON team-spec file.
+    DeployTeam {
+        /// Path to the team spec (JSON).
+        #[arg(long)]
+        file: PathBuf,
+    },
+    /// Deploy a formation.
+    Deploy {
+        /// Formation id.
+        id: String,
+    },
+    /// Pause a formation.
+    Pause {
+        /// Formation id.
+        id: String,
+    },
+    /// Resume a paused formation.
+    Resume {
+        /// Formation id.
+        id: String,
+    },
+    /// Dissolve a formation.
+    Dissolve {
+        /// Formation id.
+        id: String,
+    },
+    /// Rally — intervention: spend a token to surge the formation.
+    Rally {
+        /// Formation id.
+        id: String,
+    },
+    /// Show or change the formation's intent (cycles when `--set` is absent).
+    Intent {
+        /// Formation id.
+        id: String,
+        /// Set the intent explicitly (reconnoiter, execute, stabilize, surge).
+        #[arg(long)]
+        set: Option<String>,
+    },
+    /// Toggle the formation's guard constraint.
+    Guard {
+        /// Formation id.
+        id: String,
+    },
+    /// Cycle the formation's autonomy constraint.
+    Autonomy {
+        /// Formation id.
+        id: String,
+    },
+    /// Add a connector to the formation roster (composition).
+    AddMember {
+        /// Formation id.
+        id: String,
+        /// Connector name.
+        connector: String,
+    },
+    /// Remove a connector from the formation roster (composition).
+    RmMember {
+        /// Formation id.
+        id: String,
+        /// Connector name.
+        connector: String,
+    },
+    /// Show the command grid the UI renders for this formation.
+    Commands {
+        /// Formation id.
+        id: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum RecipeAction {
+    /// List recipes.
+    List {
+        /// Filter by category.
+        #[arg(long)]
+        category: Option<String>,
+    },
+    /// List recipe categories.
+    Categories,
+    /// Show one recipe.
+    Get {
+        /// Recipe id.
+        id: String,
+    },
+    /// Preview what a recipe would create.
+    Preview {
+        /// Recipe id.
+        id: String,
+        /// JSON file of `{ "values": { ... } }` inputs.
+        #[arg(long)]
+        inputs: Option<PathBuf>,
+    },
+    /// Apply a recipe.
+    Apply {
+        /// Recipe id.
+        id: String,
+        /// JSON file of `{ "values": { ... } }` inputs.
+        #[arg(long)]
+        inputs: Option<PathBuf>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ApprovalAction {
+    /// List pending approvals.
+    List,
+    /// Approve a pending request.
+    Approve {
+        /// Approval id.
+        id: String,
+        /// Reason recorded in the audit log.
+        #[arg(long)]
+        reason: Option<String>,
+    },
+    /// Deny a pending request.
+    Deny {
+        /// Approval id.
+        id: String,
+        /// Reason recorded in the audit log.
+        #[arg(long)]
+        reason: Option<String>,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SessionAction {
+    /// List chat sessions.
+    List,
+}
+
+#[derive(Subcommand, Debug)]
+pub enum SafetyAction {
+    /// Show the safety config.
+    Get,
+    /// Turn the disguise overlay on or off.
+    Disguise {
+        /// `true` to activate the disguise, `false` to clear it.
+        active: bool,
+    },
+    /// Set how many rapid title-bar taps trigger the panic wipe.
+    PanicTaps {
+        /// Tap count (server-bounded to 0..=10).
+        count: u32,
+    },
 }
 
 #[derive(Subcommand, Debug)]
@@ -322,18 +520,25 @@ pub enum DataAction {
         #[arg(long)]
         encrypt: bool,
     },
-    /// Import a previously exported JSON snapshot into this store.
+    /// Import a previously exported JSON snapshot into the running daemon.
     Import {
         /// Path to the JSON export file produced by `springtale data export`.
         #[arg(long)]
         input: std::path::PathBuf,
     },
-    /// Delete all user data (rules, events, sessions, memory) without destroying the vault.
-    Purge,
+    /// Delete all user data (rules, events, sessions, memory) without
+    /// destroying the vault. Irreversible — requires `--yes`.
+    Purge {
+        /// Confirm the wipe. Without it, nothing is deleted.
+        #[arg(long)]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand, Debug)]
 pub enum ConfigAction {
+    /// List every stored config key.
+    List,
     /// AI adapter config — one socket per level (colony, formation, agent).
     Ai {
         #[command(subcommand)]
@@ -388,4 +593,95 @@ pub enum AgentAction {
 pub enum CryptoAction {
     /// Re-encrypt the vault with a new passphrase.
     RotateVaultKey,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::CommandFactory;
+
+    /// Walk the whole clap tree, collecting `parent/child` verb paths.
+    fn verb_paths(cmd: &clap::Command, prefix: &str, out: &mut Vec<String>) {
+        for sub in cmd.get_subcommands() {
+            let path = if prefix.is_empty() {
+                sub.get_name().to_owned()
+            } else {
+                format!("{prefix} {}", sub.get_name())
+            };
+            out.push(path.clone());
+            verb_paths(sub, &path, out);
+        }
+    }
+
+    /// The drum rule: you steer a formation, you never hand work to a
+    /// named member. No `assign` verb may exist anywhere in the CLI.
+    #[test]
+    fn test_cli_tree_has_no_assign_verb_anywhere() {
+        let cmd = Cli::command();
+        let mut paths = Vec::new();
+        verb_paths(&cmd, "", &mut paths);
+        let offenders: Vec<&String> = paths.iter().filter(|p| p.contains("assign")).collect();
+        assert!(
+            offenders.is_empty(),
+            "assign verb(s) present, drum rule violated: {offenders:?}"
+        );
+    }
+
+    /// Every formation verb belongs to composition, intent, constraints,
+    /// intervention, or read-only inspection — and nothing else.
+    #[test]
+    fn test_formation_verbs_stay_in_the_four_groups() {
+        const ALLOWED: &[&str] = &[
+            // read-only inspection
+            "list",
+            "get",
+            "commands", // composition
+            "add-member",
+            "rm-member",
+            "deploy-team", // intent
+            "intent",      // constraints
+            "guard",
+            "autonomy", // intervention
+            "deploy",
+            "pause",
+            "resume",
+            "dissolve",
+            "rally",
+        ];
+        let cmd = Cli::command();
+        let formation = cmd
+            .get_subcommands()
+            .find(|c| c.get_name() == "formation")
+            .expect("formation family exists");
+        for sub in formation.get_subcommands() {
+            let name = sub.get_name();
+            assert!(
+                ALLOWED.contains(&name),
+                "formation verb `{name}` is outside the four orchestration groups"
+            );
+        }
+    }
+
+    /// The offline set is explicit and small. Everything else is a
+    /// daemon call, so these names must keep existing.
+    #[test]
+    fn test_offline_commands_still_exist() {
+        let cmd = Cli::command();
+        let names: Vec<&str> = cmd.get_subcommands().map(|c| c.get_name()).collect();
+        for offline in [
+            "init",
+            "vault",
+            "crypto",
+            "travel",
+            "panic",
+            "doctor",
+            "healthcheck",
+            "server",
+        ] {
+            assert!(
+                names.contains(&offline),
+                "offline command `{offline}` missing"
+            );
+        }
+    }
 }

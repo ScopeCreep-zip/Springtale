@@ -105,6 +105,8 @@ export type DetailView =
   | { mode: "connectors" }
   | { mode: "events"; filterConnector?: string }
   | { mode: "outputs"; connectorId: string }
+  /** Plan 3.3 — the reports tab: this bot's execution history. */
+  | { mode: "reports"; ruleId: string }
   | { mode: "formations"; addAgentId?: string }
   /** W2.E — A2UI canvas block surface; renders structured output from
    *  the bot's `CanvasState` via the shared `Canvas` component. */
@@ -130,13 +132,6 @@ export interface ColonyCommand {
   context: "global" | "connector" | "agent" | "formation";
   /** Unique action ID for dispatch (context:action) */
   action: string;
-  /**
-   * W6 Nintendo 3-action rule: the command grid leads with the (≤3)
-   * `primary` commands per context and tucks the rest behind a "MORE"
-   * drawer, so a new user is never shown more than three choices at once.
-   * Marked on the everyday actions; everything else is secondary.
-   */
-  primary?: boolean;
 }
 
 // ── Command definitions per context ─────────────────────
@@ -147,64 +142,73 @@ const cmd = (
   key: string,
   context: ColonyCommand["context"],
   action: string,
-  primary = false,
-): ColonyCommand => ({ icon, label, key, context, action, primary });
+): ColonyCommand => ({ icon, label, key, context, action });
 
+/**
+ * The command card — one fixed 3×3 grid per selection context.
+ *
+ * Plan 3.3: a StarCraft command card is usable because the same kind of
+ * verb always sits in the same cell, and the destructive verb sits apart.
+ * Slot meaning is therefore identical across contexts, read row-major:
+ *
+ * ```
+ *   activate  |  suspend  |  step up      ← row 1: primary state changes
+ *   configure |  inspect  |  step down    ← row 2: inspection
+ *   group     |  move     |  DESTRUCTIVE  ← row 3: composition
+ * ```
+ *
+ * The bottom-right cell is the only destructive verb in any grid and always
+ * runs behind the confirm dialog (`controller.ts`). `null` is a spacer, not
+ * a button: a context with no verb for a slot leaves the cell empty so every
+ * other verb keeps its position. No paging — the whole card is always shown.
+ *
+ * Every action here has exactly one `case` in the controller's `handleCommand`
+ * switch; `scripts/check-command-verbs.mjs` fails the lint if that stops
+ * being true.
+ */
 export const COMMANDS: Record<string, (ColonyCommand | null)[]> = {
   none: [
-    // Canvas is live (formations + connectors + cooperation events stream
-    // in via subscriptions), so an explicit Refresh command is dead UI.
-    // Slot reclaimed for MAKE BOT — the entry point back to the
-    // bot/team selection hub (ModeSelectOverlay) for adding more bots
-    // after the canvas already has some.
-    // ASK is the primary chat entry point (W5) — talk to the bot directly
-    // to get the weather, research, scrape, or make a change. First slot so
-    // it's the home grid's lead action (Nintendo 3-action: Ask / Bots /
-    // Connectors are the everyday three).
-    // Primary three (Nintendo rule): Ask / Bots / Connectors — what a user
-    // reaches for every day. The rest live behind MORE.
-    cmd("?", "ASK", "A", "global", "global:chat", true),
-    cmd("*", "BOTS", "B", "global", "global:bots", true),
-    cmd("^", "CONNECTORS", "C", "global", "global:connectors", true),
-    cmd("+", "MAKE BOT", "M", "global", "global:make_bot"),
-    cmd("+", "NEW RULE", "N", "global", "global:new_rule"),
-    cmd(".", "EVENTS", "E", "global", "global:events"),
+    // Home card: no entity is selected, so row 1 is the three everyday
+    // destinations, row 2 inspection, row 3 composition. Nothing global is
+    // destructive, so the bottom-right cell stays empty.
+    cmd("?", "ASK", "A", "global", "global:chat"),
+    cmd("*", "BOTS", "B", "global", "global:bots"),
+    cmd("^", "CONNECTORS", "C", "global", "global:connectors"),
     cmd("%", "SETTINGS", "S", "global", "global:settings"),
+    cmd(".", "EVENTS", "E", "global", "global:events"),
     null,
+    cmd("+", "MAKE BOT", "M", "global", "global:make_bot"),
+    cmd("+", "NEW RULE", "R", "global", "global:new_rule"),
     null,
   ],
   agent: [
-    // Primary three: configure AI, dial autonomy up/down — the levers you
-    // touch on a running agent. Pause/reassign/detach/etc. behind MORE.
-    cmd("@", "AI", "A", "agent", "agent:ai_config", true),
-    cmd("^", "AUTO +", "=", "agent", "agent:autonomy_up", true),
-    cmd("v", "AUTO -", "-", "agent", "agent:autonomy_down", true),
+    cmd(">>", "RESUME", "M", "agent", "agent:resume"),
     cmd("||", "PAUSE", "P", "agent", "agent:pause"),
-    cmd("<>", "REASSIGN", "R", "agent", "agent:reassign"),
-    cmd("x", "DETACH", "D", "agent", "agent:detach"),
+    cmd("^", "AUTO +", "=", "agent", "agent:autonomy_up"),
+    cmd("@", "AI", "A", "agent", "agent:ai_config"),
     cmd("?", "INSPECT", "I", "agent", "agent:inspect"),
+    cmd("v", "AUTO -", "-", "agent", "agent:autonomy_down"),
     cmd("[]", "GROUP", "G", "agent", "agent:group"),
-    cmd("<<", "RECALL", "C", "agent", "agent:recall"),
+    cmd("<>", "REASSIGN", "S", "agent", "agent:reassign"),
+    cmd("x", "DETACH", "D", "agent", "agent:detach"),
   ],
   connector: [
-    // Primary three: enable / config / test — the setup-and-verify loop.
-    cmd("+", "ENABLE", "E", "connector", "connector:enable", true),
-    cmd("%", "CONFIG", "C", "connector", "connector:config", true),
-    cmd(">", "TEST", "T", "connector", "connector:test", true),
+    cmd("+", "ENABLE", "E", "connector", "connector:enable"),
     cmd("x", "DISABLE", "D", "connector", "connector:disable"),
-    cmd("-", "REMOVE", "R", "connector", "connector:remove"),
+    cmd(">", "TEST", "T", "connector", "connector:test"),
+    cmd("%", "CONFIG", "C", "connector", "connector:config"),
     cmd(".", "EVENTS", "V", "connector", "connector:events"),
-    cmd("^", "OUTPUTS", "O", "connector", "connector:outputs"),
+    // "O" is the global canvas-view hotkey, so OUTPUTS binds "U".
+    cmd("^", "OUTPUTS", "U", "connector", "connector:outputs"),
     null,
     null,
+    cmd("-", "REMOVE", "R", "connector", "connector:remove"),
   ],
   // F1: formation context is backend-supplied via
   // `provider.formationAvailableCommands(id)` (B11). The status-aware
   // enable/disable + canonical hotkeys live entirely in Rust
   // (`crates/springtale-runtime/src/operations/commands.rs`); no
-  // hardcoded fallback here. App.tsx uses the resource directly when
-  // dispatching formation hotkeys; if the resource hasn't resolved yet
-  // it short-circuits without firing.
+  // hardcoded fallback here.
 };
 
 export const NODE_TYPES = ["conifer", "deciduous", "shrub"] as const;
@@ -244,7 +248,9 @@ export const ROLE_COLORS: Record<string, string> = {
   sentinel: "var(--color-role-sentinel)",
 };
 
-export const AUTONOMY_LABELS = ["OBSERVE", "SUGGEST", "APPROVE", "AUTONOMOUS", "SELF-DIRECT"];
+/** The four levels the backend actually has (`AutonomyLevel`): observe →
+ *  suggest → approve → autonomous. No fifth level exists. */
+export const AUTONOMY_LABELS = ["OBSERVE", "SUGGEST", "APPROVE", "AUTONOMOUS"];
 export const MOMENTUM_NAMES = ["COLD", "WARM", "HOT", "FEVER"];
 export const MOMENTUM_COLORS = [
   "var(--color-momentum-cold)",

@@ -29,7 +29,7 @@ pub struct DataExport {
 }
 
 /// Summary of an import pass — returned so callers can report counts.
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 pub struct ImportStats {
     pub rules_inserted: usize,
     pub connectors_inserted: usize,

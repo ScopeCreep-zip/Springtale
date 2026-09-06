@@ -22,10 +22,12 @@
 use std::sync::Arc;
 
 use dashmap::DashMap;
+use wasmtime::component::{Component, Linker as ComponentLinker};
 use wasmtime::{InstancePre, Linker, Module, Store};
 
 use super::super::connector::HostState;
 use super::super::runtime::WasmEngine;
+use super::super::wasi::add_wasi_to_linker;
 use super::primitives::{WasmTier, register_tier_primitives};
 use crate::error::ConnectorError;
 
@@ -61,6 +63,22 @@ pub struct WasmTierCache {
     linkers: [Linker<HostState>; 4],
     /// Per-module tier table. `Arc` inside the value keeps clone cost low.
     modules: DashMap<String, TieredInstances>,
+    /// Component-model linker carrying the WASI Preview 2 interfaces,
+    /// minus `wasi:sockets`.
+    ///
+    /// Community connectors built with `jco componentize` import
+    /// `wasi:cli`, `wasi:io`, `wasi:clocks`, `wasi:filesystem` and
+    /// `wasi:random`; without these in a linker they cannot instantiate.
+    /// Those interfaces are linked, but the per-store
+    /// [`wasmtime_wasi::WasiCtx`] grants nothing, so they resolve to a
+    /// closed sandbox; `wasi:sockets` is not linked at all. Tier gating
+    /// applies to the `springtale.*` host functions on the core-module
+    /// linkers above and is unchanged by WASI.
+    // Read by `preinstantiate_component`; the full component execution
+    // path lands with the connector `.wit` world (ALIGNMENT-PLAN 2.8 /
+    // finding 83), so outside tests nothing calls it yet.
+    #[allow(dead_code)]
+    component_linker: ComponentLinker<HostState>,
 }
 
 impl WasmTierCache {
@@ -80,10 +98,15 @@ impl WasmTierCache {
             build_linker(WasmTier::Fever)?,
         ];
 
+        let mut component_linker: ComponentLinker<HostState> =
+            ComponentLinker::new(engine.engine());
+        add_wasi_to_linker(&mut component_linker)?;
+
         Ok(Self {
             engine,
             linkers,
             modules: DashMap::new(),
+            component_linker,
         })
     }
 
@@ -199,6 +222,23 @@ impl WasmTierCache {
             .map_err(|e| ConnectorError::Sandbox(format!("instantiate at {tier:?}: {e}")))
     }
 
+    /// Type-check `component` against the WASI Preview 2 linker and
+    /// return an `InstancePre` ready to instantiate into a store whose
+    /// `HostState` carries a default-deny `WasiCtx`.
+    ///
+    /// Imports outside the linked WASI world are rejected here rather
+    /// than trapping later — the linker is an allow-list.
+    #[allow(dead_code)]
+    pub(crate) fn preinstantiate_component(
+        &self,
+        name: &str,
+        component: &Component,
+    ) -> Result<wasmtime::component::InstancePre<HostState>, ConnectorError> {
+        self.component_linker
+            .instantiate_pre(component)
+            .map_err(|e| ConnectorError::Sandbox(format!("pre-instantiate component {name}: {e}")))
+    }
+
     /// Shared engine — used by callers that need to build a `Store`
     /// against the same `Engine` this cache's InstancePre entries were
     /// built with.
@@ -282,6 +322,8 @@ mod tests {
             connector_name: name.to_owned(),
             checker: CapabilityChecker::new(),
             limits: engine.build_store_limits(&SandboxLimits::default()),
+            wasi: crate::wasm::wasi::default_deny_wasi_ctx(),
+            table: wasmtime::component::ResourceTable::new(),
         }
     }
 
@@ -315,6 +357,89 @@ mod tests {
                 .instantiate_at_tier("http", tier, &mut store)
                 .unwrap_or_else(|e| panic!("{tier:?}: {e}"));
         }
+    }
+
+    /// A component shaped like `jco componentize` output: it imports the
+    /// WASI Preview 2 interfaces a JS component always pulls in. Before
+    /// the WASI context existed this could not instantiate at all
+    /// (ALIGNMENT-PLAN 2.7 / finding 82).
+    fn jco_shaped_component() -> Vec<u8> {
+        wat::parse_str(
+            r#"
+            (component
+              (import "wasi:random/random@0.2.12" (instance
+                (export "get-random-u64" (func (result u64)))))
+              (import "wasi:cli/environment@0.2.12" (instance
+                (export "get-environment"
+                  (func (result (list (tuple string string)))))))
+              (import "wasi:clocks/monotonic-clock@0.2.12" (instance
+                (export "now" (func (result u64)))))
+            )
+            "#,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn wasi_p2_component_linker_accepts_jco_world() {
+        let engine = Arc::new(WasmEngine::new(SandboxLimits::default()).unwrap());
+        let cache = WasmTierCache::new(engine.clone()).unwrap();
+        let component = Component::new(engine.engine(), jco_shaped_component()).unwrap();
+        cache
+            .preinstantiate_component("hello", &component)
+            .expect("jco-shaped component must link against the WASI p2 linker");
+    }
+
+    /// `wasi:sockets` is not linked, so a component that reaches for a
+    /// socket is refused at instantiation with an unknown-import error —
+    /// the network boundary rests on the absence of the import, not on an
+    /// empty address set.
+    #[test]
+    fn component_importing_wasi_sockets_is_denied() {
+        let engine = Arc::new(WasmEngine::new(SandboxLimits::default()).unwrap());
+        let cache = WasmTierCache::new(engine.clone()).unwrap();
+        for iface in [
+            "wasi:sockets/tcp-create-socket@0.2.12",
+            "wasi:sockets/instance-network@0.2.12",
+            "wasi:sockets/ip-name-lookup@0.2.12",
+        ] {
+            let wasm = wat::parse_str(format!(
+                r#"(component (import "{iface}" (instance (export "f" (func)))))"#
+            ))
+            .unwrap();
+            let component = Component::new(engine.engine(), wasm).unwrap();
+            match cache.preinstantiate_component("sock", &component) {
+                Ok(_) => panic!("{iface} must not be linked"),
+                Err(e) => assert!(format!("{e}").contains("sockets"), "unexpected: {e}"),
+            }
+        }
+    }
+
+    /// The component linker is an allow-list: an import that is neither a
+    /// linked WASI interface nor a registered host function is refused at
+    /// instantiation time, not at call time.
+    #[test]
+    fn component_import_outside_wasi_world_is_denied() {
+        let engine = Arc::new(WasmEngine::new(SandboxLimits::default()).unwrap());
+        let cache = WasmTierCache::new(engine.clone()).unwrap();
+        let wasm = wat::parse_str(
+            r#"
+            (component
+              (import "springtale:evil/exfiltrate@1.0.0" (instance
+                (export "steal" (func))))
+            )
+            "#,
+        )
+        .unwrap();
+        let component = Component::new(engine.engine(), wasm).unwrap();
+        let err = match cache.preinstantiate_component("evil", &component) {
+            Ok(_) => panic!("component with an unlinked import must not instantiate"),
+            Err(e) => e,
+        };
+        assert!(
+            format!("{err}").contains("exfiltrate"),
+            "unexpected error: {err}"
+        );
     }
 
     #[test]

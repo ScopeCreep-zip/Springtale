@@ -1,4 +1,5 @@
 mod cli;
+mod client;
 mod commands;
 mod output;
 mod store;
@@ -111,46 +112,56 @@ async fn main() -> Result<()> {
                 commands::cooperation::glyphs(check.as_deref())?;
             }
         },
-        // Commands that need the store
-        command => {
+        // Daemon-backed commands. The CLI is a client of springtaled:
+        // these all go over the management API so an edit is visible to
+        // the running daemon immediately. There is no store fallback —
+        // when the daemon is down they fail with one message.
+        Command::Connector { action } => {
+            commands::connector::run(action, cli.json).await?;
+        }
+        Command::Rule { action } => {
+            commands::rule::run(action, cli.json).await?;
+        }
+        Command::Events { limit, connector } => {
+            commands::events::run(limit, connector, cli.json).await?;
+        }
+        Command::Memory { action } => {
+            commands::memory::run(action, cli.json).await?;
+        }
+        Command::Data { action } => {
+            commands::data::run(action).await?;
+        }
+        Command::Agent { action } => {
+            commands::agent::run(action, cli.json).await?;
+        }
+        Command::Config { action } => {
+            commands::config::run(action, cli.json).await?;
+        }
+        Command::Formation { action } => {
+            commands::formation::run(action, cli.json).await?;
+        }
+        Command::Recipe { action } => {
+            commands::recipe::run(action, cli.json).await?;
+        }
+        Command::Approval { action } => {
+            commands::approval::run(action, cli.json).await?;
+        }
+        Command::Chat { message, session } => {
+            commands::chat::run(message, session, cli.json).await?;
+        }
+        Command::Session { action } => {
+            commands::session::run(action, cli.json).await?;
+        }
+        Command::Safety { action } => {
+            commands::safety::run(action, cli.json).await?;
+        }
+        Command::Canvas { stream } => {
+            commands::canvas::run(stream, cli.json).await?;
+        }
+        // Offline: needs the vault and the local store, not the daemon.
+        Command::Author { action } => {
             let store = store::open_store(&pass_opts)?;
-            match command {
-                Command::Connector { action } => {
-                    commands::connector::run(action, &store, cli.json).await?;
-                }
-                Command::Rule { action } => {
-                    commands::rule::run(action, &store, cli.json).await?;
-                }
-                Command::Events { limit, connector } => {
-                    commands::events::run(&store, limit, connector, cli.json).await?;
-                }
-                Command::Memory { action } => {
-                    commands::memory::run(action, &store).await?;
-                }
-                Command::Data { action } => {
-                    commands::data::run(action, &store).await?;
-                }
-                Command::Agent { action } => {
-                    commands::agent::run(action, &store).await?;
-                }
-                Command::Config { action } => {
-                    commands::config::run(action, &store).await?;
-                }
-                Command::Author { action } => {
-                    commands::author::run(action, &store, cli.json).await?;
-                }
-                other => {
-                    // Every store-needing variant should have an arm
-                    // above; any miss is a programming error caught at
-                    // the workspace edge instead of panicking on a
-                    // user's machine. The outer match handles the
-                    // non-store variants exhaustively, so reaching
-                    // here means we forgot to dispatch a new variant.
-                    anyhow::bail!(
-                        "internal: command {other:?} reached the store-needing block without a handler"
-                    );
-                }
-            }
+            commands::author::run(action, &store, cli.json).await?;
         }
     }
 

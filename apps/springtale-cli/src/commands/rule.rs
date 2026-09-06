@@ -1,158 +1,103 @@
-use anyhow::Result;
-use tabled::{Table, Tabled};
+//! `springtale rule` — automation rules, over the daemon.
+//!
+//! Writes go to the running daemon, so a rule added here is scheduled
+//! and its triggers attached immediately; no restart, and no second
+//! writer against the SQLite file.
 
-use springtale_core::rule::types::{Rule, RuleId, RuleStatus};
-use springtale_store::backend::sqlite::SqliteBackend;
+use anyhow::Result;
+use serde_json::Value;
+
+use springtale_core::rule::types::Rule;
 
 use crate::cli::RuleAction;
+use crate::client::Client;
 use crate::output;
 
-/// Row type for the rule list table.
-#[derive(Tabled)]
-struct RuleTableRow {
-    #[tabled(rename = "ID")]
-    id: String,
-    #[tabled(rename = "NAME")]
-    name: String,
-    #[tabled(rename = "STATUS")]
-    status: String,
-    #[tabled(rename = "TRIGGER")]
-    trigger: String,
-}
-
 /// Handle rule subcommands.
-pub async fn run(action: RuleAction, store: &SqliteBackend, json: bool) -> Result<()> {
+pub async fn run(action: RuleAction, json_out: bool) -> Result<()> {
+    let client = Client::from_config()?;
     match action {
         RuleAction::List => {
-            let rules = springtale_runtime::operations::rules::list_rules_from_store(store)
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
-
-            if json {
-                output::print_json(&rules)?;
-            } else if rules.is_empty() {
-                println!("No rules defined.");
-            } else {
-                let rows: Vec<RuleTableRow> = rules
+            let body: Value = client.get("/rules").await?;
+            output::emit(json_out, &body, |v| {
+                let rows = output::array(v, "rules")
                     .iter()
-                    .map(|r| RuleTableRow {
-                        id: r.id.to_string(),
-                        name: r.name.clone(),
-                        status: format!("{:?}", r.status),
-                        trigger: format!("{:?}", r.trigger),
+                    .map(|r| {
+                        vec![
+                            output::cell(r, "id"),
+                            output::cell(r, "name"),
+                            output::cell(r, "status"),
+                            output::cell(r, "trigger"),
+                        ]
                     })
                     .collect();
-                let table = Table::new(rows).to_string();
-                println!("{table}");
-            }
+                output::rows_table(&["ID", "NAME", "STATUS", "TRIGGER"], rows)
+            })?;
         }
         RuleAction::Add { file } => {
-            let contents = std::fs::read_to_string(&file).map_err(|e| {
-                anyhow::anyhow!("failed to read rule file at {}: {e}", file.display())
+            let rule = load_rule(&file)?;
+            let body: Value = client.post("/rules", &rule).await?;
+            output::emit(json_out, &body, |v| {
+                format!("Added rule: {} (id: {})", rule.name, output::cell(v, "id"))
             })?;
-
-            let rule: Rule = match file.extension().and_then(|ext| ext.to_str()) {
-                Some("toml") => toml::from_str(&contents)
-                    .map_err(|e| anyhow::anyhow!("failed to parse rule TOML: {e}"))?,
-                Some("json") => serde_json::from_str(&contents)
-                    .map_err(|e| anyhow::anyhow!("failed to parse rule JSON: {e}"))?,
-                _ => {
-                    // Try TOML first, then JSON
-                    toml::from_str(&contents).or_else(|_| {
-                        serde_json::from_str(&contents).map_err(|e| {
-                            anyhow::anyhow!("failed to parse rule file (tried TOML and JSON): {e}")
-                        })
-                    })?
-                }
-            };
-
-            let rule_id = springtale_runtime::operations::rules::add_rule_to_store(store, &rule)
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
-            println!("Added rule: {} (id: {rule_id})", rule.name);
-        }
-        RuleAction::Run { id } => {
-            let uuid =
-                uuid::Uuid::parse_str(&id).map_err(|e| anyhow::anyhow!("invalid rule ID: {e}"))?;
-            let rule_id = RuleId(uuid);
-
-            // Load all rules and find the target
-            let rules = springtale_runtime::operations::rules::list_rules_from_store(store)
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
-            let rule = rules
-                .into_iter()
-                .find(|r| r.id == rule_id)
-                .ok_or_else(|| anyhow::anyhow!("rule not found: {id}"))?;
-
-            let result = springtale_runtime::operations::rules::run_rule_standalone(&rule);
-
-            if !result.matched {
-                println!("No actions matched (rule may be disabled or conditions failed).");
-            } else {
-                println!(
-                    "Rule matched: {} ({}) — {} action(s) would fire",
-                    rule.name, rule.id, result.actions_count
-                );
-            }
-        }
-        RuleAction::Delete { id } => {
-            let uuid =
-                uuid::Uuid::parse_str(&id).map_err(|e| anyhow::anyhow!("invalid rule ID: {e}"))?;
-            let rule_id = RuleId(uuid);
-            springtale_runtime::operations::rules::delete_rule_from_store(store, &rule_id)
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
-            println!("Deleted rule: {id}");
         }
         RuleAction::Update { id, file } => {
-            let uuid =
-                uuid::Uuid::parse_str(&id).map_err(|e| anyhow::anyhow!("invalid rule ID: {e}"))?;
-            let rule_id = RuleId(uuid);
-
-            let contents = std::fs::read_to_string(&file)
-                .map_err(|e| anyhow::anyhow!("failed to read file: {e}"))?;
-            let mut rule: Rule = match file.extension().and_then(|ext| ext.to_str()) {
-                Some("toml") => toml::from_str(&contents)?,
-                Some("json") => serde_json::from_str(&contents)?,
-                _ => toml::from_str(&contents).or_else(|_| {
-                    serde_json::from_str(&contents)
-                        .map_err(|e| anyhow::anyhow!("failed to parse rule file: {e}"))
-                })?,
-            };
-            rule.id = rule_id;
-            springtale_runtime::operations::rules::add_rule_to_store(store, &rule)
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
-            println!("Updated rule: {id}");
+            let rule = load_rule(&file)?;
+            let body: Value = client.put(&format!("/rules/{id}"), &rule).await?;
+            output::emit(json_out, &body, |_| format!("Updated rule: {id}"))?;
+        }
+        RuleAction::Delete { id } => {
+            let body: Value = client.delete(&format!("/rules/{id}")).await?;
+            output::emit(json_out, &body, |_| format!("Deleted rule: {id}"))?;
+        }
+        RuleAction::Run { id } => {
+            let body: Value = client
+                .post(&format!("/rules/{id}/run"), &serde_json::json!({}))
+                .await?;
+            output::emit(json_out, &body, |v| {
+                serde_json::to_string_pretty(v).unwrap_or_default()
+            })?;
         }
         RuleAction::Toggle { id } => {
-            let uuid =
-                uuid::Uuid::parse_str(&id).map_err(|e| anyhow::anyhow!("invalid rule ID: {e}"))?;
-            let rule_id = RuleId(uuid);
-
-            // Read current state to determine toggle direction
-            let rules = springtale_runtime::operations::rules::list_rules_from_store(store)
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
-            let rule = rules
+            // The route takes the target state, so read the current one
+            // from the daemon rather than guessing.
+            let listing: Value = client.get("/rules").await?;
+            let current = output::array(&listing, "rules")
                 .iter()
-                .find(|r| r.id == rule_id)
+                .find(|r| output::cell(r, "id") == id)
                 .ok_or_else(|| anyhow::anyhow!("rule not found: {id}"))?;
-
-            let new_enabled = !matches!(rule.status, RuleStatus::Enabled);
-            springtale_runtime::operations::rules::toggle_rule_in_store(
-                store,
-                &rule_id,
-                new_enabled,
-            )
-            .await
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
-            println!(
-                "Rule {id} is now {}",
-                if new_enabled { "enabled" } else { "disabled" }
-            );
+            let enabled = output::cell(current, "status") != "Enabled";
+            let body: Value = client
+                .post(
+                    &format!("/rules/{id}/toggle"),
+                    &serde_json::json!({ "enabled": enabled }),
+                )
+                .await?;
+            output::emit(json_out, &body, |_| {
+                format!(
+                    "Rule {id} is now {}",
+                    if enabled { "enabled" } else { "disabled" }
+                )
+            })?;
         }
     }
     Ok(())
+}
+
+/// Parse a rule definition from a JSON or TOML file.
+fn load_rule(file: &std::path::Path) -> Result<Rule> {
+    let contents = std::fs::read_to_string(file)
+        .map_err(|e| anyhow::anyhow!("failed to read rule file at {}: {e}", file.display()))?;
+    match file.extension().and_then(|ext| ext.to_str()) {
+        Some("toml") => {
+            toml::from_str(&contents).map_err(|e| anyhow::anyhow!("failed to parse rule TOML: {e}"))
+        }
+        Some("json") => serde_json::from_str(&contents)
+            .map_err(|e| anyhow::anyhow!("failed to parse rule JSON: {e}")),
+        _ => toml::from_str(&contents).or_else(|_| {
+            serde_json::from_str(&contents).map_err(|e| {
+                anyhow::anyhow!("failed to parse rule file (tried TOML and JSON): {e}")
+            })
+        }),
+    }
 }

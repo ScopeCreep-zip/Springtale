@@ -1,38 +1,29 @@
+//! `springtale agent` — per-agent settings, over the daemon.
+
 use anyhow::Result;
-use springtale_store::StorageBackend;
-use springtale_store::backend::sqlite::SqliteBackend;
+use serde_json::{Value, json};
 
 use crate::cli::AgentAction;
+use crate::client::Client;
+use crate::output;
 
 /// Handle agent subcommands.
-pub async fn run(action: AgentAction, store: &SqliteBackend) -> Result<()> {
+pub async fn run(action: AgentAction, json_out: bool) -> Result<()> {
+    let client = Client::from_config()?;
     match action {
         AgentAction::SetAutonomy { name, level } => {
-            let target = resolve_agent_target(store, &name).await?;
-            springtale_runtime::operations::agent::set_autonomy(store, &target, &level)
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
-            println!("Agent '{name}' autonomy set to: {level}");
+            // The daemon resolves the rule name or id to an autonomy
+            // target — the CLI does not need the rule set to do it.
+            let body: Value = client
+                .put(
+                    &format!("/agents/{name}/autonomy"),
+                    &json!({ "level": level }),
+                )
+                .await?;
+            output::emit(json_out, &body, |_| {
+                format!("Agent '{name}' autonomy set to: {level}")
+            })?;
         }
     }
     Ok(())
-}
-
-/// Resolve a rule name or id to the rule-id-keyed autonomy target. The CLI
-/// has no engine, so names are looked up in the stored rule set.
-async fn resolve_agent_target(
-    store: &SqliteBackend,
-    name_or_id: &str,
-) -> Result<springtale_runtime::operations::agent::AutonomyTarget> {
-    if let Ok(rule_id) = uuid::Uuid::parse_str(name_or_id) {
-        return Ok(springtale_runtime::operations::agent::AutonomyTarget::Agent { rule_id });
-    }
-    let rule_id = store
-        .list_rules()
-        .await?
-        .into_iter()
-        .find(|r| r.name == name_or_id)
-        .map(|r| r.id.0)
-        .ok_or_else(|| anyhow::anyhow!("rule '{name_or_id}' not found"))?;
-    Ok(springtale_runtime::operations::agent::AutonomyTarget::Agent { rule_id })
 }

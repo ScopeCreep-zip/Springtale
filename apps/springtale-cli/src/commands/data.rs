@@ -1,18 +1,20 @@
+//! `springtale data` — data export, over the daemon.
+
 use anyhow::Result;
-use springtale_store::backend::sqlite::SqliteBackend;
+use serde_json::{Value, json};
 
 use crate::cli::DataAction;
+use crate::client::Client;
 
 /// Handle data subcommands.
-pub async fn run(action: DataAction, store: &SqliteBackend) -> Result<()> {
+pub async fn run(action: DataAction) -> Result<()> {
+    let client = Client::from_config()?;
     match action {
         DataAction::Export { output, encrypt } => {
             if encrypt {
                 anyhow::bail!("encrypted export requires travel mode (springtale travel prepare)");
             }
-            let data = springtale_runtime::operations::data::export_data(store)
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            let data: Value = client.post("/data/export", &json!({})).await?;
             let json = serde_json::to_string_pretty(&data)?;
             if let Some(path) = output {
                 // Write with 0o600 permissions (architecture doc §8.2)
@@ -32,23 +34,28 @@ pub async fn run(action: DataAction, store: &SqliteBackend) -> Result<()> {
             }
         }
         DataAction::Import { input } => {
-            let json = std::fs::read_to_string(&input)
+            let text = std::fs::read_to_string(&input)
                 .map_err(|e| anyhow::anyhow!("failed to read {}: {e}", input.display()))?;
-            let export: springtale_runtime::operations::data::DataExport =
-                serde_json::from_str(&json)
-                    .map_err(|e| anyhow::anyhow!("invalid export file: {e}"))?;
-            let stats = springtale_runtime::operations::data::import_data(store, export)
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            let export: Value = serde_json::from_str(&text)
+                .map_err(|e| anyhow::anyhow!("invalid export file: {e}"))?;
+            let stats: Value = client.post("/data/import", &export).await?;
             eprintln!(
                 "Imported: {} rules, {} connectors, {} events",
-                stats.rules_inserted, stats.connectors_inserted, stats.events_inserted
+                stats["rules_inserted"], stats["connectors_inserted"], stats["events_inserted"]
             );
         }
-        DataAction::Purge => {
-            springtale_runtime::operations::data::purge_data(store)
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
+        DataAction::Purge { yes } => {
+            // Irreversible. The flag is required here and the route
+            // demands an explicit `confirm`, so neither a slip of the
+            // shell nor a stray POST can wipe a store.
+            if !yes {
+                anyhow::bail!(
+                    "refusing to purge without --yes (this deletes every rule, event, and session)"
+                );
+            }
+            let _: Value = client
+                .post("/data/purge", &json!({ "confirm": true }))
+                .await?;
             eprintln!("All user data purged. Vault intact.");
         }
     }

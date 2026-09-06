@@ -40,7 +40,10 @@ export const MemberPickerOverlay: Component<MemberPickerOverlayProps> = (props) 
     setWorking(true);
     setError(null);
     try {
-      await db.provider.removeFormationMember(props.formationId, member.connector_name);
+      // Plan 3.3 — every formation verb goes through the one dispatcher.
+      await db.provider.runFormationCommand(props.formationId, "formation:remove_member", {
+        connector_name: member.connector_name,
+      });
       props.onRemoved?.(member);
       props.onCancel();
     } catch (e) {
