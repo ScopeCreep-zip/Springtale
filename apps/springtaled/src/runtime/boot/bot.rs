@@ -47,6 +47,7 @@ impl springtale_runtime::LiveFormationReader for BotFormationReader {
                 // even if the cooperation enum gains variants.
                 let health = AgentHealthDetail::from(&m.health);
                 let fuel_remaining = m.fuel_remaining.remaining();
+                let fuel_initial = m.fuel_remaining.initial();
                 let liveness = format!("{:?}", m.liveness);
                 let attention_load = attention.load(&m.agent_id);
                 let active_task = m
@@ -61,6 +62,7 @@ impl springtale_runtime::LiveFormationReader for BotFormationReader {
                     role,
                     health,
                     fuel_remaining,
+                    fuel_initial,
                     liveness,
                     attention_load,
                     active_task,

@@ -64,7 +64,8 @@ export interface ColonyFormation {
   status: string;
   rallyTokens: number;
   rallyMax: number;
-  guardStatus: string;
+  /** Backend guard badge label ("GUARD" when engaged); absent until the backend reports it. */
+  guardStatus?: string;
   /**
    * Phase H6 — current pacing phase derived from the most recent
    * `pacing_phase_changed` cooperation event for this formation. Drives a

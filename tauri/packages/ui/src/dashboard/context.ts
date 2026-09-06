@@ -243,20 +243,9 @@ export function createDashboardState(provider: DataProvider): DashboardState {
           }),
         );
 
-        setSwarms(
-          s.map((x) => ({
-            id: x.id,
-            name: x.name,
-            intent: x.intent,
-            status: x.status,
-            member_count: x.member_count,
-            members: x.members ?? [],
-            momentum_tier: x.momentum_tier,
-            momentum_label: x.momentum_label,
-            capabilities: x.capabilities,
-            guard_status: x.guard_status,
-          })),
-        );
+        // Keep every FormationInfo field — rally, guard, momentum counters
+        // and operational_count all feed real UI signals.
+        setSwarms(s.map((x) => ({ ...x, members: x.members ?? [] })));
 
         setSchemas(cs);
         setAgentStates(as_);

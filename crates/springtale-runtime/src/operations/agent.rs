@@ -296,6 +296,29 @@ struct LiveAgentEnrichment {
     attention_load: f32,
     liveness: f32,
     health_state: String,
+    /// Live fuel as a percentage of the member's initial budget.
+    fuel_pct: u8,
+}
+
+/// Fuel remaining as a 0–100 percentage of the initial budget.
+/// A zero initial budget reads as empty rather than dividing by zero.
+fn fuel_pct(remaining: u64, initial: u64) -> u8 {
+    if initial == 0 {
+        return 0;
+    }
+    let pct = remaining.saturating_mul(100) / initial;
+    u8::try_from(pct.min(100)).unwrap_or(100)
+}
+
+/// Fuel gauge label: `ok` above 50, `warn` above 20, `critical` otherwise.
+fn fuel_status_label(fuel: u8) -> &'static str {
+    if fuel > 50 {
+        "ok"
+    } else if fuel > 20 {
+        "warn"
+    } else {
+        "critical"
+    }
 }
 
 /// List aggregated agent states for all rules.
@@ -347,6 +370,7 @@ pub async fn list_agent_states(state: &RuntimeState) -> Result<Vec<AgentState>, 
                             _ => 0.0,
                         },
                         health_state: detail.health.ui_state().to_owned(),
+                        fuel_pct: fuel_pct(detail.fuel_remaining, detail.fuel_initial),
                     },
                 );
             }
@@ -379,21 +403,21 @@ pub async fn list_agent_states(state: &RuntimeState) -> Result<Vec<AgentState>, 
             }
             .to_owned();
 
-            let fuel: u8 = if r.status == "enabled" { 100 } else { 0 };
-            let fuel_status = if fuel > 50 {
-                "ok"
-            } else if fuel > 20 {
-                "warn"
-            } else {
-                "critical"
-            }
-            .to_owned();
-
             // Enrich from live formation data when available
             let enrichment = r
                 .connector_name
                 .as_ref()
                 .and_then(|cn| enrichment_map.get(cn));
+
+            // Live members report their real fuel budget; rules outside a
+            // live formation have no budget, so enabled reads full and
+            // disabled reads empty.
+            let fuel: u8 = match enrichment {
+                Some(e) => e.fuel_pct,
+                None if r.status == "enabled" => 100,
+                None => 0,
+            };
+            let fuel_status = fuel_status_label(fuel).to_owned();
 
             AgentState {
                 rule_id: r.id.clone(),
@@ -465,5 +489,27 @@ mod tests {
 
         // Invalid level is rejected at write time.
         assert!(set_autonomy(&store, &agent, "yolo").await.is_err());
+    }
+
+    #[test]
+    fn test_fuel_pct_half_remaining_returns_50() {
+        assert_eq!(fuel_pct(500, 1000), 50);
+        assert_eq!(fuel_pct(0, 1000), 0);
+        assert_eq!(fuel_pct(1000, 1000), 100);
+        assert_eq!(fuel_pct(2000, 1000), 100);
+    }
+
+    #[test]
+    fn test_fuel_pct_zero_initial_returns_0() {
+        assert_eq!(fuel_pct(10, 0), 0);
+    }
+
+    #[test]
+    fn test_fuel_status_label_thresholds() {
+        assert_eq!(fuel_status_label(100), "ok");
+        assert_eq!(fuel_status_label(51), "ok");
+        assert_eq!(fuel_status_label(50), "warn");
+        assert_eq!(fuel_status_label(21), "warn");
+        assert_eq!(fuel_status_label(20), "critical");
     }
 }

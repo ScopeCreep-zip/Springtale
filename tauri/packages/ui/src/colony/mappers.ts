@@ -139,9 +139,9 @@ export function mapFormations(
       members: s.members ?? [],
       zone: { x: seeded(`${s.id}zx`, 20, 80), y: seeded(`${s.id}zy`, 20, 60) },
       status: s.status ?? "draft",
-      rallyTokens: s.rally_tokens ?? 3,
-      rallyMax: s.rally_max ?? 3,
-      guardStatus: s.guard_status ?? "--",
+      rallyTokens: s.rally_tokens ?? 0,
+      rallyMax: s.rally_max ?? 0,
+      guardStatus: s.guard_status,
       pacingPhase: rawPhase ? slugPacingPhase(rawPhase) : undefined,
       cascadeStreak,
     };

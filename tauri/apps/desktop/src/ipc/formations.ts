@@ -39,6 +39,8 @@ export interface FormationInfo {
   capabilities: string[];
   /** Guard readiness: "OK" if any member active, "--" otherwise. */
   guard_status: string;
+  /** Whether the formation guard toggle is engaged. */
+  guard_engaged: boolean;
   /** Rally tokens remaining (Monster Hunter carts, section 15). */
   rally_tokens: number;
   /** Maximum rally tokens. */
@@ -51,6 +53,7 @@ export interface FormationMemberDetail {
   role: string;
   health: AgentHealthDetail;
   fuel_remaining: number;
+  fuel_initial: number;
   liveness: string;
   attention_load: number;
   active_task: string | null;

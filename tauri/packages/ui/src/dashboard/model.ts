@@ -46,10 +46,15 @@ export interface SwarmInfo {
   status: string;
   member_count: number;
   members: string[];
+  operational_count?: number;
   momentum_tier?: string;
   momentum_label?: string;
+  momentum_consecutive_successes?: number;
+  momentum_interference_count?: number;
+  momentum_successes_to_next_tier?: number | null;
   capabilities?: string[];
   guard_status?: string;
+  guard_engaged?: boolean;
   rally_tokens?: number;
   rally_max?: number;
 }
