@@ -101,6 +101,24 @@ the combo and the formation climbs again from there. Inactivity decays
 the tier one step per decay interval. Momentum is persisted to the
 `formation_momentum` table every tick and survives a daemon restart.
 
+Promotion and demotion are decided by rates over the current clean run,
+not by how many ticks have passed. Each tick adds its counts (actions,
+successes, duplicate actions, handoffs) to a `RunWindow`; the next tier
+opens when the window clears its row of the `[cooperation.momentum]`
+table, and once the window holds the current tier's minimum actions a
+success rate under that row or a duplicate rate over it drops one step and
+restarts the window. Rows: Cold → Warming at 3 actions, 80 % success, any
+duplicate work; Warming → Hot at 8 actions, 90 % success, at most 30 %
+duplicate actions; Hot → Fever at 15 actions, 95 % success, at most 10 %
+duplicate actions. There is no interference rate in the table: an
+interference restarts the run (and breaks Fever), so it is always zero at
+promotion time. A failed tick also breaks Fever; below Fever it only
+lowers the run's success rate. Two members doing the same work every tick
+therefore never reach Hot. These numbers are Springtale's own starting
+values, not Overcooked-AI's or any game's; they are configuration so they
+can be tuned after play. `consecutive_successes` is still tracked and
+persisted for the UI hint but no longer decides promotion.
+
 ## 4. Rally, recovery, supervision
 
 When a formation struggles, the tick pipeline tries to self-heal before

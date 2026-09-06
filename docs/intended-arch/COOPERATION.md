@@ -811,6 +811,28 @@ Source: <https://github.com/mdeloof/statig>
 
 ### 7.3 Concrete momentum state machine
 
+> **Erratum (implementation, plan 1.3).** The `successful_ticks >= 3 / 8 / 15`
+> counters below describe the first implementation, not the current one. The
+> tier ladder and its capability gates stand; promotion and demotion are now
+> decided by rates over the current clean run (a `RunWindow` of actions,
+> successes, duplicate actions and handoffs, restarted on interference, intent
+> change and every demotion), checked against a per-formation `MomentumConfig`
+> table: Cold → Warming at 3 actions and 80 % success; Warming → Hot at 8
+> actions, 90 % success, ≤ 30 % duplicate actions; Hot → Fever at 15 actions,
+> 95 % success, ≤ 10 % duplicate actions. Falling under the current tier's row
+> once the window holds its minimum actions drops one step. The table has no
+> interference rate: an interference restarts the run, so the rate is always
+> zero when promotion is checked; interference is enforced by the Patapon rule
+> instead — it breaks Fever, as does a single failed tick (a "Good"). A tick
+> count is only how long the formation has been playing; Overcooked-AI
+> (Carroll et al., 2019) scores coordination by throughput and by how often
+> partners duplicate or block each other, and the measure follows that shape.
+> The numbers are Springtale's own starting values, not taken from that
+> benchmark or from any game, and are configuration so they can be tuned
+> after play. The window is not persisted: after a daemon restart the tier
+> survives (it is stored every tick) but the run restarts empty, which is the
+> combo mechanic itself — a pause ends the combo, not the rank it earned.
+
 ```rust
 // cooperation/momentum.rs
 use statig::prelude::*;

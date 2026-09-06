@@ -16,34 +16,63 @@
 //! (§14) executed in `transformation::run`.
 
 use crate::cooperation::formation::Formation;
-use springtale_cooperation::momentum::MomentumEvent;
+use springtale_cooperation::momentum::{MomentumEvent, TickCounts};
 use springtale_cooperation::tick_processor::FormationTickResult;
+use std::collections::HashSet;
 
 /// Classify a tick result into the single `MomentumEvent` it represents.
 ///
 /// A report with `action_taken: None` is idle regardless of its alignment
 /// (the executor reports alignment 1.0 for "nothing to do", which is not
 /// a success). Only reports that actually acted can succeed or fail.
+/// Success and failure carry the tick's [`TickCounts`] for the momentum
+/// window.
 pub fn classify(result: &FormationTickResult) -> MomentumEvent {
-    let acted = result.reports.iter().any(|r| r.action_taken.is_some());
-    let failed = result
-        .reports
-        .iter()
-        .any(|r| r.action_taken.is_some() && r.intent_alignment <= 0.5);
+    let counts = count(result);
+    let failed = counts.successes < counts.actions;
 
     if !result.interferences.is_empty() {
         MomentumEvent::TickInterference {
             count: u32::try_from(result.interferences.len()).unwrap_or(u32::MAX),
         }
     } else if failed {
-        MomentumEvent::TickFailure
-    } else if acted {
-        MomentumEvent::TickSuccess {
-            had_real_action: true,
-        }
+        MomentumEvent::TickFailure { counts }
+    } else if counts.actions > 0 {
+        MomentumEvent::TickSuccess { counts }
     } else {
         MomentumEvent::TickIdle
     }
+}
+
+/// The tick's contribution to the momentum window.
+///
+/// `duplicates` counts acted reports whose descriptor
+/// `(kind, target, payload_hash)` repeats an earlier report's in this tick.
+/// `handoffs` and `handoffs_ok` are 0: `FormationTickResult` carries only
+/// reports and interferences, and the `handoff::` module emits no
+/// completion event the tick could read, so the handoff rate is not yet
+/// measured here.
+fn count(result: &FormationTickResult) -> TickCounts {
+    let mut seen: HashSet<(&str, Option<&str>, u64)> = HashSet::new();
+    let mut counts = TickCounts::default();
+    for report in &result.reports {
+        let Some(action) = report.action_taken.as_ref() else {
+            continue;
+        };
+        counts.actions = counts.actions.saturating_add(1);
+        if report.intent_alignment > 0.5 {
+            counts.successes = counts.successes.saturating_add(1);
+        }
+        let key = (
+            action.kind.as_str(),
+            action.target.as_deref(),
+            action.payload_hash,
+        );
+        if !seen.insert(key) {
+            counts.duplicates = counts.duplicates.saturating_add(1);
+        }
+    }
+    counts
 }
 
 pub fn run(formation: &mut Formation, result: &FormationTickResult) {
@@ -111,19 +140,30 @@ mod tests {
     }
 
     #[test]
-    fn test_classify_action_aligned_is_success() {
-        let result = tick(vec![report(Some("work"), 1.0)]);
+    fn test_classify_action_aligned_is_success_and_counts_duplicates() {
+        // Same kind, target and payload hash: the second report is
+        // duplicate work. No handoff events reach the tick, so 0.
+        let result = tick(vec![
+            report(Some("work"), 1.0),
+            report(Some("work"), 1.0),
+            report(Some("other"), 1.0),
+        ]);
         assert!(matches!(
             classify(&result),
-            MomentumEvent::TickSuccess {
-                had_real_action: true
-            }
+            MomentumEvent::TickSuccess { counts }
+                if counts.actions == 3
+                    && counts.successes == 3
+                    && counts.duplicates == 1
+                    && counts.handoffs == 0
         ));
     }
 
     #[test]
     fn test_classify_action_misaligned_is_failure() {
         let result = tick(vec![report(Some("work"), 1.0), report(Some("work"), 0.2)]);
-        assert!(matches!(classify(&result), MomentumEvent::TickFailure));
+        assert!(matches!(
+            classify(&result),
+            MomentumEvent::TickFailure { counts } if counts.actions == 2 && counts.successes == 1
+        ));
     }
 }
