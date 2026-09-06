@@ -15,8 +15,6 @@ import type {
   PlatformForm,
   Report,
   SendOutcome,
-  Template,
-  WriteReport,
 } from "@springtale/types";
 import type {
   ApprovalInfo,
@@ -513,15 +511,6 @@ export function createWebProvider(): DataProvider {
     deleteUserRecipe,
     exportRecipeToml,
     importRecipeToml,
-
-    // Templates
-    async listTemplates() {
-      const data = await get<{ templates: Template[] }>("/templates");
-      return data.templates ?? [];
-    },
-    async writeTemplate(name) {
-      return post<WriteReport>("/templates/write", { name });
-    },
 
     // Error fixes
     async listFixes() {

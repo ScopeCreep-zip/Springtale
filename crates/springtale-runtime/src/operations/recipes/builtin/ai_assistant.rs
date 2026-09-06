@@ -12,6 +12,7 @@ use super::super::types::{
 pub fn all() -> Vec<Recipe> {
     vec![
         llm_assistant(),
+        llm_swarm(),
         ai_translate_incoming(),
         ai_wellness_check_in(),
         ai_cw_classifier(),
@@ -95,6 +96,85 @@ fn llm_assistant() -> Recipe {
             }),
             summary: Some(
                 "Configures an AI provider so any bot can use it. Ollama runs locally.".into(),
+            ),
+            derived_inputs: vec![],
+        },
+    }
+}
+
+// ── LLM swarm (researcher → writer → critic) ───────────────────
+
+fn llm_swarm() -> Recipe {
+    Recipe {
+        id: "llm-swarm".into(),
+        name: "LLM Swarm".into(),
+        description:
+            "Three AI passes — researcher, writer, critic — over a single prompt sent in chat."
+                .into(),
+        icon_id: "robot".into(),
+        category: RecipeCategory::AiAssistant,
+        tags: vec!["ai".into(), "swarm".into(), "chat".into()],
+        connectors_used: vec!["connector-telegram".into()],
+        ai_required: true,
+        difficulty: Difficulty::Power,
+        source: RecipeSource::Builtin,
+        inputs: vec![
+            InputField {
+                id: "telegram_token".into(),
+                label: "Telegram bot token".into(),
+                kind: FieldKind::Secret,
+                visibility: FieldVisibility::Required,
+                default: None,
+                hint: Some("From @BotFather. The swarm answers messages in this chat.".into()),
+            },
+            InputField {
+                id: "topic".into(),
+                label: "Subject the swarm is briefed on".into(),
+                kind: FieldKind::Text,
+                visibility: FieldVisibility::Optional,
+                default: Some(json!("the message it is given")),
+                hint: Some("Steers all three passes; leave as-is for a general assistant.".into()),
+            },
+        ],
+        blueprint: RecipeBlueprint {
+            connector_configs: vec![ConnectorConfigStep {
+                connector_name: "connector-telegram".into(),
+                config: json!({ "bot_token": "${telegram_token}" }),
+            }],
+            rules: vec![RuleStep {
+                toml: r#"name = "llm-swarm"
+
+[trigger]
+type = "ConnectorEvent"
+connector = "connector-telegram"
+event = "message"
+
+[[actions]]
+type = "AiComplete"
+prompt = "You are the researcher. Gather the facts that matter about ${topic}, given this request. Reply with notes only, no prose.\n\n${trigger.text}"
+
+[[actions]]
+type = "AiComplete"
+prompt = "You are the writer. Turn these research notes into a clear, direct answer.\n\n${last_ai_output}"
+
+[[actions]]
+type = "AiComplete"
+prompt = "You are the critic. Correct anything wrong or unsupported in this draft and return the improved final answer only.\n\n${last_ai_output}"
+
+[[actions]]
+type = "RunConnector"
+connector = "connector-telegram"
+action = "send_message"
+
+[actions.params]
+chat_id = "${trigger.chat_id}"
+text = "${last_ai_output}"
+"#
+                .into(),
+            }],
+            ai_config: None,
+            summary: Some(
+                "Every chat message runs through three AI passes — research, draft, critique — before the reply is sent.".into(),
             ),
             derived_inputs: vec![],
         },

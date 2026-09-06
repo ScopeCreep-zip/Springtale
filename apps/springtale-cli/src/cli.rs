@@ -71,23 +71,10 @@ pub enum Command {
     /// Initialize Springtale (create data directory, vault, config).
     /// After setup, optionally links a chat platform and starts the daemon.
     ///
-    /// With a `<template>` argument, scaffolds that starter first then
-    /// runs the vault/DB setup — matches plan §16.4's success-criterion
-    /// command line: `springtale init cli-runner && springtale run`.
-    Init {
-        /// Optional template name — if given, equivalent to running
-        /// `springtale new <template>` then the interactive init.
-        template: Option<String>,
-    },
-    /// Create a new project from a starter template.
-    New {
-        /// Template name. Run `springtale new --help` for the full list, or see
-        /// `docs/guide/templates.md`. 14 starters ship: telegram-bot,
-        /// github-monitor, cron-runner, llm-assistant, blank-bot, cli-runner,
-        /// llm-swarm, discord-bot, matrix-bot, webhook-receiver, file-watcher,
-        /// research-assistant, code-review-swarm, meeting-summarizer.
-        template: String,
-    },
+    /// This is the one way to start: `springtale init && springtale run`.
+    /// Anything beyond the bare project comes from a recipe — browse them
+    /// in the colony UI or with `springtale recipes`.
+    Init,
     /// Diagnose configuration and connectivity issues.
     Doctor,
     /// Attempt to fix a Springtale error by its ID (E001-E009).

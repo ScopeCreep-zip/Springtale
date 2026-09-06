@@ -274,7 +274,7 @@ The headless daemon that runs the show. Boot is a 9-step ordered pipeline split 
 
 *Fig. 5. Daemon boot sequence. See [`docs/arch/ARCHITECTURE.md`](../arch/ARCHITECTURE.md) §3 for file:line refs.*
 
-Exposes ~80 REST endpoints for connector management, rule CRUD, formation lifecycle (deploy / pause / resume / dissolve / rally / intent / members / toggle-guard / cycle-autonomy), canvas updates, event streaming, configuration, webhook ingestion, diagnostics, onboarding, templates, fixes, per-agent autonomy, author keys, bot admin, memory audit/compact, data export, and send/execute. See [reference/api.md](../reference/api.md) for the full endpoint catalogue.
+Exposes ~80 REST endpoints for connector management, rule CRUD, formation lifecycle (deploy / pause / resume / dissolve / rally / intent / members / toggle-guard / cycle-autonomy), canvas updates, event streaming, configuration, webhook ingestion, diagnostics, onboarding, recipes, fixes, per-agent autonomy, author keys, bot admin, memory audit/compact, data export, and send/execute. See [reference/api.md](../reference/api.md) for the full endpoint catalogue.
 
 ### 5.2. springtale-cli (Terminal)
 
@@ -282,7 +282,6 @@ The CLI for local configuration and management:
 
 ```
   springtale init                         create vault + database
-  springtale new <template>               scaffold a project from a template
   springtale server start                 start daemon inline
   springtale doctor                       run diagnostic checks
   springtale fix <error-id>               apply an auto-repair suggestion

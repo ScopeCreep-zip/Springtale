@@ -16,7 +16,6 @@ pub mod formation;
 pub mod healthcheck;
 pub mod init;
 pub mod memory;
-pub mod new;
 pub mod panic;
 pub mod recipe;
 pub mod rule;

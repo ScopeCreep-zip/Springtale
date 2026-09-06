@@ -27,7 +27,6 @@ pub mod send;
 pub mod sessions;
 pub mod state;
 pub mod stream;
-pub mod templates;
 pub mod utterances;
 pub mod webhooks;
 pub mod workspaces;
@@ -141,8 +140,6 @@ pub fn build_router(state: AppState) -> Router {
         .route("/diagnostics", get(diagnostics::list))
         .route("/onboarding/platforms", get(onboarding::list))
         .route("/onboarding/{platform}", post(onboarding::apply))
-        .route("/templates", get(templates::list))
-        .route("/templates/{name}", post(templates::write))
         .route("/fixes", get(fixes::list))
         .route("/fixes/{id}", get(fixes::get))
         .route("/fixes/{id}/apply", post(fixes::apply))

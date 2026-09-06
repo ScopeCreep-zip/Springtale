@@ -14,33 +14,17 @@ curl -sSL https://springtale.run/install.sh | sh
 (Single static binary. No Python env, no Node modules, no runtime
 dependencies.)
 
-## Pick a template
+## Start the project
 
-`springtale new <template>` scaffolds a starter project you can run
-right away. Pick one of:
-
-| Template | What it does | Connector tokens needed |
-|----------|--------------|-------------------------|
-| `blank-bot` | Empty skeleton for experts | None |
-| `cli-runner` | Headless task runner, no chat | None |
-| `telegram-bot` | Telegram bot with `/start` welcome | Telegram bot token |
-| `discord-bot` | Discord bot with `!start` welcome | Discord bot token |
-| `matrix-bot` | Matrix/Element chatbot skeleton | Matrix access token |
-| `cron-runner` | Scheduled task with heartbeat | None |
-| `webhook-receiver` | HTTP webhook → formation fan-out | None |
-| `file-watcher` | Filesystem event → formation | None |
-| `llm-assistant` | AI-powered chat assistant | Ollama or API key |
-| `llm-swarm` | 3-agent AI swarm on a prompt | Ollama or API key |
-| `research-assistant` | Multi-source research LLM swarm | Ollama or API key |
-| `code-review-swarm` | PR → 3-agent code review | GitHub PAT + AI key |
-| `meeting-summarizer` | Audio / transcript → structured summary | Filesystem path + AI key |
-| `github-monitor` | GitHub webhook → Telegram push | GitHub + Telegram tokens |
-
-Run the one closest to what you want:
+`springtale init` creates the data directory, the vault and the
+database — that is the whole of the setup. Everything after it comes
+from a recipe: browse the library in the colony UI, or apply one from
+the command line. See [`recipes.md`](recipes.md) for the catalogue.
 
 ```bash
-springtale new telegram-bot
+springtale init
 ```
+
 
 This writes a timestamped project directory under the data dir's
 `projects/` (XDG default: `~/.local/share/springtale/projects/`).
@@ -55,7 +39,7 @@ setup flow: open the connector's card in the dashboard (or call the
 connector setup API) and paste the token there. It never goes through
 argv or env.
 
-Every connector the template uses lists the vault keys it needs in a
+Every connector the recipe uses lists the vault keys it needs in a
 comment at the top of `springtale.toml`. The vault keeps tokens at rest
 with authenticated encryption; you never re-type them after this.
 
@@ -73,8 +57,8 @@ shows every bot, every tick, live.
 
 - Send your bot a message. `/start` triggers the welcome rule.
 - Add a second rule: `springtale rule add my-rule.toml`.
-- Add a second connector with another `springtale new <other-template>`
-  in the same project directory (the rules engine merges them).
+- Add a second connector by deploying another recipe (the rules
+  engine merges them).
 - Read [architecture.md](architecture.md) once the bot is real enough
   that you want to know what's happening underneath.
 

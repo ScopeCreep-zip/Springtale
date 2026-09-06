@@ -43,9 +43,6 @@ export type {
   SendOutcome,
   SendRequest,
   Severity,
-  Template,
-  TemplateFile,
-  WriteReport,
 } from "./operations";
 export type { Rule, RuleId, RuleStatus } from "./rule";
 export type { Session } from "./session";

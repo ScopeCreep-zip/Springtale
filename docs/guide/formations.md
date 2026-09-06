@@ -175,9 +175,9 @@ three concrete formation shapes:
 - **Telegram bot** (§7.3) — responder + memory-keeper + moderator,
   formation per incoming message. Showcases consensus gating.
 
-Each ships as a `springtale new <template>` starter: `cli-runner`,
-`llm-swarm`, `telegram-bot`. See [`templates.md`](templates.md) for the
-full 14-template menu.
+Each ships as a recipe: browse the library in the colony UI or see
+[`recipes.md`](recipes.md). `springtale init` gives you the bare
+project; a recipe fills it in.
 
 ## Advanced topics
 

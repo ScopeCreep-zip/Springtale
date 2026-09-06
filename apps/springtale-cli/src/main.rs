@@ -29,16 +29,8 @@ async fn main() -> Result<()> {
     };
 
     match cli.command {
-        Command::Init { template } => {
-            if let Some(tpl) = template.as_deref() {
-                // Plan §16.4: `springtale init cli-runner && springtale run`.
-                // Scaffold first, then run the vault/DB wizard.
-                commands::new::run(tpl)?;
-            }
+        Command::Init => {
             commands::init::run().await?;
-        }
-        Command::New { template } => {
-            commands::new::run(&template)?;
         }
         Command::Doctor => {
             commands::doctor::run(&pass_opts).await?;
