@@ -12,10 +12,10 @@
 use serde::Serialize;
 use specta::Type;
 use springtale_cooperation::AutonomyLevel;
+use springtale_cooperation::utterance::Utterance;
 use springtale_core::rule::action::Action;
 use springtale_core::rule::types::Rule;
 use springtale_store::StorageBackend;
-use springtale_store::schema::events::{EventEntry, EventFilter};
 
 use crate::error::OperationError;
 use crate::state::RuntimeState;
@@ -254,48 +254,49 @@ fn infer_role(trigger_type: &str) -> &'static str {
     }
 }
 
-/// Compute agent activity from recent events.
+/// The resting activity: an agent that has said nothing unexpired.
 ///
-/// Moved from frontend `ColonyCanvas.tsx` — event interpretation
-/// belongs in the backend, not derived client-side.
-fn compute_activity(
-    connector_name: &Option<String>,
-    trigger_type: &str,
-    status: &str,
-    events: &[EventEntry],
-) -> &'static str {
-    if status != "enabled" {
-        return "idle";
-    }
+/// Same value as the canvas's `SILENT_ACTIVITY`
+/// (`tauri/packages/ui/src/dashboard/activity.ts`).
+pub const SILENT_ACTIVITY: &str = "listening";
 
-    // Find the most recent event matching this agent's connector or trigger
-    let latest = events.iter().find(|e| {
-        connector_name
-            .as_ref()
-            .is_some_and(|cn| e.connector_name == *cn)
-            || e.trigger_type == trigger_type
-    });
+/// An agent's activity is what it SAID — the newest unexpired utterance
+/// in the cooperation ring (plan §1.15 F).
+///
+/// This is the same derivation the canvas does over the same ring
+/// (`activityOf` in `dashboard/activity.ts`), done once at fetch time so
+/// a polling client and a streaming one agree. Deriving it from the event
+/// log instead made the server disagree with every browser: the log knows
+/// what ran, not what the agent is saying about it.
+///
+/// Matching follows the canvas: a solo agent by the `rule_id` its
+/// utterances are stamped with, a formation member by its cooperation
+/// `agent_id`. `utterances` is the ring, newest first; `now` is the
+/// colony tick clock, and an utterance is live while
+/// `seq + ttl_ticks > now`.
+fn activity_from_utterances(
+    utterances: &[Utterance],
+    rule_id: &str,
+    agent_id: Option<&str>,
+    now: u64,
+) -> Option<String> {
+    utterances
+        .iter()
+        .find(|u| {
+            let matches_rule = u.rule_id.is_some_and(|r| r.0.to_string() == rule_id);
+            let matches_agent = match (u.agent, agent_id) {
+                (Some(a), Some(want)) => a.0.to_string() == want,
+                _ => false,
+            };
+            (matches_rule || matches_agent) && u.seq.0.saturating_add(u64::from(u.ttl_ticks)) > now
+        })
+        .map(|u| u.utterance.name().to_owned())
+}
 
-    let Some(event) = latest else {
-        return "waiting";
-    };
-
-    let age_ms = (chrono::Utc::now() - event.timestamp).num_milliseconds();
-    if age_ms < 5_000 {
-        // Check for error indicators in the action text
-        let action_lower = event.action_taken.to_lowercase();
-        if action_lower.contains("error")
-            || action_lower.contains("fail")
-            || action_lower.contains("block")
-        {
-            return "error";
-        }
-        return "firing";
-    }
-    if age_ms < 60_000 {
-        return "active";
-    }
-    "waiting"
+/// The colony tick clock as the ring knows it: the newest sequence any
+/// utterance carries. An empty ring has no clock, so nothing is expired.
+fn ring_now(utterances: &[Utterance]) -> u64 {
+    utterances.iter().map(|u| u.seq.0).max().unwrap_or(0)
 }
 
 /// Autonomy level to its L0–L3 index.
@@ -311,6 +312,10 @@ fn autonomy_to_index(level: AutonomyLevel) -> u8 {
 /// Live formation member data — used to enrich AgentState with
 /// real cooperation data when formations are active.
 struct LiveAgentEnrichment {
+    /// Cooperation-layer agent id — how a formation member's utterances
+    /// are addressed. Without it the server could not match a member's
+    /// utterance and disagreed with the browser about its activity.
+    agent_id: String,
     attention_load: f32,
     liveness: f32,
     health_state: String,
@@ -364,15 +369,11 @@ pub async fn list_agent_states(state: &RuntimeState) -> Result<Vec<AgentState>, 
             .collect()
     };
 
-    // Fetch recent events (last 200) for activity computation
-    let events = state
-        .store
-        .list_events(&EventFilter {
-            limit: Some(200),
-            ..Default::default()
-        })
-        .await
-        .map_err(OperationError::Store)?;
+    // Activity comes from the utterance ring, not the event log: what an
+    // agent is doing is what it last said, and the canvas derives it from
+    // the same ring (plan §1.15 F).
+    let utterances = crate::utterance_ring::recent(&state.utterances).await;
+    let now = ring_now(&utterances);
 
     // Fetch all config rows once; autonomy is keyed `autonomy:agent:{rule_id}`.
     let config = state
@@ -393,6 +394,7 @@ pub async fn list_agent_states(state: &RuntimeState) -> Result<Vec<AgentState>, 
                 enrichment_map.insert(
                     detail.connector_name.clone(),
                     LiveAgentEnrichment {
+                        agent_id: detail.agent_id.clone(),
                         attention_load: detail.attention_load,
                         liveness: match detail.liveness.as_str() {
                             "Alive" => 1.0,
@@ -417,7 +419,21 @@ pub async fn list_agent_states(state: &RuntimeState) -> Result<Vec<AgentState>, 
                 .and_then(|(_, v)| parse_level_opt(v))
                 .unwrap_or(AutonomyLevel::ActAutonomously);
 
-            let activity = compute_activity(&r.connector_name, &r.trigger_type, &r.status, &events);
+            let enrichment = r
+                .connector_name
+                .as_ref()
+                .and_then(|cn| enrichment_map.get(cn));
+            let activity = if r.status == "enabled" {
+                activity_from_utterances(
+                    &utterances,
+                    &r.id,
+                    enrichment.map(|e| e.agent_id.as_str()),
+                    now,
+                )
+                .unwrap_or_else(|| SILENT_ACTIVITY.to_owned())
+            } else {
+                "idle".to_owned()
+            };
             let task_display = if activity == "idle" {
                 "Idle".to_owned()
             } else {
@@ -432,12 +448,6 @@ pub async fn list_agent_states(state: &RuntimeState) -> Result<Vec<AgentState>, 
                 _ => "AUTONOMOUS",
             }
             .to_owned();
-
-            // Enrich from live formation data when available
-            let enrichment = r
-                .connector_name
-                .as_ref()
-                .and_then(|cn| enrichment_map.get(cn));
 
             // Live members report their real fuel budget; rules outside a
             // live formation have no budget, so enabled reads full and
@@ -458,7 +468,7 @@ pub async fn list_agent_states(state: &RuntimeState) -> Result<Vec<AgentState>, 
                 action_connector: action_targets.get(&r.id).cloned(),
                 role: infer_role(&r.trigger_type).to_owned(),
                 fuel,
-                activity: activity.to_owned(),
+                activity,
                 autonomy: autonomy_idx,
                 autonomy_label,
                 fuel_status,
@@ -542,6 +552,64 @@ mod tests {
         assert_eq!(fuel_status_label(50), "warn");
         assert_eq!(fuel_status_label(21), "warn");
         assert_eq!(fuel_status_label(20), "critical");
+    }
+
+    /// Fix 4 — agent state activity comes from an utterance, not from the
+    /// event log. A solo agent matches on its rule id, a formation member
+    /// on its cooperation agent id, and an expired ring leaves the agent
+    /// `listening`.
+    #[test]
+    fn test_activity_comes_from_the_utterance_ring() {
+        use springtale_cooperation::TickId;
+        use springtale_cooperation::utterance::{UtteranceDefs, UtteranceKind, emit_solo};
+
+        let defs = UtteranceDefs::default();
+        let rule = springtale_core::rule::RuleId::new();
+        let other_rule = springtale_core::rule::RuleId::new();
+        let mut ring: Vec<Utterance> = Vec::new();
+        // Newest first, as the ring stores them.
+        let mut firing = emit_solo(None, &defs, rule, TickId(10), UtteranceKind::Firing)
+            .expect("firing has a def");
+        let member = springtale_cooperation::cadence::AgentId::new();
+        let mut member_failed =
+            emit_solo(None, &defs, other_rule, TickId(10), UtteranceKind::Failed)
+                .expect("failed has a def");
+        member_failed.rule_id = None;
+        member_failed.agent = Some(member);
+        ring.push(member_failed);
+        ring.push(firing.clone());
+
+        let now = ring_now(&ring);
+        assert_eq!(now, 10);
+        assert_eq!(
+            activity_from_utterances(&ring, &rule.0.to_string(), None, now).as_deref(),
+            Some("firing")
+        );
+        assert_eq!(
+            activity_from_utterances(
+                &ring,
+                &other_rule.0.to_string(),
+                Some(&member.0.to_string()),
+                now
+            )
+            .as_deref(),
+            Some("failed")
+        );
+        // Someone else's utterance is not this agent's activity.
+        assert!(
+            activity_from_utterances(
+                &ring,
+                &springtale_core::rule::RuleId::new().0.to_string(),
+                None,
+                now
+            )
+            .is_none()
+        );
+        // Expired: `seq + ttl_ticks <= now` — the agent falls back to
+        // `listening`.
+        firing.ttl_ticks = 1;
+        let expired = vec![firing];
+        assert!(activity_from_utterances(&expired, &rule.0.to_string(), None, 99).is_none());
     }
 }
 
