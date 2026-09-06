@@ -2,8 +2,12 @@ import { createElementSize } from "@solid-primitives/resize-observer";
 import type { AvailableConnector, ConnectorSchema } from "@springtale/types";
 import type { Component } from "solid-js";
 import { createEffect, createSignal, For, Show } from "solid-js";
+import { activityOf } from "../dashboard/activity";
 import type { EventItem } from "../dashboard/model";
+import type { Utterance } from "../dashboard/types";
+import type { Locale } from "../i18n/types";
 import { getAgentPosition, getConnectorPosition, getFormationBounds } from "./geometry";
+import { MoteStack } from "./MoteStack";
 import type {
   ColonyAgent,
   ColonyConnection,
@@ -28,6 +32,13 @@ export interface ColonyCanvasProps {
   onClearSelection: () => void;
   onConnectorDrag: (id: string, x: number, y: number) => void;
   onHatch?: () => void;
+  // Plan 3.4 — motes. Locale and text direction come from useI18n() inside.
+  utterances: Utterance[];
+  colonyNow: number;
+  agentToConnector: Record<string, string>;
+  framesFor: (u: Utterance, locale: Locale) => string[];
+  roleOf: (agentId: string) => string | undefined;
+  viewScale?: number; // 3.5 supplies it; 1 until then
   // OOBE TeamBuilder props
   availableConnectors?: AvailableConnector[];
   connectorSchemas?: ConnectorSchema[];
@@ -35,45 +46,12 @@ export interface ColonyCanvasProps {
   onParseRule?: (intent: string) => Promise<Record<string, unknown>>;
 }
 
-// ── Simlish vocabulary — maps to real agent activity states ──
-const SIMLISH_FIRING = ["zib!", "klik!", "pip!"];
-const SIMLISH_ERROR = ["vrm!", "nrt!", "!!"];
-const SIMLISH_WAITING = ["hrmm...", "~", "..."];
-const SIMLISH_ACTIVE = ["bzzk!", "snrf...", "pip!"];
-
-function getSimlish(activity: string): { text: string; type: "normal" | "urgent" } | null {
-  switch (activity) {
-    case "firing":
-      return {
-        text: SIMLISH_FIRING[Math.floor(Math.random() * SIMLISH_FIRING.length)] ?? "zib!",
-        type: "normal",
-      };
-    case "error":
-      return {
-        text: SIMLISH_ERROR[Math.floor(Math.random() * SIMLISH_ERROR.length)] ?? "vrm!",
-        type: "urgent",
-      };
-    case "waiting":
-      return {
-        text: SIMLISH_WAITING[Math.floor(Math.random() * SIMLISH_WAITING.length)] ?? "...",
-        type: "normal",
-      };
-    case "active":
-      return {
-        text: SIMLISH_ACTIVE[Math.floor(Math.random() * SIMLISH_ACTIVE.length)] ?? "bzzk!",
-        type: "normal",
-      };
-    default:
-      return null;
-  }
-}
-
 /**
  * Colony Canvas — spatial diorama rendering.
  *
  * Nodes=connectors, agents=porters, strands=pipelines.
  * Click to select, drag to reposition nodes.
- * Agent simlish bubbles reflect real activity state.
+ * Agent motes render the cooperation ring's utterances (MoteStack).
  */
 export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
   // ── Position helpers (delegate to shared geometry module) ──
@@ -118,43 +96,6 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
       setWalkingAgents(nextWalking);
       // Clear walking state after CSS transition completes (800ms matches transition duration)
       setTimeout(() => setWalkingAgents(new Set<string>()), 850);
-    }
-  });
-
-  // ── Agent activity state — comes from backend ──────────
-  const getAgentActivity = (
-    agent: ColonyAgent,
-  ): "firing" | "error" | "active" | "waiting" | "idle" => {
-    return (agent.activity ?? "waiting") as "firing" | "error" | "active" | "waiting" | "idle";
-  };
-
-  // ── Simlish bubbles (event-driven, not random) ─────────
-  const [bubbles, setBubbles] = createSignal<
-    Record<string, { text: string; type: string; key: number }>
-  >({});
-  let bubbleKey = 0;
-  const prevActivities: Record<string, string> = {};
-
-  createEffect(() => {
-    for (const agent of props.agents) {
-      const act = getAgentActivity(agent);
-      if (prevActivities[agent.id] !== act && act !== "idle") {
-        const simlish = getSimlish(act);
-        if (simlish) {
-          const key = ++bubbleKey;
-          setBubbles((prev) => ({ ...prev, [agent.id]: { ...simlish, key } }));
-          setTimeout(
-            () =>
-              setBubbles((prev) => {
-                const next = { ...prev };
-                if (next[agent.id]?.key === key) delete next[agent.id];
-                return next;
-              }),
-            3000,
-          );
-        }
-      }
-      prevActivities[agent.id] = act;
     }
   });
 
@@ -407,18 +348,12 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                 }}
                 data-formation-id={formation.id}
               >
+                {/* Plumbob — a CSS square in the formation colour (four momentum
+                    tiers, as The Sims' four mood colours). The text badge stays
+                    for screen readers. */}
+                <span class="colony-plumbob" aria-hidden="true" />
                 <span>{formation.name}</span>
                 <span class="colony-formation-chip px-1 font-bold">{formation.momentumLabel}</span>
-                {/* W7 — live cascade streak (real `cascade_hit.streak`),
-                    shown only while the cascade is current. */}
-                <Show when={formation.cascadeStreak}>
-                  <span
-                    class="colony-formation-chip is-cascade px-1 font-bold"
-                    title={`Cascade streak ${formation.cascadeStreak}`}
-                  >
-                    {`⚡${formation.cascadeStreak}`}
-                  </span>
-                </Show>
               </div>
               {/* Rally pips on the ring — a faithful read of the formation's
                   real rally-token budget (`rally_tokens`/`rally_max` from the
@@ -426,6 +361,26 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                   = an available token, hollow = spent. Hidden entirely when a
                   formation has no rally budget, so this never draws decoration
                   without backing state. */}
+              {/* Formation-level motes (rally, cascade, down…) on the ring, above the label. */}
+              <div
+                class="pointer-events-none absolute z-[3]"
+                style={{
+                  left: `${bounds().cx}%`,
+                  top: `calc(${bounds().cy}% - ${bounds().ry}% - 18px)`,
+                }}
+              >
+                <MoteStack
+                  agent={{ id: formation.id, connectorId: null } as ColonyAgent}
+                  utterances={props.utterances.filter(
+                    (u) => u.formation_id === formation.id && !u.agent && !u.rule_id,
+                  )}
+                  now={props.colonyNow}
+                  agentToConnector={{}}
+                  framesFor={props.framesFor}
+                  roleOf={props.roleOf}
+                  viewScale={props.viewScale ?? 1}
+                />
+              </div>
               <Show when={formation.rallyMax > 0}>
                 <div
                   class="pointer-events-none absolute z-[3] flex gap-0.5"
@@ -557,7 +512,8 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
         {(agent) => {
           const pos = () => agentPos(agent);
           const spriteClass = ROLE_SPRITES[agent.role];
-          const act = () => getAgentActivity(agent);
+          const act = () =>
+            activityOf(agent, props.utterances, props.colonyNow, props.agentToConnector);
           const isSelected = () =>
             props.selection.id === agent.id && props.selection.type === "agent";
 
@@ -575,25 +531,26 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
               }}
               data-agent-id={agent.id}
             >
-              {/* Simlish bubble — appears when activity state changes */}
-              <Show when={bubbles()[agent.id]}>
-                {(b) => (
-                  <div class={`colony-bubble is-${b().type === "urgent" ? "urgent" : "normal"}`}>
-                    {b().text}
-                  </div>
-                )}
-              </Show>
+              <MoteStack
+                agent={agent}
+                utterances={props.utterances}
+                now={props.colonyNow}
+                agentToConnector={props.agentToConnector}
+                framesFor={props.framesFor}
+                roleOf={props.roleOf}
+                viewScale={props.viewScale ?? 1}
+              />
 
               {/* Overhead info */}
               <div class="colony-agent-overhead pointer-events-none absolute flex flex-col items-center gap-px">
                 <span class="colony-agent-glyph colony-text-sm" aria-hidden="true">
-                  {act() === "error"
+                  {act() === "failed" || act() === "down"
                     ? "!!"
                     : act() === "firing"
                       ? "!"
                       : act() === "idle"
                         ? "-"
-                        : act() === "waiting"
+                        : act() === "listening"
                           ? "~"
                           : "*"}
                 </span>

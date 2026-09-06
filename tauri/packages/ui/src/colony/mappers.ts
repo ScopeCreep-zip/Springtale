@@ -69,7 +69,7 @@ export function mapAgents(rules: RuleItem[], agentStates: AgentState[] = []): Co
       task: state?.task_display ?? "",
       status: r.status === "enabled" ? ("ok" as const) : ("idle" as const),
       pipeline: r.triggerType,
-      activity: state?.activity ?? "waiting",
+      activity: state?.activity,
       attentionLoad: state?.attention_load ?? 0,
       liveness: state?.liveness ?? 1,
       healthState: state?.health_state ?? "healthy",

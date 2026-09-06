@@ -25,6 +25,7 @@ import type {
   WriteReport,
 } from "@springtale/types";
 import type { ConditionDef } from "../ConditionEditor";
+import type { Locale } from "../i18n/types";
 import type { ConnectorStatus, EventItem, RuleDetail, RuleItem, SwarmInfo } from "./model";
 
 // Re-export types that originated in @springtale/types but are consumed
@@ -1001,6 +1002,14 @@ export interface DashboardState {
    * BottomPanel formation event log (per-formation filter).
    */
   cooperationEvents: () => CooperationEventEnvelope[];
+  /** Plan 3.4 — utterance events on the ring, newest first. */
+  utterances: () => Utterance[];
+  /** Newest tick any utterance was said on; motes expire against it. */
+  colonyNow: () => number;
+  formationDetails: () => FormationDetail[];
+  agentToConnector: () => Record<string, string>;
+  roleOf: (agentId: string) => string | undefined;
+  framesFor: (u: Utterance, locale: Locale) => string[];
   /** Plan 6.7 — pending approvals, reloaded on `approval_required` events and after each resolve. */
   pendingApprovals: () => ApprovalInfo[];
   refreshApprovals: () => Promise<void>;

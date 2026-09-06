@@ -29,7 +29,7 @@ export interface ColonyAgent {
   task: string;
   status: "ok" | "warn" | "idle" | "error";
   pipeline: string | null;
-  /** Activity state from backend: "firing" | "error" | "active" | "waiting" | "idle". */
+  /** Backend's fetch-time `compute_activity`; seeds `activityOf` only until the agent's first utterance. */
   activity?: string;
   /** Attention load from cooperation layer (0.0-1.0). */
   attentionLoad: number;
@@ -225,6 +225,16 @@ export const ROLE_SPRITES: Record<string, string> = {
   guard: "sprite-guard",
   analyst: "sprite-analyst",
   sentinel: "sprite-sentinel",
+};
+/** Role → glyph in "Springtale Symbols" (the shipped Nerd Font subset), for
+ *  the `yield` mote: the icon of the teammate you are thinking of. Codepoints
+ *  mirror `utterance/defs.rs` and are checked by `springtale cooperation glyphs`. */
+export const ROLE_GLYPHS: Record<string, string> = {
+  scout: "\u{f00a5}", // nf-md-binoculars
+  worker: "\u{f08ea}", // nf-md-hammer
+  guard: "\u{f0498}", // nf-md-shield
+  analyst: "\u{f0349}", // nf-md-magnify
+  sentinel: "\u{f0208}", // nf-md-eye
 };
 export const ROLE_COLORS: Record<string, string> = {
   scout: "var(--color-role-scout)",

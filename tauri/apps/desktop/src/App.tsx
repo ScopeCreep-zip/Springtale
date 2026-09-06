@@ -1381,6 +1381,11 @@ export const App = () => {
             agents={agents()}
             connections={connections()}
             formations={formations()}
+            utterances={db.utterances()}
+            colonyNow={db.colonyNow()}
+            agentToConnector={db.agentToConnector()}
+            framesFor={db.framesFor}
+            roleOf={db.roleOf}
             events={db.events()}
             selection={selection()}
             onSelectConnector={(id) => {

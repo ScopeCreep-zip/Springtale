@@ -147,5 +147,17 @@
   "canvas.connectionLost": "Connection lost. Reconnecting...",
   "events.noAuthToken": "No auth token — configure in Settings first.",
   "vault.create": "Create Vault",
-  "vault.createDesc": "No vault found. Create one to protect your data with a passphrase."
+  "vault.createDesc": "No vault found. Create one to protect your data with a passphrase.",
+
+  "utter.firing": "ルール発火",
+  "utter.working": "作業中",
+  "utter.listening": "待機中",
+  "utter.idle": "無効",
+  "utter.failed": "アクション失敗",
+  "utter.down": "メンバー停止",
+  "utter.claimed": "タスクを担当",
+  "utter.yield": "仲間に譲った",
+  "utter.helping": "仲間を手伝い中",
+  "utter.rally": "集合",
+  "utter.cascade": "連鎖警告"
 }
