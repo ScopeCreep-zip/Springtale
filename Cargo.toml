@@ -242,7 +242,7 @@ crossbeam-deque  = "0.8"
 dyn-clone        = "1"          # DynClone supertrait for Box<dyn DynamicRole>
 chitchat         = "0.10"       # §8 scuttlebutt gossip for awareness
 foca             = { version = "1.0", default-features = false, features = ["std", "tracing", "bincode-codec"] }  # §8 SWIM liveness
-bincode          = "2"          # foca 1.0's BincodeCodec wire format (matches foca's internal dep)
+bincode          = "3"          # foca 1.0's BincodeCodec wire format (matches foca's internal dep)
 
 # ── Concurrency ────────────────────────────────────────────────────────────────
 dashmap          = "6.1"
