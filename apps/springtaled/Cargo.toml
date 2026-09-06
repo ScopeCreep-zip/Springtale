@@ -5,6 +5,13 @@ edition.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[features]
+default = []
+# Test-only fixture (`src/test_harness`), shared by the springtaled and
+# springtale-cli test suites. Never in `default`: a normal build must not
+# compile an in-memory AppState builder into the daemon.
+test-harness = ["dep:arc-swap"]
+
 [dependencies]
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
@@ -53,9 +60,13 @@ twilight-model = { workspace = true }
 irc = { workspace = true }
 secrecy = { workspace = true }
 rand = { workspace = true }
+arc-swap = { workspace = true, optional = true }
 nostr-sdk = { workspace = true }
 
 [dev-dependencies]
+# Self dev-dependency: turns on `test-harness` for this crate's own test
+# targets without putting it in `default`.
+springtaled = { path = ".", features = ["test-harness"] }
 tokio = { workspace = true, features = ["test-util"] }
 http-body-util = "0.1"
 arc-swap = { workspace = true }

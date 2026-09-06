@@ -5,158 +5,23 @@
 
 #![allow(clippy::unwrap_used, clippy::expect_used)]
 
-use std::collections::HashMap;
-use std::sync::Arc;
-use std::sync::atomic::AtomicBool;
-
 use axum::Router;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
-use tokio::sync::{Mutex, RwLock, mpsc};
 use tower::ServiceExt;
 
-use springtale_connector::capability::grant::CapabilityPolicy;
-use springtale_connector::registry::store::ConnectorRegistry;
-use springtale_core::rule::engine::RuleEngine;
-use springtale_scheduler::cron::executor::CronExecutor;
-use springtale_scheduler::watcher::fs_watcher::FsWatcher;
-use springtale_store::backend::sqlite::SqliteBackend;
-use springtaled::api::build_router;
-use springtaled::api::state::AppState;
-
-use springtale_crypto::token::derive_api_token_hash;
+use springtaled::test_harness::TestApp;
 
 /// Build a test router with in-memory state. Returns (Router, hex-encoded token).
+///
+/// The construction lives in `springtaled::test_harness` so the CLI suite
+/// can boot the same state over a real socket — one copy, not two.
 ///
 /// The `ready` flag defaults to `true`. Pass `false` for tests that need
 /// the daemon to appear as still booting.
 fn build_test_app(ready: bool) -> (Router, String) {
-    let store: Arc<dyn springtale_store::StorageBackend> =
-        Arc::new(SqliteBackend::open_in_memory().unwrap());
-    let registry = Arc::new(RwLock::new(ConnectorRegistry::new(
-        CapabilityPolicy::AllowAll,
-    )));
-    let engine = Arc::new(RwLock::new(RuleEngine::new()));
-
-    let passphrase = b"test-passphrase";
-    let api_token_hash = derive_api_token_hash(passphrase);
-    let token_hex = hex::encode(api_token_hash);
-
-    let (trigger_tx, _trigger_rx) = mpsc::channel(256);
-    let cron = Arc::new(Mutex::new(CronExecutor::new(trigger_tx.clone())));
-    let fs_watcher = Arc::new(Mutex::new(FsWatcher::new(trigger_tx.clone()).unwrap()));
-
-    let ready_flag = Arc::new(AtomicBool::new(ready));
-
-    let sentinel = Arc::new(springtale_sentinel::Sentinel::new(
-        springtale_sentinel::SentinelConfig::default(),
-        store.clone(),
-    ));
-
-    let ai_adapter = Arc::new(arc_swap::ArcSwap::from(Arc::new(
-        Arc::new(springtale_ai::NoopAdapter) as Arc<dyn springtale_ai::AiAdapter>,
-    )));
-
-    let (event_tx, _) = tokio::sync::broadcast::channel(256);
-    let (bot_msg_tx, _bot_msg_rx) = mpsc::channel(256);
-    let (chat_tx, _chat_rx) = tokio::sync::broadcast::channel(256);
-    let trigger_registry =
-        springtale_runtime::TriggerRegistry::new(trigger_tx.clone(), store.clone());
-
-    let heartbeat_monitor = std::sync::Arc::new(tokio::sync::Mutex::new(
-        springtale_scheduler::HeartbeatMonitor::new(0, trigger_tx.clone()),
-    ));
-
-    let canvas = std::sync::Arc::new(tokio::sync::RwLock::new(
-        springtale_core::canvas::CanvasState::default(),
-    ));
-    let (canvas_tx, _rx) = tokio::sync::broadcast::channel(64);
-    let (notification_tx, _notif_rx) = tokio::sync::broadcast::channel(256);
-    let (cooperation_tx, _coop_rx) = tokio::sync::broadcast::channel(512);
-    let formation_gossip: std::sync::Arc<dyn springtale_cooperation::gossip::FormationGossipBus> =
-        springtale_cooperation::gossip::InMemoryFormationGossipBus::new();
-    let knowledge_store: std::sync::Arc<dyn springtale_cooperation::memory::GlobalKnowledgeStore> =
-        springtale_cooperation::memory::InMemoryKnowledgeStore::new();
-
-    let wasm_engine = std::sync::Arc::new(
-        springtale_connector::wasm::WasmEngine::new(
-            springtale_connector::wasm::SandboxLimits::default(),
-        )
-        .expect("WASM engine creation"),
-    );
-    let wasm_tier_cache = std::sync::Arc::new(
-        springtale_connector::wasm::WasmTierCache::new(wasm_engine.clone())
-            .expect("WASM tier cache init"),
-    );
-
-    let (formation_cmd_tx, _formation_cmd_rx) =
-        mpsc::channel::<springtale_cooperation::command::FormationCommand>(32);
-
-    let gossip_store: std::sync::Arc<dyn springtale_cooperation::awareness::GossipStore> =
-        std::sync::Arc::new(springtale_cooperation::awareness::InMemoryGossipStore::new());
-    let capability_bridge = springtale_runtime::CapabilityBridge::new(registry.clone());
-    let role_registry =
-        std::sync::Arc::new(springtale_cooperation::role::RoleRegistry::with_builtins());
-    let runtime = springtale_runtime::RuntimeState {
-        store,
-        registry,
-        engine,
-        ai_adapter,
-        sentinel,
-        wasm_engine,
-        wasm_tier_cache,
-        capability_bridge,
-        role_registry,
-        canvas,
-        canvas_tx,
-        notification_tx,
-        event_tx: event_tx.clone(),
-        trigger_registry: std::sync::Arc::new(std::sync::OnceLock::new()),
-        cooperation_tx,
-        utterances: Default::default(),
-        utterance_defs: Default::default(),
-        cadence_tick: Default::default(),
-        formation_cmd_tx,
-        live_formations: None,
-        gossip_store,
-        formation_gossip,
-        knowledge_store,
-        // Single-process test fixture — no SWIM node.
-        swim_node: None,
-        // In-memory store — no runtime lock.
-        _lock: None,
-    };
-
-    // EmbeddedScheduler replaced the old `springtaled::scheduler::AppScheduler`
-    // when scheduling moved into the runtime crate so the desktop app could
-    // share it. The producer is a stub — integration tests don't drive the
-    // job consumer end-to-end, only the API surface.
-    let (job_tx, _job_rx) = mpsc::channel::<springtale_scheduler::Job>(16);
-    let producer = Arc::new(springtale_scheduler::JobProducer::new(job_tx));
-    let scheduler = springtale_runtime::EmbeddedScheduler {
-        cron,
-        fs_watcher,
-        trigger_tx: trigger_tx.clone(),
-        producer,
-    };
-
-    let state = AppState {
-        runtime,
-        api_token_hash,
-        ready: ready_flag,
-        trigger_tx,
-        scheduler,
-        rate_limit_per_sec: 1000,
-        event_tx,
-        heartbeat_monitor,
-        bot_msg_tx,
-        trigger_registry,
-        chat_tx,
-        stream_tickets: Arc::new(Mutex::new(HashMap::new())),
-    };
-
-    let router = build_router(state);
-    (router, token_hex)
+    let app = TestApp::build(ready);
+    (app.router, app.token_hex)
 }
 
 /// Helper: send a request through the router.
@@ -810,6 +675,158 @@ async fn test_stream_ticket_is_single_use() {
     assert_eq!(
         stream_status(router.clone(), req).await,
         StatusCode::UNAUTHORIZED
+    );
+}
+
+// ────────────────────────────────────────────────────────────────────────────────
+// Data export / import / purge
+// ────────────────────────────────────────────────────────────────────────────────
+
+/// The rule body used by the data round-trip tests.
+fn sample_rule(name: &str) -> serde_json::Value {
+    serde_json::json!({
+        "name": name,
+        "description": "data round-trip fixture",
+        "status": "enabled",
+        "version": 1,
+        "trigger": { "type": "Webhook", "path": "my-hook" },
+        "conditions": [],
+        "actions": [ { "type": "SendMessage", "text": "hello" } ]
+    })
+}
+
+/// The stored data as `POST /data/export` sees it.
+///
+/// Deliberately *not* `GET /rules`: that answers from the running rule
+/// engine, so it is not proof that a row left the store. The export is
+/// the store's own view, which is what purge and import act on.
+async fn export_snapshot(router: &Router, token: &str) -> String {
+    let req = Request::post("/data/export")
+        .header("Authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, body) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::OK);
+    body.to_string()
+}
+
+/// `POST /data/import` restores exactly what `POST /data/export` produced.
+#[tokio::test]
+async fn test_data_export_import_round_trips() {
+    let (router, token) = build_test_app(true);
+
+    let create = Request::post("/rules")
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&sample_rule("round-trip-rule")).unwrap(),
+        ))
+        .unwrap();
+    let (status, _) = send(router.clone(), create).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    // Export the snapshot.
+    let req = Request::post("/data/export")
+        .header("Authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, snapshot) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        snapshot.to_string().contains("round-trip-rule"),
+        "export did not capture the rule: {snapshot}"
+    );
+
+    // Wipe, so the import has something to restore.
+    let req = Request::post("/data/purge")
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(r#"{"confirm":true}"#))
+        .unwrap();
+    let (status, body) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["purged"], true);
+    assert!(
+        !export_snapshot(&router, &token)
+            .await
+            .contains("round-trip-rule"),
+        "purge left the rule behind"
+    );
+
+    // Import the snapshot back.
+    let req = Request::post("/data/import")
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(serde_json::to_vec(&snapshot).unwrap()))
+        .unwrap();
+    let (status, _stats) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::OK);
+
+    assert!(
+        export_snapshot(&router, &token)
+            .await
+            .contains("round-trip-rule"),
+        "import did not restore the exported rule"
+    );
+}
+
+/// Purge is destructive, so the confirmation is part of the wire format:
+/// no body and `confirm: false` are both refused.
+#[tokio::test]
+async fn test_data_purge_requires_confirmation() {
+    let (router, token) = build_test_app(true);
+
+    let create = Request::post("/rules")
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&sample_rule("survives-refused-purge")).unwrap(),
+        ))
+        .unwrap();
+    let (status, _) = send(router.clone(), create).await;
+    assert_eq!(status, StatusCode::CREATED);
+
+    // No body at all — the extractor refuses before the handler runs.
+    let req = Request::post("/data/purge")
+        .header("Authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, _) = send(router.clone(), req).await;
+    assert!(
+        status.is_client_error(),
+        "purge with no confirmation should be refused, got {status}"
+    );
+
+    // Explicit `false` — the handler's own 400.
+    let req = Request::post("/data/purge")
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(r#"{"confirm":false}"#))
+        .unwrap();
+    let (status, _) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+
+    assert!(
+        export_snapshot(&router, &token)
+            .await
+            .contains("survives-refused-purge"),
+        "a refused purge must not delete anything"
+    );
+
+    // With the confirmation it goes through.
+    let req = Request::post("/data/purge")
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(r#"{"confirm":true}"#))
+        .unwrap();
+    let (status, body) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body["purged"], true);
+    assert!(
+        !export_snapshot(&router, &token)
+            .await
+            .contains("survives-refused-purge"),
+        "confirmed purge should empty the store"
     );
 }
 

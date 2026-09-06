@@ -257,6 +257,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/bot/memory", get(bot::memory))
         // Data management
         .route("/data/export", post(data::export_data))
+        .route("/data/import", post(data::import_data))
+        .route("/data/purge", post(data::purge_data))
         // Memory management
         .route("/memory/audit", post(memory::audit_memory))
         .route("/memory/compact", post(memory::compact_memory))

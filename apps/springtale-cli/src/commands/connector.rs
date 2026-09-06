@@ -1,65 +1,56 @@
-use anyhow::Result;
-use tabled::{Table, Tabled};
+//! `springtale connector` — connector management, over the daemon.
+//!
+//! `sign` is the one local verb: it signs a manifest file with the
+//! local identity from the vault and never touches the daemon.
 
-use springtale_store::backend::sqlite::SqliteBackend;
+use anyhow::Result;
+use serde_json::{Value, json};
 
 use crate::cli::ConnectorAction;
+use crate::client::Client;
 use crate::output;
 
-/// Row type for the connector list table.
-#[derive(Tabled)]
-struct ConnectorTableRow {
-    #[tabled(rename = "NAME")]
-    name: String,
-    #[tabled(rename = "VERSION")]
-    version: String,
-    #[tabled(rename = "ENABLED")]
-    enabled: bool,
-}
-
 /// Handle connector subcommands.
-pub async fn run(action: ConnectorAction, store: &SqliteBackend, json: bool) -> Result<()> {
+pub async fn run(action: ConnectorAction, json_out: bool) -> Result<()> {
+    // `sign` is a local file + vault operation with no daemon route, so
+    // it must not require a reachable daemon or an API token.
+    if let ConnectorAction::Sign { path } = &action {
+        return sign(path);
+    }
+
+    let client = Client::from_config()?;
     match action {
         ConnectorAction::List => {
-            let connectors =
-                springtale_runtime::operations::connectors::list_connectors_from_store(store)
-                    .await
-                    .map_err(|e| anyhow::anyhow!("{e}"))?;
-
-            if json {
-                output::print_json(&connectors)?;
-            } else if connectors.is_empty() {
-                println!("No connectors installed.");
-            } else {
-                let rows: Vec<ConnectorTableRow> = connectors
+            let body: Value = client.get("/connectors").await?;
+            output::emit(json_out, &body, |v| {
+                let rows = output::array(v, "connectors")
                     .iter()
-                    .map(|c| ConnectorTableRow {
-                        name: c.name.clone(),
-                        version: c.version.clone(),
-                        enabled: c.enabled,
+                    .map(|c| {
+                        vec![
+                            output::cell(c, "name"),
+                            output::cell(c, "version"),
+                            output::cell(c, "enabled"),
+                        ]
                     })
                     .collect();
-                let table = Table::new(rows).to_string();
-                println!("{table}");
-            }
+                output::rows_table(&["NAME", "VERSION", "ENABLED"], rows)
+            })?;
         }
         ConnectorAction::Enable { name } => {
-            springtale_runtime::operations::connectors::enable_connector_in_store(store, &name)
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
-            println!("Enabled connector: {name}");
+            let body: Value = client
+                .post(&format!("/connectors/{name}/enable"), &json!({}))
+                .await?;
+            output::emit(json_out, &body, |_| format!("Enabled connector: {name}"))?;
         }
         ConnectorAction::Disable { name } => {
-            springtale_runtime::operations::connectors::disable_connector_in_store(store, &name)
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
-            println!("Disabled connector: {name}");
+            let body: Value = client
+                .post(&format!("/connectors/{name}/disable"), &json!({}))
+                .await?;
+            output::emit(json_out, &body, |_| format!("Disabled connector: {name}"))?;
         }
         ConnectorAction::Remove { name } => {
-            springtale_runtime::operations::connectors::remove_connector_from_store(store, &name)
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
-            println!("Removed connector: {name}");
+            let body: Value = client.delete(&format!("/connectors/{name}")).await?;
+            output::emit(json_out, &body, |_| format!("Removed connector: {name}"))?;
         }
         ConnectorAction::Install { path } => {
             let contents = std::fs::read_to_string(&path).map_err(|e| {
@@ -67,44 +58,42 @@ pub async fn run(action: ConnectorAction, store: &SqliteBackend, json: bool) -> 
             })?;
             let manifest: springtale_connector::ConnectorManifest = toml::from_str(&contents)
                 .map_err(|e| anyhow::anyhow!("failed to parse manifest TOML: {e}"))?;
-
-            let name = springtale_runtime::operations::connectors::install_connector_to_store(
-                store, manifest,
-            )
-            .await
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
-            println!("Installed connector: {name}");
-        }
-        ConnectorAction::Sign { path } => {
-            let contents = std::fs::read_to_string(&path).map_err(|e| {
-                anyhow::anyhow!("failed to read manifest at {}: {e}", path.display())
+            let body: Value = client.post("/connectors/install", &manifest).await?;
+            output::emit(json_out, &body, |v| {
+                format!("Installed connector: {}", output::cell(v, "installed"))
             })?;
-            let mut manifest: springtale_connector::ConnectorManifest =
-                toml::from_str(&contents)
-                    .map_err(|e| anyhow::anyhow!("failed to parse manifest TOML: {e}"))?;
-            springtale_connector::manifest::verify::verify_manifest(&manifest)
-                .map_err(|e| anyhow::anyhow!("manifest invalid: {e}"))?;
-
-            let keypair = crate::commands::author::load_local_identity()?;
-            let signature = springtale_connector::manifest::sign_manifest(&mut manifest, &keypair)
-                .map_err(|e| anyhow::anyhow!("failed to sign manifest: {e}"))?;
-
-            let signed = toml::to_string_pretty(&manifest)
-                .map_err(|e| anyhow::anyhow!("failed to serialize signed manifest: {e}"))?;
-            std::fs::write(&path, signed).map_err(|e| {
-                anyhow::anyhow!("failed to write manifest at {}: {e}", path.display())
-            })?;
-
-            let pubkey_hex = hex::encode(keypair.verifying_key().to_bytes());
-            println!("Signed {}", path.display());
-            println!("  author:    {}", manifest.author);
-            println!("  pubkey:    {pubkey_hex}");
-            println!("  signature: {signature}");
-            println!(
-                "  Install verifies against `trusted-author:{}` — register it with `springtale author add {} --self`.",
-                manifest.author, manifest.author
-            );
         }
+        ConnectorAction::Sign { .. } => unreachable!("handled above"),
     }
+    Ok(())
+}
+
+/// Sign a connector manifest with the local identity, in place.
+fn sign(path: &std::path::Path) -> Result<()> {
+    let contents = std::fs::read_to_string(path)
+        .map_err(|e| anyhow::anyhow!("failed to read manifest at {}: {e}", path.display()))?;
+    let mut manifest: springtale_connector::ConnectorManifest = toml::from_str(&contents)
+        .map_err(|e| anyhow::anyhow!("failed to parse manifest TOML: {e}"))?;
+    springtale_connector::manifest::verify::verify_manifest(&manifest)
+        .map_err(|e| anyhow::anyhow!("manifest invalid: {e}"))?;
+
+    let keypair = crate::commands::author::load_local_identity()?;
+    let signature = springtale_connector::manifest::sign_manifest(&mut manifest, &keypair)
+        .map_err(|e| anyhow::anyhow!("failed to sign manifest: {e}"))?;
+
+    let signed = toml::to_string_pretty(&manifest)
+        .map_err(|e| anyhow::anyhow!("failed to serialize signed manifest: {e}"))?;
+    std::fs::write(path, signed)
+        .map_err(|e| anyhow::anyhow!("failed to write manifest at {}: {e}", path.display()))?;
+
+    let pubkey_hex = hex::encode(keypair.verifying_key().to_bytes());
+    println!("Signed {}", path.display());
+    println!("  author:    {}", manifest.author);
+    println!("  pubkey:    {pubkey_hex}");
+    println!("  signature: {signature}");
+    println!(
+        "  Install verifies against `trusted-author:{}` — register it with `springtale author add {} --self`.",
+        manifest.author, manifest.author
+    );
     Ok(())
 }

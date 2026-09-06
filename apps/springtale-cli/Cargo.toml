@@ -46,3 +46,7 @@ connector-telegram = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }
+# `tests/daemon_client.rs` runs the real CLI binary against a real
+# springtaled, which is the proof that a CLI edit is visible to a running
+# daemon (plan Â§2.2, finding 3).
+springtaled = { workspace = true, features = ["test-harness"] }
