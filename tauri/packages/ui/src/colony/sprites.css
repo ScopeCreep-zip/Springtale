@@ -396,18 +396,49 @@
     }
   }
 
-  @keyframes bubble-in {
+  /* Motes: Stardew pop-in/out, 3 steps x 20 ms; unpop plays reversed. */
+  @keyframes mote-pop {
     from {
-      transform: translateX(-50%) scale(0);
+      transform: scale(0);
     }
     to {
-      transform: translateX(-50%) scale(1);
+      transform: scale(1);
     }
   }
-  @keyframes bubble-out {
+  @keyframes mote-unpop {
+    from {
+      transform: scale(0);
+    }
     to {
+      transform: scale(1);
+    }
+  }
+  /* One frame visible at a time: on for 1/n of the cycle, then off. */
+  @keyframes mote-frame-2 {
+    0% {
+      opacity: 1;
+    }
+    50%,
+    100% {
       opacity: 0;
-      transform: translateX(-50%) translateY(-6px);
+    }
+  }
+  @keyframes mote-frame-3 {
+    0% {
+      opacity: 1;
+    }
+    33.333%,
+    100% {
+      opacity: 0;
+    }
+  }
+  @keyframes mote-frame-4 {
+    0% {
+      opacity: 1;
+    }
+    25%,
+    100% {
+      opacity: 0;
     }
   }
 

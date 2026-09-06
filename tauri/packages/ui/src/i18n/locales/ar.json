@@ -147,5 +147,17 @@
   "canvas.connectionLost": "Connection lost. Reconnecting...",
   "events.noAuthToken": "No auth token — configure in Settings first.",
   "vault.create": "Create Vault",
-  "vault.createDesc": "No vault found. Create one to protect your data with a passphrase."
+  "vault.createDesc": "No vault found. Create one to protect your data with a passphrase.",
+
+  "utter.firing": "تم تشغيل القاعدة",
+  "utter.working": "يعمل",
+  "utter.listening": "يستمع",
+  "utter.idle": "معطّل",
+  "utter.failed": "فشل الإجراء",
+  "utter.down": "العضو متوقف",
+  "utter.claimed": "استلم مهمة",
+  "utter.yield": "تنازل لزميل",
+  "utter.helping": "يساعد زميلًا",
+  "utter.rally": "تجمّع",
+  "utter.cascade": "تحذير تسلسل"
 }

@@ -87,7 +87,6 @@
   --color-sentinel-eye: #ee4444;
 
   /* UI accents */
-  --color-bubble-urgent-bg: #2a1510;
   --color-ground-texture: rgba(50, 42, 25, 0.035);
   --color-shadow-deep: #000000;
   --color-minimap-idle: #333333;
@@ -193,7 +192,6 @@
   --color-sentinel-eye: #ff3333;
 
   /* UI accents */
-  --color-bubble-urgent-bg: #2a1015;
   --color-ground-texture: rgba(0, 212, 255, 0.015);
   --color-shadow-deep: #000810;
   --color-minimap-idle: #1a3040;

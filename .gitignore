@@ -91,3 +91,7 @@ fuzz/artifacts/
 
 # ── Backup files from travel mode ─────────────────────────────────
 *.enc
+
+# ── Font sources (multi-megabyte upstream TTFs; only the subset ships) ──
+vendor/fonts/*.ttf
+vendor/fonts/*.zip

@@ -152,6 +152,23 @@ pub enum Command {
         #[command(subcommand)]
         action: AuthorAction,
     },
+    /// Cooperation primitives — the utterance def table and its glyphs.
+    Cooperation {
+        #[command(subcommand)]
+        action: CooperationAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum CooperationAction {
+    /// Print every codepoint the utterance def table renders, one `U+XXXX`
+    /// per line (the input to `scripts/build-symbol-font.sh`).
+    Glyphs {
+        /// Nerd Fonts `glyphnames.json`; fail if any named codepoint in
+        /// `utterance/defs.rs` is missing from it or has moved.
+        #[arg(long, value_name = "GLYPHNAMES_JSON")]
+        check: Option<PathBuf>,
+    },
 }
 
 #[derive(Subcommand, Debug)]

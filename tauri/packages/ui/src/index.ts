@@ -54,6 +54,7 @@ export type { MemberPickerOverlayProps } from "./colony/MemberPickerOverlay";
 export { MemberPickerOverlay } from "./colony/MemberPickerOverlay";
 export type { CreateMode, ModeSelectOverlayProps } from "./colony/ModeSelectOverlay";
 export { ModeSelectOverlay } from "./colony/ModeSelectOverlay";
+export { activityOf, MoteStack, TICK_MS, utteranceMatches } from "./colony/MoteStack";
 // Colony data mappers (DashboardState → colony visual model)
 export { mapAgents, mapFormations, mapNodes } from "./colony/mappers";
 export { PendingApprovals } from "./colony/PendingApprovals";

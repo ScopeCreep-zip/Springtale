@@ -28,6 +28,15 @@
   font-display: swap;
   src: url("./fonts/silkscreen-700.woff2") format("woff2");
 }
+/* The utterance glyphs: a subset of Symbols Nerd Font Mono built by
+   scripts/build-symbol-font.sh from the def table. Text, never images. */
+@font-face {
+  font-family: "Springtale Symbols";
+  font-style: normal;
+  font-weight: 400;
+  font-display: block; /* never flash a platform emoji while loading */
+  src: url("./fonts/springtale-symbols.woff2") format("woff2");
+}
 
 /* ================================================================
    COLONY ELEMENT STYLES
@@ -125,16 +134,129 @@
   }
 
   /* Simlish bubbles */
-  .colony-bubble {
+  /* Motes — the utterance renderer (ALIGNMENT-PLAN 1.15 / 3.4). Text glyphs
+     from the shipped "Springtale Symbols" subset, ISO 3864 shapes, no images.
+     Timings: Stardew pop-in 3 frames x 20 ms, hold 250 ms per frame; limits:
+     RimWorld Bubbles PawnMax 3, OffsetSpacing 2, ScaleMax 1.25, OpacityHover 0.2. */
+  .mote-stack {
     position: absolute;
-    bottom: calc(100% + 28px);
+    bottom: calc(100% + 4px);
     left: 50%;
-    transform: translateX(-50%);
     z-index: 20;
     pointer-events: none;
+    transform-origin: 50% 100%;
+  }
+  .mote-slot {
+    position: relative;
+    width: 32px;
+    height: 32px;
+    transform-origin: 50% 100%;
     animation:
-      bubble-in 0.15s,
-      bubble-out 2.5s 0.5s ease forwards;
+      mote-pop 60ms steps(3) both,
+      mote-unpop 60ms steps(3) reverse both var(--colony-mote-ttl);
+  }
+  .mote-slot + .mote-slot {
+    margin-top: -66px;
+    transform: translateY(-34px);
+  }
+  .mote-slot + .mote-slot + .mote-slot {
+    transform: translateY(-68px);
+  }
+
+  /* ISO 3864 shapes. Colour is never alone: shape + glyph + aria-label always travel together. */
+  .mote-shape {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    border: 2px solid var(--mote-tint);
+    background: var(--color-soil-mid);
+  }
+  .mote-shape[data-shape="square"] {
+    border-radius: 2px;
+  }
+  .mote-shape[data-shape="circle"] {
+    border-radius: 50%;
+  }
+  .mote-shape[data-shape="triangle"] {
+    border: 0;
+    background: var(--mote-tint);
+    clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  }
+  .mote-shape[data-shape="triangle"] .mote-glyph {
+    color: var(--color-soil-deep);
+    transform: translateY(15%);
+  }
+  /* Cohn: solid outline is heard by the formation, dotted is private to the reader. */
+  .mote-shape[data-carrier="thought"] {
+    border-style: dotted;
+  }
+  .mote-shape[data-carrier="none"] {
+    border: 0;
+    background: transparent;
+  }
+  .mote-shape[data-tone="calm"] {
+    --mote-tint: var(--color-text-secondary);
+  }
+  .mote-shape[data-tone="alert"] {
+    --mote-tint: var(--color-status-warn);
+  }
+  .mote-shape[data-tone="urgent"] {
+    --mote-tint: var(--color-status-error);
+  }
+
+  /* Glyphs are text in the shipped subset. Pin the family so no platform emoji font is ever consulted. */
+  .mote-frames {
+    position: relative;
+    width: 20px;
+    height: 20px;
+  }
+  .mote-glyph {
+    position: absolute;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    font-family: "Springtale Symbols", "Silkscreen", monospace;
+    font-size: 14px;
+    line-height: 1;
+    color: var(--mote-tint);
+    opacity: 0;
+    animation: mote-frame-3 calc(var(--n) * 250ms) steps(1) infinite; /* Stardew 250 ms per hold frame */
+    animation-delay: calc(var(--colony-mote-i) * 250ms);
+  }
+  /* One frame visible at a time: keyframe selectors cannot take calc(), so
+     one fixed set per frame count the def table uses. */
+  .mote-frames[data-n="2"] .mote-glyph {
+    animation-name: mote-frame-2;
+  }
+  .mote-frames[data-n="4"] .mote-glyph {
+    animation-name: mote-frame-4;
+  }
+  .mote-frames[data-n="1"] .mote-glyph {
+    opacity: 1;
+    animation: none;
+  }
+  .mote-glyph.is-mirrored {
+    transform: scaleX(-1);
+  }
+  .mote-shape[data-shape="triangle"] .mote-glyph.is-mirrored {
+    transform: translateY(15%) scaleX(-1);
+  }
+
+  .colony-agent:hover .mote-stack {
+    opacity: 0.2; /* RimWorld OpacityHover */
+  }
+  .colony-agent.is-selected .mote-stack {
+    z-index: 21; /* selected draws on top */
+  }
+
+  /* Plumbob — a CSS square in the formation colour, not an image. */
+  .colony-plumbob {
+    background: var(--colony-color);
+    width: 6px;
+    height: 6px;
+    transform: rotate(45deg);
+    display: inline-block;
   }
 
   /* Close button — consistent across all panels */
@@ -571,11 +693,14 @@
       transform: scale(1);
     }
   }
-  .colony-agent.is-error {
+  .colony-agent.is-error,
+  .colony-agent.is-failed,
+  .colony-agent.is-down {
     filter: drop-shadow(0 0 4px var(--color-status-error));
     animation: agent-warning-pulse 1s ease infinite;
   }
-  .colony-agent.is-waiting {
+  .colony-agent.is-waiting,
+  .colony-agent.is-listening {
     animation: agent-breathe 3s ease-in-out infinite;
   }
   @keyframes agent-breathe {
@@ -587,28 +712,18 @@
       opacity: 0.85;
     }
   }
-  .colony-agent.is-active {
+  .colony-agent.is-active,
+  .colony-agent.is-working,
+  .colony-agent.is-claimed,
+  .colony-agent.is-helping,
+  .colony-agent.is-yield,
+  .colony-agent.is-rally,
+  .colony-agent.is-cascade {
     filter: drop-shadow(0 0 2px var(--color-status-ok));
   }
   .colony-agent.is-idle {
     opacity: 0.4;
     filter: saturate(0.2);
-  }
-
-  /* Simlish bubble variants */
-  .colony-bubble.is-normal {
-    background: var(--color-soil-mid);
-    border: 2px solid var(--color-bark-light);
-    color: var(--color-text-secondary);
-    font-size: 8px;
-    padding: 3px 6px;
-  }
-  .colony-bubble.is-urgent {
-    background: var(--color-bubble-urgent-bg);
-    border: 2px solid var(--color-status-error);
-    color: var(--color-status-error);
-    font-size: 8px;
-    padding: 3px 6px;
   }
 
   /* ── Utility classes ── */
@@ -1122,9 +1237,6 @@
     color: var(--color-soil-deep);
     cursor: pointer;
   }
-  .colony-formation-chip.is-cascade {
-    background: var(--color-status-warn);
-  }
   .colony-rally-pip {
     width: 4px;
     height: 4px;
@@ -1159,6 +1271,7 @@
     margin-bottom: 2px;
   }
   .colony-agent-glyph {
+    font-family: "Silkscreen", monospace; /* the text summary never touches the symbol font */
     filter: drop-shadow(0 0 2px var(--color-shadow-deep));
   }
   .colony-agent-attention {
