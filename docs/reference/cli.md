@@ -69,8 +69,16 @@ Start the `springtaled` daemon inline (foreground). Useful for development.
 ```
 $ springtale server start
 INFO springtaled: listening on 127.0.0.1:8080
-INFO springtaled: READY
+READY 8080
 ```
+
+`springtaled` itself takes two flags used by the desktop shell, which runs
+it as a sidecar rather than embedding a second copy of the runtime:
+
+| Flag | Effect |
+|------|--------|
+| `--bind ADDR` | Override `[api] bind`. `127.0.0.1:0` binds a free port; the port actually bound is what the `READY {port}` line reports. |
+| `--passphrase-stdin` | Read the vault passphrase as exactly one line from stdin, ahead of `SPRINGTALE_PASSPHRASE_FILE`, `SPRINGTALE_PASSPHRASE` and the TTY prompt. Keeps it out of `argv` and the environment, both readable by other local processes. |
 
 `springtale run` is a plain-English alias for the same thing —
 `springtale init cli-runner && springtale run` is the documented

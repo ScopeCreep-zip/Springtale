@@ -1,7 +1,7 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Springtale desktop minimum capability — only the Tauri built-in IPC surfaces the frontend actually invokes. The 125 custom commands registered via `invoke_handler` in lib.rs are NOT gated by capability — Tauri auto-allows registered custom commands. The Rust functions themselves enforce app-level auth (vault unlock, capability bridge, sentinel). See docs/security/RISK-REGISTER.md R-012 / R-013.",
+  "description": "Springtale desktop minimum capability \u2014 only the Tauri built-in IPC surfaces the frontend actually invokes. The custom commands registered via `invoke_handler` in lib.rs are NOT gated by capability \u2014 Tauri auto-allows registered custom commands. The `springtaled` sidecar is spawned from Rust (commands/vault.rs -> sidecar::start), never from the webview, so no shell permission is granted here and `plugins.shell.open` stays false. The Rust functions themselves enforce app-level auth (vault unlock); everything else is authenticated by the daemon's bearer token. See docs/security/RISK-REGISTER.md R-012 / R-013.",
   "windows": ["main"],
   "permissions": [
     "core:event:allow-listen",

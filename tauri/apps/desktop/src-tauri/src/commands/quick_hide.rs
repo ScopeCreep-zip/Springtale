@@ -12,10 +12,10 @@
 //!   chain; this module just adds + swaps the actual hotkey.
 //!
 //! The in-window keydown listener in `apps/desktop/src/App.tsx`
-//! stays as a fallback for the pre-unlock window — the global
-//! shortcut needs the runtime to load the persisted string, so
-//! before the survivor first unlocks the vault, only the window-
-//! focused path works. After unlock the global hotkey takes over.
+//! stays as a fallback for the pre-unlock window — the persisted
+//! string lives in the daemon, so before the survivor first unlocks
+//! the vault only the window-focused path works. After unlock the
+//! global hotkey takes over.
 
 use std::sync::Mutex;
 
@@ -42,28 +42,19 @@ impl Default for ActiveQuickHide {
     }
 }
 
-/// Register the persisted quick-hide shortcut as a global hotkey.
-/// Reads `SafetyConfig.quick_hide_shortcut`, parses it, and binds
-/// it via the global-shortcut plugin. Replaces any previously
-/// registered shortcut atomically so this is idempotent.
+/// Register the quick-hide shortcut as a global hotkey. The frontend
+/// passes `SafetyConfig.quick_hide_shortcut` (read from the daemon over
+/// `GET /safety`); this parses it and binds it via the global-shortcut
+/// plugin, replacing any previously registered shortcut atomically so the
+/// command is idempotent.
 ///
 /// On trigger: locks the vault and hides the main window. Both
 /// actions are best-effort — failure to hide must not block the
 /// vault lock, and failure to lock must not block the hide.
 #[tauri::command]
 #[specta::specta]
-pub async fn apply_quick_hide_shortcut(
-    app: AppHandle,
-    state: tauri::State<'_, crate::state::AppState>,
-) -> Result<String, String> {
-    let guard = crate::runtime_guard::require_runtime(&state.runtime).await?;
-    let rt = guard.as_ref().unwrap();
-    let config = springtale_runtime::operations::safety::get_safety_config(rt)
-        .await
-        .map_err(|e| e.to_string())?;
-    drop(guard);
-
-    let configured = config.quick_hide_shortcut.clone();
+pub async fn apply_quick_hide_shortcut(app: AppHandle, shortcut: String) -> Result<String, String> {
+    let configured = shortcut;
 
     // A global shortcut is a CONVENIENCE, not a requirement
     // (https://v2.tauri.app/plugin/global-shortcut/). On macOS,

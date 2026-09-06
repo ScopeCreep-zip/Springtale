@@ -6063,6 +6063,7 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
+ "clap",
  "connector-bluesky",
  "connector-discord",
  "connector-github",

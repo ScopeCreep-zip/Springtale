@@ -1,6 +1,7 @@
 mod bot;
 mod crypto;
 mod formations;
+pub mod options;
 mod sentinel;
 mod transport;
 
@@ -19,14 +20,21 @@ use crate::config::SpringtaleConfig;
 pub async fn boot(
     config: SpringtaleConfig,
     connector_configs: std::collections::HashMap<String, serde_json::Value>,
+    options: options::BootOptions,
 ) -> Result<()> {
     // ── Step 1: Config already loaded by caller ──
     tracing::info!("springtaled starting");
 
+    // `--bind` (sidecar / mobile in-process boot) overrides `[api] bind`.
+    let bind_addr = options
+        .bind
+        .clone()
+        .unwrap_or_else(|| config.api.bind.clone());
+
     // Warn if API is bound to 0.0.0.0
-    if config.api.bind.starts_with("0.0.0.0") {
+    if bind_addr.starts_with("0.0.0.0") {
         tracing::warn!(
-            bind = %config.api.bind,
+            bind = %bind_addr,
             "management API bound to all interfaces — this exposes it to the network"
         );
     }
@@ -53,7 +61,7 @@ pub async fn boot(
 
     // ── Step 2: Initialize crypto vault (before runtime, no dependencies) ──
     let (vault, keypair, api_token_hash, db_key_hex) =
-        crypto::init_crypto(ephemeral, &crypto_config)?;
+        crypto::init_crypto(ephemeral, &crypto_config, options.passphrase_stdin)?;
 
     // ── Step 3: Initialize shared runtime (store + engine + registry + AI + sentinel + canvas) ──
     let runtime_config = springtale_runtime::RuntimeConfig {
@@ -221,14 +229,27 @@ pub async fn boot(
     };
 
     let router = api::build_router(state);
-    let listener = tokio::net::TcpListener::bind(&api_config.bind)
+    let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await
-        .with_context(|| format!("failed to bind API to {}", api_config.bind))?;
-    tracing::info!(bind = %api_config.bind, "management API listening");
+        .with_context(|| format!("failed to bind API to {bind_addr}"))?;
+    // `--bind 127.0.0.1:0` asks the OS for an ephemeral port, so the
+    // bound address — not the requested one — is what the parent needs.
+    let bound = listener
+        .local_addr()
+        .context("failed to read the bound API address")?;
+    tracing::info!(bind = %bound, "management API listening");
 
     // ── Step 9: Signal readiness ──
     ready_flag.store(true, std::sync::atomic::Ordering::Release);
-    println!("READY");
+    // The desktop sidecar (plan 2.1) blocks on this exact line to learn
+    // the port. Process supervisors that only matched the old bare
+    // `READY` still match the prefix.
+    println!("READY {}", bound.port());
+    // A sidecar's stdout is a pipe, which is block-buffered: without an
+    // explicit flush the parent would wait for the buffer to fill and
+    // never see READY.
+    use std::io::Write as _;
+    let _ = std::io::stdout().flush();
 
     // ── Run: API server (cron + queue + event loop run inside the
     //         shared `bootstrap_embedded` from springtale-runtime) ──
