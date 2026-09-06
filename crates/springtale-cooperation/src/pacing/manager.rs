@@ -1,263 +1,131 @@
-//! PacingManager — L4D Director-inspired phase transitions + governor GCRA
-//! rate limiting.
+//! PacingManager — intensity is stress; at peak, back off; frequency
+//! changes, amplitude never does (Booth, GDC 2009, slides 79–92).
 
 use std::time::{Duration, Instant};
 
-use crate::momentum::MomentumState;
-use crate::tick_processor::FormationTickResult;
-
-use super::rate_limiter::GovernorRateLimiter;
 use super::types::{PacingPhase, PacingTransition};
 
-/// L4D `intensity_decay_time = 30` (spec §A.1.1): full-scale intensity
-/// decays to zero over 30 seconds without engagement. Decay pauses while
-/// the formation is actively succeeding — Booth: "Do NOT decay Survivor
-/// Intensity if there are Infected actively engaging."
-pub const INTENSITY_DECAY: Duration = Duration::from_secs(30);
+/// Intensity at which `BuildUp` gives way to `SustainPeak`.
+pub const PEAK_THRESHOLD: f32 = 0.6;
+/// Booth: "3-5 seconds after Survivor Intensity has peaked."
+pub const SUSTAIN: Duration = Duration::from_secs(4);
+/// Booth: "30-45 seconds, or until Survivors have traveled far enough."
+pub const RELAX: Duration = Duration::from_secs(35);
+/// Booth: "Decay Survivor Intensity towards zero over time."
+pub const DECAY_PER_SEC: f32 = 0.05;
+/// Booth: "When injured by the Infected, proportional to damage taken."
+pub const W_FAILURE: f32 = 0.3;
+/// Booth: "When player is pulled/pushed off of a ledge by the Infected."
+pub const W_INTERFERENCE: f32 = 0.4;
+/// Sentinel `Throttle` verdicts — a nearby threat, not a wound.
+pub const W_THROTTLE: f32 = 0.1;
+/// Approval denials / quarantines — the formation was stopped.
+pub const W_DENIAL: f32 = 0.2;
 
-/// L4D `IntensityRelaxThreshold = 0.99` (spec §A.1.1): Peak fades only
-/// once intensity decays below 99% of its peak-entry value — prevents
-/// transition chatter right at the peak.
-pub const RELAX_THRESHOLD: f32 = 0.99;
-
-/// L4D `SustainPeakMinTime = 3` (spec §A.1.1): Peak holds at least 3s
-/// before it may fade, guaranteeing a minimum build-up payoff.
-pub const SUSTAIN_PEAK_MIN: Duration = Duration::from_secs(3);
-/// L4D `SustainPeakMaxTime = 5` (spec §A.1.1): past 5s at Peak the
-/// failure path no longer waits for the relax threshold.
-pub const SUSTAIN_PEAK_MAX: Duration = Duration::from_secs(5);
+/// One tick's stress inputs. Booth's increase rules (slide 80) mapped to
+/// a bot formation.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct StressSample {
+    /// "injured... proportional to damage taken"
+    pub failures: u32,
+    /// "pulled/pushed off of a ledge by the Infected"
+    pub interferences: u32,
+    /// Sentinel `Throttle` verdicts this tick.
+    pub throttles: u32,
+    /// Approval denials / quarantines this tick.
+    pub denials: u32,
+    pub members: u32,
+    /// Any action in flight: "Do NOT decay... if actively engaging."
+    pub engaged: bool,
+}
 
 /// Manages pacing for a formation.
 pub struct PacingManager {
     pub current_phase: PacingPhase,
-    pub cumulative_intensity: f32,
-    pub time_since_last_recovery: Duration,
+    /// Booth's Survivor Intensity, 0.0–1.0. Stress, not work done.
+    pub intensity: f32,
     pub disruption_count: u32,
-
-    pub peak_duration_max: Duration,
-    pub recovery_duration_min: Duration,
-    pub intensity_ceiling: f32,
-
-    rate_limiter: GovernorRateLimiter,
+    /// Formation time: advances by the elapsed duration of each observed
+    /// tick, so phase timers are deterministic under the tick divider.
+    clock: Instant,
 }
 
 impl Default for PacingManager {
     fn default() -> Self {
-        let phase = PacingPhase::Preparation {
-            started: Instant::now(),
-        };
-        let rate_limiter = GovernorRateLimiter::for_phase(&phase);
+        let now = Instant::now();
         Self {
-            current_phase: phase,
-            cumulative_intensity: 0.0,
-            time_since_last_recovery: Duration::ZERO,
+            current_phase: PacingPhase::BuildUp { started: now },
+            intensity: 0.0,
             disruption_count: 0,
-            peak_duration_max: Duration::from_secs(120),
-            recovery_duration_min: Duration::from_secs(30),
-            intensity_ceiling: 0.9,
-            rate_limiter,
+            clock: now,
         }
     }
 }
 
 impl PacingManager {
-    /// Evaluate whether a phase transition should occur.
-    pub fn evaluate_transition(
-        &mut self,
-        tick_result: &FormationTickResult,
-        momentum: &MomentumState,
-        tick_elapsed: Duration,
-    ) -> Option<PacingTransition> {
-        self.time_since_last_recovery += tick_elapsed;
-
-        // §A.1.1 intensity decay: drains toward zero over INTENSITY_DECAY
-        // of wall time, paused while the formation is actively succeeding
-        // (L4D: no decay during engagement).
-        let engaged = tick_result.all_succeeded
-            && tick_result.reports.iter().any(|r| r.action_taken.is_some());
-        if !engaged && self.cumulative_intensity > 0.0 {
-            let decay = tick_elapsed.as_secs_f32() / INTENSITY_DECAY.as_secs_f32();
-            self.cumulative_intensity = (self.cumulative_intensity - decay).max(0.0);
+    /// Fold one tick's stress into intensity and advance the phase
+    /// machine. `elapsed` is wall-clock time since the previous
+    /// observed tick.
+    pub fn observe(&mut self, s: &StressSample, elapsed: Duration) -> Option<PacingTransition> {
+        let per_member = s.members.max(1) as f32;
+        let harm = (W_FAILURE * s.failures as f32
+            + W_INTERFERENCE * s.interferences as f32
+            + W_THROTTLE * s.throttles as f32
+            + W_DENIAL * s.denials as f32)
+            / per_member;
+        self.intensity = (self.intensity + harm).min(1.0);
+        if !s.engaged {
+            self.intensity = (self.intensity - DECAY_PER_SEC * elapsed.as_secs_f32()).max(0.0);
         }
-
-        match &self.current_phase {
-            PacingPhase::Preparation { started } => {
-                let has_action = tick_result.reports.iter().any(|r| r.action_taken.is_some());
-                if has_action && tick_result.all_succeeded {
-                    let from = self.phase_name();
-                    let new_intensity = 0.3;
-                    self.cumulative_intensity = new_intensity;
-                    self.set_phase(PacingPhase::Active {
-                        intensity: new_intensity,
-                        started: *started,
-                    });
-                    return Some(PacingTransition { from, to: "Active" });
-                }
-                if !tick_result.interferences.is_empty() {
-                    let from = self.phase_name();
-                    self.set_phase(PacingPhase::Disruption {
-                        event: "interference_during_preparation".to_owned(),
-                    });
-                    return Some(PacingTransition {
-                        from,
-                        to: "Disruption",
-                    });
-                }
-                None
+        self.clock += elapsed;
+        let now = self.clock;
+        let next = match &self.current_phase {
+            PacingPhase::BuildUp { .. } if self.intensity >= PEAK_THRESHOLD => {
+                Some(PacingPhase::SustainPeak { peaked_at: now })
             }
-            PacingPhase::Active { intensity, started } => {
-                let started = *started;
-                let intensity = *intensity;
-                if self.cumulative_intensity > 0.7
-                    && momentum.tier >= crate::momentum::MomentumTier::Hot
-                {
-                    let from = self.phase_name();
-                    self.set_phase(PacingPhase::Peak {
-                        intensity: self.cumulative_intensity,
-                        fuel_rate: 2.0,
-                        started,
-                    });
-                    return Some(PacingTransition { from, to: "Peak" });
-                }
-                if !tick_result.interferences.is_empty() {
-                    let from = self.phase_name();
-                    self.set_phase(PacingPhase::Disruption {
-                        event: "interference_during_active".to_owned(),
-                    });
-                    return Some(PacingTransition {
-                        from,
-                        to: "Disruption",
-                    });
-                }
-                if tick_result.all_succeeded {
-                    let new_intensity = (intensity + 0.05).min(self.intensity_ceiling);
-                    self.cumulative_intensity = new_intensity;
-                    self.current_phase = PacingPhase::Active {
-                        intensity: new_intensity,
-                        started,
-                    };
-                }
-                None
+            PacingPhase::SustainPeak { peaked_at } if now.duration_since(*peaked_at) >= SUSTAIN => {
+                Some(PacingPhase::PeakFade { since: now })
             }
-            PacingPhase::Peak {
-                started, intensity, ..
-            } => {
-                let started = *started;
-                let entry_intensity = *intensity;
-                // Hard cap regardless of sustain/threshold state.
-                if started.elapsed() > self.peak_duration_max {
-                    let from = self.phase_name();
-                    self.set_phase(PacingPhase::Recovery {
-                        remaining: self.recovery_duration_min,
-                    });
-                    return Some(PacingTransition {
-                        from,
-                        to: "Recovery",
-                    });
-                }
-                // §A.1.1 SustainPeakMinTime: hold Peak ≥3s before any fade.
-                if started.elapsed() < SUSTAIN_PEAK_MIN {
-                    return None;
-                }
-                // Fade once any of the three L4D conditions holds:
-                // 1. IntensityRelaxThreshold — intensity decayed below
-                //    0.99 × the peak-entry value;
-                // 2. the formation failed a tick at Peak;
-                // 3. SustainPeakMaxTime elapsed — past 5s the sustain
-                //    window is over and the fade begins regardless.
-                let faded = self.cumulative_intensity < RELAX_THRESHOLD * entry_intensity;
-                if faded || !tick_result.all_succeeded || started.elapsed() > SUSTAIN_PEAK_MAX {
-                    let from = self.phase_name();
-                    self.set_phase(PacingPhase::Recovery {
-                        remaining: self.recovery_duration_min,
-                    });
-                    return Some(PacingTransition {
-                        from,
-                        to: "Recovery",
-                    });
-                }
-                None
+            // Booth: "Peak Fade won't allow the Relax period to start
+            // until a natural break in the action occurs."
+            PacingPhase::PeakFade { .. } if !s.engaged || self.intensity < PEAK_THRESHOLD => {
+                Some(PacingPhase::Relax { until: now + RELAX })
             }
-            PacingPhase::Recovery { remaining } => {
-                let remaining = *remaining;
-                if remaining <= tick_elapsed {
-                    let from = self.phase_name();
-                    self.cumulative_intensity = 0.0;
-                    self.time_since_last_recovery = Duration::ZERO;
-                    self.set_phase(PacingPhase::Preparation {
-                        started: Instant::now(),
-                    });
-                    return Some(PacingTransition {
-                        from,
-                        to: "Preparation",
-                    });
-                }
-                self.current_phase = PacingPhase::Recovery {
-                    remaining: remaining.saturating_sub(tick_elapsed),
-                };
-                None
+            PacingPhase::Relax { until } if now >= *until => {
+                Some(PacingPhase::BuildUp { started: now })
             }
-            PacingPhase::Disruption { .. } => {
-                let from = self.phase_name();
-                self.cumulative_intensity = 0.0;
-                self.set_phase(PacingPhase::Preparation {
-                    started: Instant::now(),
-                });
-                Some(PacingTransition {
-                    from,
-                    to: "Preparation",
-                })
-            }
-        }
+            PacingPhase::Disruption { .. } => Some(PacingPhase::BuildUp { started: now }),
+            _ => None,
+        };
+        next.map(|p| self.set_phase(p))
     }
 
-    /// Check if the next action is allowed under the current phase's GCRA
-    /// rate limit. Delegates to `governor::RateLimiter::check()`.
-    pub fn allow_action(&self) -> bool {
-        self.rate_limiter.check()
-    }
-
-    /// §22 frequency modulation — L4D: "Amplitude (difficulty) is not
-    /// changed, frequency (pacing) is." One CadenceBus serves every
-    /// formation in the process, so the per-formation tick rate is
-    /// modulated by SKIPPING bus ticks rather than changing the bus
-    /// interval: a formation processes only ticks where
-    /// `sequence % divider == 0`. Effective rate = bus rate ÷ divider.
-    ///
-    /// | Phase       | Divider | Effective @ 30 Hz |
-    /// |-------------|:-------:|:-----------------:|
-    /// | Peak        | 1       | 30 Hz             |
-    /// | Active      | 2       | 15 Hz             |
-    /// | Preparation | 3       | 10 Hz             |
-    /// | Disruption  | 3       | 10 Hz             |
-    /// | Recovery    | 6       | 5 Hz              |
+    /// Frequency only. Booth: "Amplitude (difficulty) is not changed,
+    /// frequency (pacing) is." One CadenceBus serves every formation, so
+    /// a formation processes only bus ticks where
+    /// `sequence % divider == 0`.
     pub fn tick_divider(&self) -> u64 {
-        match &self.current_phase {
-            PacingPhase::Peak { .. } => 1,
-            PacingPhase::Active { .. } => 2,
-            PacingPhase::Preparation { .. } => 3,
-            PacingPhase::Disruption { .. } => 3,
-            PacingPhase::Recovery { .. } => 6,
+        match self.current_phase {
+            PacingPhase::Relax { .. } => 4,
+            PacingPhase::PeakFade { .. } => 2,
+            _ => 1,
         }
+    }
+
+    /// In Relax the formation senses but does not act. Everything else
+    /// is unthrottled here; per-connector rate limits stay in the
+    /// sentinel.
+    pub fn allows(&self, read_only: bool) -> bool {
+        !matches!(self.current_phase, PacingPhase::Relax { .. }) || read_only
     }
 
     pub fn phase_name(&self) -> &'static str {
         match &self.current_phase {
-            PacingPhase::Preparation { .. } => "Preparation",
-            PacingPhase::Active { .. } => "Active",
-            PacingPhase::Peak { .. } => "Peak",
-            PacingPhase::Recovery { .. } => "Recovery",
+            PacingPhase::BuildUp { .. } => "BuildUp",
+            PacingPhase::SustainPeak { .. } => "SustainPeak",
+            PacingPhase::PeakFade { .. } => "PeakFade",
+            PacingPhase::Relax { .. } => "Relax",
             PacingPhase::Disruption { .. } => "Disruption",
-        }
-    }
-
-    pub fn actions_per_minute(&self) -> u32 {
-        match &self.current_phase {
-            PacingPhase::Preparation { .. } => 2,
-            PacingPhase::Active { .. } => 10,
-            PacingPhase::Peak { .. } => 30,
-            PacingPhase::Recovery { .. } => 1,
-            PacingPhase::Disruption { .. } => 0,
         }
     }
 
@@ -266,13 +134,13 @@ impl PacingManager {
         self.set_phase(PacingPhase::Disruption { event });
     }
 
-    /// Set a new phase and atomically swap the rate-limiter quota via
-    /// `ArcSwap`. All phase transitions go through here. Concurrent
-    /// readers (per-member runner tasks) see the new quota on their next
-    /// `allow_action()` call without locking — the swap is lock-free.
-    fn set_phase(&mut self, phase: PacingPhase) {
-        self.rate_limiter.rebuild(&phase);
+    fn set_phase(&mut self, phase: PacingPhase) -> PacingTransition {
+        let from = self.phase_name();
         self.current_phase = phase;
+        PacingTransition {
+            from,
+            to: self.phase_name(),
+        }
     }
 }
 
@@ -280,192 +148,91 @@ impl PacingManager {
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
-    use crate::cadence::{ActionDescriptor, AgentId, TickReport};
 
-    fn tick_with_action() -> FormationTickResult {
-        FormationTickResult {
-            reports: vec![TickReport {
-                agent_id: AgentId::new(),
-                tick_sequence: crate::tick::TickId(1),
-                action_taken: Some(ActionDescriptor {
-                    kind: "send_message".to_owned(),
-                    target: None,
-                    payload_hash: 0,
-                }),
-                latency: Duration::from_millis(5),
-                intent_alignment: 0.9,
-                interference_with: vec![],
-            }],
-            interferences: vec![],
-            all_succeeded: true,
+    const TICK: Duration = Duration::from_millis(33);
+
+    fn ok(members: u32) -> StressSample {
+        StressSample {
+            members,
+            engaged: true,
+            ..StressSample::default()
         }
     }
 
-    fn empty_tick() -> FormationTickResult {
-        FormationTickResult {
-            reports: vec![],
-            interferences: vec![],
-            all_succeeded: false,
+    fn failing(members: u32, failures: u32) -> StressSample {
+        StressSample {
+            failures,
+            ..ok(members)
         }
     }
 
     #[test]
-    fn default_starts_in_preparation() {
-        let pm = PacingManager::default();
-        assert!(matches!(pm.current_phase, PacingPhase::Preparation { .. }));
-        assert_eq!(pm.phase_name(), "Preparation");
+    fn test_observe_fifty_successful_engaged_ticks_stays_in_build_up() {
+        let mut m = PacingManager::default();
+        for _ in 0..50 {
+            assert!(m.observe(&ok(3), TICK).is_none());
+        }
+        assert!(matches!(m.current_phase, PacingPhase::BuildUp { .. }));
+        assert_eq!(m.intensity, 0.0);
     }
 
     #[test]
-    fn preparation_to_active_on_success() {
-        let mut pm = PacingManager::default();
-        let t = pm.evaluate_transition(
-            &tick_with_action(),
-            &MomentumState::default(),
-            Duration::from_millis(100),
-        );
-        assert_eq!(t.as_ref().map(|t| t.to), Some("Active"));
+    fn test_observe_failures_reach_sustain_peak_then_fade_then_relax_then_build_up() {
+        let mut m = PacingManager::default();
+        let mut transitions = Vec::new();
+        for _ in 0..5 {
+            transitions.extend(m.observe(&failing(2, 2), TICK));
+        }
+        assert!(matches!(m.current_phase, PacingPhase::SustainPeak { .. }));
+        assert_eq!(transitions.len(), 1);
+        assert_eq!(transitions[0].to, "SustainPeak");
+        // Still engaged, still stressed: sustain holds for SUSTAIN.
+        assert!(m.observe(&failing(2, 2), TICK).is_none());
+        assert_eq!(m.tick_divider(), 1);
+        let t = m.observe(&ok(2), SUSTAIN).expect("sustain elapsed");
+        assert_eq!((t.from, t.to), ("SustainPeak", "PeakFade"));
+        assert_eq!(m.tick_divider(), 2);
+        // Peak fade waits for a natural break: not engaged.
+        let t = m.observe(&StressSample::default(), TICK).expect("break");
+        assert_eq!((t.from, t.to), ("PeakFade", "Relax"));
+        assert_eq!(m.tick_divider(), 4);
+        // Relax returns to BuildUp once the relax period elapses.
+        assert!(m.observe(&StressSample::default(), RELAX / 2).is_none());
+        let t = m
+            .observe(&StressSample::default(), RELAX / 2)
+            .expect("relax elapsed");
+        assert_eq!((t.from, t.to), ("Relax", "BuildUp"));
+        assert!(m.intensity < PEAK_THRESHOLD, "decayed while idle");
     }
 
     #[test]
-    fn disruption_resets_to_preparation() {
-        let mut pm = PacingManager::default();
-        pm.disrupt("test".to_owned());
-        let t = pm.evaluate_transition(
-            &empty_tick(),
-            &MomentumState::default(),
-            Duration::from_millis(100),
-        );
-        assert_eq!(t.as_ref().map(|t| t.to), Some("Preparation"));
-    }
-
-    #[test]
-    fn recovery_countdown_to_preparation() {
-        let mut pm = PacingManager::default();
-        pm.set_phase(PacingPhase::Recovery {
-            remaining: Duration::from_secs(1),
+    fn test_allows_relax_refuses_mutating_permits_read_only() {
+        let mut m = PacingManager::default();
+        assert!(m.allows(false));
+        m.set_phase(PacingPhase::Relax {
+            until: m.clock + RELAX,
         });
-        assert!(
-            pm.evaluate_transition(
-                &empty_tick(),
-                &MomentumState::default(),
-                Duration::from_millis(500)
-            )
-            .is_none()
-        );
-        let t = pm.evaluate_transition(
-            &empty_tick(),
-            &MomentumState::default(),
-            Duration::from_millis(600),
-        );
-        assert_eq!(t.as_ref().map(|t| t.to), Some("Preparation"));
+        assert!(!m.allows(false));
+        assert!(m.allows(true));
     }
 
     #[test]
-    fn rate_limiter_respects_phase() {
-        let mut pm = PacingManager::default(); // Preparation: 2/min
-        assert!(pm.allow_action());
-        assert!(pm.allow_action());
-        assert!(!pm.allow_action(), "3rd should be blocked at 2/min");
-
-        // Transition to Active (10/min) — limiter rebuilt
-        pm.evaluate_transition(
-            &tick_with_action(),
-            &MomentumState::default(),
-            Duration::from_millis(100),
-        );
-        assert!(
-            pm.allow_action(),
-            "after transition to Active, budget resets"
-        );
+    fn test_observe_engaged_never_decays_intensity() {
+        let mut m = PacingManager::default();
+        m.observe(&failing(1, 1), TICK);
+        let before = m.intensity;
+        m.observe(&ok(1), Duration::from_secs(60));
+        assert_eq!(m.intensity, before);
+        m.observe(&StressSample::default(), Duration::from_secs(60));
+        assert_eq!(m.intensity, 0.0);
     }
 
     #[test]
-    fn disruption_blocks_all_actions() {
-        let mut pm = PacingManager::default();
-        pm.disrupt("boom".to_owned());
-        assert!(!pm.allow_action());
-    }
-
-    #[test]
-    fn tick_divider_per_phase() {
-        let mut pm = PacingManager::default();
-        assert_eq!(pm.tick_divider(), 3, "Preparation runs at 1/3 rate");
-
-        pm.set_phase(PacingPhase::Peak {
-            intensity: 0.9,
-            fuel_rate: 2.0,
-            started: Instant::now(),
-        });
-        assert_eq!(pm.tick_divider(), 1, "Peak runs at full bus rate");
-
-        pm.set_phase(PacingPhase::Recovery {
-            remaining: Duration::from_secs(30),
-        });
-        assert_eq!(pm.tick_divider(), 6, "Recovery runs at 1/6 rate");
-    }
-
-    #[test]
-    fn intensity_decays_over_thirty_seconds_idle() {
-        let mut pm = PacingManager {
-            cumulative_intensity: 1.0,
-            ..PacingManager::default()
-        };
-        // One idle evaluation worth 15s of wall time → half the scale gone.
-        pm.evaluate_transition(
-            &empty_tick(),
-            &MomentumState::default(),
-            Duration::from_secs(15),
-        );
-        assert!((pm.cumulative_intensity - 0.5).abs() < 0.01);
-        // Another 15s drains it to zero (clamped).
-        pm.evaluate_transition(
-            &empty_tick(),
-            &MomentumState::default(),
-            Duration::from_secs(15),
-        );
-        assert!(pm.cumulative_intensity <= f32::EPSILON);
-    }
-
-    #[test]
-    fn peak_sustains_minimum_before_fade() {
-        let mut pm = PacingManager {
-            cumulative_intensity: 0.9,
-            ..PacingManager::default()
-        };
-        pm.set_phase(PacingPhase::Peak {
-            intensity: 0.9,
-            fuel_rate: 2.0,
-            started: Instant::now(),
-        });
-        // Within SUSTAIN_PEAK_MIN even a failing tick can't fade the peak.
-        let t = pm.evaluate_transition(
-            &empty_tick(),
-            &MomentumState::default(),
-            Duration::from_millis(33),
-        );
-        assert!(t.is_none(), "Peak holds during the 3s sustain window");
-        assert!(matches!(pm.current_phase, PacingPhase::Peak { .. }));
-    }
-
-    #[test]
-    fn peak_fades_below_relax_threshold_after_sustain() {
-        let mut pm = PacingManager {
-            cumulative_intensity: 0.9,
-            ..PacingManager::default()
-        };
-        // Backdate Peak entry past the sustain window.
-        pm.set_phase(PacingPhase::Peak {
-            intensity: 0.9,
-            fuel_rate: 2.0,
-            started: Instant::now() - Duration::from_secs(4),
-        });
-        // Idle decay pulls intensity below 0.99 × entry → fade.
-        let t = pm.evaluate_transition(
-            &empty_tick(),
-            &MomentumState::default(),
-            Duration::from_secs(1),
-        );
-        assert_eq!(t.as_ref().map(|t| t.to), Some("Recovery"));
+    fn test_disrupt_returns_to_build_up_on_next_observe() {
+        let mut m = PacingManager::default();
+        m.disrupt("cascade".into());
+        assert_eq!(m.disruption_count, 1);
+        let t = m.observe(&ok(1), TICK).expect("recovers");
+        assert_eq!((t.from, t.to), ("Disruption", "BuildUp"));
     }
 }

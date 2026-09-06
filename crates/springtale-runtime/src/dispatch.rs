@@ -295,6 +295,7 @@ async fn run_step_inner(
                 delay_ms = duration.as_millis() as u64,
                 "sentinel: throttling action"
             );
+            chain.throttles += 1;
             tokio::time::sleep(duration).await;
         }
         Verdict::Pause(reason) => {

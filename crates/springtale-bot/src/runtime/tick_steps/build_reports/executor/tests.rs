@@ -2,7 +2,7 @@
 //! resolution path (plan verification: "confirm a RequireConsensus
 //! action round-trips propose → approve → execute"):
 //!
-//! 1. Formation earns Fever momentum and Peak pacing.
+//! 1. Formation earns Fever momentum.
 //! 2. Executor call #1 on a destructive task → opens a consensus
 //!    proposal instead of executing (B7 gate).
 //! 3. Executor call #2 → pending-vote guard: no duplicate proposal.
@@ -26,7 +26,7 @@ use crate::cooperation::formation::{Formation, FormationMember};
 use crate::runtime::tick_steps::resolve_consensus;
 
 use super::post::{PostEnv, post_member};
-use super::test_support::{Runtime, earn_fever_and_peak, make_tick, runtime, wipe_task};
+use super::test_support::{Runtime, earn_fever, make_tick, runtime, wipe_task};
 use super::{ExecuteCtx, Prepared, dispatch_one, prepare};
 
 fn consensus_formation() -> Formation {
@@ -111,7 +111,7 @@ async fn consensus_round_trip_propose_guard_approve_execute_once() {
     let rt = runtime(false, Duration::ZERO);
     let mut formation = consensus_formation();
     let voters: Vec<AgentId> = formation.members.iter().map(|m| m.agent_id).collect();
-    let mut pacing = earn_fever_and_peak(&mut formation);
+    let mut pacing = earn_fever(&mut formation);
     let task = wipe_task();
     let mut member = formation.members[0].clone();
 
@@ -260,6 +260,60 @@ async fn test_execute_cold_read_only_require_consensus_dispatches_without_vote()
     assert_eq!(rt.probe.executions(), 1, "dispatched immediately");
 }
 
+/// Plan §1.5: a sentinel `Throttle` verdict reaches the outcome and the
+/// pacing stress sample. Cold tier budgets one action per 30 s, so the
+/// second dispatch on the same connector is throttled; paused tokio time
+/// skips the sleep.
+#[tokio::test(start_paused = true)]
+async fn test_dispatch_throttled_by_sentinel_sets_throttled_and_increments_sample() {
+    use super::DispatchJob;
+    use super::test_support::successful_tick_result;
+    use crate::cooperation::dispatch_outcome::TickStress;
+    use crate::runtime::tick_steps::check_pacing;
+
+    let rt = runtime(true, Duration::ZERO);
+    let formation = consensus_formation();
+    let agent = formation.members[0].agent_id;
+    let job = || {
+        let task = wipe_task();
+        DispatchJob {
+            agent,
+            formation_id: formation.id.0,
+            formation_momentum: MomentumTier::Cold,
+            destructive_policy: ApprovalPolicy::AutoApprove,
+            autonomy: springtale_cooperation::AutonomyLevel::ActAutonomously,
+            descriptor: crate::cooperation::task_dispatch::subtask_to_descriptor(&task),
+            task,
+            bridge: rt.bridge.clone(),
+            sentinel: rt.sentinel.clone(),
+            blackboard: formation.blackboard.clone(),
+        }
+    };
+
+    let first = dispatch_one(job()).await;
+    assert!(first.dispatched.as_ref().is_some_and(|d| d.success));
+    assert!(!first.throttled, "first call is within the Cold budget");
+
+    let second = dispatch_one(job()).await;
+    assert!(second.dispatched.as_ref().is_some_and(|d| d.success));
+    assert!(
+        second.throttled,
+        "second call within the window is throttled"
+    );
+    assert_eq!(
+        rt.probe.executions(),
+        2,
+        "throttle delays, it does not block"
+    );
+
+    let mut stress = TickStress::default();
+    stress.absorb(&first);
+    stress.absorb(&second);
+    let sample = check_pacing::sample(&successful_tick_result(agent), stress, 3);
+    assert_eq!(sample.throttles, 1);
+    assert_eq!(sample.denials, 0);
+}
+
 /// Plan §1.15 test (c): a failed beat says `Failed` — heard on the
 /// formation bus (Burst carrier) and on the observer stream.
 #[tokio::test]
@@ -282,6 +336,8 @@ async fn test_post_failed_outcome_utters_failed_on_bus_and_observer() {
         state: ActionState::Failure("connector refused".to_owned()),
         duration_ms: 5,
         dispatched: None,
+        throttled: false,
+        denied: false,
     };
 
     let report = super::post(&mut formation, agent, outcome, &tick, Some(&tx));
@@ -318,6 +374,8 @@ async fn test_post_failed_outcome_utters_failed_on_bus_and_observer() {
         state: ActionState::Failure("again".to_owned()),
         duration_ms: 5,
         dispatched: None,
+        throttled: false,
+        denied: false,
     };
     super::post(&mut formation, agent, again, &tick, Some(&tx));
     assert!(

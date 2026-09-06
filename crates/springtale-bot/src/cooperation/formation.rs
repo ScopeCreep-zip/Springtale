@@ -305,6 +305,8 @@ pub struct Formation {
     /// divider makes "one bus tick" a wrong unit, and `tick.window`
     /// (the agent commit window, interval ×4) always was.
     pub last_tick_at: Option<std::time::Instant>,
+    /// Sentinel throttles / denials since the last pacing sample (plan 1.5).
+    pub tick_stress: crate::cooperation::dispatch_outcome::TickStress,
     /// Cursor into `shared_env.snapshot().write_log` — number of entries
     /// consumed by the last tick's interference pass. Writes at index
     /// ≥ this cursor on the next tick are "current-tick" writes; earlier
@@ -518,6 +520,7 @@ impl Formation {
             last_uttered: springtale_cooperation::utterance::emit::LastUttered::new(),
             utterance_defs: Arc::new(springtale_cooperation::utterance::UtteranceDefs::default()),
             last_tick_at: None,
+            tick_stress: Default::default(),
             last_tick_write_count: 0,
             last_broadcast_tier: MomentumTier::Cold,
             cascade_hit_streak: 0,

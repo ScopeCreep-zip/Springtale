@@ -23,7 +23,6 @@ tokio-stream     = { workspace = true }
 arc-swap         = { workspace = true }
 dashmap          = { workspace = true }
 petgraph         = { workspace = true }
-governor         = { workspace = true }
 dyn-clone        = { workspace = true }
 chitchat         = { workspace = true }
 foca             = { workspace = true }
