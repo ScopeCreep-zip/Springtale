@@ -27,6 +27,7 @@ on:
     - cron: '37 7 * * *'  # nightly 07:37 UTC
   release:
     types: [published]
+  workflow_dispatch:
 
 permissions:
   contents: read
