@@ -1,6 +1,7 @@
 mod autolock;
 mod commands;
 mod paths;
+mod prefs;
 mod sidecar;
 mod state;
 
@@ -141,6 +142,11 @@ pub fn run() {
         .invoke_handler(specta_builder.invoke_handler())
         .setup(move |app| {
             specta_builder.mount_events(app);
+            // Cold-start disguise, before anything else: the survivor's
+            // chosen window title has to be on the first frame, and the
+            // database that normally holds it cannot be read until they
+            // unlock. See `prefs.rs`.
+            prefs::apply_window_title(app);
             // G5f tray-icon disguise: build a single tray handle at
             // startup so the safety chain can swap its icon + tooltip
             // at runtime. Failure to build (rare; some Linux WMs) is

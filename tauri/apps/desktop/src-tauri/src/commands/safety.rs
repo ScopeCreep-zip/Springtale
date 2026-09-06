@@ -66,6 +66,13 @@ pub async fn apply_disguise_to_shell(
         window_title
     };
     window.set_title(&title).map_err(|e| e.to_string())?;
+    // Mirror the applied title into the pre-unlock prefs file so a cold
+    // start shows the disguise on its first frame instead of the real name.
+    // Non-fatal: the disguise is already applied to the live window, and
+    // failing the command here would make the panel look broken.
+    if let Err(e) = crate::prefs::save_window_title(&title) {
+        tracing::warn!(error = %e, "could not persist window title for cold start");
+    }
     Ok(title)
 }
 
