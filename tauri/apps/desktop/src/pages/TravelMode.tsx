@@ -1,6 +1,5 @@
-import { useI18n } from "@springtale/ui";
+import { travelPrepare, travelRestore, useI18n } from "@springtale/ui";
 import { createSignal } from "solid-js";
-import { travelPrepare, travelRestore } from "../ipc/travel";
 
 /**
  * Travel mode page — encrypted backup + restore for border crossings.
@@ -9,8 +8,11 @@ import { travelPrepare, travelRestore } from "../ipc/travel";
  * - Prepare: export encrypted backup → wipe local data
  * - Restore: decrypt backup → restore vault + database + config
  *
- * The travel passphrase is separate from the vault passphrase.
- * It crosses IPC once, is used for Argon2id KDF, then dropped.
+ * The travel passphrase is separate from the vault passphrase. It
+ * crosses to the daemon once (loopback, bearer-authenticated), is used
+ * for the Argon2id KDF, then dropped. The file picker stays local — the
+ * daemon runs on this machine, so the path it is handed is this
+ * machine's path.
  */
 export function TravelModePage() {
   const { t } = useI18n();
@@ -58,7 +60,7 @@ export function TravelModePage() {
     setPrepError("");
     try {
       await travelPrepare(prepPassphrase(), prepPath());
-      // App will exit after wipe — this line may not execute
+      // The daemon wipes and exits after the backup lands.
     } catch (e) {
       setPrepError(String(e));
       setPreparing(false);

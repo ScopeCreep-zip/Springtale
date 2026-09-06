@@ -2,9 +2,14 @@
 import { createRoot } from "solid-js";
 import { render } from "solid-js/web";
 import "./index.css";
-import { createDashboardState, createI18n, DashboardProvider, I18nProvider } from "@springtale/ui";
+import {
+  createDashboardState,
+  createI18n,
+  createWebProvider,
+  DashboardProvider,
+  I18nProvider,
+} from "@springtale/ui";
 import { App } from "./App";
-import { createWebProvider } from "./provider";
 import { installTrustedTypesPolicy } from "./safety/trusted-types";
 
 // Trusted Types default policy — kill-switch under

@@ -1,7 +1,6 @@
 import type { Session } from "@springtale/types";
-import { useI18n } from "@springtale/ui";
+import { apiGet, useI18n } from "@springtale/ui";
 import { createSignal, For, onMount } from "solid-js";
-import { get } from "../api/client";
 
 /**
  * Sessions page — view active bot conversations.
@@ -19,7 +18,7 @@ export function SessionsPage() {
   const fetchSessions = async () => {
     try {
       setLoading(true);
-      const data = await get<{ sessions: Session[] }>("/sessions");
+      const data = await apiGet<{ sessions: Session[] }>("/sessions");
       setSessions(data.sessions ?? []);
       setError("");
     } catch (e) {
