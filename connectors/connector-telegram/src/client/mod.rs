@@ -1,5 +1,16 @@
+use std::time::Duration;
+
 use async_trait::async_trait;
 use secrecy::SecretBox;
+use serde::Serialize;
+use teloxide_core::Bot;
+use teloxide_core::payloads::setters::*;
+use teloxide_core::requests::Requester;
+use teloxide_core::types::{
+    AllowedUpdate, CallbackQueryId, ChatId, FileId, InlineKeyboardMarkup, InputFile, MessageId,
+    ParseMode, Recipient, ReplyParameters,
+};
+use url::Url;
 
 use crate::error::TelegramError;
 
@@ -75,83 +86,99 @@ pub trait TelegramApi: Send + Sync {
     ) -> Result<serde_json::Value, TelegramError>;
 }
 
-/// Telegram Bot API REST client.
-/// All network calls to Telegram go through this client.
+/// Telegram Bot API client backed by [`teloxide_core::Bot`].
+///
+/// The SDK owns URL building, JSON/multipart encoding, `{ok, result}`
+/// unwrapping and `retry_after` parsing. This type only adapts the
+/// connector's string-and-JSON [`TelegramApi`] surface onto the SDK's
+/// typed requests so the action modules and their mock tests stay
+/// untouched.
 pub struct TelegramClient {
-    inner: reqwest::Client,
-    api_base: String,
-    bot_token: SecretBox<String>,
+    bot: Bot,
 }
+
+/// Per-request wall-clock timeout. Must exceed the long-poll timeout
+/// (`poll_timeout`, default 30s) or every `getUpdates` call would abort
+/// before Telegram answers. Same value the hand-rolled client used.
+const REQUEST_TIMEOUT: Duration = Duration::from_secs(60);
 
 impl TelegramClient {
     pub fn new(api_base: &str, bot_token: SecretBox<String>) -> Result<Self, TelegramError> {
-        let inner = springtale_transport::safe_http::builder()
-            .timeout(std::time::Duration::from_secs(60))
+        let api_url = Url::parse(api_base)
+            .map_err(|e| TelegramError::InvalidConfig(format!("invalid api_base: {e}")))?;
+
+        // teloxide-core 0.13 pins reqwest 0.12 while the workspace's
+        // `safe_http` builder is reqwest 0.13, so the two `Client` types are
+        // distinct and the shared factory cannot be used here. Mirror its
+        // policy on the SDK's builder instead: rustls only (the `rustls`
+        // feature is the sole TLS backend enabled), bounded connect and
+        // request timeouts, no proxy picked up from `TELOXIDE_PROXY`.
+        let http = teloxide_core::net::default_reqwest_settings()
+            .timeout(REQUEST_TIMEOUT)
             .build()
             .map_err(|e| TelegramError::RequestFailed(format!("failed to build client: {e}")))?;
 
-        Ok(Self {
-            inner,
-            api_base: api_base.to_owned(),
-            bot_token,
-        })
-    }
+        // SECURITY: expose needed once to hand the token to the SDK, which
+        // places it in the request path per Telegram's Bot API design.
+        let bot =
+            springtale_crypto::secret_use::with_str(&bot_token, |tok| Bot::with_client(tok, http))
+                .set_api_url(api_url);
 
-    /// Build the full Bot API URL for a method. The token sits in the
-    /// URL path per Telegram's Bot API; exposed only inside the closure.
-    fn method_url(&self, method: &str) -> String {
-        springtale_crypto::secret_use::with_str(&self.bot_token, |tok| {
-            format!("{}/bot{}/{}", self.api_base, tok, method)
-        })
+        Ok(Self { bot })
     }
 }
 
-/// Parse Telegram Bot API response, extracting the "result" field.
-/// Telegram returns `{"ok": true, "result": ...}` or `{"ok": false, "description": "..."}`.
-async fn handle_telegram_response(
-    response: reqwest::Response,
-) -> Result<serde_json::Value, TelegramError> {
-    let status = response.status().as_u16();
-    let body = response
-        .text()
-        .await
-        .map_err(|e| TelegramError::RequestFailed(format!("failed to read response: {e}")))?;
-
-    let json: serde_json::Value = serde_json::from_str(&body)
-        .map_err(|e| TelegramError::RequestFailed(format!("invalid JSON: {e}")))?;
-
-    if status == 429 {
-        let retry_after = json
-            .get("parameters")
-            .and_then(|p| p.get("retry_after"))
-            .and_then(|r| r.as_u64())
-            .unwrap_or(5);
-        return Err(TelegramError::RateLimited { retry_after });
+/// Telegram accepts a numeric chat id or an `@channelusername`.
+fn recipient(chat_id: &str) -> Result<Recipient, TelegramError> {
+    if let Ok(id) = chat_id.parse::<i64>() {
+        return Ok(Recipient::Id(ChatId(id)));
     }
-
-    if status >= 400 {
-        let desc = json
-            .get("description")
-            .and_then(|d| d.as_str())
-            .unwrap_or("unknown error");
-        return Err(TelegramError::RequestFailed(format!(
-            "API returned {status}: {desc}"
-        )));
+    if chat_id.starts_with('@') {
+        return Ok(Recipient::ChannelUsername(chat_id.to_owned()));
     }
+    Err(TelegramError::InvalidInput(
+        "chat_id must be a numeric id or an @username".to_owned(),
+    ))
+}
 
-    // Telegram can return HTTP 200 with ok:false in the JSON body.
-    let ok = json.get("ok").and_then(|v| v.as_bool()).unwrap_or(false);
-    if !ok {
-        let desc = json
-            .get("description")
-            .and_then(|d| d.as_str())
-            .unwrap_or("unknown error");
-        return Err(TelegramError::RequestFailed(format!("API error: {desc}")));
+fn message_id(id: i64) -> Result<MessageId, TelegramError> {
+    i32::try_from(id)
+        .map(MessageId)
+        .map_err(|_| TelegramError::InvalidInput(format!("message_id out of range: {id}")))
+}
+
+/// "Markdown" | "MarkdownV2" | "HTML" — the Bot API's own spellings.
+fn parse_mode(mode: &str) -> Result<ParseMode, TelegramError> {
+    serde_json::from_value(serde_json::Value::String(mode.to_owned()))
+        .map_err(|_| TelegramError::InvalidInput(format!("unknown parse_mode: {mode}")))
+}
+
+/// Update-type names as the Bot API spells them (`message`, `callback_query`, ...).
+fn allowed_updates(names: &[String]) -> Result<Vec<AllowedUpdate>, TelegramError> {
+    names
+        .iter()
+        .map(|n| {
+            serde_json::from_value(serde_json::Value::String(n.clone()))
+                .map_err(|_| TelegramError::InvalidInput(format!("unknown update type: {n}")))
+        })
+        .collect()
+}
+
+/// A photo is either an HTTP(S) URL Telegram fetches itself or a
+/// previously uploaded `file_id`.
+fn photo_input(photo: &str) -> Result<InputFile, TelegramError> {
+    if photo.starts_with("https://") || photo.starts_with("http://") {
+        let url = Url::parse(photo)
+            .map_err(|e| TelegramError::InvalidInput(format!("invalid photo URL: {e}")))?;
+        return Ok(InputFile::url(url));
     }
+    Ok(InputFile::file_id(FileId(photo.to_owned())))
+}
 
-    json.get("result")
-        .cloned()
-        .ok_or_else(|| TelegramError::RequestFailed("missing 'result' in response".to_owned()))
+/// Re-encode an SDK model as the JSON the action modules already consume.
+fn encode<T: Serialize>(value: &T) -> Result<serde_json::Value, TelegramError> {
+    serde_json::to_value(value)
+        .map_err(|e| TelegramError::RequestFailed(format!("failed to encode response: {e}")))
 }
 
 #[async_trait]
@@ -163,24 +190,14 @@ impl TelegramApi for TelegramClient {
         parse_mode: Option<&str>,
         reply_to_message_id: Option<i64>,
     ) -> Result<serde_json::Value, TelegramError> {
-        let mut body = serde_json::json!({
-            "chat_id": chat_id,
-            "text": text,
-        });
+        let mut req = self.bot.send_message(recipient(chat_id)?, text);
         if let Some(pm) = parse_mode {
-            body["parse_mode"] = serde_json::Value::String(pm.to_owned());
+            req = req.parse_mode(self::parse_mode(pm)?);
         }
         if let Some(reply_id) = reply_to_message_id {
-            body["reply_to_message_id"] = serde_json::Value::Number(reply_id.into());
+            req = req.reply_parameters(ReplyParameters::new(message_id(reply_id)?));
         }
-
-        let response = self
-            .inner
-            .post(self.method_url("sendMessage"))
-            .json(&body)
-            .send()
-            .await?;
-        handle_telegram_response(response).await
+        encode(&req.await?)
     }
 
     async fn send_photo(
@@ -189,21 +206,13 @@ impl TelegramApi for TelegramClient {
         photo: &str,
         caption: Option<&str>,
     ) -> Result<serde_json::Value, TelegramError> {
-        let mut body = serde_json::json!({
-            "chat_id": chat_id,
-            "photo": photo,
-        });
+        let mut req = self
+            .bot
+            .send_photo(recipient(chat_id)?, photo_input(photo)?);
         if let Some(cap) = caption {
-            body["caption"] = serde_json::Value::String(cap.to_owned());
+            req = req.caption(cap);
         }
-
-        let response = self
-            .inner
-            .post(self.method_url("sendPhoto"))
-            .json(&body)
-            .send()
-            .await?;
-        handle_telegram_response(response).await
+        encode(&req.await?)
     }
 
     async fn edit_message_text(
@@ -213,22 +222,13 @@ impl TelegramApi for TelegramClient {
         text: &str,
         parse_mode: Option<&str>,
     ) -> Result<serde_json::Value, TelegramError> {
-        let mut body = serde_json::json!({
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "text": text,
-        });
+        let mut req =
+            self.bot
+                .edit_message_text(recipient(chat_id)?, self::message_id(message_id)?, text);
         if let Some(pm) = parse_mode {
-            body["parse_mode"] = serde_json::Value::String(pm.to_owned());
+            req = req.parse_mode(self::parse_mode(pm)?);
         }
-
-        let response = self
-            .inner
-            .post(self.method_url("editMessageText"))
-            .json(&body)
-            .send()
-            .await?;
-        handle_telegram_response(response).await
+        encode(&req.await?)
     }
 
     async fn delete_message(
@@ -236,18 +236,10 @@ impl TelegramApi for TelegramClient {
         chat_id: &str,
         message_id: i64,
     ) -> Result<serde_json::Value, TelegramError> {
-        let body = serde_json::json!({
-            "chat_id": chat_id,
-            "message_id": message_id,
-        });
-
-        let response = self
-            .inner
-            .post(self.method_url("deleteMessage"))
-            .json(&body)
-            .send()
-            .await?;
-        handle_telegram_response(response).await
+        let req = self
+            .bot
+            .delete_message(recipient(chat_id)?, self::message_id(message_id)?);
+        encode(&req.await?)
     }
 
     async fn send_inline_keyboard(
@@ -256,21 +248,16 @@ impl TelegramApi for TelegramClient {
         text: &str,
         inline_keyboard: serde_json::Value,
     ) -> Result<serde_json::Value, TelegramError> {
-        let body = serde_json::json!({
-            "chat_id": chat_id,
-            "text": text,
-            "reply_markup": {
-                "inline_keyboard": inline_keyboard,
-            },
-        });
-
-        let response = self
-            .inner
-            .post(self.method_url("sendMessage"))
-            .json(&body)
-            .send()
-            .await?;
-        handle_telegram_response(response).await
+        let markup: InlineKeyboardMarkup =
+            serde_json::from_value(serde_json::json!({ "inline_keyboard": inline_keyboard }))
+                .map_err(|e| {
+                    TelegramError::InvalidInput(format!("invalid inline_keyboard: {e}"))
+                })?;
+        let req = self
+            .bot
+            .send_message(recipient(chat_id)?, text)
+            .reply_markup(markup);
+        encode(&req.await?)
     }
 
     async fn get_updates(
@@ -279,24 +266,20 @@ impl TelegramApi for TelegramClient {
         timeout: u64,
         allowed_updates: &[String],
     ) -> Result<serde_json::Value, TelegramError> {
-        let mut body = serde_json::json!({
-            "timeout": timeout,
-        });
+        let timeout = u32::try_from(timeout).map_err(|_| {
+            TelegramError::InvalidConfig(format!("poll_timeout too large: {timeout}"))
+        })?;
+        let mut req = self.bot.get_updates().timeout(timeout);
         if let Some(off) = offset {
-            body["offset"] = serde_json::Value::Number(off.into());
+            let off = i32::try_from(off).map_err(|_| {
+                TelegramError::PollingFailed(format!("update offset out of range: {off}"))
+            })?;
+            req = req.offset(off);
         }
         if !allowed_updates.is_empty() {
-            body["allowed_updates"] = serde_json::to_value(allowed_updates)
-                .unwrap_or_else(|_| serde_json::Value::Array(vec![]));
+            req = req.allowed_updates(self::allowed_updates(allowed_updates)?);
         }
-
-        let response = self
-            .inner
-            .post(self.method_url("getUpdates"))
-            .json(&body)
-            .send()
-            .await?;
-        handle_telegram_response(response).await
+        encode(&req.await?)
     }
 
     async fn set_webhook(
@@ -305,38 +288,24 @@ impl TelegramApi for TelegramClient {
         secret_token: Option<&str>,
         allowed_updates: &[String],
     ) -> Result<serde_json::Value, TelegramError> {
-        let mut body = serde_json::json!({
-            "url": url,
-        });
+        let url = Url::parse(url)
+            .map_err(|e| TelegramError::InvalidConfig(format!("invalid webhook_url: {e}")))?;
+        let mut req = self.bot.set_webhook(url);
         if let Some(token) = secret_token {
-            body["secret_token"] = serde_json::Value::String(token.to_owned());
+            req = req.secret_token(token);
         }
         if !allowed_updates.is_empty() {
-            body["allowed_updates"] = serde_json::to_value(allowed_updates)
-                .unwrap_or_else(|_| serde_json::Value::Array(vec![]));
+            req = req.allowed_updates(self::allowed_updates(allowed_updates)?);
         }
-
-        let response = self
-            .inner
-            .post(self.method_url("setWebhook"))
-            .json(&body)
-            .send()
-            .await?;
-        handle_telegram_response(response).await
+        encode(&req.await?)
     }
 
     async fn delete_webhook(&self) -> Result<serde_json::Value, TelegramError> {
-        let response = self
-            .inner
-            .post(self.method_url("deleteWebhook"))
-            .send()
-            .await?;
-        handle_telegram_response(response).await
+        encode(&self.bot.delete_webhook().await?)
     }
 
     async fn get_me(&self) -> Result<serde_json::Value, TelegramError> {
-        let response = self.inner.get(self.method_url("getMe")).send().await?;
-        handle_telegram_response(response).await
+        encode(&self.bot.get_me().await?)
     }
 
     async fn answer_callback_query(
@@ -345,20 +314,14 @@ impl TelegramApi for TelegramClient {
         text: Option<&str>,
         show_alert: bool,
     ) -> Result<serde_json::Value, TelegramError> {
-        let mut body = serde_json::json!({
-            "callback_query_id": callback_query_id,
-            "show_alert": show_alert,
-        });
+        let mut req = self
+            .bot
+            .answer_callback_query(CallbackQueryId(callback_query_id.to_owned()))
+            .show_alert(show_alert);
         if let Some(t) = text {
-            body["text"] = serde_json::Value::String(t.to_owned());
+            req = req.text(t);
         }
-        let response = self
-            .inner
-            .post(self.method_url("answerCallbackQuery"))
-            .json(&body)
-            .send()
-            .await?;
-        handle_telegram_response(response).await
+        encode(&req.await?)
     }
 }
 

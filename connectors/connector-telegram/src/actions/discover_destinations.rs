@@ -199,10 +199,10 @@ mod tests {
     use super::*;
     use crate::client::test_helpers::MockTelegramApi;
 
-    /// The real `TelegramClient.get_updates` runs the response through
-    /// `handle_telegram_response`, which unwraps `{ok, result}` and
-    /// returns the inner `result` value directly. Mirror that — the
-    /// mock surfaces the unwrapped array straight back to the action.
+    /// The real `TelegramClient.get_updates` goes through teloxide-core,
+    /// which unwraps `{ok, result}` and hands back the inner `result`
+    /// (re-encoded as JSON). Mirror that — the mock surfaces the
+    /// unwrapped array straight back to the action.
     fn mock_with_updates(updates: serde_json::Value) -> MockTelegramApi {
         MockTelegramApi { response: updates }
     }
