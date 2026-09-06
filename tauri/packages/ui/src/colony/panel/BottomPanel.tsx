@@ -2,6 +2,7 @@ import type { Component } from "solid-js";
 import { Match, Switch } from "solid-js";
 import type { EventItem } from "../../dashboard/model";
 import type { CommandDecl, ConnectorOutput } from "../../dashboard/types";
+import { ExecutionsPanel } from "../ExecutionsPanel";
 import type { ConnectorPositions } from "../geometry";
 import type {
   ColonyAgent,
@@ -109,6 +110,11 @@ export const BottomPanel: Component<BottomPanelProps> = (props) => {
               outputs={props.outputs ?? []}
               connectorId={(props.detailView as { connectorId?: string }).connectorId ?? ""}
             />
+          </Match>
+          <Match when={props.detailView.mode === "reports"}>
+            {/* Plan 3.3 — INSPECT opens this bot's run history, not the
+                entity view the user is already looking at. */}
+            <ExecutionsPanel ruleId={(props.detailView as { ruleId?: string }).ruleId} />
           </Match>
           <Match when={props.detailView.mode === "formations"}>
             <FormationsListView

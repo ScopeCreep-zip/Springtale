@@ -1,5 +1,5 @@
 import type { Component } from "solid-js";
-import { createEffect, createSignal, For } from "solid-js";
+import { For } from "solid-js";
 import type { EventItem } from "../dashboard/model";
 import type { ColonyAgent, ColonyFormation, ColonyNode, ColonySelection } from "./types";
 
@@ -18,24 +18,46 @@ export interface TopBarProps {
  *
  * Sources: RimWorld colonist bar, ONI colony summary, pixel waveform.
  */
-export const TopBar: Component<TopBarProps> = (props) => {
-  // Cadence waveform — derives from real event activity.
-  // Each bar = number of events in a recent time slice.
-  // More events = taller bars. Idle colony = flat bars.
-  const [bars, setBars] = createSignal<number[]>(Array(20).fill(2));
+/** Cadence histogram width — one bucket per second. */
+const CADENCE_BUCKETS = 20;
+/** Tallest bar, in px; the bar strip is 16px high. */
+const CADENCE_MAX_PX = 14;
 
-  createEffect(() => {
-    const eventCount = props.events.length;
-    const activeAgents = props.agents.filter((a) => a.status === "ok").length;
-    // Push a new bar based on real activity level
-    const activity = Math.min(14, 2 + eventCount + activeAgents * 2);
-    setBars((prev) => {
-      const next = [...prev];
-      next.shift();
-      next.push(activity);
-      return next;
-    });
-  });
+/**
+ * Plan 3.3 — the roster glyph reports what the agent is doing:
+ * `-` idle, `!` firing right now, `*` otherwise. It is deliberately NOT a
+ * fuel readout: `fuel < 20` is true of every disabled agent, so the old
+ * rule painted the whole roster with alarms.
+ */
+const rosterGlyph = (agent: ColonyAgent) =>
+  agent.status === "idle" ? "-" : agent.activity === "firing" ? "!" : "*";
+
+export const TopBar: Component<TopBarProps> = (props) => {
+  /**
+   * Cadence waveform — a real events-per-second histogram over the last
+   * `CADENCE_BUCKETS` seconds of the event stream, newest bucket on the
+   * right. Buckets are keyed off the newest event's own timestamp (not the
+   * wall clock) so the shape matches the data the panel is showing.
+   */
+  const cadence = () => {
+    const buckets: number[] = new Array(CADENCE_BUCKETS).fill(0);
+    const stamps = props.events.map((e) => Date.parse(e.timestamp)).filter(Number.isFinite);
+    if (stamps.length === 0) return buckets;
+    const newest = Math.max(...stamps);
+    for (const t of stamps) {
+      const age = Math.floor((newest - t) / 1000);
+      if (age >= 0 && age < CADENCE_BUCKETS) {
+        const i = CADENCE_BUCKETS - 1 - age;
+        buckets[i] = (buckets[i] ?? 0) + 1;
+      }
+    }
+    return buckets;
+  };
+  /** Scale to the busiest bucket so the shape stays readable at any volume. */
+  const barHeight = (count: number) => {
+    const peak = Math.max(1, ...cadence());
+    return 1 + Math.round((count / peak) * (CADENCE_MAX_PX - 1));
+  };
 
   const liveCount = () => props.agents.filter((a) => a.status !== "idle").length;
   const nodeCount = () => props.nodes.length;
@@ -48,8 +70,10 @@ export const TopBar: Component<TopBarProps> = (props) => {
     <>
       {/* Cadence waveform */}
       <div class="mr-1.5 flex h-4 shrink-0 items-end gap-px">
-        <For each={bars()}>
-          {(h) => <div class="colony-cadence-bar" style={{ "--colony-h": `${h}px` }} />}
+        <For each={cadence()}>
+          {(count) => (
+            <div class="colony-cadence-bar" style={{ "--colony-h": `${barHeight(count)}px` }} />
+          )}
         </For>
       </div>
 
@@ -86,7 +110,7 @@ export const TopBar: Component<TopBarProps> = (props) => {
                       props.onSelectAgent(agent.id);
                     }}
                   >
-                    <span>{agent.fuel < 20 ? "!" : agent.status === "idle" ? "-" : "*"}</span>
+                    <span>{rosterGlyph(agent)}</span>
                   </button>
                 )}
               </For>
@@ -108,7 +132,7 @@ export const TopBar: Component<TopBarProps> = (props) => {
               title={`${agent.name}: ${agent.task}`}
               onClick={() => props.onSelectAgent(agent.id)}
             >
-              <span>{agent.fuel < 20 ? "!" : agent.status === "idle" ? "-" : "*"}</span>
+              <span>{rosterGlyph(agent)}</span>
             </button>
           )}
         </For>

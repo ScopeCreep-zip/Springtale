@@ -379,17 +379,18 @@ export function createColonyController(db: ColonyDb, opts: ColonyControllerOptio
             setAiConfigAgent({ id: sel.id, name: agent?.name ?? sel.id, scope: "agent" });
           }
           break;
+        // Plan 3.3: PAUSE disables, RESUME enables. Both used to disable
+        // (RECALL was a duplicate PAUSE), so a paused bot could not be
+        // restarted from the command card at all.
         case "agent:pause":
           if (sel.id) {
-            await db.handleToggle(sel.id, true);
+            await db.provider.toggleRule(sel.id, false);
             await db.refresh();
           }
           break;
-        case "agent:recall":
-          // Recall = disable + clear selection (agent goes idle, returns to tree)
+        case "agent:resume":
           if (sel.id) {
-            await db.handleToggle(sel.id, true);
-            clearSelection();
+            await db.provider.toggleRule(sel.id, true);
             await db.refresh();
           }
           break;
@@ -409,7 +410,11 @@ export function createColonyController(db: ColonyDb, opts: ColonyControllerOptio
           }
           break;
         case "agent:inspect":
-          setDetailView({ mode: "entity" });
+          // Plan 3.3: INSPECT opens the run history (ExecutionsPanel), not
+          // the entity view the user is already looking at.
+          if (sel.id) {
+            setDetailView({ mode: "reports", ruleId: sel.id });
+          }
           break;
         case "agent:group":
           if (sel.id) {
@@ -465,6 +470,15 @@ export function createColonyController(db: ColonyDb, opts: ColonyControllerOptio
             });
           }
           break;
+        case "formation:add_member":
+          // Plan 3.3: the backend emits `formation:add_member` (the old
+          // `formation:add` case was never reachable). Pick the connector,
+          // then dispatch through `runFormationCommand` with its param.
+          if (sel.id) {
+            setPendingAddToFormation(sel.id);
+            setDetailView({ mode: "connectors" });
+          }
+          break;
         case "formation:remove_member":
           // F5 — open the member-picker overlay scoped to this formation.
           // The overlay fetches the eligible-removal list (B11
@@ -481,32 +495,16 @@ export function createColonyController(db: ColonyDb, opts: ColonyControllerOptio
             setDetailView({ mode: "connectors" });
           }
           break;
-        case "formation:ai_config":
         case "formation:ai_adapter":
-          // G7 — open the per-formation AI override panel. Uses the shared
-          // AiConfigPanel scoped to a formation; on save the config persists
-          // at `ai:formation:{id}` and the next Fever-tier orchestrate call
-          // picks it up via `resolve_ai_config`.
+          // G7 — open the per-formation AI override panel (dispatched by
+          // `FormationAiAdapterRow`, not by the command card). Uses the
+          // shared AiConfigPanel scoped to a formation; on save the config
+          // persists at `ai:formation:{id}` and the next Fever-tier
+          // orchestrate call picks it up via `resolve_ai_config`.
           if (sel.id) {
             const fm = db.swarms().find((s) => s.id === sel.id);
             setAiConfigAgent({ id: sel.id, name: fm?.name ?? sel.id, scope: "formation" });
           }
-          break;
-        case "formation:autonomy":
-          if (sel.id) {
-            await db.provider.cycleFormationAutonomy(sel.id);
-            await db.refresh();
-          }
-          break;
-        case "formation:add":
-          if (sel.id) {
-            setPendingAddToFormation(sel.id);
-            setDetailView({ mode: "connectors" });
-          }
-          break;
-        case "formation:fuel":
-          // Show entity detail with fuel info
-          setDetailView({ mode: "entity" });
           break;
       }
     } catch (e) {
@@ -537,7 +535,9 @@ export function createColonyController(db: ColonyDb, opts: ColonyControllerOptio
       setDetailView({ mode: "entity" });
       await db.refresh();
     } else if (formationId) {
-      await db.provider.addFormationMember(formationId, id);
+      await db.provider.runFormationCommand(formationId, "formation:add_member", {
+        connector_name: id,
+      });
       setPendingAddToFormation(null);
       setDetailView({ mode: "entity" });
       await db.refresh();
@@ -548,7 +548,9 @@ export function createColonyController(db: ColonyDb, opts: ColonyControllerOptio
 
   /** Bottom-panel "add to formation" shortcut. */
   const handleAddToFormation = async (formationId: string, connectorName: string) => {
-    await db.provider.addFormationMember(formationId, connectorName);
+    await db.provider.runFormationCommand(formationId, "formation:add_member", {
+      connector_name: connectorName,
+    });
     setDetailView({ mode: "entity" });
     await db.refresh();
   };
