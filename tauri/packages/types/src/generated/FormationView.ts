@@ -6,13 +6,4 @@ import type { FormationStatus } from "./FormationStatus";
  * whenever the formation's intent changes, momentum tier flips, or
  * rally tokens cross a threshold.
  */
-export type FormationView = {
-  formation_id: string;
-  intent: string;
-  momentum_tier: string;
-  operational_count: number;
-  member_count: number;
-  rally_tokens_remaining: number;
-  status: FormationStatus;
-  at: string;
-};
+export type FormationView = { formation_id: string, intent: string, momentum_tier: string, operational_count: number, member_count: number, rally_tokens_remaining: number, status: FormationStatus, at: string, };

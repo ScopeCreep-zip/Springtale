@@ -1,7 +1,10 @@
 //! Catalogue snapshot — the recipe library projected into the shape
 //! the NLU engine scores and slot-fills against.
 //!
-//! Built fresh each turn from `list_recipes` (≈60 built-ins; cheap).
+//! Built fresh each turn from `list_recipes` — the whole builtin
+//! catalogue plus the user's own recipes; cheap. No count is written
+//! down here: the catalogue is whatever `list_recipes` returns, and
+//! every hardcoded figure this comment has carried has gone stale.
 //! Every recipe becomes an [`IntentDoc`]: stemmed name/tag/description
 //! token bags for intent scoring, plus a [`SlotSpec`] per input field
 //! carrying a precomputed [`Gazetteer`] for `Select` fields so the

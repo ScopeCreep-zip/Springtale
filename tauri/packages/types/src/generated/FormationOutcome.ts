@@ -5,11 +5,4 @@
  * finished" awareness for sibling formations on the same connector
  * graph and feeds the global mental-model persistence layer (G2).
  */
-export type FormationOutcome = {
-  formation_id: string;
-  final_intent: string;
-  success_count: number;
-  failure_count: number;
-  dissolve_reason: string;
-  at: string;
-};
+export type FormationOutcome = { formation_id: string, final_intent: string, success_count: number, failure_count: number, dissolve_reason: string, at: string, };

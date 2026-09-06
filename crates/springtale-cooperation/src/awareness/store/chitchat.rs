@@ -6,7 +6,7 @@
 //! last_success, attention_load). Peers observe via `node_states()` and
 //! reconstruct `NeighborSnapshot`s.
 //!
-//! See <https://docs.rs/chitchat/0.10.0/chitchat/>.
+//! See <https://docs.rs/chitchat/0.13.0/chitchat/>.
 
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -16,7 +16,8 @@ use std::time::{Duration, Instant};
 use async_trait::async_trait;
 use chitchat::transport::UdpTransport;
 use chitchat::{
-    Chitchat, ChitchatConfig, ChitchatHandle, ChitchatId, FailureDetectorConfig, spawn_chitchat,
+    Chitchat, ChitchatConfig, ChitchatHandle, ChitchatId, FailureDetectorConfig, ProtocolVersion,
+    spawn_chitchat,
 };
 use tokio::sync::Mutex;
 
@@ -53,13 +54,18 @@ pub struct ChitchatGossipStore {
 impl ChitchatGossipStore {
     pub async fn spawn(cfg: ChitchatGossipConfig) -> Result<Self, CooperationError> {
         let chitchat_id = ChitchatId {
-            node_id: cfg.node_id,
+            // chitchat 0.13 interns node ids as `Arc<str>`.
+            node_id: cfg.node_id.into(),
             generation_id: 0,
             gossip_advertise_addr: cfg.public_addr,
         };
         let config = ChitchatConfig {
             chitchat_id,
             cluster_id: cfg.cluster_id,
+            // chitchat 0.13 made the digest wire format explicit. V0 is
+            // the crate's own default and the format 0.10 spoke, so the
+            // bump changes no bytes on the wire.
+            protocol_version: ProtocolVersion::V0,
             gossip_interval: cfg.gossip_interval,
             listen_addr: cfg.listen_addr,
             seed_nodes: cfg.seeds,
@@ -182,7 +188,7 @@ impl GossipStore for ChitchatGossipStore {
             FIELD_SUCCESS,
             FIELD_ATTENTION,
         ] {
-            // chitchat 0.10: `delete` marks the key for GC after its TTL;
+            // chitchat 0.13: `delete` marks the key for GC after its TTL;
             // peers observe the absence on the next gossip round.
             state.delete(&Self::agent_key(agent_id, f));
         }

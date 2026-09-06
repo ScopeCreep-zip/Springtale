@@ -298,7 +298,6 @@ springtale-cli rule delete flag-slurs
 springtale-cli rule delete escalate-on-second-offence
 springtale-cli rule delete welcome
 springtale-cli connector remove connector-telegram
-springtale-cli vault unset telegram.bot_token
 ```
 
 Delete the bot via BotFather (`/deletebot`).
