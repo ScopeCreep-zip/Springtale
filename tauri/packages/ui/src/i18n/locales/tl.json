@@ -147,5 +147,17 @@
   "canvas.connectionLost": "Connection lost. Reconnecting...",
   "events.noAuthToken": "No auth token — configure in Settings first.",
   "vault.create": "Create Vault",
-  "vault.createDesc": "No vault found. Create one to protect your data with a passphrase."
+  "vault.createDesc": "No vault found. Create one to protect your data with a passphrase.",
+
+  "utter.firing": "na-trigger ang panuntunan",
+  "utter.working": "gumagawa",
+  "utter.listening": "nakikinig",
+  "utter.idle": "naka-disable",
+  "utter.failed": "nabigo ang aksyon",
+  "utter.down": "hindi gumagana ang miyembro",
+  "utter.claimed": "kumuha ng gawain",
+  "utter.yield": "nagbigay-daan sa kasamahan",
+  "utter.helping": "tumutulong sa kasamahan",
+  "utter.rally": "magtipon",
+  "utter.cascade": "babala ng cascade"
 }

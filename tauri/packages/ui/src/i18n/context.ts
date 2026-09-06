@@ -26,6 +26,8 @@ export function createI18n(initial: Locale = "en") {
   const t = i18n.translator(() => (dict() ?? {}) as Record<string, string>, i18n.resolveTemplate);
 
   const isRTL = () => RTL_LOCALES.includes(locale());
+  /** Text direction of the current locale, for glyphs that mirror under RTL. */
+  const dir = (): "rtl" | "ltr" => (isRTL() ? "rtl" : "ltr");
 
   // Reactively update document direction and lang attribute
   createEffect(() => {
@@ -33,7 +35,7 @@ export function createI18n(initial: Locale = "en") {
     document.documentElement.dir = isRTL() ? "rtl" : "ltr";
   });
 
-  return { t, locale, setLocale, isRTL };
+  return { t, locale, setLocale, isRTL, dir };
 }
 
 // Context for tree-wide access

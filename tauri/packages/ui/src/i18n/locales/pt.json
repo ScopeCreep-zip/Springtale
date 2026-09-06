@@ -147,5 +147,17 @@
   "canvas.connectionLost": "Connection lost. Reconnecting...",
   "events.noAuthToken": "No auth token — configure in Settings first.",
   "vault.create": "Create Vault",
-  "vault.createDesc": "No vault found. Create one to protect your data with a passphrase."
+  "vault.createDesc": "No vault found. Create one to protect your data with a passphrase.",
+
+  "utter.firing": "regra disparada",
+  "utter.working": "trabalhando",
+  "utter.listening": "escutando",
+  "utter.idle": "desativado",
+  "utter.failed": "ação falhou",
+  "utter.down": "membro fora do ar",
+  "utter.claimed": "assumiu uma tarefa",
+  "utter.yield": "cedeu a um colega",
+  "utter.helping": "ajudando um colega",
+  "utter.rally": "reunir",
+  "utter.cascade": "alerta de cascata"
 }

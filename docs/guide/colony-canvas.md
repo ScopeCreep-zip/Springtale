@@ -109,13 +109,30 @@ Selecting an agent opens an agent-level card with:
 - **Active task** — what's in `active_task`, if any
 - **Recent reports** — tick reports scrolling in from the cadence bus
 
-## 6. Simlish bubbles
+## 6. Motes
 
-Agents emit Simlish-style short speech bubbles. Bubbles map to real
-activity — they are **not** random decoration. A `!` bubble means the
-agent fired a rule; a `~` means waiting; a `!!` means error. Emission is
-driven by `TickReport::action_taken` and the supervisor's health/liveness
-outputs.
+Agents speak in motes: a glyph from the shipped `Springtale Symbols` font
+(a subset of Symbols Nerd Font Mono built by `scripts/build-symbol-font.sh`)
+inside an ISO 3864 shape — triangle for warning, circle for prohibition,
+square for information, colour fixed to shape. Every mote is a real
+`utterance` event from the cooperation ring (`GET /cooperation/utterances`
+is the def table); nothing is random. A mote expires on the colony tick
+clock (`seq + ttl_ticks > now`), not on a wall-clock timer, so a paused
+daemon leaves its motes where they were. At most three show per agent,
+newest on top; directional glyphs mirror under RTL; every slot carries an
+`aria-label` from the `utter.*` keys in each locale dictionary.
+
+**Comprehension check before freezing a glyph.** ISO 9186's method, scaled
+to the community: show each glyph-plus-shape without its label to at least
+ten readers per shipped locale (`en`, `es`, `pt`, `fr`, `ar`, `th`, `tl`,
+`ja`), ask what it means, keep it if 85 percent answer within the intended
+meaning, otherwise override it in that locale's `locales` map in
+`crates/springtale-cooperation/src/utterance/defs.rs` and rerun the font
+script. Results are tracked here:
+
+| Glyph (kind) | Locale | Readers | Within meaning | Decision |
+| --- | --- | --- | --- | --- |
+| _none yet_ | | | | |
 
 ## 7. Attention economy (visual)
 

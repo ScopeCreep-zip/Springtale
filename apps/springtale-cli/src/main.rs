@@ -6,7 +6,10 @@ mod store;
 use anyhow::Result;
 use clap::Parser;
 
-use cli::{BotAction, Cli, Command, CryptoAction, ServerAction, TravelAction, VaultAction};
+use cli::{
+    BotAction, Cli, Command, CooperationAction, CryptoAction, ServerAction, TravelAction,
+    VaultAction,
+};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -101,6 +104,11 @@ async fn main() -> Result<()> {
             }
             BotAction::PanicUnpair => {
                 commands::bot::panic_unpair(&pass_opts).await?;
+            }
+        },
+        Command::Cooperation { action } => match action {
+            CooperationAction::Glyphs { check } => {
+                commands::cooperation::glyphs(check.as_deref())?;
             }
         },
         // Commands that need the store

@@ -2,6 +2,8 @@ import type { AvailableConnector, ConnectorSchema } from "@springtale/types";
 import type { Component, JSX } from "solid-js";
 import { createSignal, For, Show } from "solid-js";
 import type { EventItem } from "../dashboard/model";
+import type { Utterance } from "../dashboard/types";
+import type { Locale } from "../i18n/types";
 import { ColonyCanvas } from "./ColonyCanvas";
 import { EventRibbon } from "./EventRibbon";
 import type {
@@ -26,6 +28,13 @@ export interface ViewportProps {
   onClearSelection: () => void;
   onConnectorDrag: (id: string, x: number, y: number) => void;
   onHatch?: () => void;
+  // Plan 3.4 — motes. Locale and text direction come from useI18n() inside.
+  utterances: Utterance[];
+  colonyNow: number;
+  agentToConnector: Record<string, string>;
+  framesFor: (u: Utterance, locale: Locale) => string[];
+  roleOf: (agentId: string) => string | undefined;
+  viewScale?: number; // 3.5 supplies it; 1 until then
   overlay?: JSX.Element;
   // OOBE TeamBuilder props
   availableConnectors?: AvailableConnector[];
@@ -57,6 +66,12 @@ export const Viewport: Component<ViewportProps> = (props) => {
         connectorPositions={props.connectorPositions}
         onSelectConnector={props.onSelectConnector}
         onSelectAgent={props.onSelectAgent}
+        utterances={props.utterances}
+        colonyNow={props.colonyNow}
+        agentToConnector={props.agentToConnector}
+        framesFor={props.framesFor}
+        roleOf={props.roleOf}
+        viewScale={props.viewScale}
         onSelectFormation={props.onSelectFormation}
         onClearSelection={props.onClearSelection}
         onConnectorDrag={props.onConnectorDrag}

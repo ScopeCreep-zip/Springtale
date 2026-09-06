@@ -60,6 +60,22 @@ pub const MD_ROLE_GUARD: &str = "\u{f0498}"; // nf-md-shield
 pub const MD_ROLE_ANALYST: &str = "\u{f0349}"; // nf-md-magnify
 pub const MD_ROLE_SENTINEL: &str = "\u{f0208}"; // nf-md-eye
 
+/// Every Nerd Font constant with its upstream name (`glyphnames.json` key),
+/// for `springtale cooperation glyphs --check`.
+pub const NAMED_CODEPOINTS: &[(&str, &str)] = &[
+    ("md-sleep", MD_SLEEP),
+    ("md-heart", MD_HEART),
+    ("md-hand_back_right", MD_HAND_GRAB),
+    ("md-bullhorn", MD_BULLHORN),
+    ("md-alert", MD_ALERT),
+    ("md-dots_circle", MD_SQUEAN),
+    ("md-binoculars", MD_ROLE_SCOUT),
+    ("md-hammer", MD_ROLE_WORKER),
+    ("md-shield", MD_ROLE_GUARD),
+    ("md-magnify", MD_ROLE_ANALYST),
+    ("md-eye", MD_ROLE_SENTINEL),
+];
+
 /// Placeholder frame resolved by the renderer to the beneficiary's role glyph.
 pub const ROLE_PLACEHOLDER: &str = "role";
 

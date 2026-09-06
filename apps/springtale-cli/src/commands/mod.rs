@@ -3,6 +3,7 @@ pub mod author;
 pub mod bot;
 pub mod config;
 pub mod connector;
+pub mod cooperation;
 pub mod crypto;
 pub mod data;
 pub mod doctor;

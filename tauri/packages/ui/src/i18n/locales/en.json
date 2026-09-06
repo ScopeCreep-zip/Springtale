@@ -166,5 +166,17 @@
   "canvas.title": "Canvas",
   "canvas.empty": "No content. The bot will push updates here when running.",
   "canvas.loading": "Loading canvas...",
-  "canvas.connectionLost": "Connection lost. Reconnecting..."
+  "canvas.connectionLost": "Connection lost. Reconnecting...",
+
+  "utter.firing": "rule fired",
+  "utter.working": "working",
+  "utter.listening": "listening",
+  "utter.idle": "disabled",
+  "utter.failed": "action failed",
+  "utter.down": "member down",
+  "utter.claimed": "claimed a task",
+  "utter.yield": "yielded to a teammate",
+  "utter.helping": "helping a teammate",
+  "utter.rally": "rally",
+  "utter.cascade": "cascade warning"
 }
