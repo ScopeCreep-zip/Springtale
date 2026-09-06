@@ -41,6 +41,24 @@ pub(crate) struct HostState {
     pub(crate) connector_name: String,
     pub(crate) checker: CapabilityChecker,
     pub(crate) limits: wasmtime::StoreLimits,
+    /// WASI Preview 2 context. Built by
+    /// [`super::wasi::default_deny_wasi_ctx`] with nothing granted — no
+    /// stdio, env, args, preopens, reachable socket addresses or DNS.
+    pub(crate) wasi: wasmtime_wasi::WasiCtx,
+    /// Resource table backing WASI-owned handles (streams, pollables).
+    pub(crate) table: wasmtime::component::ResourceTable,
+}
+
+/// Gives the WASI Preview 2 host implementations access to this store's
+/// context and resource table. Implemented on the existing host state so
+/// WASI and the `springtale.*` host functions share one `Store` payload.
+impl wasmtime_wasi::WasiView for HostState {
+    fn ctx(&mut self) -> wasmtime_wasi::WasiCtxView<'_> {
+        wasmtime_wasi::WasiCtxView {
+            ctx: &mut self.wasi,
+            table: &mut self.table,
+        }
+    }
 }
 
 /// WASM connector host — sandboxed execution of community connectors.
@@ -120,6 +138,8 @@ impl WasmConnectorHost {
             connector_name: self.manifest.name.clone(),
             checker: checker.clone(),
             limits,
+            wasi: super::wasi::default_deny_wasi_ctx(),
+            table: wasmtime::component::ResourceTable::new(),
         };
 
         let mut store = Store::new(self.wasm_engine.engine(), host_state);
