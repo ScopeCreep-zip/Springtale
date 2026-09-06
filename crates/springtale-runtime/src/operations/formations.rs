@@ -83,6 +83,9 @@ pub struct FormationMemberDetail {
     /// matching the frontend `AgentHealth` tagged union.
     pub health: AgentHealthDetail,
     pub fuel_remaining: u64,
+    /// Fuel the member started with; `fuel_remaining / fuel_initial` is
+    /// the live fuel percentage the agent list renders.
+    pub fuel_initial: u64,
     pub liveness: String,
     pub attention_load: f32,
     pub active_task: Option<String>,
@@ -95,6 +98,11 @@ pub struct FormationDetail {
     #[serde(flatten)]
     pub info: FormationInfo,
     pub member_details: Vec<FormationMemberDetail>,
+}
+
+/// Badge label for the formation guard toggle.
+pub fn guard_status_label(guard_engaged: bool) -> &'static str {
+    if guard_engaged { "GUARD" } else { "--" }
 }
 
 /// Formation info for listing.
@@ -127,7 +135,8 @@ pub struct FormationInfo {
     pub momentum_successes_to_next_tier: Option<i64>,
     /// Capabilities unlocked at current tier.
     pub capabilities: Vec<String>,
-    /// Guard readiness: "OK" if any member active, "--" otherwise.
+    /// Guard badge label derived from `guard_engaged`: "GUARD" when the
+    /// guard toggle is engaged, "--" otherwise.
     pub guard_status: String,
     /// True when guard mode is engaged for this formation. Read from the
     /// `guard:{formation_id}` config row — the same key `toggle_formation_guard`
@@ -554,18 +563,20 @@ pub async fn list_formations(state: &RuntimeState) -> Result<Vec<FormationInfo>,
 
         // Read rally state from dedicated table
         let rally_row = state.store.get_formation_rally(&f.id).await.ok().flatten();
-        let rally_tokens = rally_row.as_ref().map(|r| r.tokens_remaining).unwrap_or(3);
-        let rally_max = rally_row.as_ref().map(|r| r.max_tokens).unwrap_or(3);
+        // No rally row → the formation has never been given a rally
+        // budget; report zero so the UI hides the pips instead of
+        // inventing a full set.
+        let rally_tokens = rally_row.as_ref().map(|r| r.tokens_remaining).unwrap_or(0);
+        let rally_max = rally_row.as_ref().map(|r| r.max_tokens).unwrap_or(0);
 
         let momentum_label = tier_label(&momentum_tier);
         let capabilities = tier_capabilities(&momentum_tier);
-        let guard_status = if f.status == "active" { "OK" } else { "--" }.to_owned();
-
         // See `guard_engaged` doc comment for the live-vs-config divergence.
         let guard_engaged = !config::get_config(&*state.store, &format!("guard:{}", f.id))
             .await
             .unwrap_or(serde_json::Value::Null)
             .is_null();
+        let guard_status = guard_status_label(guard_engaged).to_owned();
 
         // Operational count: prefer the live reader (accurate — reads
         // current AgentHealth from in-memory Formation). Fall back to
@@ -963,8 +974,8 @@ mod tests {
             momentum_interference_count: 0,
             momentum_successes_to_next_tier: Some(3),
             capabilities: vec!["read env".into(), "chain".into()],
-            guard_status: "OK".into(),
-            guard_engaged: false,
+            guard_status: "GUARD".into(),
+            guard_engaged: true,
             rally_tokens: 3,
             rally_max: 3,
         };
@@ -1023,5 +1034,11 @@ mod tests {
         };
         let json = serde_json::to_value(&info).unwrap();
         assert!(json["momentum_successes_to_next_tier"].is_null());
+    }
+
+    #[test]
+    fn test_guard_status_label_engaged_returns_guard() {
+        assert_eq!(guard_status_label(true), "GUARD");
+        assert_eq!(guard_status_label(false), "--");
     }
 }

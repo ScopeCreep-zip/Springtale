@@ -75,6 +75,8 @@ export interface FormationMemberDetail {
   role: string;
   health: AgentHealthDetail;
   fuel_remaining: number;
+  /** Fuel the member started with; remaining/initial is the live fuel percentage. */
+  fuel_initial: number;
   liveness: string;
   attention_load: number;
   active_task: string | null;
@@ -107,7 +109,10 @@ export interface FormationInfo {
   /** Successes remaining to promote; null at Fever (top tier). */
   momentum_successes_to_next_tier?: number | null;
   capabilities?: string[];
-  guard_status?: string;
+  /** Guard badge label from the backend: "GUARD" when engaged, "--" otherwise. */
+  guard_status: string;
+  /** Whether the formation guard toggle is engaged. */
+  guard_engaged: boolean;
   /** Rally tokens remaining (Monster Hunter carts, §15). */
   rally_tokens?: number;
   rally_max?: number;

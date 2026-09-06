@@ -32,6 +32,24 @@ import {
   TIER_CAPABILITIES,
 } from "./types";
 
+/**
+ * Colour for the backend's four health states
+ * (`healthy | degraded | incapacitated | dead`). `healthy` takes the
+ * caller's accent so bars keep their own palette.
+ */
+function healthColor(state: string | undefined, healthy = "var(--color-status-ok)"): string {
+  switch (state) {
+    case "healthy":
+      return healthy;
+    case "degraded":
+      return "var(--color-status-warn)";
+    case "incapacitated":
+      return "var(--color-status-error)";
+    default:
+      return "var(--color-text-dim)";
+  }
+}
+
 export interface BottomPanelProps {
   nodes: ColonyNode[];
   agents: ColonyAgent[];
@@ -338,12 +356,7 @@ const DetailPanel: Component<{
                   <div
                     class="colony-text-5xs mt-0.5 uppercase tracking-wider"
                     style={{
-                      color:
-                        a.healthState === "healthy"
-                          ? "var(--color-status-ok)"
-                          : a.healthState === "degraded"
-                            ? "var(--color-status-warn)"
-                            : "var(--color-status-error)",
+                      color: healthColor(a.healthState),
                     }}
                   >
                     {a.healthState ?? "healthy"} {(a.liveness ?? 1) < 0.5 ? `| SUSPECT` : ""}
@@ -366,24 +379,14 @@ const DetailPanel: Component<{
                         class="colony-stat-fill"
                         style={{
                           width: `${a.hp}%`,
-                          background:
-                            a.healthState === "degraded"
-                              ? "var(--color-status-warn)"
-                              : a.healthState === "critical"
-                                ? "var(--color-status-error)"
-                                : "var(--color-role-scout)",
+                          background: healthColor(a.healthState, "var(--color-role-scout)"),
                         }}
                       />
                     </div>
                     <span
                       class="colony-text-2xs text-right"
                       style={{
-                        color:
-                          a.healthState === "degraded"
-                            ? "var(--color-status-warn)"
-                            : a.healthState === "critical"
-                              ? "var(--color-status-error)"
-                              : "var(--color-role-scout)",
+                        color: healthColor(a.healthState, "var(--color-role-scout)"),
                       }}
                     >
                       {a.hp}
@@ -536,7 +539,7 @@ const DetailPanel: Component<{
                     DRAFT
                   </span>
                 </Show>
-                <Show when={f.guardStatus === "OK"}>
+                <Show when={f.guardStatus === "GUARD"}>
                   <span class="colony-text-5xs rounded bg-status-ok px-1 text-soil-deep">
                     GUARD
                   </span>
@@ -564,33 +567,37 @@ const DetailPanel: Component<{
                 {f.momentumLabel} — {MOMENTUM_UNLOCKS[f.momentum]}
               </div>
 
-              {/* Rally pips (Monster Hunter carts) */}
-              <div class="mb-1 flex items-center gap-1">
-                <span class="colony-text-3xs text-text-dim">RALLY</span>
-                <div class="flex gap-0.5">
-                  <For each={Array.from({ length: f.rallyMax })}>
-                    {(_, i) => (
-                      <div
-                        class="h-[6px] w-[6px] rounded-sm"
-                        style={{
-                          background:
-                            i() < f.rallyTokens
-                              ? "var(--color-status-warn)"
-                              : "var(--color-soil-darker)",
-                          border: "1px solid var(--color-bark)",
-                        }}
-                      />
-                    )}
-                  </For>
+              {/* Rally pips (Monster Hunter carts) — only once a rally budget exists */}
+              <Show when={f.rallyMax > 0}>
+                <div class="mb-1 flex items-center gap-1">
+                  <span class="colony-text-3xs text-text-dim">RALLY</span>
+                  <div class="flex gap-0.5">
+                    <For each={Array.from({ length: f.rallyMax })}>
+                      {(_, i) => (
+                        <div
+                          class="h-[6px] w-[6px] rounded-sm"
+                          style={{
+                            background:
+                              i() < f.rallyTokens
+                                ? "var(--color-status-warn)"
+                                : "var(--color-soil-darker)",
+                            border: "1px solid var(--color-bark)",
+                          }}
+                        />
+                      )}
+                    </For>
+                  </div>
+                  <span class="colony-text-5xs text-text-dim">
+                    {f.rallyTokens}/{f.rallyMax}
+                  </span>
                 </div>
-                <span class="colony-text-5xs text-text-dim">
-                  {f.rallyTokens}/{f.rallyMax}
-                </span>
-              </div>
+              </Show>
 
               {/* Aggregate stats row */}
               {(() => {
-                const operational = members().filter((a) => a.healthState === "healthy").length;
+                const operational = members().filter(
+                  (a) => a.healthState === "healthy" || a.healthState === "degraded",
+                ).length;
                 const avgLoad =
                   members().length > 0
                     ? Math.round(
@@ -615,14 +622,7 @@ const DetailPanel: Component<{
               <div class="colony-label mb-0.5">MEMBERS</div>
               <For each={members()}>
                 {(a) => {
-                  const healthColor =
-                    a.healthState === "healthy"
-                      ? "var(--color-status-ok)"
-                      : a.healthState === "degraded"
-                        ? "var(--color-status-warn)"
-                        : a.healthState === "critical"
-                          ? "var(--color-status-error)"
-                          : "var(--color-text-dim)";
+                  const memberColor = healthColor(a.healthState);
                   const livenessIcon =
                     (a.liveness ?? 1) > 0.8 ? "●" : (a.liveness ?? 1) > 0.3 ? "◐" : "○";
                   const fuelColor =
@@ -634,7 +634,7 @@ const DetailPanel: Component<{
                   return (
                     <div class="colony-text-2xs flex justify-between border-b border-bark py-0.5">
                       <span>
-                        <span style={{ color: healthColor }}>{livenessIcon}</span> {a.name}{" "}
+                        <span style={{ color: memberColor }}>{livenessIcon}</span> {a.name}{" "}
                         <span class="text-text-dim">{a.role}</span>
                       </span>
                       <span class="flex gap-1.5">

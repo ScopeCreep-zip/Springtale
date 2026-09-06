@@ -301,6 +301,7 @@ mod tests {
                     role: "scout".into(),
                     health: AgentHealthDetail::Operational,
                     fuel_remaining: 100,
+                    fuel_initial: 100,
                     liveness: "Alive".into(),
                     attention_load: 0.0,
                     active_task: None,
