@@ -1,5 +1,9 @@
 use crate::error::TelegramError;
 
+pub mod ingest;
+
+pub use ingest::ingest_update;
+
 /// Verify a Telegram webhook request by checking the secret_token header.
 ///
 /// Telegram's webhook auth model: when you call `setWebhook` with a `secret_token`,

@@ -23,10 +23,10 @@ use springtale_connector::error::ConnectorError;
 use crate::client::{KickApi, KickClient};
 
 /// Connector name stamped on every emitted [`ChatMessage`].
-const CONNECTOR_NAME: &str = "connector-kick";
+pub const CONNECTOR_NAME: &str = "connector-kick";
 
 /// The connector trigger whose payloads are chat.
-const CHAT_TRIGGER: &str = "chat_message";
+pub const CHAT_TRIGGER: &str = "chat_message";
 
 /// Depth of the webhook → chat bridge. Kick chat bursts; a bounded
 /// queue drops the overflow loudly rather than growing without limit.
@@ -77,6 +77,39 @@ fn id_field(value: Option<&serde_json::Value>) -> String {
     }
 }
 
+/// Read a verified Kick `chat.message.sent` payload into a
+/// [`ChatMessage`].
+///
+/// Shared by the two ways a Kick chat payload reaches the bot: this
+/// source's webhook bridge, and the management API's webhook ingress
+/// (via [`crate::webhook::ingest_event`]) — one extraction, one set of
+/// field names.
+///
+/// `None` when the payload names neither a broadcaster nor a sender,
+/// i.e. it is not a chat message at all.
+#[must_use]
+pub fn chat_message_from_payload(payload: &serde_json::Value) -> Option<ChatMessage> {
+    // `channel_id` is the broadcaster's user id — the value Kick's
+    // POST /public/v1/chat expects back.
+    let channel_id = id_field(payload.get("broadcaster").and_then(|b| b.get("user_id")));
+    let user_id = id_field(payload.get("sender").and_then(|s| s.get("user_id")));
+    if channel_id.is_empty() && user_id.is_empty() {
+        return None;
+    }
+    let text = payload
+        .get("content")
+        .and_then(|c| c.as_str())
+        .unwrap_or("")
+        .to_owned();
+    Some(ChatMessage::chat(
+        CONNECTOR_NAME,
+        channel_id,
+        user_id,
+        text,
+        payload.clone(),
+    ))
+}
+
 #[async_trait]
 impl ChatSource for KickChatSource {
     async fn run(
@@ -94,21 +127,10 @@ impl ChatSource for KickChatSource {
                         tracing::info!("Kick chat bridge closed");
                         break;
                     };
-                    // `channel_id` is the broadcaster's user id — the
-                    // value Kick's POST /public/v1/chat expects back.
-                    let channel_id = id_field(
-                        payload.get("broadcaster").and_then(|b| b.get("user_id")),
-                    );
-                    let user_id =
-                        id_field(payload.get("sender").and_then(|s| s.get("user_id")));
-                    let text = payload
-                        .get("content")
-                        .and_then(|c| c.as_str())
-                        .unwrap_or("")
-                        .to_owned();
-
-                    let msg =
-                        ChatMessage::chat(CONNECTOR_NAME, channel_id, user_id, text, payload);
+                    let Some(msg) = chat_message_from_payload(&payload) else {
+                        tracing::debug!("Kick payload carried no chat message — skipping");
+                        continue;
+                    };
                     if let Err(e) = tx.send(msg).await {
                         tracing::error!(error = %e, "failed to forward Kick chat message");
                         break;
