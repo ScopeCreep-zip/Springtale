@@ -963,7 +963,7 @@ mod tests {
             "deploy-team", // intent
             "intent",
             "propose-intent",
-            "vote",   // constraints
+            "vote", // constraints
             "guard",
             "autonomy", // intervention
             "deploy",
