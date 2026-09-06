@@ -247,12 +247,7 @@ pub async fn handle_formation_command(bot: &mut Bot, cmd: FormationCommand) {
                     agent_id,
                     vec![connector_name.clone()],
                 );
-                let new_id = member.agent_id;
                 formation.join(member);
-                // Spawn the per-member runner so the new agent can respond
-                // to L4 CFPs (B2). Idempotent — safe even if the member
-                // somehow already has a runner.
-                formation.start_runner_for(new_id);
                 tracing::info!(
                     id = %formation_id,
                     connector = %connector_name,
@@ -283,9 +278,7 @@ pub async fn handle_formation_command(bot: &mut Bot, cmd: FormationCommand) {
                         AgentId::new(),
                         vec![connector_name.clone()],
                     );
-                    let new_id = member.agent_id;
                     formation.join(member);
-                    formation.start_runner_for(new_id);
                     tracing::info!(
                         id = %formation_id,
                         connector = %connector_name,

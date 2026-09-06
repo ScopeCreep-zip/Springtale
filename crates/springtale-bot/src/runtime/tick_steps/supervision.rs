@@ -29,6 +29,24 @@ pub fn run(
 ) {
     let cascade_count = result.interferences.len() as u32;
 
+    // A dispatch that has outlived `constraints.timeout` is what
+    // `Liveness::Suspect` means (plan 1.8 / 1.14): the member still
+    // reports `Requested` every beat, so `liveness::run` sees it as
+    // alive; only its `pending` slot shows it has stopped answering.
+    let timeout = formation.constraints.timeout;
+    let current_tick = result.reports.iter().map(|r| r.tick_sequence).max();
+    for member in &mut formation.members {
+        if let Some(pending) = member.pending.get()
+            && pending.since.elapsed() > timeout
+        {
+            let missed_ticks = current_tick
+                .map(|now| now.delta(pending.since_tick) as u32)
+                .unwrap_or(1)
+                .max(1);
+            member.liveness = Liveness::Suspect { missed_ticks };
+        }
+    }
+
     // Collect actions first so the supervisor's `&formation.members`
     // borrow is released before mutating per-action.
     let mut actions: Vec<SupervisionAction> = Vec::new();

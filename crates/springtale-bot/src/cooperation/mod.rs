@@ -12,7 +12,7 @@ pub use springtale_cooperation::*;
 // primitives to orchestrator infrastructure (AiAdapter, Blackboard, Fuel).
 pub mod blackboard;
 pub mod blackboard_router;
+pub mod dispatch_outcome;
 pub mod formation;
 pub mod lifecycle;
-pub mod member_runner;
 pub mod task_dispatch;

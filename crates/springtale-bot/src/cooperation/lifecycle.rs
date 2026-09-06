@@ -147,11 +147,6 @@ pub async fn spawn_formation(
     formation.protocol_dispatcher = Some(proto_handle);
     formation.ack_dispatcher = Some(ack_handle);
 
-    // Spawn one `member_runner` task per member so each agent can respond
-    // to L4 CFPs (B2). Runners are aborted on dissolve via `Formation::Drop`
-    // and on individual leaves via `Formation::leave`.
-    formation.start_member_runners();
-
     // Restore momentum state from DB (survives restarts)
     if let Ok(Some(momentum_row)) = store.get_formation_momentum(&row.id).await {
         formation.momentum.tier =

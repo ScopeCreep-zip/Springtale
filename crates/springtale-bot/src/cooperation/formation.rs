@@ -59,6 +59,10 @@ pub struct FormationMember {
     /// Per Spring engine: command queue front = current task.
     /// None when agent is idle (monitoring connector).
     pub active_task: Option<springtale_cooperation::action_state::ActiveTask>,
+    /// A dispatch that outlived its beat (plan 1.8 / 0.3). The member
+    /// reports `Requested` until `act` collects the finished handle;
+    /// `supervision` reads `since` against `constraints.timeout`.
+    pub pending: crate::cooperation::dispatch_outcome::PendingSlot,
     /// Per-agent AI adapter. Assigned by the composer at formation spawn time
     /// from config store key `ai:{agent_id}`. Only callable when formation
     /// momentum >= Fever AND agent has "ai_call" capability.
@@ -73,6 +77,7 @@ impl std::fmt::Debug for FormationMember {
             .field("role", &self.role.name())
             .field("health", &self.health)
             .field("liveness", &self.liveness)
+            .field("pending", &self.pending.is_some())
             .field("ai_adapter", &self.ai_adapter.is_some())
             .finish()
     }
@@ -92,6 +97,7 @@ impl FormationMember {
             last_report_tick: springtale_cooperation::TickId::ZERO,
             consecutive_failures: 0,
             active_task: None,
+            pending: crate::cooperation::dispatch_outcome::PendingSlot::default(),
             ai_adapter: None,
         }
     }
@@ -186,7 +192,7 @@ pub struct Formation {
     /// into the interference detector (§13 ActionNegation needs the log)
     /// and the stigmergy surface reactions (§10 compose_surfaces).
     pub shared_env: Arc<SharedEnvironment>,
-    /// Per-formation fuel budget. `Arc`-wrapped so per-member runner tasks
+    /// Per-formation fuel budget. `Arc`-wrapped so the beat's spawned dispatches
     /// and `BlackboardRouter` can share the same atomic counter — cloning
     /// `FuelBudget` creates a fresh atomic, which would silently fork the
     /// budget. Existing call sites pass `formation.fuel.as_ref()` where
@@ -206,8 +212,8 @@ pub struct Formation {
     pub rally: FormationRally,
     /// Zero-sum workload distribution (§9, Army of Two aggro meter).
     /// ArcSwap-backed for concurrent lock-free reads. Wrapped in `Arc` so
-    /// per-member runner tasks (`cooperation/member_runner.rs`) can read it
-    /// concurrently with the tick pipeline. Existing
+    /// the beat's spawned dispatches can read it concurrently with the
+    /// tick pipeline. Existing
     /// `formation.attention_broker.current()` call sites still work via
     /// `Arc` Deref.
     pub attention_broker: Arc<AttentionBroker>,
@@ -326,20 +332,22 @@ pub struct Formation {
 
     /// L4 Contract Net broadcast channels (`COOPERATION.md §11`/§L4).
     /// Held at formation scope so all members receive the same CFP set;
-    /// per-member `ParticipantHandle`s are derived via
-    /// `cfp_channels.participant()` and handed to runner tasks.
+    /// arrivals are drained into `open_cfps` at the top of each beat.
     pub cfp_channels: springtale_cooperation::contract_net::CfpChannels,
     /// Initiator end of the CFP channels — owns the bid receiver.
     /// Wrapped in `tokio::Mutex` because `coordinator::run_round` borrows
     /// it `&mut` and CFP rounds may be initiated from any tick step.
     pub cfp_initiator:
         Arc<tokio::sync::Mutex<springtale_cooperation::contract_net::InitiatorHandle>>,
-    /// Per-member runner task handles. Spawned at `Formation::new`/`join`,
-    /// aborted at `leave`/`Drop`. Each runner owns its agent's
-    /// `ParticipantHandle` + bus subscription and evaluates incoming CFPs
-    /// via `UtilityBidder` (`cooperation/member_runner.rs`).
-    pub member_runners:
-        Arc<std::sync::Mutex<std::collections::HashMap<AgentId, tokio::task::JoinHandle<()>>>>,
+    /// CFPs that arrived since the last beat, drained from `cfp_channels`
+    /// at the top of the beat (`drain_open_cfps`). The decide phase
+    /// answers the first one per member via `respond_cfp` (plan 1.9).
+    pub open_cfps: Vec<springtale_cooperation::contract_net::types::CallForProposals>,
+    /// Formation-scoped CFP receiver feeding `open_cfps`.
+    pub cfp_rx: broadcast::Receiver<springtale_cooperation::contract_net::types::CallForProposals>,
+    /// One shared bidder for every member (plan 1.8): scores against the
+    /// bidding member's `AgentContext` capabilities.
+    pub bidder: Arc<dyn springtale_cooperation::contract_net::trait_::Bidder>,
 
     /// L0 stigmergy substrate (`COOPERATION.md §10`). Trait-object so the
     /// concrete backend (production `SurfaceStore`, in-test mocks) is
@@ -350,12 +358,10 @@ pub struct Formation {
     pub surfaces: Arc<dyn springtale_cooperation::stigmergy::SurfaceSubstrate>,
 
     /// L1 routine task router (B5). Bridges the concrete blackboard to the
-    /// `TaskRouter` trait so per-member runner tasks and `agent/step/scan`
-    /// can pull work through one canonical interface — tier-gated and
-    /// capability-filtered. Both the in-tick agent pipeline
-    /// (`tick_steps/build_reports/agent_pipeline.rs`) and per-member runner
-    /// tasks (`cooperation/member_runner.rs`) call `scan` for the highest-
-    /// priority match.
+    /// `TaskRouter` trait so `agent/step/scan` pulls work through one
+    /// canonical interface — tier-gated and capability-filtered. The
+    /// beat's decide phase (`tick_steps/build_reports/agent_pipeline`)
+    /// calls `scan` for the highest-priority match.
     pub task_router: Arc<crate::cooperation::blackboard_router::BlackboardRouter>,
 }
 
@@ -466,6 +472,7 @@ impl Formation {
         let (cfp_channels, cfp_initiator_inner) =
             springtale_cooperation::contract_net::CfpChannels::new();
         let cfp_initiator = Arc::new(tokio::sync::Mutex::new(cfp_initiator_inner));
+        let cfp_rx = cfp_channels.cfp_tx.subscribe();
 
         let formation = Self {
             id: FormationId::new(),
@@ -507,7 +514,9 @@ impl Formation {
             escalation_pending: None,
             cfp_channels,
             cfp_initiator,
-            member_runners: Arc::new(std::sync::Mutex::new(std::collections::HashMap::new())),
+            open_cfps: Vec::new(),
+            cfp_rx,
+            bidder: Arc::new(springtale_cooperation::contract_net::bid::evaluate::ContextBidder),
             surfaces: Arc::new(springtale_cooperation::stigmergy::deposit::SurfaceStore::new())
                 as Arc<dyn springtale_cooperation::stigmergy::SurfaceSubstrate>,
             task_router,
@@ -676,72 +685,18 @@ impl Formation {
         self.active_commits.len()
     }
 
-    /// Spawn one `member_runner` task per current member.
-    ///
-    /// Per `pure-noodling-biscuit.md` lines 1907–1921: agents need a runtime
-    /// presence to react to async cooperation events (CFPs, peer state) that
-    /// arrive between cadence ticks. Called from `lifecycle::spawn_formation`
-    /// after the formation is materialized so members can begin receiving
-    /// CFP broadcasts. Idempotent — re-spawning is a no-op for members that
-    /// already have a runner registered.
-    pub fn start_member_runners(&self) {
-        let context_rx = self.context_tx.subscribe();
-        let mut runners = match self.member_runners.lock() {
-            Ok(g) => g,
-            Err(_) => return,
-        };
-        for member in &self.members {
-            if runners.contains_key(&member.agent_id) {
-                continue;
-            }
-            let handle = crate::cooperation::member_runner::spawn(
-                member.agent_id,
-                member.capabilities.clone(),
-                self.cfp_channels.participant(),
-                self.attention_broker.clone(),
-                context_rx.clone(),
-            );
-            runners.insert(member.agent_id, handle);
-        }
-    }
-
-    /// Spawn a runner for a single member that just joined. Called from
-    /// `tick_steps/handle_command::AddMember` after `formation.join`.
-    pub fn start_runner_for(&self, agent_id: AgentId) {
-        let Some(member) = self.members.iter().find(|m| m.agent_id == agent_id) else {
-            return;
-        };
-        let mut runners = match self.member_runners.lock() {
-            Ok(g) => g,
-            Err(_) => return,
-        };
-        if runners.contains_key(&agent_id) {
-            return;
-        }
-        let handle = crate::cooperation::member_runner::spawn(
-            agent_id,
-            member.capabilities.clone(),
-            self.cfp_channels.participant(),
-            self.attention_broker.clone(),
-            self.context_tx.subscribe(),
-        );
-        runners.insert(agent_id, handle);
-    }
-
-    /// Abort a single member's runner. Called from `Formation::leave`.
-    pub fn abort_runner_for(&self, agent_id: AgentId) {
-        if let Ok(mut runners) = self.member_runners.lock()
-            && let Some(handle) = runners.remove(&agent_id)
-        {
-            handle.abort();
-        }
-    }
-
-    /// Abort every runner — used by `Drop` and `lifecycle::dissolve`.
-    pub fn abort_all_runners(&self) {
-        if let Ok(mut runners) = self.member_runners.lock() {
-            for (_, handle) in runners.drain() {
-                handle.abort();
+    /// Top of the beat: move every CFP that arrived since the last beat
+    /// into `open_cfps` (plan 1.8 / 1.9). Nothing is answered here; the
+    /// decide phase bids per member against the same list.
+    pub fn drain_open_cfps(&mut self) {
+        self.open_cfps.clear();
+        loop {
+            match self.cfp_rx.try_recv() {
+                Ok(cfp) => self.open_cfps.push(cfp),
+                Err(broadcast::error::TryRecvError::Lagged(skipped)) => {
+                    tracing::warn!(formation = %self.id.0, skipped, "cfp receiver lagged");
+                }
+                Err(_) => break,
             }
         }
     }
@@ -750,9 +705,8 @@ impl Formation {
     ///
     /// Registers the agent in the attention economy, pushes the member,
     /// broadcasts `PeerMsg::Joined` so all existing members see the join,
-    /// and updates the shared context with the new member count. Caller
-    /// is responsible for calling `start_runner_for(agent_id)` after
-    /// `join` so the new member can respond to CFPs.
+    /// and updates the shared context with the new member count. The new
+    /// member bids on open CFPs from its first beat (plan 1.9).
     pub fn join(&mut self, member: FormationMember) {
         let id = member.agent_id;
         // Subscribe the new member to the bus first — the dispatcher
@@ -776,16 +730,11 @@ impl Formation {
         self.broadcast_context();
     }
 
-    /// Remove a member from a live formation (spec §6.3). Aborts the
-    /// member's runner before unsubscribing so no in-flight CFP bid races
-    /// with the bus removal.
+    /// Remove a member from a live formation (spec §6.3).
     ///
     /// Unregisters from attention economy, removes from the member list,
     /// broadcasts `PeerMsg::Left`, and updates context.
     pub fn leave(&mut self, agent_id: AgentId) {
-        // Abort the per-member runner first so no in-flight CFP bid races
-        // with the bus unsubscribe below.
-        self.abort_runner_for(agent_id);
         // Drop the per-member subscription and remove the inbox from the
         // bus's routing table so future `Specific(agent_id)` protocol
         // messages don't block on a dead receiver.
@@ -960,9 +909,10 @@ impl Drop for Formation {
     /// Abort the bus dispatcher tasks when the formation is dropped.
     /// `tokio::task::JoinHandle::drop` does NOT cancel the task by itself,
     /// so without this Drop impl a dissolved formation would leak its two
-    /// dispatcher tasks (protocol + ack) indefinitely. Rally supervision
-    /// runs in-tick via [`rally::supervise::drain`] so no separate task
-    /// needs aborting.
+    /// dispatcher tasks (protocol + ack) indefinitely. A member dispatch
+    /// still in flight (`FormationMember::pending`) is left to finish: a
+    /// committed connector action is not cancelled by dissolving the
+    /// formation (Splinter Cell: failure after commit exposes both).
     fn drop(&mut self) {
         if let Some(h) = self.protocol_dispatcher.take() {
             h.abort();
@@ -970,9 +920,6 @@ impl Drop for Formation {
         if let Some(h) = self.ack_dispatcher.take() {
             h.abort();
         }
-        // Per-member runner tasks own ParticipantHandles; aborting them
-        // here releases CFP/bid/award subscriptions cleanly.
-        self.abort_all_runners();
     }
 }
 
