@@ -27,17 +27,10 @@ parallel actions. No agents, no cooperation, just a wide rule.
 
 ## Step 1 — Set up the connectors
 
-We need four connectors. Set their credentials in the vault:
-
-```bash
-# Kick: OAuth 2.1 PKCE flow — the CLI walks you through it.
-springtale-cli connector setup kick
-
-```
-
-The other three take their credentials through the connector setup
-flow — each connector's card in the dashboard, or the connector setup
-API:
+We need four connectors. All four take their credentials through the
+connector setup flow — each connector's card in the dashboard, or the
+connector setup API. Kick's is an OAuth 2.1 PKCE flow the card walks you
+through; the other three want a token you already hold:
 
 - Bluesky: ATProto session — handle (`your.handle.bsky.social`) plus an
   app password from https://bsky.app/settings/app-passwords
