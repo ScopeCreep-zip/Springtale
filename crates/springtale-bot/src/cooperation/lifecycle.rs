@@ -112,6 +112,19 @@ pub async fn spawn_formation(
     // Parse intent from stored string
     let intent = springtale_cooperation::command::parse_intent(&row.intent);
 
+    // Guard mode is durable in the `guard:{formation_id}` config row; the live
+    // formation carries it in `constraints.guard_mode`. Seed it here so a
+    // formation that was guarded before a restart comes back guarded — the
+    // toggle keeps the two in step afterward via `FormationCommand::SetGuard`.
+    let constraints = FormationConstraints {
+        guard_mode: springtale_runtime::operations::config::formation_guard_engaged(
+            &**store,
+            formation_id,
+        )
+        .await,
+        ..FormationConstraints::default()
+    };
+
     let deps = FormationDeps {
         cadence: cadence.clone(),
         store: store.clone(),
@@ -120,7 +133,7 @@ pub async fn spawn_formation(
         formation_gossip: formation_gossip.cloned(),
     };
     let (mut formation, proto_dispatch, ack_dispatch) =
-        Formation::new(members, intent, FormationConstraints::default(), deps);
+        Formation::new(members, intent, constraints, deps);
 
     // Override the auto-generated ID with the stored one
     if let Ok(uuid) = uuid::Uuid::parse_str(&row.id) {

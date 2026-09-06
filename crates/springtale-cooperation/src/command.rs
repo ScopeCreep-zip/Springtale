@@ -15,6 +15,17 @@ pub enum FormationCommand {
     Pause { formation_id: FormationId },
     /// Resume a paused formation.
     Resume { formation_id: FormationId },
+    /// Engage or disengage guard mode on a live formation.
+    ///
+    /// Guard mode lives in two places: the `guard:{formation_id}` config row
+    /// (durable, read back at deploy into `constraints.guard_mode`) and the
+    /// live `Formation` the bot ticks. `operations::config::toggle_formation_guard`
+    /// writes the row and posts this command in the same call, so the two can
+    /// never disagree and the toggle takes effect without a redeploy.
+    SetGuard {
+        formation_id: FormationId,
+        engaged: bool,
+    },
     /// Dissolve a formation and remove from memory.
     Dissolve {
         formation_id: FormationId,

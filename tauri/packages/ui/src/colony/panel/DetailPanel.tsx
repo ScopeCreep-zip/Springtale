@@ -8,6 +8,7 @@ import type {
   ColonySelection,
 } from "../types";
 import {
+  AUTONOMY_COLORS,
   MOMENTUM_COLORS,
   MOMENTUM_NAMES,
   MOMENTUM_UNLOCKS,
@@ -152,13 +153,11 @@ export const DetailPanel: Component<{
                           class={`colony-autonomy-pip ${a.autonomy === level ? "font-bold" : ""}`}
                           classList={{ "is-active": a.autonomy === level }}
                           style={{
-                            "--colony-color": [
-                              "var(--color-status-ok)",
-                              "var(--color-role-scout)",
-                              "var(--color-status-warn)",
-                              "var(--color-status-error)",
-                              "var(--color-role-analyst)",
-                            ][level],
+                            // One colour per `AUTONOMY_LABELS` entry:
+                            // observe → suggest → approve → autonomous.
+                            // A fifth colour outlived the SELF-DIRECT level
+                            // that was cut from the label list.
+                            "--colony-color": AUTONOMY_COLORS[level],
                           }}
                         >
                           {level}
