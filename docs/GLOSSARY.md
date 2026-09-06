@@ -2,6 +2,29 @@
 
 Terms used throughout Springtale's codebase and documentation. Each entry links to where the concept appears in the project.
 
+## The three vocabularies, mapped
+
+Springtale speaks three vocabularies and keeps all three. The canvas
+names what you see, the formation verbs name the mechanics you drive,
+and the runtime names the things in the code. They are not synonyms to
+be collapsed — each surface uses its own column (plan 3.9, finding 70).
+
+| Canvas | Formation verb | Runtime |
+| --- | --- | --- |
+| tree | | connector |
+| springtail | member | rule, bot agent |
+| mycelium | | pipeline |
+| formation zone | formation | formation (`swarm` in older fields) |
+| pip | rally token | `rally_tokens` |
+| bark | implicit signal | `BroadcastTrigger`, `ImplicitSignal` |
+| momentum band | momentum tier | `MomentumTier` |
+
+Interface fields that said `swarm` and meant `formation` are renamed:
+the `DataProvider` exposes `formations()` returning `FormationInfo[]`.
+The formation verbs themselves are never renamed — they are the
+mechanics. The Chiral theme is a skin and adds no words.
+
+
 ```
    Application                  Bot                     Runtime ops
    ┌─────────┐          ┌────────────────┐       ┌──────────────────┐

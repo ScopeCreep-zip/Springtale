@@ -61,6 +61,14 @@ pub async fn try_start(
             let Some(doc) = catalog.find(&cand.recipe_id).cloned() else {
                 return Ok(None);
             };
+            // A platform verb is run, not set up: no slot-filling frame,
+            // no deploy. Same handler the slash command reaches.
+            if doc.platform_verb.is_some() {
+                match super::dispatch::run(bot, key, &doc, text).await {
+                    Some(reply) => return Ok(Some(reply)),
+                    None => return Ok(None),
+                }
+            }
             start_frame(&mut session, &doc, text, now)
         }
         IntentDecision::Ambiguous(cands) => {
@@ -123,7 +131,36 @@ pub(super) async fn build_catalog(bot: &Bot) -> Result<CatalogSnapshot, Conversa
     let recipes =
         springtale_runtime::operations::recipes::list_recipes(&*bot.store, RecipeFilter::default())
             .await?;
-    Ok(CatalogSnapshot::build(recipes))
+    // Plan 5.4 — the platform verbs are documents too, and their
+    // `{formation}` slot list is the live roster read here, at match
+    // time, not a hard-coded list.
+    let formation_names = live_formation_names(bot).await;
+    Ok(CatalogSnapshot::build_with_platform(
+        recipes,
+        CHAT_LOCALE,
+        &formation_names,
+    ))
+}
+
+/// The locale the chat sentence templates are read in. Only `en` is
+/// translated today; the other seven files are stubs that fall back to
+/// it (`conversation::sentences`).
+const CHAT_LOCALE: &str = "en";
+
+/// Formation names from the store, or none when this bot has no runtime
+/// (headless / CLI / tests) — then the platform documents simply carry
+/// an empty slot list and never win a match.
+async fn live_formation_names(bot: &Bot) -> Vec<String> {
+    let Some(rt) = bot.runtime.as_ref() else {
+        return Vec::new();
+    };
+    match springtale_runtime::operations::formations::list_formations(rt).await {
+        Ok(list) => list.into_iter().map(|f| f.name).collect(),
+        Err(e) => {
+            tracing::warn!(error = %e, "formation roster unavailable for chat slots");
+            Vec::new()
+        }
+    }
 }
 
 /// Choose the right hand-off message: a security-framed one for secrets

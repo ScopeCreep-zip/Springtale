@@ -27,7 +27,7 @@ import type {
 import type { ConditionDef } from "../ConditionEditor";
 import type { BotSettingsValue } from "../colony/AppSettingsPanel";
 import type { Locale } from "../i18n/types";
-import type { ConnectorStatus, EventItem, RuleDetail, RuleItem, SwarmInfo } from "./model";
+import type { ConnectorStatus, EventItem, RuleDetail, RuleItem } from "./model";
 
 // Re-export types that originated in @springtale/types but are consumed
 // by components that import from @springtale/ui
@@ -547,7 +547,7 @@ export interface DataProvider {
    */
   getUtteranceDefs(): Promise<UtteranceDefs>;
 
-  // Formations (swarms)
+  // Formations (formations)
   getFormation(id: string): Promise<FormationDetail>;
   listFormations(): Promise<FormationInfo[]>;
   createFormation(name: string, intent: string, connectors: string[]): Promise<string>;
@@ -1002,7 +1002,7 @@ export interface DashboardState {
   schemas: () => ConnectorSchema[];
   rules: () => RuleItem[];
   events: () => EventItem[];
-  swarms: () => SwarmInfo[];
+  formations: () => FormationInfo[];
   agentStates: () => AgentState[];
   canvasState: () => CanvasState | null;
   /**
@@ -1027,7 +1027,7 @@ export interface DashboardState {
   loading: () => boolean;
   /**
    * F1 + B11: backend-supplied formation command grid for the current
-   * `selectedSwarmId`. Resource that re-fetches when selection changes.
+   * `selectedFormationId`. Resource that re-fetches when selection changes.
    * Returns `undefined` when no formation is selected.
    */
   formationCommands: () => CommandDecl[] | undefined;
@@ -1035,8 +1035,8 @@ export interface DashboardState {
   // Selection state
   selectedRuleId: () => string | null;
   setSelectedRuleId: (id: string | null) => void;
-  selectedSwarmId: () => string | null;
-  setSelectedSwarmId: (id: string | null) => void;
+  selectedFormationId: () => string | null;
+  setSelectedFormationId: (id: string | null) => void;
 
   // UI panel state
   showNewRule: () => boolean;

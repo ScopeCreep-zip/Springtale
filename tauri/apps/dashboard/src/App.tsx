@@ -86,7 +86,7 @@ export const App = () => {
     if (ctl.showModeSelect()) {
       return (
         <ModeSelectOverlay
-          hasExistingTeams={(db.swarms()?.length ?? 0) > 0}
+          hasExistingTeams={(db.formations()?.length ?? 0) > 0}
           onSelectMode={ctl.handleModeSelect}
           onCancel={() => ctl.setShowModeSelect(false)}
         />

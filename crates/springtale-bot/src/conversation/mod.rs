@@ -18,10 +18,12 @@ pub mod augment;
 pub mod catalog;
 pub mod deploy;
 pub mod dialogue;
+pub mod dispatch;
 pub mod engine;
 pub mod error;
 pub mod nlg;
 pub mod nlu;
+pub mod sentences;
 
 pub use deploy::{DeployError, RecipeDeployer, SharedDeployer};
 pub use engine::{capability_reply, continue_active, try_start};

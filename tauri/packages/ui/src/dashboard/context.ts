@@ -30,13 +30,7 @@ import {
 } from "solid-js";
 import type { ConditionDef } from "../ConditionEditor";
 import type { ColonyAgent } from "../colony/types";
-import type {
-  ConnectorStatus,
-  EventItem,
-  RuleDetail,
-  RuleItem,
-  SwarmInfo,
-} from "../dashboard/model";
+import type { ConnectorStatus, EventItem, RuleDetail, RuleItem } from "../dashboard/model";
 import { eventSeverity } from "../dashboard/model";
 import type { Locale } from "../i18n/types";
 import { activityOf as deriveActivity, agentMatches as matchesAgent } from "./activity";
@@ -46,6 +40,7 @@ import type {
   DashboardState,
   DataProvider,
   FormationDetail,
+  FormationInfo,
   Utterance,
   UtteranceDefs,
 } from "./types";
@@ -118,7 +113,7 @@ export function createDashboardState(provider: DataProvider): DashboardState {
     const [schemas, setSchemas] = createSignal<ConnectorSchema[]>([]);
     const [rules, setRules] = createSignal<RuleItem[]>([]);
     const [events, setEvents] = createSignal<EventItem[]>([]);
-    const [swarms, setSwarms] = createSignal<SwarmInfo[]>([]);
+    const [formations, setFormations] = createSignal<FormationInfo[]>([]);
     const [agentStates, setAgentStates] = createSignal<AgentState[]>([]);
     const [canvasState, setCanvasState] = createSignal<CanvasState | null>(null);
     // Phase H — cooperation events ring (last 200 envelopes). Drives the
@@ -139,11 +134,11 @@ export function createDashboardState(provider: DataProvider): DashboardState {
       cooperationEvents().flatMap((e) => (e.event.kind === "utterance" ? [e.event] : [])),
     );
     const colonyNow = createMemo(() => utterances().reduce((m, u) => Math.max(m, u.seq), 0));
-    // Formation detail per swarm (member roster with connector + role). 3.1
+    // Formation detail per formation (member roster with connector + role). 3.1
     // owns the full loader; until then this is the minimal read.
     const [formationDetails, setFormationDetails] = createSignal<FormationDetail[]>([]);
     createEffect(
-      on(swarms, (list) => {
+      on(formations, (list) => {
         void Promise.all(list.map((sw) => provider.getFormation(sw.id)))
           .then(setFormationDetails)
           .catch(() => {});
@@ -195,7 +190,7 @@ export function createDashboardState(provider: DataProvider): DashboardState {
 
     // ── Selection signals ──
     const [selectedRuleId, setSelectedRuleId] = createSignal<string | null>(null);
-    const [selectedSwarmId, setSelectedSwarmId] = createSignal<string | null>(null);
+    const [selectedFormationId, setSelectedFormationId] = createSignal<string | null>(null);
 
     // ── UI panel signals ──
     const [showNewRule, setShowNewRule] = createSignal(false);
@@ -281,7 +276,7 @@ export function createDashboardState(provider: DataProvider): DashboardState {
 
         // Keep every FormationInfo field — rally, guard, momentum counters
         // and operational_count all feed real UI signals.
-        setSwarms(s.map((x) => ({ ...x, members: x.members ?? [] })));
+        setFormations(s.map((x) => ({ ...x, members: x.members ?? [] })));
 
         setSchemas(cs);
         setAgentStates(as_);
@@ -403,7 +398,7 @@ export function createDashboardState(provider: DataProvider): DashboardState {
     const handleDissolveFormation = async (id: string) => {
       try {
         await provider.dissolveFormation(id);
-        setSelectedSwarmId(null);
+        setSelectedFormationId(null);
         await refresh();
       } catch (e) {
         setError(String(e));
@@ -438,10 +433,10 @@ export function createDashboardState(provider: DataProvider): DashboardState {
     };
 
     // F1 + B11: backend-supplied formation command list. Resource re-fetches
-    // when the selected swarm changes; status-aware enable/disable + canonical
+    // when the selected formation changes; status-aware enable/disable + canonical
     // hotkey live in Rust per the thin-frontend rule.
     const [formationCommandsResource] = createResource(
-      () => selectedSwarmId(),
+      () => selectedFormationId(),
       async (id) => {
         if (!id) return undefined;
         try {
@@ -459,7 +454,7 @@ export function createDashboardState(provider: DataProvider): DashboardState {
       schemas,
       rules,
       events,
-      swarms,
+      formations,
       agentStates,
       canvasState,
       cooperationEvents,
@@ -480,8 +475,8 @@ export function createDashboardState(provider: DataProvider): DashboardState {
       // Selection
       selectedRuleId,
       setSelectedRuleId,
-      selectedSwarmId,
-      setSelectedSwarmId,
+      selectedFormationId,
+      setSelectedFormationId,
       // UI panels
       showNewRule,
       setShowNewRule,

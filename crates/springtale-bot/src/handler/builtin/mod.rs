@@ -4,34 +4,45 @@
 //! its `Handler` impl. This module re-exports them and provides
 //! [`register_builtins`] and [`BUILTIN_COMMANDS`] for the rest of the crate.
 
+mod ai;
 mod alias;
+mod approvals;
 mod connectors;
 mod delrule;
 mod disable;
 mod enable;
 mod events;
+mod formation;
 mod help;
+mod memory;
 mod newrule;
 mod pair;
 mod prefs;
+mod resolve;
 mod rules;
 mod run;
+mod safety;
 mod send;
 mod status;
 mod toggle;
 
+pub use ai::AiHandler;
 pub use alias::AliasHandler;
+pub use approvals::ApprovalsHandler;
 pub use connectors::ConnectorsHandler;
 pub use delrule::DelRuleHandler;
 pub use disable::DisableHandler;
 pub use enable::EnableHandler;
 pub use events::EventsHandler;
+pub use formation::FormationHandler;
 pub use help::HelpHandler;
+pub use memory::MemoryHandler;
 pub use newrule::NewRuleHandler;
 pub use pair::PairHandler;
 pub use prefs::PrefsHandler;
 pub use rules::RulesHandler;
 pub use run::RunHandler;
+pub use safety::SafetyHandler;
 pub use send::SendHandler;
 pub use status::StatusHandler;
 pub use toggle::ToggleHandler;
@@ -56,6 +67,12 @@ pub const BUILTIN_COMMANDS: &[&str] = &[
     "newrule",
     "delrule",
     "run",
+    // Plan 5.4 — the platform verbs, reachable from chat.
+    "formation",
+    "approvals",
+    "memory",
+    "safety",
+    "ai",
 ];
 
 /// Register every builtin handler into a fresh registry.
@@ -75,5 +92,11 @@ pub fn register_builtins(registry: &mut HandlerRegistry) -> Result<(), BotError>
     registry.register("newrule".into(), Box::new(NewRuleHandler))?;
     registry.register("delrule".into(), Box::new(DelRuleHandler))?;
     registry.register("run".into(), Box::new(RunHandler))?;
+    // Plan 5.4 — chat runs the platform, under the drum rule.
+    registry.register("formation".into(), Box::new(FormationHandler))?;
+    registry.register("approvals".into(), Box::new(ApprovalsHandler))?;
+    registry.register("memory".into(), Box::new(MemoryHandler))?;
+    registry.register("safety".into(), Box::new(SafetyHandler))?;
+    registry.register("ai".into(), Box::new(AiHandler))?;
     Ok(())
 }
