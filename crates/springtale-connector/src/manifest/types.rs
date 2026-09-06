@@ -154,6 +154,16 @@ pub struct ActionDecl {
     /// when `read_only == false`. Advisory: the sentinel decides.
     #[serde(default)]
     pub destructive: Option<bool>,
+
+    /// Opt-in sensing cadence, in seconds. When `Some`, a formation may
+    /// poll this action on that interval (floored to 5 s, like Home
+    /// Assistant's `update_interval`), and only if the action is also
+    /// `read_only` and needs no required parameters. `None` (the default)
+    /// means the formation never polls it: work then comes from the
+    /// environment — triggers, handoffs, CFP awards, surfaces — not from a
+    /// central poller.
+    #[serde(default)]
+    pub poll_interval_secs: Option<u64>,
 }
 
 /// What user data a connector accesses (for transparency/Privacy by Design).

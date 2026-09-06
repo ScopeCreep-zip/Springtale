@@ -223,6 +223,11 @@ pub struct Formation {
     /// vote every tick. Entries move to `consensus_approved` (approve) or
     /// are dropped (deny/timeout) by `tick_steps/resolve_consensus`.
     pub awaiting_consensus: std::collections::HashMap<uuid::Uuid, uuid::Uuid>,
+    /// When each declared sensing poll last ran, keyed by
+    /// (member, connector, action). Only actions with
+    /// `ActionDecl::poll_interval_secs` are ever scheduled; the formation
+    /// never invents a poll for an action that did not ask for one.
+    pub poll_schedule: std::collections::HashMap<(AgentId, String, String), std::time::Instant>,
     /// One-shot execution permits minted by an approving vote resolution.
     /// Consumed (removed) by the executor when the task is claimed, so an
     /// approval authorizes exactly one execution.
@@ -479,6 +484,7 @@ impl Formation {
             mental_model: SharedMentalModel::default(),
             consensus: ConsensusEngine::new(),
             awaiting_consensus: std::collections::HashMap::new(),
+            poll_schedule: std::collections::HashMap::new(),
             consensus_approved: std::collections::HashSet::new(),
             active_commits: Vec::new(),
             bus,

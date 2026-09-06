@@ -88,6 +88,7 @@ mod tests {
                     actions: vec![ActionDecl {
                         read_only: false,
                         destructive: None,
+                        poll_interval_secs: None,
                         name: "test".into(),
                         description: "test".into(),
                         input_schema: None,

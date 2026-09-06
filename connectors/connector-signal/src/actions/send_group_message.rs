@@ -8,6 +8,7 @@ pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: false,
         destructive: None,
+        poll_interval_secs: None,
         name: "send_group_message".to_owned(),
         description: "Send a message to a Signal group.".to_owned(),
         input_schema: Some(serde_json::json!({

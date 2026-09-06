@@ -12,6 +12,7 @@
 //! - RimWorld work priorities (agents pull tasks, not push)
 
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use tokio::sync::RwLock;
 use uuid::Uuid;
@@ -36,7 +37,7 @@ use crate::error::BotError;
 /// The AI returns structured subtask proposals in JSON. These are
 /// parsed and posted to the blackboard for members to pull.
 pub async fn orchestrate_formation(
-    formation: &Formation,
+    formation: &mut Formation,
     registry: &Arc<RwLock<ConnectorRegistry>>,
 ) -> Result<Vec<SubTask>, BotError> {
     // AI orchestration is the augmentation path: it only runs when an adapter
@@ -45,7 +46,7 @@ pub async fn orchestrate_formation(
     // `NoopAdapter` (the product-model default) still produces outward work.
     // This is the "AI is optional augmentation" invariant: everything works
     // without AI, AI makes it better.
-    let orchestrator = match formation.orchestrator.as_ref() {
+    let orchestrator = match formation.orchestrator.clone() {
         Some(adapter) if formation.momentum.can_ai_orchestrate() => adapter,
         _ => return Ok(decompose_intent_deterministic(formation, registry).await),
     };
@@ -308,46 +309,51 @@ fn rewrite_result_refs(
     }
 }
 
-/// Deterministic (no-AI) intent decomposition.
+/// Floor for a declared sensing cadence (Home Assistant's
+/// `DataUpdateCoordinator` minimum `update_interval`).
+pub const MIN_POLL_INTERVAL_SECS: u64 = 5;
+
+/// Deterministic (no-AI) sensing schedule — plan 1.7.
 ///
 /// Mirrors the AI path's output shape (`Vec<SubTask>` posted to the blackboard)
-/// but derives subtasks mechanically from member connector capabilities + the
-/// formation's `IntentPattern`, with zero LLM involvement. This is what gives a
-/// `NoopAdapter` formation outward effect.
+/// with zero LLM involvement, but it is *not* a central poller: it emits a
+/// subtask only for actions a connector has opted into as sensing via
+/// `ActionDecl::poll_interval_secs`, and only when that interval has elapsed
+/// (per member, connector, action — tracked in `Formation::poll_schedule`).
+/// Work otherwise comes from the environment: formation-scoped trigger rules
+/// (`springtale-runtime` `operations::formation_synthesis`), handoffs, CFP
+/// awards, and surfaces.
 ///
-/// Scope, by design (honest bounds — the richer, parameterised work lives in
-/// the event-driven formation rule synthesiser, `springtale-runtime`
-/// `operations::formation_synthesis`, where params come from the trigger
-/// payload rather than being invented):
+/// Bounds, by design:
 ///
-/// - Only actions whose inputs are fully optional (no required params) are
-///   emitted — we never fabricate parameters for an action that requires them.
-/// - Under `Reconnoiter` (monitor, read-only) only actions the connector
-///   declares as `read_only` (the MCP `readOnlyHint` on `ActionDecl`) are
-///   emitted — precise read/poll selection rather than a name heuristic. Under
-///   `Execute` / `Surge` any no-param action is fair game. `Stabilize` and
-///   `Dissolve` emit nothing. `Surge` raises subtask priority.
-/// - Subtask ids are stable (hash over agent+connector+action) so re-posting
-///   the same poll each tick overwrites rather than accumulating.
+/// - Only `read_only` actions are ever polled, under every intent. A mutation
+///   with a cadence is ignored.
+/// - Only actions with no *required* inputs are emitted — we never fabricate
+///   parameters.
+/// - The cadence is floored to [`MIN_POLL_INTERVAL_SECS`].
+/// - `Stabilize` and `Dissolve` emit nothing. `Surge` raises subtask priority.
+/// - Subtask ids are stable (hash over agent+connector+action) so a re-posted
+///   poll overwrites rather than accumulating.
 /// - Gated by the momentum × layer authority matrix (L1 routine routing) so the
 ///   path respects the same tier discipline as the rest of the tick.
 pub async fn decompose_intent_deterministic(
-    formation: &Formation,
+    formation: &mut Formation,
     registry: &Arc<RwLock<ConnectorRegistry>>,
 ) -> Vec<SubTask> {
     use crate::cooperation::IntentPattern;
 
-    // (priority, restrict-to-read-only). Stabilize/Dissolve emit nothing.
-    let (priority, read_only_only) = match &formation.intent {
-        IntentPattern::Surge { .. } => (1, false), // max commitment → highest priority
-        IntentPattern::Execute { .. } => (5, false),
-        IntentPattern::Reconnoiter { .. } => (5, true), // monitor → reads only
+    // Stabilize/Dissolve emit nothing. Reconnoiter and Execute share a
+    // priority; Surge (max commitment) outranks both. Every intent polls
+    // read-only sensing only — mutations come from the environment
+    // (synthesised trigger rules, handoffs, CFP awards, surfaces).
+    let priority = match &formation.intent {
+        IntentPattern::Surge { .. } => 1,
+        IntentPattern::Execute { .. } | IntentPattern::Reconnoiter { .. } => 5,
         IntentPattern::Stabilize { .. } | IntentPattern::Dissolve { .. } => return Vec::new(),
     };
 
-    // Read-poll subtasks are L1 routine routing — available at every tier, so
-    // a Cold/Warming formation can still monitor. The mutating differentiation
-    // is enforced downstream (synthesised rules + sentinel + autonomy gate).
+    // Sensing polls are L1 routine routing — available at every tier, so a
+    // Cold/Warming formation can still monitor.
     if !springtale_cooperation::authority::allows(
         formation.momentum.tier,
         springtale_cooperation::layer::LayerId::L1Routine,
@@ -355,30 +361,44 @@ pub async fn decompose_intent_deterministic(
         return Vec::new();
     }
 
+    let now = Instant::now();
+    let intent = intent_label(&formation.intent);
     let registry = registry.read().await;
     let mut subtasks = Vec::new();
 
-    for member in &formation.members {
-        if !member.is_operational() {
-            continue;
-        }
+    for member in formation.members.iter().filter(|m| m.is_operational()) {
         for cap in &member.capabilities {
             let Some(entry) = registry.get(&cap.name) else {
                 continue;
             };
             for decl in entry.host.actions() {
-                if read_only_only && !decl.read_only {
-                    continue; // Reconnoiter: monitor with read-only actions only
+                // Sensing is opt-in: an action that declared no cadence is
+                // never polled by the formation.
+                let Some(every) = decl.poll_interval_secs else {
+                    continue;
+                };
+                // Never poll a mutation, whatever the intent.
+                if !decl.read_only {
+                    continue;
                 }
                 if action_requires_params(decl) {
                     continue; // we never invent required parameters
                 }
+                let every = Duration::from_secs(every.max(MIN_POLL_INTERVAL_SECS));
+                let key = (member.agent_id, cap.name.clone(), decl.name.clone());
+                let due = formation
+                    .poll_schedule
+                    .get(&key)
+                    .is_none_or(|last| now.duration_since(*last) >= every);
+                if !due {
+                    continue;
+                }
+                formation.poll_schedule.insert(key, now);
                 // Stable (deterministic) subtask id over agent+connector+action
-                // so re-posting the same poll each tick overwrites rather than
-                // accumulating on the blackboard.
-                let stable = stable_task_id(member.agent_id.0, &cap.name, &decl.name);
+                // so a re-posted poll overwrites rather than accumulating on
+                // the blackboard.
                 subtasks.push(SubTask {
-                    id: stable,
+                    id: stable_task_id(member.agent_id.0, &cap.name, &decl.name),
                     target_connector: springtale_cooperation::capability::CapabilityDecl::new(
                         cap.name.clone(),
                     ),
@@ -386,13 +406,8 @@ pub async fn decompose_intent_deterministic(
                     params: serde_json::Value::Object(serde_json::Map::new()),
                     priority,
                     assigned_to: None,
-                    description: format!(
-                        "deterministic {:?} poll: {}:{}",
-                        intent_label(&formation.intent),
-                        cap.name,
-                        decl.name
-                    ),
-                    // Deterministic polls are independent reads — no deps.
+                    description: format!("scheduled {intent} sense: {}:{}", cap.name, decl.name),
+                    // Sensing polls are independent reads — no deps.
                     depends_on: Vec::new(),
                 });
             }
@@ -505,5 +520,150 @@ mod tests {
 
         let subtasks = parse_subtasks(json, &formation).unwrap();
         assert_eq!(subtasks.len(), 1);
+    }
+
+    /// Minimal native connector exposing a caller-chosen action list.
+    struct ProbeConnector {
+        manifest: springtale_connector::manifest::types::ConnectorManifest,
+    }
+
+    impl ProbeConnector {
+        fn new(
+            name: &str,
+            actions: Vec<springtale_connector::manifest::types::ActionDecl>,
+        ) -> Self {
+            Self {
+                manifest: springtale_connector::manifest::types::ConnectorManifest {
+                    name: name.into(),
+                    version: "0.1.0".into(),
+                    author: "test".into(),
+                    description: "probe".into(),
+                    capabilities: vec![],
+                    triggers: vec![],
+                    actions,
+                    data_disclosure: vec![],
+                    roles: vec![],
+                    wasm_hash: None,
+                    signature_alg: springtale_connector::manifest::SignatureAlgorithm::default(),
+                    signature: None,
+                },
+            }
+        }
+    }
+
+    #[async_trait::async_trait]
+    impl springtale_connector::connector::trait_::Connector for ProbeConnector {
+        fn triggers(&self) -> &[springtale_connector::manifest::types::TriggerDecl] {
+            &self.manifest.triggers
+        }
+        fn actions(&self) -> &[springtale_connector::manifest::types::ActionDecl] {
+            &self.manifest.actions
+        }
+        async fn execute(
+            &self,
+            action: &str,
+            _input: serde_json::Value,
+        ) -> Result<
+            springtale_connector::connector::trait_::ActionResult,
+            springtale_connector::ConnectorError,
+        > {
+            Ok(springtale_connector::connector::trait_::ActionResult {
+                success: true,
+                output: serde_json::json!({ "executed": action }),
+                message: String::new(),
+            })
+        }
+        async fn on_event(
+            &self,
+            trigger: &str,
+            _handler: springtale_connector::connector::trait_::EventHandler,
+        ) -> Result<
+            springtale_connector::connector::subscription::Subscription,
+            springtale_connector::ConnectorError,
+        > {
+            Ok(
+                springtale_connector::connector::subscription::Subscription {
+                    id: springtale_connector::connector::subscription::SubscriptionId(0),
+                    trigger: trigger.to_owned(),
+                },
+            )
+        }
+        async fn remove_event(
+            &self,
+            _sub: &springtale_connector::connector::subscription::Subscription,
+        ) -> Result<(), springtale_connector::ConnectorError> {
+            Ok(())
+        }
+        fn manifest(&self) -> &springtale_connector::manifest::types::ConnectorManifest {
+            &self.manifest
+        }
+    }
+
+    /// Plan 1.7: the formation is not a central poller. An action that
+    /// declared no sensing cadence is never polled, however many ticks pass;
+    /// one that did is polled once per interval.
+    #[tokio::test]
+    async fn test_decompose_intent_deterministic_polls_only_declared_sensing() {
+        use springtale_connector::capability::grant::CapabilityPolicy;
+        use springtale_connector::manifest::types::ActionDecl;
+
+        let mut registry = ConnectorRegistry::new(CapabilityPolicy::AllowAll);
+        registry
+            .install_native(Box::new(ProbeConnector::new(
+                "probe-mutating",
+                vec![ActionDecl {
+                    name: "wipe".into(),
+                    description: "parameterless mutation, no cadence".into(),
+                    input_schema: None,
+                    output_schema: None,
+                    read_only: false,
+                    destructive: None,
+                    poll_interval_secs: None,
+                }],
+            )))
+            .unwrap();
+        registry
+            .install_native(Box::new(ProbeConnector::new(
+                "probe-sensing",
+                vec![ActionDecl {
+                    name: "status".into(),
+                    description: "parameterless read with a declared cadence".into(),
+                    input_schema: None,
+                    output_schema: None,
+                    read_only: true,
+                    destructive: Some(false),
+                    poll_interval_secs: Some(60),
+                }],
+            )))
+            .unwrap();
+        let registry = Arc::new(RwLock::new(registry));
+
+        let execute_formation = |cap: &str| {
+            Formation::new_disconnected(
+                vec![FormationMember::from_strings(
+                    AgentId::new(),
+                    vec![cap.into()],
+                )],
+                IntentPattern::Execute { plan_id: None },
+                FormationConstraints::default(),
+            )
+        };
+
+        let mut mutating = execute_formation("probe-mutating");
+        for _ in 0..100 {
+            let tasks = decompose_intent_deterministic(&mut mutating, &registry).await;
+            assert!(
+                tasks.is_empty(),
+                "an action without a cadence is never polled"
+            );
+        }
+        assert!(mutating.poll_schedule.is_empty());
+
+        let mut sensing = execute_formation("probe-sensing");
+        let first = decompose_intent_deterministic(&mut sensing, &registry).await;
+        assert_eq!(first.len(), 1);
+        assert_eq!(first[0].action_name, "status");
+        let second = decompose_intent_deterministic(&mut sensing, &registry).await;
+        assert!(second.is_empty(), "not due again within the 60 s interval");
     }
 }

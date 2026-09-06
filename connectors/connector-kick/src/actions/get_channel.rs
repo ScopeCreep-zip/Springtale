@@ -8,6 +8,7 @@ pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: true,
         destructive: None,
+        poll_interval_secs: None,
         name: "get_channel".to_owned(),
         description: "Get information about a Kick channel by slug.".to_owned(),
         input_schema: Some(serde_json::json!({
