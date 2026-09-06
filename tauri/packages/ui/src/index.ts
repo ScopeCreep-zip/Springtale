@@ -136,7 +136,7 @@ export type {
   EventItem,
   RuleDetail,
   RuleItem,
-  SwarmInfo,
+  FormationInfo,
 } from "./dashboard/model";
 export type { MutationResult } from "./dashboard/query";
 export { createProviderMutation, createProviderQuery } from "./dashboard/query";

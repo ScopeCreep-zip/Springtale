@@ -23,6 +23,7 @@ pub mod memory;
 pub mod migrate;
 pub mod onboarding;
 pub mod pairing;
+pub mod platform;
 pub mod preflight;
 pub mod preview;
 pub mod recipes;

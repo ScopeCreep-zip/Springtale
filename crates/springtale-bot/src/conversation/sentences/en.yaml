@@ -1,0 +1,52 @@
+# English sentence templates for the platform verbs (plan 5.4).
+#
+# One block per verb in `springtale_runtime::operations::platform`.
+# `phrases` are the ways a person says the verb; `{formation}` is a slot
+# filled at match time from the live formation list, never hard-coded —
+# the same shape hassil uses for Home Assistant's `{area}`.
+#
+# This file is the English catalogue the chat NLU was already carrying in
+# Rust; the other seven locales sit beside it, one file per language the
+# UI speaks (packages/ui/src/i18n/locales).
+locale: en
+verbs:
+  formation.list:
+    phrases: ["list formations", "show formations", "what formations", "which squads", "show the colony"]
+  formation.get:
+    phrases: ["show {formation}", "how is {formation}", "status of {formation}", "tell me about {formation}"]
+  formation.deploy:
+    phrases: ["deploy {formation}", "start {formation}", "launch {formation}", "send out {formation}"]
+  formation.pause:
+    phrases: ["pause {formation}", "hold {formation}", "stop {formation} for now", "freeze {formation}"]
+  formation.resume:
+    phrases: ["resume {formation}", "unpause {formation}", "carry on with {formation}", "start {formation} again"]
+  formation.dissolve:
+    phrases: ["dissolve {formation}", "disband {formation}", "break up {formation}", "shut down {formation}"]
+  formation.rally:
+    phrases: ["rally {formation}", "regroup {formation}", "focus {formation}", "call {formation} together"]
+  formation.intent:
+    phrases: ["change the intent of {formation}", "set {formation} to {intent}", "what is {formation} doing"]
+  formation.guard:
+    phrases: ["guard {formation}", "toggle the guard on {formation}", "protect {formation}"]
+  formation.add_member:
+    phrases: ["add {connector} to {formation}", "put {connector} in {formation}"]
+  formation.remove_member:
+    phrases: ["remove {connector} from {formation}", "take {connector} out of {formation}"]
+  approvals.list:
+    phrases: ["list approvals", "what is waiting for approval", "show the approval queue", "anything pending"]
+  approvals.approve:
+    phrases: ["approve {id}", "allow {id}", "say yes to {id}"]
+  approvals.deny:
+    phrases: ["deny {id}", "reject {id}", "say no to {id}"]
+  memory.audit:
+    phrases: ["audit memory", "what do you remember", "show what is stored", "memory audit"]
+  memory.compact:
+    phrases: ["compact memory", "trim memory", "forget the old messages"]
+  safety.get:
+    phrases: ["show safety settings", "what is the safety config", "safety status"]
+  safety.set:
+    phrases: ["set safety {key} to {value}", "change the safety setting {key}"]
+  ai.get:
+    phrases: ["which model are you using", "show the ai adapter", "what ai is configured"]
+  ai.set:
+    phrases: ["use {adapter}", "switch the model to {adapter}", "set the ai adapter to {adapter}"]

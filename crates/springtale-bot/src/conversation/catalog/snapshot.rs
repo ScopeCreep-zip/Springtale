@@ -78,6 +78,12 @@ pub struct IntentDoc {
     /// Stemmed tokens from the description.
     pub desc_stems: Vec<String>,
     pub slots: Vec<SlotSpec>,
+    /// Set on the documents built from `platform::platform_docs` — the
+    /// dotted platform verb this document stands for (plan 5.4). `None`
+    /// for recipes. Routing reads this and nothing else: a document with
+    /// a verb runs a command, a document without one starts a setup
+    /// frame.
+    pub platform_verb: Option<&'static str>,
 }
 
 impl IntentDoc {
@@ -137,6 +143,24 @@ impl CatalogSnapshot {
         Self { intents }
     }
 
+    /// The catalogue plus one document per platform verb (plan 5.4).
+    /// `formation_names` is the live roster, read at match time so the
+    /// `{formation}` slot list is never hard-coded.
+    pub fn build_with_platform(
+        recipes: Vec<Recipe>,
+        locale: &str,
+        formation_names: &[String],
+    ) -> Self {
+        let mut intents: Vec<IntentDoc> = recipes.into_iter().map(project_recipe).collect();
+        intents.extend(super::platform::platform_docs(locale, formation_names));
+        Self { intents }
+    }
+
+    /// The document for a dotted platform verb, if it is in the snapshot.
+    pub fn find_verb(&self, verb: &str) -> Option<&IntentDoc> {
+        self.intents.iter().find(|d| d.platform_verb == Some(verb))
+    }
+
     pub fn find(&self, recipe_id: &str) -> Option<&IntentDoc> {
         self.intents.iter().find(|d| d.recipe_id == recipe_id)
     }
@@ -189,6 +213,7 @@ fn project_recipe(r: Recipe) -> IntentDoc {
         tag_stems,
         desc_stems,
         slots,
+        platform_verb: None,
     }
 }
 
