@@ -20,11 +20,14 @@ CREATE TABLE IF NOT EXISTS rules (
     trigger_type        TEXT    NOT NULL,
     rule_toml           TEXT    NOT NULL,
     activation_error    TEXT,
-    -- 'global' | 'agent' | 'formation' — matches RuleOwner serde tag.
+    -- 'global' | 'agent' | 'formation' | 'formation_member' —
+    -- matches the RuleOwner serde tag.
     owner_kind          TEXT    NOT NULL DEFAULT 'global',
-    -- UUID string when owner_kind = 'agent', else NULL.
+    -- UUID string when owner_kind = 'agent' or 'formation_member',
+    -- else NULL.
     owner_agent_id      TEXT,
-    -- UUID string when owner_kind = 'formation', else NULL.
+    -- UUID string when owner_kind = 'formation' or
+    -- 'formation_member', else NULL.
     owner_formation_id  TEXT,
     created_at          TEXT    NOT NULL,
     updated_at          TEXT    NOT NULL

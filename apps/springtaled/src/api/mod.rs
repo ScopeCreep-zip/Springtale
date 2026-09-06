@@ -10,7 +10,9 @@ pub mod connectors;
 pub mod dashboard;
 pub mod data;
 pub mod diagnostics;
+pub mod drift;
 pub mod events;
+pub mod executions;
 pub mod extractors;
 pub mod fixes;
 pub mod formations;
@@ -27,9 +29,14 @@ pub mod stream;
 pub mod templates;
 pub mod utterances;
 pub mod webhooks;
+pub mod workspaces;
 
 /// Maximum length for API path parameters. Prevents DoS via oversized route strings.
 const MAX_PATH_SEGMENT_LEN: usize = 256;
+
+/// Body limit for WASM connector uploads — the sandbox memory ceiling is
+/// 64 MiB, so nothing larger could run anyway.
+const WASM_UPLOAD_LIMIT: usize = 64 * 1024 * 1024;
 
 /// Validate that a path parameter is within acceptable length.
 pub fn validate_path_param(param: &str) -> Result<(), axum::http::StatusCode> {
@@ -42,6 +49,7 @@ pub fn validate_path_param(param: &str) -> Result<(), axum::http::StatusCode> {
 use std::time::Duration;
 
 use axum::Router;
+use axum::extract::DefaultBodyLimit;
 use axum::http::{StatusCode, header};
 use axum::middleware;
 use axum::routing::{delete, get, post, put};
@@ -105,6 +113,21 @@ pub fn build_router(state: AppState) -> Router {
         .route("/rules/connector", post(rules::create_connector_rule))
         .route("/rules/connector/{name}", get(rules::list_for_connector))
         .route("/events", get(events::list))
+        // Executions log + drift (plan 2.5 web parity)
+        .route("/executions", get(executions::list))
+        .route("/executions/vacuum", post(executions::vacuum))
+        .route("/executions/{id}/steps", get(executions::steps))
+        .route("/drift/recipe/{id}", get(drift::recipe))
+        .route("/drift/rule/{id}", get(drift::rule))
+        // External-workspace directory (plan 2.5 web parity)
+        .route(
+            "/workspaces",
+            get(workspaces::list)
+                .post(workspaces::upsert_manual)
+                .delete(workspaces::delete),
+        )
+        .route("/workspaces/scan", post(workspaces::scan))
+        .route("/workspaces/onboard-url", post(workspaces::onboard_url))
         .route("/sessions", get(sessions::list))
         .route(
             "/config/heartbeat",
@@ -188,6 +211,7 @@ pub fn build_router(state: AppState) -> Router {
         .route("/recipes/{id}/preflight", post(recipes::preflight))
         .route("/recipes/{id}/preview", post(recipes::preview))
         .route("/recipes/{id}/pieces", get(recipes::list_pieces))
+        .route("/recipes/{id}/test-step", post(recipes::test_step))
         // W2.B Recipe authoring
         .route("/recipes/user", post(recipes::save_user))
         .route("/recipes/{id}/fork", post(recipes::fork))
@@ -254,7 +278,7 @@ pub fn build_router(state: AppState) -> Router {
     // RateLimitLayer is wrapped by BufferLayer because tower::limit::RateLimit
     // does not implement Clone (required by axum). BufferLayer fronts the rate
     // limiter with a channel-based buffer whose handle is Clone. In
-    // ServiceBuilder, layers compose outside-in: Trace → BodyLimit → Buffer → RateLimit.
+    // ServiceBuilder, layers compose outside-in: Trace → Buffer → RateLimit.
     // Dashboard SPA — embedded in binary via rust-embed.
     // In debug: loaded from filesystem (live reload). In release: baked into binary.
     // No path configuration needed — works from any directory.
@@ -270,16 +294,37 @@ pub fn build_router(state: AppState) -> Router {
     let streams = Router::new()
         .route("/stream", get(stream::stream))
         .route("/chat/stream", get(chat::stream))
+        // POST: the connector config rides in the body, never the URL.
+        .route("/workspaces/onboard", post(workspaces::onboard))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::require_stream_ticket,
         ));
 
-    Router::new()
+    // WASM connector upload — same auth + CSRF gates as `authenticated`,
+    // but exempt from the 1 MiB body limit below (tower-http's layer caps
+    // every route it wraps; axum's `DefaultBodyLimit` alone can't raise it).
+    let install_wasm = Router::new()
+        .route("/connectors/install-wasm", post(connectors::install_wasm))
+        .layer(DefaultBodyLimit::max(WASM_UPLOAD_LIMIT))
+        .layer(RequestBodyLimitLayer::new(WASM_UPLOAD_LIMIT))
+        .layer(middleware::from_fn(auth::require_csrf_protection))
+        .layer(middleware::from_fn_with_state(
+            state.clone(),
+            auth::require_auth,
+        ));
+
+    // Every other route sits under the 1 MiB request body limit.
+    let limited = Router::new()
         .merge(public)
         .merge(authenticated)
         .merge(streams)
         .merge(dashboard)
+        .layer(RequestBodyLimitLayer::new(1024 * 1024));
+
+    Router::new()
+        .merge(limited)
+        .merge(install_wasm)
         .layer(
             ServiceBuilder::new()
                 .layer(TraceLayer::new_for_http())
@@ -315,7 +360,6 @@ pub fn build_router(state: AppState) -> Router {
                 // NOTE: HSTS (Strict-Transport-Security) deliberately omitted.
                 // RFC 6797 §8.1: HSTS MUST NOT be sent over plain HTTP.
                 // springtaled binds 127.0.0.1 without TLS by default.
-                .layer(RequestBodyLimitLayer::new(1024 * 1024))
                 .layer(axum::error_handling::HandleErrorLayer::new(
                     |_err: tower::BoxError| async move { StatusCode::TOO_MANY_REQUESTS },
                 ))

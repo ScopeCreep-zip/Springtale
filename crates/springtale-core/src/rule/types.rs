@@ -130,6 +130,11 @@ pub struct Rule {
 /// - **Formation** — fire only when the firing context belongs to
 ///   the matching formation. Cross-formation triggers don't satisfy
 ///   the filter — a formation A rule never fires for formation B.
+/// - **FormationMember** — a formation rule that also names the member
+///   it was synthesized for. Fires in exactly the same contexts as
+///   `Formation` (the member's formation), but dispatch reads the
+///   agent from the owner instead of guessing by connector, so two
+///   members sharing a connector each get their own envelope.
 ///
 /// `Uuid` rather than the cooperation-crate `AgentId` /
 /// `FormationId` newtypes because `springtale-core` has zero deps on
@@ -145,6 +150,10 @@ pub enum RuleOwner {
     Agent { agent_id: Uuid },
     /// Only the named formation can fire this rule.
     Formation { formation_id: Uuid },
+    /// Owned by one member of a formation. Matches its formation the
+    /// same way [`RuleOwner::Formation`] does; the extra `agent_id`
+    /// names the member whose automation synthesized the rule.
+    FormationMember { formation_id: Uuid, agent_id: Uuid },
 }
 
 impl RuleOwner {
@@ -162,6 +171,32 @@ impl RuleOwner {
             RuleOwner::Formation {
                 formation_id: rule_formation,
             } => formation_id.is_some_and(|firing| firing == *rule_formation),
+            // A member-owned rule is a formation rule: it matches its
+            // formation's firing context. The member id narrows *who
+            // acts*, not *whether it fires*.
+            RuleOwner::FormationMember {
+                formation_id: rule_formation,
+                ..
+            } => formation_id.is_some_and(|firing| firing == *rule_formation),
+        }
+    }
+
+    /// The formation this rule belongs to, if any.
+    pub fn formation_id(&self) -> Option<Uuid> {
+        match self {
+            RuleOwner::Formation { formation_id }
+            | RuleOwner::FormationMember { formation_id, .. } => Some(*formation_id),
+            RuleOwner::Global | RuleOwner::Agent { .. } => None,
+        }
+    }
+
+    /// The formation member that acts for this rule, if the owner names
+    /// one. `None` for every other owner — those fall back to the
+    /// dispatcher's connector search.
+    pub fn member_agent_id(&self) -> Option<Uuid> {
+        match self {
+            RuleOwner::FormationMember { agent_id, .. } => Some(*agent_id),
+            RuleOwner::Global | RuleOwner::Agent { .. } | RuleOwner::Formation { .. } => None,
         }
     }
 

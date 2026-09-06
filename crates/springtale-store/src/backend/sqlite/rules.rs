@@ -210,5 +210,13 @@ fn owner_columns(owner: &RuleOwner) -> (&'static str, Option<String>, Option<Str
         RuleOwner::Formation { formation_id } => {
             ("formation", None, Some(formation_id.to_string()))
         }
+        RuleOwner::FormationMember {
+            formation_id,
+            agent_id,
+        } => (
+            "formation_member",
+            Some(agent_id.to_string()),
+            Some(formation_id.to_string()),
+        ),
     }
 }

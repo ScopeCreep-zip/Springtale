@@ -77,3 +77,28 @@ async fn test_connector_register_and_list() {
     assert_eq!(connectors.len(), 1);
     assert_eq!(connectors[0].name, "test-connector");
 }
+
+#[tokio::test]
+async fn test_insert_formation_member_same_connector_twice_keeps_one_member() {
+    // A member is identified by its connector, so a formation-scoped rule can
+    // be bound to its member through that name (plan 1.11). A second row for
+    // the same connector would make that binding ambiguous, so the insert is
+    // idempotent, matching the SQLite unique index.
+    let backend = InMemoryBackend::new();
+    let first = FormationMemberRow {
+        id: "member-1".to_owned(),
+        formation_id: "formation-1".to_owned(),
+        connector_name: "connector-telegram".to_owned(),
+        role_hint: None,
+    };
+    let second = FormationMemberRow {
+        id: "member-2".to_owned(),
+        ..first.clone()
+    };
+    backend.insert_formation_member(&first).await.unwrap();
+    backend.insert_formation_member(&second).await.unwrap();
+
+    let members = backend.list_formation_members("formation-1").await.unwrap();
+    assert_eq!(members.len(), 1);
+    assert_eq!(members[0].id, "member-1");
+}

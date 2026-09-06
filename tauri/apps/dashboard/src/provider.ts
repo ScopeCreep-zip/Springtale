@@ -22,15 +22,21 @@ import type {
   ApprovalInfo,
   ConnectorOutput,
   DataProvider,
+  DriftReport,
+  ExecutionInfo,
+  ExecutionStepInfo,
   FormationDetail,
   FormationInfo,
   RuleSummary,
+  TestStepReport,
+  WorkspaceInfo,
 } from "@springtale/ui";
 import { getCanvasState, subscribeToCanvasUpdates } from "./api/canvas";
 import { sendChatMessage, subscribeToChat } from "./api/chat";
 import { del, get, getBaseUrl, getToken, post, put } from "./api/client";
 import { getUtteranceDefs, subscribeToCooperationEvents } from "./api/cooperation";
 import { subscribeToEvents } from "./api/events";
+import * as onboard from "./api/onboard";
 import {
   applyRecipe,
   deleteUserRecipe,
@@ -48,6 +54,16 @@ import {
   saveUserRecipe,
   toggleRecipeFavorite,
 } from "./api/recipes";
+
+/** `?k=v&…` from the defined entries of a flat filter object. */
+function queryString(params: object): string {
+  const qs = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null) qs.set(key, String(value));
+  }
+  const encoded = qs.toString();
+  return encoded ? `?${encoded}` : "";
+}
 
 export function createWebProvider(): DataProvider {
   return {
@@ -148,98 +164,81 @@ export function createWebProvider(): DataProvider {
       return data.events ?? [];
     },
 
-    // Phase B — executions log. The web dashboard hits the same
-    // springtaled HTTP surface for everything else; these endpoints
-    // are pending the daemon-side handlers (out of scope for B.9 —
-    // desktop-first per the v2 plan). Empty Vec keeps the panel
-    // rendering "no runs yet" rather than crashing on web.
-    async listExecutions(_filter) {
-      return [];
+    // Phase B — executions log. Same routes the desktop IPC
+    // commands mirror (plan 2.5).
+    async listExecutions(filter) {
+      return get<ExecutionInfo[]>(`/executions${queryString(filter)}`);
     },
-    async getExecutionSteps(_executionId) {
-      return [];
+    async getExecutionSteps(executionId) {
+      return get<ExecutionStepInfo[]>(`/executions/${encodeURIComponent(executionId)}/steps`);
     },
     // Selector picker requires a desktop webview — there's no
     // safe way to overlay a third-party site inside a hosted
-    // dashboard, so the web provider returns null. Web users
-    // type selectors manually.
+    // dashboard. Web users type selectors manually.
     async openSelectorPicker(_url, _hostAllowlist) {
-      return null;
+      throw new Error(
+        "The selector picker is desktop-only: the web dashboard cannot overlay a third-party site. Type the selector manually.",
+      );
     },
 
-    // Phase C — Test This Step + drift. The springtaled HTTP
-    // surface pending implementation; for now both gracefully
-    // return empty so the panel renders "no data" rather than
-    // throwing.
-    async testRecipeStep(recipeId, _inputs, ruleIndex, stepIndex) {
-      return {
-        recipe_id: recipeId,
+    // Phase C — Test This Step + drift.
+    async testRecipeStep(recipeId, inputs, ruleIndex, stepIndex) {
+      return post<TestStepReport>(`/recipes/${encodeURIComponent(recipeId)}/test-step`, {
+        inputs,
         rule_index: ruleIndex,
         step_index: stepIndex,
-        ran: false,
-        step: null,
-        upstream: [],
-        error: "Test This Step requires the desktop app today.",
-      };
+      });
     },
-    async getRecipeDrift(_recipeId, _filter) {
-      return {
-        recent_runs: 0,
-        baseline_runs: 0,
-        latency: {
-          recent_median_ms: null,
-          recent_p95_ms: null,
-          baseline_median_ms: null,
-          baseline_p95_ms: null,
-          median_delta_ms: null,
-          class: "not_enough_data",
-        },
-        success_rate: {
-          recent: null,
-          baseline: null,
-          delta: null,
-          class: "not_enough_data",
-        },
-        refusal_rate: {
-          recent: null,
-          baseline: null,
-          delta: null,
-          class: "not_enough_data",
-        },
-        overall: "not_enough_data",
-      };
+    async getRecipeDrift(recipeId, filter) {
+      return get<DriftReport>(
+        `/drift/recipe/${encodeURIComponent(recipeId)}${queryString(filter)}`,
+      );
     },
 
-    // D1 — External-workspace directory. Web HTTP surface
-    // pending; web users see empty dropdowns + can fall through
-    // to the manual-entry escape hatch on the desktop.
-    async listWorkspaces(_formationId, _connectorFilter) {
-      return [];
+    // D1 — External-workspace directory.
+    async listWorkspaces(formationId, connectorFilter) {
+      return get<WorkspaceInfo[]>(
+        `/workspaces${queryString({ formation_id: formationId, connector: connectorFilter })}`,
+      );
     },
-    async scanWorkspaces(_formationId, _connectorName) {
-      return [];
+    async scanWorkspaces(formationId, connectorName) {
+      return post<WorkspaceInfo[]>("/workspaces/scan", {
+        formation_id: formationId,
+        connector_name: connectorName,
+      });
     },
-    async deleteWorkspace(_formationId, _workspaceKey) {
-      // No-op on web — destinations live in the desktop's
-      // local SQLite for now.
+    async deleteWorkspace(formationId, workspaceKey) {
+      await del(
+        `/workspaces${queryString({ formation_id: formationId, workspace_key: workspaceKey })}`,
+      );
     },
-    async upsertWorkspaceManual(_formationId, _workspaceKey, _displayName, _connectorName, _kind) {
-      // No-op on web.
+    async upsertWorkspaceManual(formationId, workspaceKey, displayName, connectorName, kind) {
+      await post("/workspaces", {
+        formation_id: formationId,
+        workspace_key: workspaceKey,
+        display_name: displayName,
+        connector_name: connectorName,
+        kind,
+      });
     },
-    async previewOnboardUrl(_connectorName, _config, _payload) {
-      // No-op on web — onboard flow lives on the desktop where the
-      // connector token is being entered.
-      return "";
+    async previewOnboardUrl(connectorName, config, payload) {
+      const data = await post<{ url: string }>("/workspaces/onboard-url", {
+        connector_name: connectorName,
+        config,
+        payload,
+      });
+      return data.url;
     },
-    async startOnboardStream(_sessionId, _connectorName, _config, _payload) {
-      // No-op on web.
+    // Track D — onboard stream is SSE over a POST (config in the
+    // body); see api/onboard.ts.
+    async startOnboardStream(sessionId, connectorName, config, payload) {
+      await onboard.startOnboardStream(sessionId, connectorName, config, payload);
     },
-    async cancelOnboardStream(_sessionId) {
-      // No-op on web.
+    async cancelOnboardStream(sessionId) {
+      onboard.cancelOnboardStream(sessionId);
     },
-    async subscribeToChatDiscovered(_callback) {
-      // No-op on web — no Tauri event bus.
-      return () => {};
+    async subscribeToChatDiscovered(callback) {
+      return onboard.subscribeToChatDiscovered(callback);
     },
     // Plan 6.7 — chat-gate approval queue.
     async listApprovals() {
@@ -451,10 +450,10 @@ export function createWebProvider(): DataProvider {
 
     // Safety — focused get/save against the dedicated safety table.
     async getSafetyConfig() {
-      return await get<import("@springtale/ui").SafetyConfig>("/safety/config");
+      return await get<import("@springtale/ui").SafetyConfig>("/safety");
     },
     async saveSafetyConfig(config) {
-      await post("/safety/config", config);
+      await put("/safety", config);
     },
 
     // G5d — IPV duress surface (web).
@@ -481,7 +480,7 @@ export function createWebProvider(): DataProvider {
       return data.platforms ?? [];
     },
     async applyOnboarding(platform, answers) {
-      return post<ApplyReport>("/onboarding/apply", { platform, answers });
+      return post<ApplyReport>(`/onboarding/${encodeURIComponent(platform)}`, { answers });
     },
 
     // W1.B — Recipe library

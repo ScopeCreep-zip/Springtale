@@ -55,6 +55,25 @@ pub async fn spawn_formation(
     // async adapter resolution happens after the guard drops. A member's stable
     // identity for AI config is the FormationMemberRow id (`mr.id`) — the runtime
     // AgentId is freshly generated each spawn and is not a persistence key.
+    // Member-owned rules (plan 1.11): index this formation's rules by the
+    // member that owns them, so each member carries its own rule ids and
+    // per-member autonomy is a field read at tick time, not a table scan.
+    let mut rules_by_member: std::collections::HashMap<
+        uuid::Uuid,
+        Vec<springtale_core::rule::RuleId>,
+    > = std::collections::HashMap::new();
+    let this_formation = uuid::Uuid::parse_str(formation_id).ok();
+    for rule in store.list_rules().await? {
+        if let springtale_core::rule::RuleOwner::FormationMember {
+            formation_id: owner_formation,
+            agent_id,
+        } = rule.owner
+            && this_formation == Some(owner_formation)
+        {
+            rules_by_member.entry(agent_id).or_default().push(rule.id);
+        }
+    }
+
     let reg = registry.read().await;
     let members: Vec<FormationMember> = member_rows
         .iter()
@@ -80,7 +99,12 @@ pub async fn spawn_formation(
                 Ok(uuid) => AgentId(uuid),
                 Err(_) => AgentId::new(),
             };
-            FormationMember::new(agent_id, caps)
+            let mut member = FormationMember::new(agent_id, caps);
+            member.rule_ids = rules_by_member
+                .get(&agent_id.0)
+                .cloned()
+                .unwrap_or_default();
+            member
         })
         .collect();
     drop(reg);
