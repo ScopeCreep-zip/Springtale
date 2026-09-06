@@ -2259,7 +2259,8 @@ lifecycle, rule evaluation, scheduler, and the management HTTP API.
 7. Load and verify all enabled connectors from registry
 8. Start `springtale-scheduler` cron + watcher + heartbeat tasks
 9. Start axum management API
-10. Signal readiness (stdout `READY\n` for process supervisors)
+10. Signal readiness (stdout `READY {port}\n` — process supervisors match the
+    prefix, the desktop sidecar parses the port after `--bind 127.0.0.1:0`)
 
 **Management API routes (axum):**
 

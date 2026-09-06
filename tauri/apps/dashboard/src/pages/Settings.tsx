@@ -1,7 +1,6 @@
 import type { Locale } from "@springtale/ui";
-import { useI18n } from "@springtale/ui";
+import { apiGet, apiPut, configureApi, useI18n } from "@springtale/ui";
 import { createSignal, onMount } from "solid-js";
-import { configure, get, put } from "../api/client";
 
 /**
  * Settings page — configure API connection, auth, heartbeat, and language.
@@ -24,7 +23,7 @@ export function SettingsPage(props: { onSaved?: () => void }) {
   const [heartbeatSaved, setHeartbeatSaved] = createSignal(false);
 
   const saveConnection = () => {
-    configure(apiUrl(), token());
+    configureApi(apiUrl(), token());
     setToken(""); // Clear token signal — only kept in client module memory
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
@@ -33,7 +32,7 @@ export function SettingsPage(props: { onSaved?: () => void }) {
 
   const fetchHeartbeat = async () => {
     try {
-      const data = await get<{ interval_secs: number; enabled: boolean }>("/config/heartbeat");
+      const data = await apiGet<{ interval_secs: number; enabled: boolean }>("/config/heartbeat");
       setHeartbeatInterval(data.interval_secs);
       setHeartbeatEnabled(data.enabled);
     } catch {
@@ -43,7 +42,7 @@ export function SettingsPage(props: { onSaved?: () => void }) {
 
   const saveHeartbeat = async () => {
     try {
-      const data = await put<{ interval_secs: number; enabled: boolean }>("/config/heartbeat", {
+      const data = await apiPut<{ interval_secs: number; enabled: boolean }>("/config/heartbeat", {
         interval_secs: heartbeatInterval(),
       });
       setHeartbeatInterval(data.interval_secs);

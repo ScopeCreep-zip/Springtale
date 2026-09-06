@@ -190,3 +190,18 @@ export { createI18n, I18nProvider, useI18n } from "./i18n/context";
 export type { Locale, RawDictionary } from "./i18n/types";
 export { RulePreview } from "./RulePreview";
 export { TriggerPicker } from "./TriggerPicker";
+// HTTP client for the springtaled management API. The desktop points it
+// at its sidecar daemon on loopback; the web dashboard at the host that
+// served it.
+export {
+  configure as configureApi,
+  get as apiGet,
+  getBaseUrl,
+  getToken,
+  put as apiPut,
+} from "./web/api/client";
+// Panic wipe + travel mode (§2.6) — daemon-side operations, no JSON body.
+export { panicWipe, travelPrepare, travelRestore } from "./web/api/safety";
+export { closeAllStreams } from "./web/api/sse";
+// The one DataProvider implementation: HTTP + SSE against springtaled.
+export { createWebProvider } from "./web/provider";

@@ -27,7 +27,9 @@
       "dangerousDisableAssetCspModification": false,
       "pattern": {
         "use": "isolation",
-        "options": { "dir": "isolation" }
+        "options": {
+          "dir": "isolation"
+        }
       },
       "csp": {
         "default-src": "'none'",
@@ -69,6 +71,12 @@
     },
     "iOS": {
       "minimumSystemVersion": "15.0"
+    },
+    "externalBin": ["binaries/springtaled"]
+  },
+  "plugins": {
+    "shell": {
+      "open": false
     }
   }
 }

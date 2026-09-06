@@ -1,3 +1,4 @@
+use springtaled::cli::Cli;
 use springtaled::config;
 use springtaled::runtime;
 
@@ -5,6 +6,8 @@ use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() {
+    let options = Cli::from_args().into_boot_options();
+
     // Install rustls CryptoProvider before any TLS usage.
     //
     // Our dep tree has both `ring` and `aws-lc-rs` active (ring from our
@@ -37,7 +40,7 @@ async fn main() {
     };
 
     // Boot the daemon
-    if let Err(e) = runtime::boot(loaded.config, loaded.connector_configs).await {
+    if let Err(e) = runtime::boot(loaded.config, loaded.connector_configs, options).await {
         tracing::error!(error = %e, "springtaled failed");
         std::process::exit(1);
     }
