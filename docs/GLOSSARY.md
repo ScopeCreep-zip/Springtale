@@ -215,7 +215,7 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
 
 **RuleEngine** — Evaluates incoming trigger events against all enabled rules, returning matches with their actions. Pure evaluation — no side effects. Defined in `crates/springtale-core/src/rule/`.
 
-**rmcp** — The Rust SDK for Model Context Protocol. Springtale pins `rmcp` 1.x and `crates/springtale-mcp` uses its stdio transport. The bridge is not wired up: no daemon route and no CLI subcommand constructs a `ConnectorMcpServer`.
+**rmcp** — The Rust SDK for Model Context Protocol. Springtale pins `rmcp` 1.x. `crates/springtale-mcp` builds a `SpringtaleMcp` server over the whole connector registry, and `springtaled` mounts it as a Streamable HTTP service at `/mcp` behind an Origin check and bearer auth. There is no stdio transport and no per-connector subprocess.
 
 **rustls** — A TLS implementation written in pure Rust. Springtale uses rustls exclusively — `native-tls` and OpenSSL are banned at compile time via `deny.toml` and a vendor stub at `vendor/native-tls-stub/`.
 

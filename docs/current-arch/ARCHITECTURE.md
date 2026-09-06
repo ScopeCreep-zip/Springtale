@@ -2347,10 +2347,11 @@ springtale run
 springtale healthcheck [--url BASE_URL]
 ```
 
-There is no `springtale mcp serve`. `crates/springtale-mcp` can expose a
-single connector over stdio, but no CLI subcommand and no daemon route
-reaches it. See [reference/cli.md §1.1](../reference/cli.md) for the full
-family map and for which commands accept `--json` but ignore it.
+There is no `springtale mcp serve`, and none is needed: MCP is served by the
+daemon at `/mcp` over the whole connector registry, so an MCP client talks to
+`springtaled` directly rather than through the CLI. See
+[reference/cli.md §1.1](../reference/cli.md) for the full family map and for
+which commands accept `--json` but ignore it.
 
 **Security audit for `springtale-cli`:**
 

@@ -103,9 +103,8 @@ Tier transitions are driven by consecutive successes and interference
 events. An idle tick does not count as a success. An interference resets
 the combo and the formation climbs again from there. Inactivity decays
 the tier one step per decay interval. Momentum is persisted to the
-`formation_momentum` table every tick. The row survives a daemon restart, but
-the formation is not restored at boot — the row is read back only when someone
-redeploys the formation.
+`formation_momentum` table every tick and survives a daemon restart — the row is
+read back when boot redeploys the formation.
 
 Promotion and demotion are decided by rates over the current clean run,
 not by how many ticks have passed. Each tick adds its counts (actions,
@@ -350,7 +349,7 @@ The mental model is the formation's long-term memory. Unlike the blackboard (per
 
 **Warm start.** When a formation is *deployed* against an existing `formation_id`, `lifecycle::spawn_formation` hydrates the mental model (and the persisted momentum row and rally tokens) before the first tick. The formation begins at Cold momentum but with the prior model populated.
 
-**No boot restore.** `spawn_formation` is reached from exactly one place — the `FormationCommand::Deploy` arm, which an operator triggers. `springtaled`'s init restores cron triggers, path watches, connector handlers and WASM trust anchors, but it has no formation deploy loop. After a daemon restart, formations must be redeployed by hand; until then their persisted state sits on disk untouched.
+**Boot restore.** `spawn_formation` runs off the `FormationCommand::Deploy` arm, and at boot `springtaled`'s `runtime::boot::formations::restore_formations` sends exactly that command for every stored formation that was `active` or `paused` at shutdown (followed by `Pause` for the paused ones). So a restart brings formations back on its own, each warm-starting from its persisted momentum row, rally tokens and mental model.
 
 **Inspection.** `GET /formations/{id}` includes a summary of the mental model in the response. Full schema lives in `crates/springtale-cooperation/src/mental_model/types.rs`.
 

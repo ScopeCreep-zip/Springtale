@@ -781,10 +781,14 @@ Called from all three production adapters before sending (e.g.
 `crates/springtale-mcp/`. Built on `rmcp` 1.x.
 
 ```
-ConnectorMcpServer (server/builder.rs:34)
-  ├── connector: Arc<dyn Connector>
-  ├── capability_checker
-  └── tools: cached at construction from connector.actions()
+SpringtaleMcp (server/registry.rs)
+  ├── new(runtime)                → every installed connector in the registry
+  ├── for_connector(runtime, name) → scoped to one connector
+  └── tools: read live from the registry per request
+
+mounted by springtaled at /mcp (api/mcp.rs) as a Streamable HTTP service,
+behind auth::require_local_origin then auth::require_auth (bearer on every
+request; Mcp-Session-Id is a correlator, never authentication)
 
 list_tools(): if ALL capabilities approved → return tools
               else → return [] (defense-in-depth discovery filter)

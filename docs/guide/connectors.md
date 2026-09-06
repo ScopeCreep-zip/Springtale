@@ -177,26 +177,20 @@ For full details on each connector — config fields, trigger payloads, action i
 
 ## 6. MCP Bridge
 
-> **Not wired up.** `springtale-mcp` builds — `ConnectorMcpServer::new(connector,
-> capability_checker)` adapts the `Connector` trait to MCP's tool interface, and
-> `transport/stdio.rs` serves it on stdin/stdout — but nothing reaches it.
-> `springtaled` lists `springtale-mcp` as a dependency and never uses it; there
-> is no `/mcp` route. The CLI has no `mcp` subcommand, so the
-> `springtale-cli mcp serve` entry point named in `stdio.rs`'s own doc comment
-> does not exist. `start_stdio_server` has no caller outside the crate. Read
-> this section as the design, not as something you can run today.
+Model Context Protocol is served by **the daemon**, over the whole connector registry, at an authenticated loopback endpoint. `springtale-mcp` exposes `SpringtaleMcp::new(runtime)` (every installed connector) and `SpringtaleMcp::for_connector` (one), and `springtaled` mounts it at `/mcp` as a Streamable HTTP service (`apps/springtaled/src/api/mcp.rs`). Requests pass `auth::require_local_origin` and then the daemon's own bearer check on *every* request; `Mcp-Session-Id` is a transport correlator, never authentication. Tool calls dispatch through the same sentinel, approval gate and executions recorder as a rule action. The per-connector stdio subprocess transport is gone — there is no `mcp` CLI subcommand, and none is needed.
 
-The bridge is **per connector**, not registry-wide: one `ConnectorMcpServer`
-wraps exactly one `Arc<dyn Connector>`. It adapts the `Connector` trait to
-MCP's tool interface, so you would not write a separate MCP server per
-connector.
+Point an MCP client at `http://127.0.0.1:{port}/mcp` with the daemon's API
+token as a bearer and an `Origin` the daemon accepts, and every installed,
+enabled connector's actions appear as tools. You do not write a separate MCP
+server per connector, and you do not run one process per connector.
 
 ```
-  AI Client                springtale-mcp              Connector
-  (Claude, etc.)           Bridge                      (any)
+  AI Client                springtaled /mcp            Connector
+  (Claude, etc.)           (whole registry)            (any installed)
        │                        │                         │
        │  MCP tool call         │                         │
-       │  (stdio transport)     │                         │
+       │  (Streamable HTTP,     │                         │
+       │   Origin + bearer)     │                         │
        ├───────────────────────>│                         │
        │                        │                         │
        │                  ┌─────┴────────────────┐       │
@@ -215,14 +209,14 @@ connector.
        │<───────────────────────┤                         │
 ```
 
-*Fig. 4. MCP bridge, as designed. One `ConnectorMcpServer` per connector, over stdio. Nothing in the daemon or the CLI currently constructs one.*
+*Fig. 4. The daemon's `/mcp` endpoint. One Streamable HTTP server over the whole registry, behind Origin + bearer checks. No stdio subprocess per connector.*
 
 This means:
-- 15 connectors = 15 MCP servers, automatically
+- 15 connectors = one MCP server covering all of them, automatically
 - No MCP-specific code in connectors
 - Same capability checks apply at both `list_tools` and `call_tool` — MCP doesn't bypass the sandbox
 - Input validated against JSON Schema (via the `jsonschema` crate) at runtime
-- Uses `rmcp` 1.x over stdio transport
+- Uses `rmcp` 1.x over Streamable HTTP, mounted by the daemon at `/mcp`
 
 ---
 

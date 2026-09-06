@@ -142,11 +142,16 @@ become free; members in multiple formations keep running.
 
 Formation *state* persists — membership, intent, guard state, momentum,
 rally tokens and the shared mental model are written to the store — but a
-formation is **not restored when the daemon restarts**. `springtaled`'s
-init restores cron triggers, path watches, connector handlers and WASM
-trust anchors; it has no formation deploy loop. A row that still says
-`status = "active"` sits there until someone redeploys it, and only that
-redeploy reads the persisted state back in (`lifecycle::spawn_formation`). Autonomy is keyed by
+Formations are **restored at boot**. `springtaled`'s
+`runtime::boot::formations::restore_formations` lists stored formations after
+`init_bot` returns and re-issues the same `FormationCommand`s the API would
+send: `Deploy` for every row that was `active` or `paused` when the daemon
+last stopped, then `Pause` for the ones that were paused. That deploy is what
+reads the persisted state back in (`lifecycle::spawn_formation`) — momentum
+row, rally tokens and the shared mental model. A formation whose connectors
+are not installed still restores; it spawns with missing capabilities and
+reports that through the normal liveness path. Only a row whose id will not
+parse as a `FormationId` is skipped, with a `warn`. Autonomy is keyed by
 rule id (or set for a whole formation), never by name; a member without
 an explicit setting runs at act-autonomously.
 

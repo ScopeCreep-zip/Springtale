@@ -35,14 +35,13 @@ This model survives both a dissolve and a daemon restart, keyed by
 `lifecycle::persist_mental_model` before the `Formation` is dropped
 (`crates/springtale-bot/src/cooperation/lifecycle.rs`), and
 `spawn_formation` reloads it when a formation is next deployed against the
-same id — so a redeployed formation warm-starts with what its predecessors
-learned, at Cold momentum.
+same id — so a formation warm-starts with what its predecessors learned, at
+Cold momentum.
 
-The reload is **lazy**: nothing restores formations at boot. A formation
-whose row still says `status = "active"` is not re-materialised when
-`springtaled` restarts; it has to be redeployed, and only that redeploy
-pulls the mental model, momentum row and rally tokens back out of the
-store.
+The reload also covers a daemon restart:
+`runtime::boot::formations::restore_formations` re-deploys every formation
+that was `active` or `paused` at shutdown, and each of those deploys pulls
+the mental model, momentum row and rally tokens back out of the store.
 
 Storage key: `mental_model:<formation_id>`.
 Owner: `crates/springtale-cooperation/src/mental_model/store/`.

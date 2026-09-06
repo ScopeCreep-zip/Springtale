@@ -3209,8 +3209,7 @@ remaining drift. Recorded here so the as-built shape stays auditable:
   elapsed time is now true wall-clock between processed ticks (the old code
   reused the ×4 agent commit window as elapsed — pacing clocks ran 4× fast).
 - **§22 frequency modulation is real.** `PacingManager::tick_divider()` skips
-  bus ticks per phase (Peak ÷1, Active ÷2, Preparation/Disruption ÷3, Recovery
-  ÷6) — L4D's "amplitude is not changed, frequency is" — replacing the unwired
+  bus ticks per phase (BuildUp and SustainPeak ÷1, PeakFade ÷2, Relax ÷4) — L4D's "amplitude is not changed, frequency is" — replacing the unwired
   `tick_interval_modifier`.
 - **Decision #6 rally falloff implemented non-spatially.** WH3's 70/×1.5 linear
   aura maps onto snapshot **Age of Information**: neighbor influence in

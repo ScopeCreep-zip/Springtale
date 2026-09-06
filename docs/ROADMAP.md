@@ -18,7 +18,7 @@ Springtale ships in five phases. Each phase builds on the last — no phase skip
 
 | Phase | Name | Deliverables | State |
 |---|---|---|---|
-| 1a | Framework + Connectors | Daemon, CLI, 14 library crates, 8 baseline connectors (kick, presearch, bluesky, github, filesystem, shell, http, opencode), SQLite (declarative schema v1 in `schema/sql/`), crypto vault, WASM sandbox | Present, except the MCP bridge — the crate exists but nothing constructs it (see §2.2). Connector roster grew to 15 first-party through Phases 1b/2a. |
+| 1a | Framework + Connectors | Daemon, CLI, 14 library crates, 8 baseline connectors (kick, presearch, bluesky, github, filesystem, shell, http, opencode), SQLite (declarative schema v1 in `schema/sql/`), crypto vault, WASM sandbox, MCP endpoint | Present. Connector roster grew to 15 first-party through Phases 1b/2a. |
 | 1b | Bot Foundations | `springtale-bot`, command router (prefix / pattern / alias), cooperation framework, `connector-telegram`, session memory | Present. Cooperation framework extracted to its own `springtale-cooperation` crate (42 pub modules) and wired into a 25-step formation tick; see §3.2. |
 | 2a | Chat + AI | Discord, Slack, IRC, Signal, Nostr connectors. Anthropic / Ollama / OpenAI-compat adapters (all three stream). `HttpTransport` (rustls mTLS). `springtale-sentinel`. Tool-calling across all AI adapters. | Present. Matrix is held on upstream `rusqlite` CVE. |
 | 2b | Desktop + Safety | Tauri 2 shell, SolidJS dashboard + colony canvas (RTS formation visualisation), duress vault, panic wipe, travel mode. Visual rule builder, i18n, a11y. | Shell, dashboard, colony canvas (with formation command grid, rally pips, attention bar, liveness/health encoding), duress, panic wipe, travel mode present. Visual rule builder (`RuleBuilderOverlay`), i18n (eight locales), quick-hide, and lock-screen content protection present. a11y not implemented. |
@@ -65,8 +65,8 @@ The foundation. A single-binary daemon, CLI, rule engine, crypto vault, WASM san
 - Capability-based permission system with toxic pair detection
 - RESTful management API with HMAC bearer auth and rate limiting
 - Cron scheduling + filesystem watching + webhook ingestion
-- MCP: `springtale-mcp` can wrap one connector as an MCP server over stdio, but
-  nothing constructs one — no daemon route, no CLI subcommand. Not shipped.
+- MCP over Streamable HTTP at `/mcp`, covering the whole registry, behind the
+  daemon's Origin check and bearer auth (`apps/springtaled/src/api/mcp.rs`)
 - Docker deployment with hardened security (read-only root, drop all caps)
 - CI pipeline: fmt, clippy, nextest, cargo-deny, cargo-audit, gitleaks
 
@@ -226,6 +226,7 @@ Tauri 2 desktop shell with a SolidJS frontend that renders an RTS-inspired colon
 - **Duress passphrase** — dual encrypted regions, constant 131,152-byte file size, VeraCrypt-style plausible deniability.
 - **Panic wipe** — single-pass random overwrite + fsync + unlink, <3 s on 1 MB vault.
 - **Travel mode** — `springtale travel prepare --backup-to` and `travel restore --from`.
+- **MCP endpoint** — Model Context Protocol is served by **the daemon**, over the whole connector registry, at an authenticated loopback endpoint. `springtale-mcp` exposes `SpringtaleMcp::new(runtime)` (every installed connector) and `SpringtaleMcp::for_connector` (one), and `springtaled` mounts it at `/mcp` as a Streamable HTTP service (`apps/springtaled/src/api/mcp.rs`). Requests pass `auth::require_local_origin` and then the daemon's own bearer check on *every* request; `Mcp-Session-Id` is a transport correlator, never authentication. Tool calls dispatch through the same sentinel, approval gate and executions recorder as a rule action. The per-connector stdio subprocess transport is gone — there is no `mcp` CLI subcommand, and none is needed.
 - **Visual rule builder** — `tauri/packages/ui/src/colony/RuleBuilderOverlay.tsx`, a guided
   multi-step form (trigger → condition → action → preview), wired into both the desktop
   and dashboard apps. Not drag-and-drop.
@@ -249,12 +250,6 @@ Tauri 2 desktop shell with a SolidJS frontend that renders an RTS-inspired colon
 - Mobile (iOS + Android) via Tauri mobile
 - User-controlled font scaling (the rest of the accessibility work listed in §5.1 has
   landed; font scaling is the one item with no implementation)
-- Model Context Protocol is **not wired up**. `crates/springtale-mcp` builds a
-  `ConnectorMcpServer` over a *single* connector on a stdio transport
-  (`transport/stdio.rs`), `springtaled` declares `springtale-mcp` as a dependency
-  but never uses it (no `/mcp` route exists), and the `springtale mcp serve`
-  entry point named in `stdio.rs`'s own doc comment has no `Mcp` variant in the
-  CLI. Nothing serves MCP today.
 
 ---
 
