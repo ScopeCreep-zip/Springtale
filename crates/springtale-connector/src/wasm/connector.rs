@@ -89,6 +89,29 @@ pub struct WasmConnectorHost {
     sandbox_limits: SandboxLimits,
 }
 
+/// Classify a Wasmtime call failure into a typed sandbox error.
+///
+/// Fuel exhaustion and epoch (wall-clock) interruption are separate
+/// limits with separate operator responses, so each gets its own
+/// `ConnectorError` variant rather than a formatted `Sandbox` string
+/// that callers would have to substring-match.
+fn trap_to_error(
+    err: &wasmtime::Error,
+    limits: &SandboxLimits,
+    fuel_remaining: u64,
+) -> ConnectorError {
+    match err.downcast_ref::<wasmtime::Trap>() {
+        Some(wasmtime::Trap::OutOfFuel) => ConnectorError::FuelExhausted {
+            used: limits.fuel.saturating_sub(fuel_remaining),
+            limit: limits.fuel,
+        },
+        Some(wasmtime::Trap::Interrupt) => ConnectorError::Timeout {
+            limit_secs: limits.timeout_secs,
+        },
+        _ => ConnectorError::Sandbox(format!("execution failed: {err}")),
+    }
+}
+
 impl WasmConnectorHost {
     /// Create a new WASM connector host from compiled module + manifest,
     /// registering the module against a shared tier cache.
@@ -231,37 +254,28 @@ impl ConnectorHost for WasmConnectorHost {
             .copy_from_slice(input_bytes);
 
         // Call guest execute function
-        let result_ptr = execute_fn
-            .call(
-                &mut store,
-                (
-                    i32::try_from(action_offset)
-                        .map_err(|_| ConnectorError::Sandbox("action offset exceeds i32".into()))?,
-                    i32::try_from(action_bytes.len())
-                        .map_err(|_| ConnectorError::Sandbox("action length exceeds i32".into()))?,
-                    i32::try_from(input_offset)
-                        .map_err(|_| ConnectorError::Sandbox("input offset exceeds i32".into()))?,
-                    i32::try_from(input_bytes.len())
-                        .map_err(|_| ConnectorError::Sandbox("input length exceeds i32".into()))?,
-                ),
-            )
-            .map_err(|e| {
-                // Check if this was a fuel exhaustion or epoch timeout
-                let msg = e.to_string();
-                if msg.contains("fuel") {
-                    ConnectorError::Sandbox(format!(
-                        "connector exceeded instruction limit ({} fuel)",
-                        self.sandbox_limits.fuel
-                    ))
-                } else if msg.contains("epoch") {
-                    ConnectorError::Sandbox(format!(
-                        "connector exceeded timeout ({}s)",
-                        self.sandbox_limits.timeout_secs
-                    ))
-                } else {
-                    ConnectorError::Sandbox(format!("execution failed: {e}"))
-                }
-            })?;
+        let call_result = execute_fn.call(
+            &mut store,
+            (
+                i32::try_from(action_offset)
+                    .map_err(|_| ConnectorError::Sandbox("action offset exceeds i32".into()))?,
+                i32::try_from(action_bytes.len())
+                    .map_err(|_| ConnectorError::Sandbox("action length exceeds i32".into()))?,
+                i32::try_from(input_offset)
+                    .map_err(|_| ConnectorError::Sandbox("input offset exceeds i32".into()))?,
+                i32::try_from(input_bytes.len())
+                    .map_err(|_| ConnectorError::Sandbox("input length exceeds i32".into()))?,
+            ),
+        );
+        let result_ptr = match call_result {
+            Ok(ptr) => ptr,
+            Err(e) => {
+                // `get_fuel` is read before the store is dropped so the
+                // fuel error can report what the guest actually burned.
+                let remaining = store.get_fuel().unwrap_or(0);
+                return Err(trap_to_error(&e, &self.sandbox_limits, remaining));
+            }
+        };
 
         // Read result from guest memory
         // Convention: result_ptr points to a JSON string in guest memory
@@ -359,6 +373,61 @@ impl ConnectorHost for WasmConnectorHost {
         Err(ConnectorError::ExecutionFailed(
             "WASM webhook verification not supported — use manifest-declared webhook_secret".into(),
         ))
+    }
+}
+
+/// Test-only execution helpers.
+///
+/// The production path (`execute_checked`) requires a guest that follows
+/// the four-argument `execute` ABI. The sandbox-limit tests need to run
+/// a bare export under the same store, limiter, fuel budget and epoch
+/// deadline, so these two helpers reuse `create_store` and the tier
+/// cache and stop short of the JSON marshalling.
+#[cfg(test)]
+impl WasmConnectorHost {
+    /// Fresh store + instance at the checker's default tier.
+    fn instantiate_for_test(
+        &self,
+    ) -> Result<(Store<HostState>, wasmtime::Instance), ConnectorError> {
+        let checker = CapabilityChecker::new();
+        let mut store = self.create_store(&checker);
+        let instance =
+            self.tier_cache
+                .instantiate_at_tier(self.module_key(), checker.tier(), &mut store)?;
+        Ok((store, instance))
+    }
+
+    /// Call a zero-argument, zero-result export under the sandbox limits.
+    /// Returns the typed error when a limit fires.
+    pub(crate) fn execute_raw(&self, export: &str) -> Result<(), ConnectorError> {
+        let (mut store, instance) = self.instantiate_for_test()?;
+        let func = instance
+            .get_typed_func::<(), ()>(&mut store, export)
+            .map_err(|e| ConnectorError::Sandbox(format!("missing '{export}' export: {e}")))?;
+        match func.call(&mut store, ()) {
+            Ok(()) => Ok(()),
+            Err(e) => {
+                let remaining = store.get_fuel().unwrap_or(0);
+                Err(trap_to_error(&e, &self.sandbox_limits, remaining))
+            }
+        }
+    }
+
+    /// Run a zero-argument export, then report the guest's linear memory
+    /// size in bytes — what the `StoreLimits` memory cap governs.
+    pub(crate) fn memory_size_after(&self, export: &str) -> Result<usize, ConnectorError> {
+        let (mut store, instance) = self.instantiate_for_test()?;
+        let func = instance
+            .get_typed_func::<(), ()>(&mut store, export)
+            .map_err(|e| ConnectorError::Sandbox(format!("missing '{export}' export: {e}")))?;
+        if let Err(e) = func.call(&mut store, ()) {
+            let remaining = store.get_fuel().unwrap_or(0);
+            return Err(trap_to_error(&e, &self.sandbox_limits, remaining));
+        }
+        let memory = instance
+            .get_memory(&mut store, "memory")
+            .ok_or_else(|| ConnectorError::Sandbox("guest has no 'memory' export".into()))?;
+        Ok(memory.data_size(&store))
     }
 }
 

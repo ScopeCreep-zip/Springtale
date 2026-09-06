@@ -243,6 +243,21 @@ mod tests {
         ChainContext::new(trigger)
     }
 
+    /// A `${...}` sequence that arrives *inside* a payload value is data,
+    /// not a template. Resolution is a single pass over the rule string,
+    /// so a trigger field whose value happens to look like a reference is
+    /// substituted verbatim and never re-expanded — the guard that keeps
+    /// an attacker-controlled webhook body from reaching a secret it was
+    /// never given.
+    #[test]
+    fn payload_values_are_not_re_expanded() {
+        let c = ctx_with(json!({ "name": "${trigger.secret}", "secret": "s3cr3t" }));
+        assert_eq!(
+            resolve_chain_template("hi ${trigger.name}", &c, None),
+            "hi ${trigger.secret}"
+        );
+    }
+
     #[test]
     fn resolves_trigger_field() {
         let mut c = ctx_with(json!({ "chat_id": 42, "name": "alice" }));

@@ -6,6 +6,9 @@ pub mod runtime;
 pub mod tier;
 pub mod wasi;
 
+#[cfg(test)]
+mod tests;
+
 pub use connector::WasmConnectorHost;
 pub use limits::SandboxLimits;
 pub use runtime::WasmEngine;

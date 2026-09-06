@@ -34,6 +34,9 @@ pub enum ConnectorError {
     #[error("WASM memory limit exceeded")]
     MemoryLimitExceeded,
 
+    #[error("WASM execution exceeded wall-clock timeout ({limit_secs}s)")]
+    Timeout { limit_secs: u64 },
+
     #[error("WASM binary hash mismatch")]
     WasmHashMismatch,
 
