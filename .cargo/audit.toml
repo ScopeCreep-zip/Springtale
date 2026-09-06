@@ -35,12 +35,6 @@ ignore = [
     # upstream issue. See `vex/instant-rustsec-2024-0384.json`.
     "RUSTSEC-2024-0384",
 
-    # lru 0.13 IterMut Stacked Borrows soundness — pulled transitively via
-    # chitchat (workspace SWIM/scuttlebutt). Springtale doesn't call
-    # lru::IterMut directly; chitchat is on the dependabot ignore list (wire
-    # format critical). See `vex/lru-rustsec-2026-0002.json`.
-    "RUSTSEC-2026-0002",
-
     # proc-macro-error2 2.0.1 unmaintained — author confirmed end-of-life on
     # 2026-06-07. Build-time only, pulled transitively via tabled_derive ->
     # tabled (springtale-cli table rendering). No runtime code, no CVE. Tracking
