@@ -11,6 +11,7 @@ use springtale_runtime::operations::config::{AI_COLONY_KEY, AiTarget};
 
 use crate::cli::{AiConfigAction, ConfigAction};
 use crate::client::Client;
+use crate::commands::json_input;
 use crate::output;
 
 /// Handle `config` subcommands.
@@ -19,6 +20,23 @@ pub async fn run(action: ConfigAction, json_out: bool) -> Result<()> {
     match action {
         ConfigAction::List => {
             let body: Value = client.get("/config").await?;
+            output::emit(json_out, &body, |v| {
+                serde_json::to_string_pretty(v).unwrap_or_default()
+            })
+        }
+        ConfigAction::Connector { name, file } => {
+            let body: Value = client
+                .post(&format!("/config/connector/{name}"), &json_input::load(&file)?)
+                .await?;
+            output::emit_status(json_out, &body, |_| {
+                format!("Connector config saved for '{name}'.")
+            })
+        }
+        ConfigAction::Heartbeat { file } => {
+            let body: Value = match file {
+                Some(file) => client.put("/config/heartbeat", &json_input::load(&file)?).await?,
+                None => client.get("/config/heartbeat").await?,
+            };
             output::emit(json_out, &body, |v| {
                 serde_json::to_string_pretty(v).unwrap_or_default()
             })
@@ -56,6 +74,12 @@ async fn run_ai(action: AiConfigAction, client: &Client, json_out: bool) -> Resu
             output::emit(json_out, &redacted, |v| {
                 serde_json::to_string_pretty(v).unwrap_or_default()
             })
+        }
+        AiConfigAction::Put { file } => {
+            // The whole adapter document, as-is. `set` is the flag-built
+            // sibling; this one is for a config you already have on disk.
+            let body: Value = client.post("/config/ai", &json_input::load(&file)?).await?;
+            output::emit_status(json_out, &body, |_| "AI config applied.".to_owned())
         }
         AiConfigAction::Set {
             scope,

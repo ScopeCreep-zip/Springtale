@@ -58,6 +58,54 @@ pub async fn run(action: RuleAction, json_out: bool) -> Result<()> {
                 serde_json::to_string_pretty(v).unwrap_or_default()
             })?;
         }
+        RuleAction::Schema => {
+            let body: Value = client.get("/rules/schema").await?;
+            output::emit(json_out, &body, |v| {
+                serde_json::to_string_pretty(v).unwrap_or_default()
+            })?;
+        }
+        RuleAction::Parse { intent } => {
+            let body: Value = client
+                .post("/rules/parse", &serde_json::json!({ "intent": intent }))
+                .await?;
+            output::emit(json_out, &body, |v| {
+                serde_json::to_string_pretty(v).unwrap_or_default()
+            })?;
+        }
+        RuleAction::AddForConnector { file } => {
+            let rule = load_rule(&file)?;
+            let body: Value = client.post("/rules/connector", &rule).await?;
+            output::emit_status(json_out, &body, |v| {
+                format!("Created rule {}", output::cell(v, "id"))
+            })?;
+        }
+        RuleAction::ForConnector { name } => {
+            let body: Value = client.get(&format!("/rules/connector/{name}")).await?;
+            output::emit(json_out, &body, |v| {
+                let rows = output::array(v, "rules")
+                    .iter()
+                    .map(|r| {
+                        vec![
+                            output::cell(r, "id"),
+                            output::cell(r, "name"),
+                            output::cell(r, "status"),
+                        ]
+                    })
+                    .collect();
+                output::rows_table(&["ID", "NAME", "STATUS"], rows)
+            })?;
+        }
+        RuleAction::Reassign { id, connector } => {
+            let body: Value = client
+                .post(
+                    &format!("/rules/{id}/reassign"),
+                    &serde_json::json!({ "new_connector": connector }),
+                )
+                .await?;
+            output::emit_status(json_out, &body, |_| {
+                format!("Rule {id} now runs on {connector}.")
+            })?;
+        }
         RuleAction::Toggle { id } => {
             // The route takes the target state, so read the current one
             // from the daemon rather than guessing.

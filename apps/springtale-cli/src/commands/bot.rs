@@ -44,6 +44,30 @@ pub async fn panic_unpair(opts: &PassphraseOpts, json_out: bool) -> Result<()> {
     })
 }
 
+/// `springtale bot status` — what the runtime is doing right now.
+pub async fn status(json_out: bool) -> Result<()> {
+    read(json_out, "/bot/status").await
+}
+
+/// `springtale bot formations` — the formations the bot is running.
+pub async fn formations(json_out: bool) -> Result<()> {
+    read(json_out, "/bot/formations").await
+}
+
+/// `springtale bot memory` — the session memory the bot is holding.
+pub async fn memory(json_out: bool) -> Result<()> {
+    read(json_out, "/bot/memory").await
+}
+
+/// GET one read-only bot view and print it.
+async fn read(json_out: bool, path: &str) -> Result<()> {
+    let client = Client::from_config()?;
+    let body: serde_json::Value = client.get(path).await?;
+    output::emit(json_out, &body, |v| {
+        serde_json::to_string_pretty(v).unwrap_or_default()
+    })
+}
+
 /// `springtale bot settings …` — plan 6.3. Goes through the daemon so the
 /// change reaches the live runtime (a direct store write would only be
 /// picked up on the next restart, which is the thing this replaced).

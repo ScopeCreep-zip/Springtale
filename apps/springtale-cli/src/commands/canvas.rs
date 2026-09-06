@@ -11,8 +11,24 @@ use crate::client::Client;
 use crate::output;
 
 /// Print the canvas snapshot, or follow live updates.
-pub async fn run(stream: bool, json_out: bool) -> Result<()> {
+pub async fn run(stream: bool, connections: bool, json_out: bool) -> Result<()> {
     let client = Client::from_config()?;
+    if connections {
+        let body: Value = client.get("/canvas/connections").await?;
+        return output::emit(json_out, &body, |v| {
+            let rows = output::array(v, "connections")
+                .iter()
+                .map(|c| {
+                    vec![
+                        output::cell(c, "a"),
+                        output::cell(c, "b"),
+                        output::array(c, "pipes").len().to_string(),
+                    ]
+                })
+                .collect();
+            output::rows_table(&["FROM", "TO", "PIPES"], rows)
+        });
+    }
     if !stream {
         let body: Value = client.get("/canvas").await?;
         return output::emit(json_out, &body, |v| {

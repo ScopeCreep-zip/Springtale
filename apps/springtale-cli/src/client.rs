@@ -106,6 +106,29 @@ impl Client {
         Ok(resp)
     }
 
+    /// POST `path` and hand back the undecoded response — the shape the
+    /// SSE-over-POST routes need (`/workspaces/onboard` streams progress
+    /// frames rather than answering with one JSON body).
+    pub async fn post_stream<B: Serialize>(&self, path: &str, body: &B) -> Result<reqwest::Response> {
+        // SECURITY: expose needed to set the bearer header.
+        let resp = self
+            .http
+            .post(self.url(path))
+            .bearer_auth(self.token.expose_secret())
+            .json(body)
+            .send()
+            .await
+            .context(UNREACHABLE)?;
+        if !resp.status().is_success() {
+            bail!(
+                "{}: {}",
+                resp.status(),
+                resp.text().await.unwrap_or_default()
+            );
+        }
+        Ok(resp)
+    }
+
     /// Start a request against `path` with the bearer header already
     /// applied, for callers that need the raw `reqwest` response rather
     /// than a decoded JSON body. The MCP stdio bridge uses it: it needs

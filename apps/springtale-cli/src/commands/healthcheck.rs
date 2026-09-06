@@ -13,13 +13,19 @@ use anyhow::{Result, anyhow};
 
 use crate::output;
 
-pub async fn run(base_url: &str, json_out: bool) -> Result<()> {
+/// Liveness: the process is up.
+const HEALTH: &str = "/health";
+/// Readiness: the process is up *and* willing to serve.
+const READY: &str = "/ready";
+
+pub async fn run(base_url: &str, ready: bool, json_out: bool) -> Result<()> {
     let client = springtale_transport::safe_http::builder()
         .timeout(Duration::from_secs(3))
         .build()
         .map_err(|e| anyhow!("healthcheck client: {e}"))?;
 
-    let url = format!("{}/health", base_url.trim_end_matches('/'));
+    let probe = if ready { READY } else { HEALTH };
+    let url = format!("{}{probe}", base_url.trim_end_matches('/'));
     let response = client
         .get(&url)
         .send()
@@ -34,6 +40,6 @@ pub async fn run(base_url: &str, json_out: bool) -> Result<()> {
     }
     // A healthy probe stays silent for the container runtime; `--json`
     // gives a scriptable body without changing the exit-code contract.
-    let body = serde_json::json!({ "healthy": true, "url": url });
+    let body = serde_json::json!({ "healthy": true, "url": url, "probe": probe });
     output::emit_status(json_out, &body, |_| String::new())
 }

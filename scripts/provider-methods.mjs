@@ -14,8 +14,9 @@
 //   `/recipes/${encodeURIComponent(id)}` -> /recipes/{}
 //
 // A `${hole}` is a path segment only when a `/` introduces it; a hole
-// anywhere else is an interpolated query string (`${queryString(f)}`),
-// not a segment, and is dropped rather than turned into `{}`.
+// anywhere else is an interpolated query string (`${queryString(f)}`) or
+// the base URL (`${getBaseUrl()}/recipes/import`), not a segment, and is
+// dropped rather than turned into `{}`.
 
 import { readdirSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -34,7 +35,7 @@ const providers = [
 // reads as one hole rather than a truncated one.
 const HOLE = String.raw`\$\{(?:[^{}]|\{[^{}]*\})*\}`;
 const PATH_LITERAL = new RegExp(
-  String.raw`["'\`](\/(?:${HOLE}|[A-Za-z0-9_/.:?=&{}-])*)["'\`]`,
+  String.raw`["'\`]((?:${HOLE})?\/(?:${HOLE}|[A-Za-z0-9_/.:?=&{}-])*)["'\`]`,
   "g",
 );
 const MARKER = "%HOLE%";
@@ -51,7 +52,7 @@ for (const file of providers) {
       .split(MARKER)
       .join("{}")
       .replace(/\/+$/, "");
-    if (normalised.length > 1) routes.add(normalised);
+    if (normalised.length > 1 && !normalised.startsWith("//")) routes.add(normalised);
   }
 }
 
