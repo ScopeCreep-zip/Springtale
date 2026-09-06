@@ -15,7 +15,8 @@
       "!**/pnpm-lock.yaml",
       "!**/*.css",
       "!packages/types/src/api.ts",
-      "!packages/types/openapi.json"
+      "!packages/types/openapi.json",
+      "!packages/types/src/generated"
     ]
   },
   "formatter": {
