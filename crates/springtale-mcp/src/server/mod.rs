@@ -1,4 +1,4 @@
-pub mod builder;
-mod handlers;
+pub mod handlers;
+pub mod registry;
 
-pub use builder::ConnectorMcpServer;
+pub use registry::{SpringtaleMcp, TOOL_NAME_SEPARATOR};

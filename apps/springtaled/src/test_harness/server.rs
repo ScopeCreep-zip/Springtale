@@ -29,6 +29,7 @@ impl TestServer {
             router,
             token_hex,
             formation_cmd_rx,
+            state: _state,
         } = TestApp::build(true);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
         let addr = listener.local_addr()?;
