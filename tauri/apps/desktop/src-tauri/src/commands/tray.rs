@@ -48,9 +48,10 @@ pub fn init<R: Runtime>(app: &App<R>) -> tauri::Result<TrayHandle<R>> {
     Ok(handle)
 }
 
-/// G5f — swap the tray icon + tooltip to match the persisted
-/// `SafetyConfig`. Reads disguise_active + disguise_icon_id +
-/// disguise_app_name and applies the appropriate icon resource.
+/// G5f — swap the tray icon + tooltip to match the disguise state the
+/// frontend just read from the daemon (`GET /safety`). The values are
+/// parameters rather than a database read: plan 2.1 leaves the shell with
+/// no store of its own.
 ///
 /// Idempotent + safe to call repeatedly. Errors (icon file missing,
 /// platform doesn't support tray, etc.) are logged but don't fail
@@ -60,22 +61,18 @@ pub fn init<R: Runtime>(app: &App<R>) -> tauri::Result<TrayHandle<R>> {
 #[specta::specta]
 pub async fn apply_disguise_to_tray(
     app: tauri::AppHandle,
-    state: tauri::State<'_, crate::state::AppState>,
+    disguise_active: bool,
+    disguise_app_name: String,
+    disguise_icon_id: String,
 ) -> Result<String, String> {
-    let guard = crate::runtime_guard::require_runtime(&state.runtime).await?;
-    let rt = guard.as_ref().unwrap();
-    let config = springtale_runtime::operations::safety::get_safety_config(rt)
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let icon_id = if config.disguise_active {
-        config.disguise_icon_id.clone()
+    let icon_id = if disguise_active {
+        disguise_icon_id
     } else {
         "springtale".to_owned()
     };
 
-    let tooltip = if config.disguise_active {
-        config.disguise_app_name.clone()
+    let tooltip = if disguise_active {
+        disguise_app_name
     } else {
         "Springtale".to_owned()
     };

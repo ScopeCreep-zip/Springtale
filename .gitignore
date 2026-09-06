@@ -95,3 +95,8 @@ fuzz/artifacts/
 # ── Font sources (multi-megabyte upstream TTFs; only the subset ships) ──
 vendor/fonts/*.ttf
 vendor/fonts/*.zip
+
+# Tauri sidecar staging — `springtaled-{target-triple}` is produced by the
+# packaging step (cargo build -p springtaled, then copy + rename). Never
+# commit a binary.
+tauri/apps/desktop/src-tauri/binaries/

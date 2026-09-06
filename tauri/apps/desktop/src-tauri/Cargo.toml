@@ -1,3 +1,10 @@
+# Deliberately NOT a member of the Rust workspace at the repo root: the
+# desktop shell has its own Cargo.lock (plan 2.1 asserts that lock has no
+# `springtale-bot`). The empty table states that explicitly so cargo stops
+# walking up to a parent manifest — without it a git worktree checked out
+# under the main repo gets claimed by the main repo's workspace.
+[workspace]
+
 [package]
 name = "springtale-desktop"
 version = "0.1.0"
@@ -36,17 +43,19 @@ tauri-plugin-global-shortcut = "2"
 # chat panel and a native notification so a briefing/reminder reaches
 # the user even when the window isn't focused.
 tauri-plugin-notification = "2"
+# Plan 2.1 — spawns the `springtaled` sidecar (`externalBin`) and pipes
+# the vault passphrase to its stdin. `open` stays disabled in
+# tauri.conf.json; we never hand a URL to the OS shell.
+tauri-plugin-shell = "2"
 serde = { version = "1", features = ["derive"] }
+secrecy = "0.10"
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
-uuid = { version = "1", features = ["v4"] }
-anyhow = "1"
-figment = { version = "0.10", features = ["toml", "env"] }
-chrono = { version = "0.4", features = ["serde"] }
 hex = "0.4"
-inventory = "0.3"  # F-conn-1: enumerate connector factories at runtime
+# Timestamps on the picked-selector payload (commands/selector_picker.rs).
+chrono = { version = "0.4", features = ["serde"] }
 
 # tauri-specta — generates TypeScript bindings from Rust types and
 # Tauri commands. Replaces hand-maintained `Recipe` / `RecipeFilter` /
@@ -57,19 +66,10 @@ specta            = { version = "=2.0.0-rc.25", features = ["derive", "serde_jso
 specta-typescript = "0.0.12"
 tauri-specta      = { version = "=2.0.0-rc.25", features = ["derive", "typescript"] }
 
-# Springtale core crates — the commands layer delegates to these.
-# Zero Tauri dependency in the crates themselves.
-springtale-core = { path = "../../../../crates/springtale-core" }
+# Plan 2.1 — the shell is a sidecar client of `springtaled`, which owns
+# the store, the runtime, the scheduler and the bot. Only two crates
+# survive here: `springtale-crypto` for the vault overlay + API-token
+# derivation, and `springtale-transport` for the PQ rustls provider
+# bootstrap at the top of `lib.rs::run`.
 springtale-crypto = { path = "../../../../crates/springtale-crypto" }
-springtale-store = { path = "../../../../crates/springtale-store" }
-springtale-connector = { path = "../../../../crates/springtale-connector" }
-springtale-runtime = { path = "../../../../crates/springtale-runtime" }
-springtale-bot = { path = "../../../../crates/springtale-bot" }
-springtale-ai = { path = "../../../../crates/springtale-ai" }
-springtale-cooperation = { path = "../../../../crates/springtale-cooperation" }
-springtale-sentinel = { path = "../../../../crates/springtale-sentinel" }
-# springtale-transport is pulled in only for the PQ rustls crypto-provider
-# bootstrap call at the top of `lib.rs::run`. No other transport surface is
-# touched from the Tauri side — the daemon shares the same process and runs
-# its own server.
 springtale-transport = { path = "../../../../crates/springtale-transport" }

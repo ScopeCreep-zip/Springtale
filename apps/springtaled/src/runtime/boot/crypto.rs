@@ -8,8 +8,9 @@ use springtale_crypto::vault::store::Vault;
 pub(super) fn init_crypto(
     ephemeral: bool,
     crypto_config: &crate::config::CryptoConfig,
+    passphrase_stdin: bool,
 ) -> Result<(Vault, Keypair, [u8; 32], String)> {
-    let passphrase = get_passphrase()?;
+    let passphrase = get_passphrase(passphrase_stdin)?;
     let (vault, keypair) = if ephemeral {
         let mut vault = springtale_crypto::vault::store::Vault::create_ephemeral(&passphrase)
             .context("failed to create ephemeral vault")?;
@@ -52,10 +53,17 @@ pub(super) fn init_crypto(
 /// Get the vault passphrase from Docker secret file, environment, or interactive prompt.
 ///
 /// Priority:
+/// 0. `--passphrase-stdin` — read exactly one line from stdin (the desktop
+///    sidecar; keeps the passphrase out of argv and the environment, both of
+///    which any other local process can read)
 /// 1. SPRINGTALE_PASSPHRASE_FILE — read passphrase from file (Docker secrets pattern)
 /// 2. SPRINGTALE_PASSPHRASE — direct env var (development only, visible in `docker inspect`)
 /// 3. Interactive prompt via rpassword (if stdin is a terminal)
-fn get_passphrase() -> Result<Vec<u8>> {
+fn get_passphrase(passphrase_stdin: bool) -> Result<Vec<u8>> {
+    if passphrase_stdin {
+        return read_passphrase_line();
+    }
+
     // Docker secrets pattern: read from file path in env var
     if let Ok(file_path) = std::env::var("SPRINGTALE_PASSPHRASE_FILE") {
         // Read as bytes and zeroize immediately — passphrase must not
@@ -90,6 +98,28 @@ fn get_passphrase() -> Result<Vec<u8>> {
     anyhow::bail!(
         "no passphrase provided: set SPRINGTALE_PASSPHRASE_FILE, SPRINGTALE_PASSPHRASE, or run interactively"
     )
+}
+
+/// Read exactly one newline-terminated line of passphrase from stdin.
+///
+/// Read as bytes rather than through `String` so no intermediate copy of
+/// the passphrase is left for the allocator to hand out later — the same
+/// reason `SPRINGTALE_PASSPHRASE_FILE` reads bytes.
+fn read_passphrase_line() -> Result<Vec<u8>> {
+    use std::io::BufRead;
+
+    let mut line = Vec::new();
+    std::io::stdin()
+        .lock()
+        .read_until(b'\n', &mut line)
+        .context("failed to read passphrase from stdin")?;
+    while line.last().is_some_and(|b| matches!(b, b'\n' | b'\r')) {
+        line.pop();
+    }
+    if line.is_empty() {
+        anyhow::bail!("passphrase from stdin is empty");
+    }
+    Ok(line)
 }
 
 /// Check if stdin is a terminal (for interactive passphrase prompt).

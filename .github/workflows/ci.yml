@@ -113,6 +113,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
                                   libsoup-3.0-dev libgtk-3-dev
+      # The desktop shell ships springtaled as a Tauri sidecar, so the binary
+      # must exist under src-tauri/binaries/ named for the target triple
+      # before the desktop crate is built.
+      - name: Stage the springtaled sidecar
+        run: |
+          cargo build -p springtaled
+          triple="$(rustc -vV | sed -n 's/^host: //p')"
+          mkdir -p tauri/apps/desktop/src-tauri/binaries
+          cp target/debug/springtaled "tauri/apps/desktop/src-tauri/binaries/springtaled-${triple}"
       - run: cargo build -p springtale-desktop --manifest-path tauri/apps/desktop/src-tauri/Cargo.toml
 
   # ── TypeScript / Tauri frontend ───────────────────────────────────

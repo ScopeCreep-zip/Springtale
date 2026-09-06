@@ -106,3 +106,100 @@ pub async fn set_panic_tap_count(
         Json(serde_json::json!({ "panic_tap_count": count })),
     ))
 }
+
+/// POST /safety/panic-wipe — irreversibly destroy every row of local data.
+///
+/// Plan 2.1: the desktop used to reach `operations::safety::panic_wipe`
+/// through its own in-process runtime. The daemon owns the store now, so
+/// the route has to exist here or the button is dead on both shells.
+pub async fn panic_wipe(State(state): State<AppState>) -> impl IntoResponse {
+    match operations::safety::panic_wipe(state.runtime.store.as_ref()).await {
+        Ok(()) => (StatusCode::OK, Json(serde_json::json!({ "wiped": true }))),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ),
+    }
+}
+
+/// Body for both travel routes.
+#[derive(Deserialize)]
+pub struct TravelBody {
+    /// Vault passphrase — encrypts (prepare) or decrypts (restore) the backup.
+    pub passphrase: String,
+    /// Absolute path of the encrypted backup file.
+    pub backup_path: String,
+}
+
+/// POST /travel/prepare — write an encrypted backup, then wipe local data.
+///
+/// Per `ARCHITECTURE.md` §2.6 border-crossing mode. The caller is expected
+/// to stop the daemon afterwards; unlike the old desktop command this does
+/// not call `std::process::exit`, because the daemon may be serving other
+/// clients and killing it out from under them is the wrong shutdown path.
+pub async fn travel_prepare(
+    State(state): State<AppState>,
+    Json(body): Json<TravelBody>,
+) -> impl IntoResponse {
+    let store = std::sync::Arc::clone(&state.runtime.store);
+    let result = tokio::task::spawn_blocking(move || {
+        operations::travel::prepare(
+            &springtale_store::paths::default_vault_path(),
+            &springtale_store::paths::default_db_path(),
+            &springtale_store::paths::default_config_path(),
+            std::path::Path::new(&body.backup_path),
+            body.passphrase.as_bytes(),
+            store.as_ref(),
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await;
+
+    match result {
+        Ok(Ok(())) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "prepared": true })),
+        ),
+        Ok(Err(e)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e })),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ),
+    }
+}
+
+/// POST /travel/restore — decrypt a backup back into vault, database, config.
+///
+/// The daemon must be restarted afterwards: it is still holding the handles
+/// to the files that were just replaced underneath it.
+pub async fn travel_restore(Json(body): Json<TravelBody>) -> impl IntoResponse {
+    let result = tokio::task::spawn_blocking(move || {
+        operations::travel::restore(
+            std::path::Path::new(&body.backup_path),
+            &springtale_store::paths::default_vault_path(),
+            &springtale_store::paths::default_db_path(),
+            &springtale_store::paths::default_config_path(),
+            body.passphrase.as_bytes(),
+        )
+        .map_err(|e| e.to_string())
+    })
+    .await;
+
+    match result {
+        Ok(Ok(())) => (
+            StatusCode::OK,
+            Json(serde_json::json!({ "restored": true })),
+        ),
+        Ok(Err(e)) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e })),
+        ),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ),
+    }
+}

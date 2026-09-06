@@ -200,6 +200,9 @@ pub fn build_router(state: AppState) -> Router {
             post(safety::set_disguise_profile),
         )
         .route("/safety/panic_tap_count", post(safety::set_panic_tap_count))
+        .route("/safety/panic-wipe", post(safety::panic_wipe))
+        .route("/travel/prepare", post(safety::travel_prepare))
+        .route("/travel/restore", post(safety::travel_restore))
         // W1.B — Recipes (click-and-play library)
         .route("/recipes", get(recipes::list))
         .route("/recipes/categories", get(recipes::list_categories))
