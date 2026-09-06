@@ -69,6 +69,7 @@ pub async fn run_tick(formation: &mut Formation, tick: &Tick, deps: &mut TickDep
     {
         return;
     }
+    formation.current_tick = tick.sequence;
     // True per-formation elapsed time since the last PROCESSED tick —
     // pacing timers run on this, not on `tick.window` (the agent commit
     // window) and not on the bus interval (wrong under the divider).

@@ -52,6 +52,12 @@ pub async fn run(
     // intervention evaluator reads next. Saturating add so a perpetually
     // unhealthy formation never wraps.
     formation.cascade_hit_streak = formation.cascade_hit_streak.saturating_add(1);
+    let streak = formation.cascade_hit_streak;
+    springtale_cooperation::utterance::utter(
+        &mut formation.utter_ctx(cooperation_tx),
+        None,
+        springtale_cooperation::UtteranceKind::Cascade { streak },
+    );
 
     tracing::warn!(formation = %formation.id.0, ?risk, "cascade risk detected");
     let members_affected = result
@@ -84,6 +90,13 @@ pub async fn run(
         failing_agent,
     );
     log_rally_result(&formation.id.0.to_string(), &rally_result);
+    if matches!(rally_result, RallyResult::StabilizedWithCost { .. }) {
+        springtale_cooperation::utterance::utter(
+            &mut formation.utter_ctx(cooperation_tx),
+            None,
+            springtale_cooperation::UtteranceKind::Rally,
+        );
+    }
 
     // Persist rally state after token consumption so restarts see the
     // updated count.

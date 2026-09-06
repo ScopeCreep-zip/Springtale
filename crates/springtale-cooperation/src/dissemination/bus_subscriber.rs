@@ -57,6 +57,7 @@ fn translate(msg: StateBroadcastMsg) -> Option<StateMessage> {
             agent: msg.source,
             health: AgentHealth::Degraded { recovery_count: 1 },
         }),
+        BroadcastTrigger::Utterance(u) => Some(StateMessage::Utterance(u)),
         // Other triggers (resource shifts, custom signals) currently
         // have no per-agent awareness mapping; drop them.
         _ => None,

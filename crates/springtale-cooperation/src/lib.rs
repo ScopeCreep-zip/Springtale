@@ -47,6 +47,7 @@ pub mod tick_processor;
 pub mod transformation;
 pub mod types;
 pub mod utility;
+pub mod utterance;
 
 // Re-exports — primary public API surface.
 pub use action::{SubTask, SubTaskResult};
@@ -73,3 +74,4 @@ pub use types::{
     AgentHealth, ApprovalPolicy, AutonomyLevel, DynamicRole, FormationConstraints, FormationId,
     FuelAmount, PatternId, ResourceId, WorkspaceKey,
 };
+pub use utterance::{Carrier, Shape, Tone, Utterance, UtteranceKind};

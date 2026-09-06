@@ -31,7 +31,9 @@ use specta::Type;
 use uuid::Uuid;
 
 use crate::cadence::AgentId;
+use crate::tick::TickId;
 use crate::types::FormationId;
+use crate::utterance::{Carrier, Shape, Tone, Utterance, UtteranceKind};
 
 /// Coarse-grained tag for L6 commander-override interventions.
 ///
@@ -204,6 +206,40 @@ pub enum CooperationEvent {
         formation_id: FormationId,
         outcome: ReplanOutcomeSummary,
     },
+    /// A member or formation said something (plan §1.15). Struct variant so
+    /// the `kind` tag stays flat and `utter` tags the inner kind.
+    Utterance {
+        formation_id: Option<FormationId>,
+        agent: Option<AgentId>,
+        rule_id: Option<springtale_core::rule::RuleId>,
+        utterance: UtteranceKind,
+        carrier: Carrier,
+        shape: Shape,
+        tone: Tone,
+        seq: TickId,
+        ttl_ticks: u32,
+        glyph_frames: Vec<String>,
+        mirror_rtl: bool,
+        label_key: String,
+    },
+}
+impl From<Utterance> for CooperationEvent {
+    fn from(u: Utterance) -> Self {
+        Self::Utterance {
+            formation_id: u.formation_id,
+            agent: u.agent,
+            rule_id: u.rule_id,
+            utterance: u.utterance,
+            carrier: u.carrier,
+            shape: u.shape,
+            tone: u.tone,
+            seq: u.seq,
+            ttl_ticks: u.ttl_ticks,
+            glyph_frames: u.glyph_frames,
+            mirror_rtl: u.mirror_rtl,
+            label_key: u.label_key,
+        }
+    }
 }
 
 /// Wire envelope for cooperation events — adds monotonic sequence + UTC
