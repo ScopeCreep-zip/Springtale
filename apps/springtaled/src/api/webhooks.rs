@@ -173,14 +173,14 @@ pub async fn receive(
     ))
 }
 
-/// Extract an IncomingMessage from a webhook payload for chat connectors.
+/// Extract a ChatMessage from a webhook payload for chat connectors.
 ///
 /// Matches the field extraction performed by the polling gateway dispatchers
 /// so webhook-delivered messages flow through the same bot runtime path.
 fn extract_bot_message(
     connector_name: &str,
     payload: &serde_json::Value,
-) -> Option<springtale_bot::IncomingMessage> {
+) -> Option<springtale_connector::chat::ChatMessage> {
     match connector_name {
         "connector-telegram" => extract_telegram_message(payload),
         // Discord and Slack normally use gateway/socket mode, not webhooks,
@@ -191,7 +191,7 @@ fn extract_bot_message(
 
 fn extract_telegram_message(
     payload: &serde_json::Value,
-) -> Option<springtale_bot::IncomingMessage> {
+) -> Option<springtale_connector::chat::ChatMessage> {
     // Regular message or command
     if let Some(message) = payload.get("message") {
         let user_id = message
@@ -210,13 +210,13 @@ fn extract_telegram_message(
             .unwrap_or("")
             .to_owned();
 
-        return Some(springtale_bot::IncomingMessage {
-            user_id,
+        return Some(springtale_connector::chat::ChatMessage::chat(
+            "connector-telegram",
             channel_id,
+            user_id,
             text,
-            source_connector: "connector-telegram".to_owned(),
-            raw: payload.clone(),
-        });
+            payload.clone(),
+        ));
     }
 
     // Inline keyboard button press (callback_query)
@@ -238,13 +238,13 @@ fn extract_telegram_message(
             .unwrap_or("")
             .to_owned();
 
-        return Some(springtale_bot::IncomingMessage {
-            user_id,
+        return Some(springtale_connector::chat::ChatMessage::chat(
+            "connector-telegram",
             channel_id,
+            user_id,
             text,
-            source_connector: "connector-telegram".to_owned(),
-            raw: payload.clone(),
-        });
+            payload.clone(),
+        ));
     }
 
     None

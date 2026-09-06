@@ -6,6 +6,7 @@
 
 pub mod actions;
 pub mod auth;
+pub mod chat;
 pub mod client;
 pub mod config;
 pub mod connector;
@@ -14,6 +15,7 @@ pub mod factory;
 pub mod triggers;
 pub mod webhook;
 
+pub use chat::KickChatSource;
 pub use client::KickApi;
 pub use config::KickConfig;
 pub use connector::KickConnector;

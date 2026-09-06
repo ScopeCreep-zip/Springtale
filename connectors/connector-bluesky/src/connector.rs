@@ -11,6 +11,7 @@ use springtale_connector::manifest::types::{
 use springtale_connector::{Subscription, SubscriptionCounter, SubscriptionId};
 
 use crate::actions;
+use crate::chat::BlueskyChatSource;
 use crate::client::{AtProtoClient, BlueskyApi};
 use crate::triggers;
 use springtale_connector::manifest::SignatureAlgorithm;
@@ -21,6 +22,9 @@ use springtale_connector::manifest::SignatureAlgorithm;
 /// post/reply/like/repost actions, and Jetstream-driven triggers.
 pub struct BlueskyConnector {
     client: Arc<AtProtoClient>,
+    /// Jetstream ingestion half — the firehose loop the daemon used to
+    /// build from TOML (`wire_bluesky`).
+    chat: Arc<BlueskyChatSource>,
     manifest: ConnectorManifest,
     triggers: Vec<TriggerDecl>,
     actions: Vec<ActionDecl>,
@@ -32,13 +36,18 @@ impl BlueskyConnector {
     /// Create a new Bluesky connector.
     ///
     /// The `client` should already be authenticated via `AtProtoClient::new()`.
-    pub fn new(client: AtProtoClient) -> Self {
+    /// `jetstream_url` comes from [`crate::BlueskyConfig`] and drives the
+    /// connector's own firehose ingestion ([`BlueskyChatSource`]).
+    pub fn new(client: AtProtoClient, jetstream_url: String) -> Self {
         let trigger_decls = triggers::trigger_declarations();
         let action_decls = actions::action_declarations();
         let manifest = build_manifest(&trigger_decls, &action_decls);
+        let client = Arc::new(client);
+        let chat = Arc::new(BlueskyChatSource::new(Arc::clone(&client), jetstream_url));
 
         Self {
-            client: Arc::new(client),
+            client,
+            chat,
             manifest,
             triggers: trigger_decls,
             actions: action_decls,
@@ -127,6 +136,10 @@ impl Connector for BlueskyConnector {
 
     fn manifest(&self) -> &ConnectorManifest {
         &self.manifest
+    }
+
+    fn chat_source(&self) -> Option<springtale_connector::chat::SharedChatSource> {
+        Some(self.chat.clone())
     }
 
     fn mention_extractor(&self) -> Option<&dyn springtale_connector::mention::MentionExtractor> {

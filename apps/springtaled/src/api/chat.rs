@@ -4,7 +4,7 @@
 //! through one channel: `POST /chat` injects a message as if it arrived from
 //! a connector named `in-app`, and `GET /chat/stream` streams the bot's
 //! replies back over SSE. This reuses the existing chat spine end to end —
-//! `IncomingMessage` → `ai_fallback`/router → `OutgoingResponse` — with the
+//! `ChatMessage` → `ai_fallback`/router → `OutgoingResponse` — with the
 //! response dispatcher (`runtime/boot/bot.rs`) routing `in-app`-connector
 //! replies to the broadcast this module subscribes to.
 //!
@@ -67,13 +67,13 @@ pub async fn send(
     }
     let session = req.session.unwrap_or_else(|| IN_APP_SESSION.to_owned());
 
-    let msg = springtale_bot::IncomingMessage {
-        user_id: IN_APP_SESSION.to_owned(),
-        channel_id: session.clone(),
+    let msg = springtale_connector::chat::ChatMessage::chat(
+        IN_APP_CONNECTOR,
+        session.clone(),
+        IN_APP_SESSION,
         text,
-        source_connector: IN_APP_CONNECTOR.to_owned(),
-        raw: serde_json::json!({ "origin": "in-app" }),
-    };
+        serde_json::json!({ "origin": "in-app" }),
+    );
 
     if let Err(e) = state.bot_msg_tx.send(msg).await {
         tracing::error!(error = %e, "in-app chat: bot channel closed");

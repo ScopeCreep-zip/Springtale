@@ -11,6 +11,7 @@ use springtale_connector::manifest::types::{
 use springtale_connector::{Subscription, SubscriptionCounter, SubscriptionId};
 
 use crate::actions;
+use crate::chat::SlackChatSource;
 use crate::client::SlackClient;
 use crate::config::SlackConfig;
 use crate::triggers;
@@ -33,12 +34,15 @@ use springtale_connector::manifest::SignatureAlgorithm;
 /// IPV safety planning, or anything you wouldn't show your employer.
 /// Use Signal or Matrix for sensitive communications instead.
 pub struct SlackConnector {
-    client: SlackClient,
+    client: Arc<SlackClient>,
     manifest: ConnectorManifest,
     triggers: Vec<TriggerDecl>,
     actions: Vec<ActionDecl>,
     handlers: Arc<Mutex<Vec<(SubscriptionId, String, EventHandler)>>>,
     sub_counter: SubscriptionCounter,
+    /// Socket Mode receive loop + outbound half, handed to the runtime
+    /// via [`Connector::chat_source`].
+    chat: Arc<SlackChatSource>,
 }
 
 impl SlackConnector {
@@ -60,9 +64,11 @@ impl SlackConnector {
         let bot_token = secrecy::SecretBox::new(Box::new(
             secrecy::ExposeSecret::expose_secret(&config.bot_token).clone(),
         ));
-        let client = SlackClient::new(bot_token, config.message_jitter_secs);
+        let client = Arc::new(SlackClient::new(bot_token, config.message_jitter_secs));
 
         let manifest = build_manifest(&trigger_decls, &action_decls);
+
+        let chat = Arc::new(SlackChatSource::new(config, Arc::clone(&client))?);
 
         Ok(Self {
             client,
@@ -71,6 +77,7 @@ impl SlackConnector {
             actions: action_decls,
             handlers: Arc::new(Mutex::new(Vec::new())),
             sub_counter: SubscriptionCounter::new(),
+            chat,
         })
     }
 }
@@ -91,23 +98,25 @@ impl Connector for SlackConnector {
         input: serde_json::Value,
     ) -> Result<ActionResult, ConnectorError> {
         match action {
-            "send_message" => actions::send_message::execute(&self.client, &input)
+            "send_message" => actions::send_message::execute(self.client.as_ref(), &input)
                 .await
                 .map_err(ConnectorError::from),
-            "send_blocks" => actions::send_blocks::execute(&self.client, &input)
+            "send_blocks" => actions::send_blocks::execute(self.client.as_ref(), &input)
                 .await
                 .map_err(ConnectorError::from),
-            "send_thread_reply" => actions::send_thread_reply::execute(&self.client, &input)
+            "send_thread_reply" => {
+                actions::send_thread_reply::execute(self.client.as_ref(), &input)
+                    .await
+                    .map_err(ConnectorError::from)
+            }
+            "edit_message" => actions::edit_message::execute(self.client.as_ref(), &input)
                 .await
                 .map_err(ConnectorError::from),
-            "edit_message" => actions::edit_message::execute(&self.client, &input)
-                .await
-                .map_err(ConnectorError::from),
-            "add_reaction" => actions::add_reaction::execute(&self.client, &input)
+            "add_reaction" => actions::add_reaction::execute(self.client.as_ref(), &input)
                 .await
                 .map_err(ConnectorError::from),
             "discover_destinations" => {
-                actions::discover_destinations::execute(&self.client, &input)
+                actions::discover_destinations::execute(self.client.as_ref(), &input)
                     .await
                     .map_err(ConnectorError::from)
             }
@@ -154,6 +163,10 @@ impl Connector for SlackConnector {
 
     fn manifest(&self) -> &ConnectorManifest {
         &self.manifest
+    }
+
+    fn chat_source(&self) -> Option<springtale_connector::chat::SharedChatSource> {
+        Some(self.chat.clone())
     }
 
     fn mention_extractor(&self) -> Option<&dyn springtale_connector::mention::MentionExtractor> {

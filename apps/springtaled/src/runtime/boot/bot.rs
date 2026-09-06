@@ -73,54 +73,33 @@ impl springtale_runtime::LiveFormationReader for BotFormationReader {
     }
 }
 
-/// Holds optional connector configs for wiring during boot.
-/// Avoids partial-move issues with the top-level `SpringtaleConfig`.
-pub(super) struct ConnectorWiring {
-    pub(super) telegram: Option<connector_telegram::TelegramConfig>,
-    pub(super) nostr: Option<connector_nostr::NostrConfig>,
-    pub(super) irc: Option<connector_irc::IrcConfig>,
-    pub(super) discord: Option<connector_discord::DiscordConfig>,
-    pub(super) slack: Option<connector_slack::SlackConfig>,
-    pub(super) signal: Option<connector_signal::SignalConfig>,
-    pub(super) bluesky: Option<connector_bluesky::BlueskyConfig>,
-}
-
 /// In-app messaging wiring for the bot event loop: the connector-ingress
 /// channel (incoming messages → bot) and the in-app chat broadcast
 /// (bot replies + fired notifications → `/chat/stream` SSE).
 pub(super) struct BotChannels {
-    pub(super) bot_msg_tx: mpsc::Sender<springtale_bot::IncomingMessage>,
-    pub(super) bot_msg_rx: mpsc::Receiver<springtale_bot::IncomingMessage>,
+    pub(super) bot_msg_rx: mpsc::Receiver<springtale_connector::chat::ChatMessage>,
     pub(super) chat_tx: tokio::sync::broadcast::Sender<crate::api::chat::ChatStreamMessage>,
 }
 
-/// Initialize bot runtime and wire connector gateways.
+/// Initialize the bot runtime.
 ///
-/// Spawns the bot event loop, response dispatcher, and all configured connector
-/// gateway loops. Returns the bot task handle and connector shutdown senders.
+/// Spawns the bot event loop and the response dispatcher. Connector chat
+/// loops are NOT started here — they follow the registry, wired by
+/// `springtale_runtime::operations::connectors::wire_chat` (plan 6.4).
 pub(super) async fn init_bot(
     runtime: &springtale_runtime::RuntimeState,
     scheduler: springtale_runtime::EmbeddedScheduler,
-    connectors: &ConnectorWiring,
     channels: BotChannels,
+
     formation_cmd_rx: tokio::sync::mpsc::Receiver<
         springtale_cooperation::command::FormationCommand,
     >,
     formations_handle: Arc<RwLock<Vec<Formation>>>,
-) -> Result<(
-    tokio::task::JoinHandle<()>,
-    Vec<tokio::sync::watch::Sender<bool>>,
-)> {
+) -> Result<tokio::task::JoinHandle<()>> {
     let BotChannels {
-        bot_msg_tx,
         bot_msg_rx,
         chat_tx,
     } = channels;
-    // Rule-engine ingress for connector gateways: polling gateways emit
-    // ConnectorEvents here so their event recipes fire (the scheduler owns
-    // the `trigger_tx` the embedded trigger loop drains). Cloned before
-    // `scheduler` moves into the recipe deployer below.
-    let gateway_trigger_tx = scheduler.trigger_tx.clone();
     let (bot_response_tx, mut bot_response_rx) =
         mpsc::channel::<springtale_bot::OutgoingResponse>(256);
     let (_bot_rule_tx, bot_rule_rx) =
@@ -169,7 +148,7 @@ pub(super) async fn init_bot(
     // for the W5 in-app chat panel — to the chat broadcast (the desktop /
     // web / PWA `GET /chat/stream` subscribers). The `in-app` connector is
     // synthetic and has no `send_message`, so it MUST branch here.
-    let response_registry = runtime.registry.clone();
+    let response_runtime = runtime.clone();
     let response_chat_tx = chat_tx.clone();
     let _response_handle = tokio::spawn(async move {
         while let Some(response) = bot_response_rx.recv().await {
@@ -182,23 +161,42 @@ pub(super) async fn init_bot(
                 });
                 continue;
             }
-            let reg = response_registry.read().await;
-            let input = serde_json::json!({
-                "chat_id": response.channel_id,
-                "text": response.text,
-            });
-            match reg
-                .execute(&response.connector, "send_message", input)
-                .await
+            // Outbound half of the connector's ChatSource. Connectors
+            // with no chat surface fall back to the generic
+            // `send_message` action.
+            match springtale_runtime::operations::connectors::send_chat(
+                &response_runtime,
+                &response.connector,
+                &response.channel_id,
+                &response.text,
+            )
+            .await
             {
-                Ok(_) => {}
+                Ok(true) => continue,
+                Ok(false) => {}
                 Err(e) => {
                     tracing::error!(
                         connector = %response.connector,
                         error = %e,
                         "failed to send bot response"
                     );
+                    continue;
                 }
+            }
+            let reg = response_runtime.registry.read().await;
+            let input = serde_json::json!({
+                "chat_id": response.channel_id,
+                "text": response.text,
+            });
+            if let Err(e) = reg
+                .execute(&response.connector, "send_message", input)
+                .await
+            {
+                tracing::error!(
+                    connector = %response.connector,
+                    error = %e,
+                    "failed to send bot response"
+                );
             }
         }
     });
@@ -235,92 +233,5 @@ pub(super) async fn init_bot(
 
     tracing::info!("bot runtime started");
 
-    // ── Step 7b: Start connector gateways ──
-    // Connectors are already registered in the registry by the factory system
-    // (via inventory::submit! in each connector crate). Gateway loops bridge
-    // incoming messages from chat platforms to the bot runtime.
-    let mut connector_shutdowns: Vec<tokio::sync::watch::Sender<bool>> = Vec::new();
-
-    if let Some(ref tg_config) = connectors.telegram {
-        // Polling mode returns Some(shutdown_tx); webhook mode returns None.
-        let shutdown = crate::runtime::connectors::wire_telegram(
-            tg_config,
-            &runtime.registry,
-            bot_msg_tx.clone(),
-            gateway_trigger_tx.clone(),
-        )
-        .await
-        .context("failed to wire Telegram connector")?;
-        if let Some(tx) = shutdown {
-            connector_shutdowns.push(tx);
-        }
-    }
-    if let Some(ref nostr_config) = connectors.nostr {
-        let shutdown_tx = crate::runtime::connectors::wire_nostr(
-            nostr_config,
-            &runtime.registry,
-            bot_msg_tx.clone(),
-            gateway_trigger_tx.clone(),
-        )
-        .await
-        .context("failed to wire Nostr connector")?;
-        connector_shutdowns.push(shutdown_tx);
-    }
-    if let Some(ref irc_config) = connectors.irc {
-        let shutdown_tx = crate::runtime::connectors::wire_irc(
-            irc_config,
-            &runtime.registry,
-            bot_msg_tx.clone(),
-            gateway_trigger_tx.clone(),
-        )
-        .await
-        .context("failed to wire IRC connector")?;
-        connector_shutdowns.push(shutdown_tx);
-    }
-    if let Some(ref discord_config) = connectors.discord {
-        let shutdown_tx = crate::runtime::connectors::wire_discord(
-            discord_config,
-            &runtime.registry,
-            bot_msg_tx.clone(),
-            gateway_trigger_tx.clone(),
-        )
-        .await
-        .context("failed to wire Discord connector")?;
-        connector_shutdowns.push(shutdown_tx);
-    }
-    if let Some(ref slack_config) = connectors.slack {
-        let shutdown_tx = crate::runtime::connectors::wire_slack(
-            slack_config,
-            &runtime.registry,
-            bot_msg_tx.clone(),
-        )
-        .await
-        .context("failed to wire Slack connector")?;
-        connector_shutdowns.push(shutdown_tx);
-    }
-    if let Some(ref signal_config) = connectors.signal {
-        let shutdown_tx = crate::runtime::connectors::wire_signal(
-            signal_config,
-            &runtime.registry,
-            bot_msg_tx.clone(),
-            gateway_trigger_tx.clone(),
-        )
-        .await
-        .context("failed to wire Signal connector")?;
-        connector_shutdowns.push(shutdown_tx);
-    }
-    if let Some(ref bluesky_config) = connectors.bluesky {
-        let shutdown_tx = crate::runtime::connectors::wire_bluesky(
-            bluesky_config,
-            &runtime.registry,
-            gateway_trigger_tx.clone(),
-        )
-        .await
-        .context("failed to wire Bluesky connector")?;
-        connector_shutdowns.push(shutdown_tx);
-    }
-    // connector-matrix: DEFERRED — matrix-sdk 0.16 requires rusqlite 0.37
-    // which has CVE-2025-70873 (heap info disclosure). Waiting for update.
-
-    Ok((bot_handle, connector_shutdowns))
+    Ok(bot_handle)
 }

@@ -49,6 +49,13 @@ pub struct TriggerRegistry {
 }
 
 impl TriggerRegistry {
+    /// The rule-engine ingress this registry emits on. Cloned by chat
+    /// wiring so a connector's inbound messages reach ConnectorEvent
+    /// recipes as well as the bot.
+    pub fn trigger_tx(&self) -> mpsc::Sender<TriggerEvent> {
+        self.trigger_tx.clone()
+    }
+
     pub fn new(
         trigger_tx: mpsc::Sender<TriggerEvent>,
         store: Arc<dyn springtale_store::StorageBackend>,

@@ -155,6 +155,10 @@ impl ConnectorHost for NativeConnectorHost {
         NativeConnectorHost::verify_webhook(self, headers, body).await
     }
 
+    fn chat_source(&self) -> Option<crate::chat::SharedChatSource> {
+        self.inner.chat_source()
+    }
+
     fn mention_extractor(&self) -> Option<&dyn crate::mention::MentionExtractor> {
         self.inner.mention_extractor()
     }

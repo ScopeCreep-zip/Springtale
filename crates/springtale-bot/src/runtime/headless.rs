@@ -8,13 +8,15 @@ use springtale_core::rule::engine::RuleEngine;
 use springtale_store::SqliteBackend;
 
 use crate::error::BotError;
-use crate::runtime::lifecycle::{BotBuilder, BotConfig, IncomingMessage, OutgoingResponse};
+use springtale_connector::chat::ChatMessage;
+
+use crate::runtime::lifecycle::{BotBuilder, BotConfig, OutgoingResponse};
 
 /// A headless bot for testing. No Telegram, no network.
 ///
 /// Provides `send()` and `recv()` for driving tests.
 pub struct HeadlessBot {
-    msg_tx: mpsc::Sender<IncomingMessage>,
+    msg_tx: mpsc::Sender<ChatMessage>,
     response_rx: mpsc::Receiver<OutgoingResponse>,
     /// Trigger event sender — used by tests to inject rule triggers.
     pub rule_tx: mpsc::Sender<springtale_core::rule::engine::TriggerEvent>,
@@ -83,7 +85,7 @@ impl HeadlessBot {
         )));
         let engine = Arc::new(RwLock::new(RuleEngine::new()));
 
-        let (msg_tx, msg_rx) = mpsc::channel::<IncomingMessage>(256);
+        let (msg_tx, msg_rx) = mpsc::channel::<ChatMessage>(256);
         let (response_tx, response_rx) = mpsc::channel::<OutgoingResponse>(256);
         let (rule_tx, rule_rx) = mpsc::channel(256);
         let (_formation_cmd_tx, formation_cmd_rx) =
@@ -138,13 +140,7 @@ impl HeadlessBot {
 
     /// Send a message as if from a user.
     pub async fn send(&self, user_id: &str, channel_id: &str, text: &str) {
-        let msg = IncomingMessage {
-            user_id: user_id.into(),
-            channel_id: channel_id.into(),
-            text: text.into(),
-            source_connector: "test".into(),
-            raw: serde_json::json!({}),
-        };
+        let msg = ChatMessage::chat("test", channel_id, user_id, text, serde_json::json!({}));
         let _ = self.msg_tx.send(msg).await;
     }
 

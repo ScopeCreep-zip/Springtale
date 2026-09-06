@@ -14,22 +14,12 @@ use springtale_runtime::operations::bot_settings::BotSettings;
 
 use crate::cooperation::cadence::{CadenceBus, Tick, TickReport};
 use crate::cooperation::formation::Formation;
+use springtale_connector::chat::ChatMessage;
+
 use crate::error::BotError;
 use crate::handler::HandlerRegistry;
 use crate::memory::ConversationContext;
 use crate::router::Router;
-
-/// Incoming message from any chat connector.
-#[derive(Debug, Clone)]
-pub struct IncomingMessage {
-    pub user_id: String,
-    pub channel_id: String,
-    pub text: String,
-    /// Which connector this came from (for reply routing).
-    pub source_connector: String,
-    /// Raw connector payload.
-    pub raw: serde_json::Value,
-}
 
 /// Outgoing response to be sent via a connector.
 #[derive(Debug, Clone)]
@@ -84,7 +74,7 @@ pub struct Bot {
     pub(crate) context: ConversationContext,
     pub(crate) ai_adapter: Arc<dyn springtale_ai::AiAdapter>,
     pub(crate) sentinel: Arc<springtale_sentinel::Sentinel>,
-    pub(crate) connector_rx: mpsc::Receiver<IncomingMessage>,
+    pub(crate) connector_rx: mpsc::Receiver<ChatMessage>,
     pub(crate) rule_rx: mpsc::Receiver<TriggerEvent>,
     pub(crate) response_tx: mpsc::Sender<OutgoingResponse>,
     /// Active formations (cooperation module).
@@ -184,7 +174,7 @@ pub struct BotBuilder {
     settings: Option<Arc<ArcSwap<BotSettings>>>,
     ai_adapter: Option<Arc<dyn springtale_ai::AiAdapter>>,
     sentinel: Option<Arc<springtale_sentinel::Sentinel>>,
-    connector_rx: Option<mpsc::Receiver<IncomingMessage>>,
+    connector_rx: Option<mpsc::Receiver<ChatMessage>>,
     rule_rx: Option<mpsc::Receiver<TriggerEvent>>,
     response_tx: Option<mpsc::Sender<OutgoingResponse>>,
     formation_cmd_rx: Option<mpsc::Receiver<FormationCommand>>,
@@ -400,7 +390,7 @@ impl BotBuilder {
         self
     }
 
-    pub fn connector_rx(mut self, rx: mpsc::Receiver<IncomingMessage>) -> Self {
+    pub fn connector_rx(mut self, rx: mpsc::Receiver<ChatMessage>) -> Self {
         self.connector_rx = Some(rx);
         self
     }

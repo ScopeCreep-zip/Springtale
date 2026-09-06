@@ -11,7 +11,8 @@ use springtale_connector::manifest::types::{
 use springtale_connector::{Subscription, SubscriptionCounter, SubscriptionId};
 
 use crate::actions;
-use crate::client::NostrClient;
+use crate::chat::NostrChatSource;
+use crate::client::{NostrApi, NostrClient};
 use crate::config::NostrConfig;
 use crate::triggers;
 use springtale_connector::manifest::SignatureAlgorithm;
@@ -24,7 +25,10 @@ use springtale_connector::manifest::SignatureAlgorithm;
 ///
 /// CRITICAL: Uses secp256k1 Schnorr signatures (BIP-340), NOT Ed25519.
 pub struct NostrConnector {
-    client: NostrClient,
+    client: Arc<NostrClient>,
+    /// Inbound/outbound chat half — the relay subscription loop the
+    /// daemon used to build from TOML (`wire_nostr`).
+    chat: Arc<NostrChatSource>,
     manifest: ConnectorManifest,
     triggers: Vec<TriggerDecl>,
     actions: Vec<ActionDecl>,
@@ -35,7 +39,9 @@ pub struct NostrConnector {
 impl NostrConnector {
     pub async fn new(config: &NostrConfig) -> Result<Self, crate::error::NostrError> {
         let keys = crate::auth::parse_keys(&config.private_key)?;
-        let client = NostrClient::new(keys, &config.relays, config.message_jitter_secs).await?;
+        let client =
+            Arc::new(NostrClient::new(keys, &config.relays, config.message_jitter_secs).await?);
+        let chat = Arc::new(NostrChatSource::new(Arc::clone(&client), config));
 
         let trigger_decls = triggers::trigger_declarations();
         let action_decls = actions::action_declarations();
@@ -61,6 +67,7 @@ impl NostrConnector {
 
         Ok(Self {
             client,
+            chat,
             manifest,
             triggers: trigger_decls,
             actions: action_decls,
@@ -90,27 +97,26 @@ impl Connector for NostrConnector {
         action: &str,
         input: serde_json::Value,
     ) -> Result<ActionResult, ConnectorError> {
+        let client: &dyn NostrApi = self.client.as_ref();
         match action {
-            "publish_note" => actions::publish_note::execute(&self.client, &input)
+            "publish_note" => actions::publish_note::execute(client, &input)
                 .await
                 .map_err(ConnectorError::from),
-            "send_dm" => actions::send_dm::execute(&self.client, &input)
+            "send_dm" => actions::send_dm::execute(client, &input)
                 .await
                 .map_err(ConnectorError::from),
-            "react" => actions::react::execute(&self.client, &input)
+            "react" => actions::react::execute(client, &input)
                 .await
                 .map_err(ConnectorError::from),
-            "reply" => actions::reply::execute(&self.client, &input)
+            "reply" => actions::reply::execute(client, &input)
                 .await
                 .map_err(ConnectorError::from),
-            "send_message" => actions::send_message::execute(&self.client, &input)
+            "send_message" => actions::send_message::execute(client, &input)
                 .await
                 .map_err(ConnectorError::from),
-            "discover_destinations" => {
-                actions::discover_destinations::execute(&self.client, &input)
-                    .await
-                    .map_err(ConnectorError::from)
-            }
+            "discover_destinations" => actions::discover_destinations::execute(client, &input)
+                .await
+                .map_err(ConnectorError::from),
             unknown => Err(ConnectorError::ExecutionFailed(format!(
                 "unknown action: {unknown}"
             ))),
@@ -153,6 +159,10 @@ impl Connector for NostrConnector {
 
     fn manifest(&self) -> &ConnectorManifest {
         &self.manifest
+    }
+
+    fn chat_source(&self) -> Option<springtale_connector::chat::SharedChatSource> {
+        Some(self.chat.clone())
     }
 
     fn mention_extractor(&self) -> Option<&dyn springtale_connector::mention::MentionExtractor> {

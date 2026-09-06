@@ -20,4 +20,4 @@ pub mod tool_runner;
 
 pub use error::BotError;
 pub use router::RouteResult;
-pub use runtime::lifecycle::{Bot, BotBuilder, BotConfig, IncomingMessage, OutgoingResponse};
+pub use runtime::lifecycle::{Bot, BotBuilder, BotConfig, OutgoingResponse};

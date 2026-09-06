@@ -39,7 +39,7 @@ pub struct AppState {
     pub trigger_registry: springtale_runtime::TriggerRegistry,
     /// Channel for routing webhook-delivered chat messages to the bot runtime.
     /// Required for Telegram/Discord webhook mode (polling mode uses gateway bridge directly).
-    pub bot_msg_tx: mpsc::Sender<springtale_bot::IncomingMessage>,
+    pub bot_msg_tx: mpsc::Sender<springtale_connector::chat::ChatMessage>,
     /// W5 in-app chat: broadcast of bot replies whose origin connector is
     /// `in-app` (the desktop/web/PWA chat panel). The response dispatcher
     /// routes those here instead of to a connector's `send_message`; the
