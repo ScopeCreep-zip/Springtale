@@ -121,7 +121,9 @@ async fn session_lookup(state: &AppState, hash: &TokenHash, refresh: bool) -> bo
     let mut sessions = state.sessions.lock().await;
     sessions.retain(|_, rec| session_alive(rec, idle, absolute, now));
     let mut found: Option<TokenHash> = None;
-    for (key, _) in sessions.iter() {
+    // Scan every key with a constant-time compare, without breaking early,
+    // so a bearer's validity is not readable from how long the lookup took.
+    for key in sessions.keys() {
         if bool::from(key.ct_eq(hash)) {
             found = Some(*key);
         }
