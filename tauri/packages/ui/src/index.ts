@@ -130,6 +130,7 @@ export type {
   AiTarget,
   ApprovalInfo,
   AvailableConnector,
+  ChatDiscoveredEvent,
   ChatStreamMessage,
   CommandDecl,
   ConfigSchema,
@@ -140,6 +141,9 @@ export type {
   DashboardState,
   DataProvider,
   Difficulty,
+  DriftReport,
+  ExecutionInfo,
+  ExecutionStepInfo,
   FieldKind,
   FormationDetail,
   FormationInfo,
@@ -165,10 +169,12 @@ export type {
   RuleSummary,
   SafetyConfig,
   SelectOption,
+  TestStepReport,
   Utterance,
   UtteranceDef,
   UtteranceDefs,
   UtteranceKind,
+  WorkspaceInfo,
 } from "./dashboard/types";
 export { createI18n, I18nProvider, useI18n } from "./i18n/context";
 export type { Locale, RawDictionary } from "./i18n/types";

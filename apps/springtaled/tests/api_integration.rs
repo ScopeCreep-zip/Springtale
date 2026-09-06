@@ -812,3 +812,27 @@ async fn test_stream_ticket_is_single_use() {
         StatusCode::UNAUTHORIZED
     );
 }
+
+#[tokio::test]
+async fn test_list_executions_returns_list() {
+    let (router, token) = build_test_app(true);
+    let req = Request::get("/executions")
+        .header("Authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, body) = send(router, req).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.is_array());
+}
+
+#[tokio::test]
+async fn test_list_workspaces_returns_ok() {
+    let (router, token) = build_test_app(true);
+    let req = Request::get("/workspaces?formation_id=test-formation")
+        .header("Authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, body) = send(router, req).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(body.is_array());
+}

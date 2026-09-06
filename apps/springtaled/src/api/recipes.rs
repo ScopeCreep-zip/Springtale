@@ -17,6 +17,7 @@ use springtale_runtime::operations::recipes::{
     self, ApplyReport, Recipe, RecipeCategory, RecipeFilter, RecipeInputs, RecipePieceSummary,
     RecipeSort, RecipeSourceFilter,
 };
+use springtale_runtime::operations::test_step as test_step_ops;
 
 use super::state::AppState;
 
@@ -310,4 +311,31 @@ pub async fn import_toml(
     .await
     .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
     Ok(Json(recipe))
+}
+
+/// Body for `POST /recipes/{id}/test-step`.
+#[derive(Deserialize)]
+pub struct TestStepBody {
+    pub inputs: RecipeInputs,
+    pub rule_index: usize,
+    pub step_index: usize,
+}
+
+/// POST /recipes/{id}/test-step — Phase C "Test This Step" dry run
+/// through `step_index` of `rule_index`.
+pub async fn test_step(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+    Json(body): Json<TestStepBody>,
+) -> Result<Json<test_step_ops::TestStepReport>, (StatusCode, String)> {
+    test_step_ops::test_recipe_step(
+        &state.runtime,
+        &id,
+        body.inputs,
+        body.rule_index,
+        body.step_index,
+    )
+    .await
+    .map(Json)
+    .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))
 }

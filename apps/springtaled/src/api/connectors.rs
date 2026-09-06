@@ -152,3 +152,61 @@ pub async fn install(
         Json(serde_json::json!({ "installed": name })),
     ))
 }
+
+/// POST /connectors/install-wasm — multipart with a `manifest` part
+/// (JSON text) and a `wasm` part (binary). Signature, hash and
+/// capability checks all live in the operation.
+pub async fn install_wasm(
+    State(state): State<AppState>,
+    mut multipart: axum::extract::Multipart,
+) -> Result<impl IntoResponse, (StatusCode, String)> {
+    let mut manifest: Option<springtale_connector::ConnectorManifest> = None;
+    let mut wasm: Option<Vec<u8>> = None;
+    while let Some(field) = multipart
+        .next_field()
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?
+    {
+        let name = field.name().map(str::to_owned);
+        match name.as_deref() {
+            Some("manifest") => {
+                let text = field
+                    .text()
+                    .await
+                    .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?;
+                manifest = Some(
+                    serde_json::from_str(&text)
+                        .map_err(|e| (StatusCode::BAD_REQUEST, format!("manifest: {e}")))?,
+                );
+            }
+            Some("wasm") => {
+                wasm = Some(
+                    field
+                        .bytes()
+                        .await
+                        .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))?
+                        .to_vec(),
+                );
+            }
+            _ => {}
+        }
+    }
+    let manifest = manifest.ok_or((
+        StatusCode::BAD_REQUEST,
+        "missing multipart part 'manifest'".to_owned(),
+    ))?;
+    let wasm = wasm.ok_or((
+        StatusCode::BAD_REQUEST,
+        "missing multipart part 'wasm'".to_owned(),
+    ))?;
+    let name = operations::connectors::install_wasm_connector(&state.runtime, wasm, manifest)
+        .await
+        .map_err(|e| {
+            tracing::warn!(error = %e, "wasm connector install failed");
+            (StatusCode::BAD_REQUEST, e.to_string())
+        })?;
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "installed": name })),
+    ))
+}
