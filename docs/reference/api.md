@@ -379,8 +379,8 @@ refused until the vault is opened.
 
 | Method | Path | Auth | Description |
 |---|---|---|---|
-| POST | `/vault/unlock` | — | Open the vault. Body `{"passphrase": "..."}`. Deliberately unauthenticated: there is no bearer to present while locked, because sessions are dropped with the process state on lock and a bearer cannot be minted without a running daemon. `Vault::open` is the check — Argon2id over the wrong passphrase fails at AEAD decryption, with no comparison to shortcut. Rate-limited per minute so the KDF cannot be driven by a flood of guesses. `409` if already unlocked, `401` on failure |
-| POST | `/vault/lock` | ✓ | Lock the vault. Drops the runtime state, and with it every in-memory session |
+| POST | `/vault/unlock` | — | Open the vault. Body `{"passphrase": "..."}`. Deliberately unauthenticated: while locked there is no bearer that could be presented — sessions are dropped with the process state on lock, and a long-lived token can only be looked up against that same dropped state. `Vault::open` is the check: Argon2id over the wrong passphrase fails at AEAD decryption, with no comparison to shortcut. Rate-limited per minute so the KDF cannot be driven by a flood of guesses. `409` if already unlocked, `401` on failure |
+| POST | `/vault/lock` | ✓ | Lock the vault: signals the SSE streams, unwires the connector chat loops, pauses the scheduler, clears the session and stream-ticket maps, joins every background task, and zeroizes the vault key. Idempotent — locking an already-locked daemon is a `200`, so a panic-button UI never has to reason about current state. Served by the outer router, which has no `AppState`, so the bearer check is run by hand inside the handler rather than by `require_auth` |
 
 ### 3.22 Model Context Protocol
 

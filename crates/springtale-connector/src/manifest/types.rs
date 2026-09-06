@@ -5,10 +5,17 @@ use specta::Type;
 use springtale_crypto::signature::SignatureAlgorithm;
 
 /// A connector's manifest — the declaration of what it is, what it needs,
-/// and what it can do. Parsed from `connector-{name}.toml`.
+/// and what it can do.
 ///
-/// Every connector ships with a manifest. For native connectors, the manifest
-/// is embedded. For WASM connectors, it accompanies the `.wasm` binary.
+/// Built in code, not parsed from a file: every connector constructs and
+/// returns this struct from its `Connector::manifest()` implementation, so
+/// the declaration is compiled and type-checked alongside the `triggers()`
+/// and `actions()` it describes. There is no `connector-{name}.toml`.
+///
+/// The `Serialize`/`Deserialize` impls exist because the manifest is
+/// canonicalised to JSON for signing (see `signature_alg` / `signature`)
+/// and travels with a WASM connector's `.wasm` binary at install time —
+/// not because it is authored as a config file.
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(deny_unknown_fields)]
 pub struct ConnectorManifest {
