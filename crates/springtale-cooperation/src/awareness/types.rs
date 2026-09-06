@@ -12,7 +12,7 @@
 //!
 //! Available at Warming+ tier (§7 capability table).
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
 use serde::{Deserialize, Serialize};
@@ -38,6 +38,10 @@ pub const MAX_CONTAGION_DISTRESSED: usize = 4;
 /// rallying — the general's call cannot reach it. `rally::cascade` refuses
 /// to spend a rally token on a member at or under it.
 pub const SHATTERED_MORALE: f32 = 0.1;
+/// Weight of "a neighbor's last action failed" in [`LocalAwareness::morale_target`].
+/// Smaller than the distress penalty: a failed action is a stumble, an
+/// incapacitated neighbor is a casualty.
+pub const FAILURE_PENALTY: f32 = 0.15;
 
 /// §A.4 rally falloff (decisions §11 #6), non-spatial analog. WH3's rally
 /// aura is full-strength out to `general_aura_radius = 70` units, then
@@ -166,6 +170,17 @@ pub struct LocalAwareness {
     /// read via [`Self::local_morale`]. Stateful (not instantaneous) so routing
     /// is gradual and bounded, per decisions §11 #8.
     pub morale: f32,
+    /// Peers this agent HEARD fail (an L2 `Failed` utterance folded in by
+    /// `agent::step::react`) since the last gossip merge.
+    ///
+    /// Gossip republishes every neighbor's snapshot each beat from the
+    /// beat's tick reports, and a peer that reported nothing publishes
+    /// `last_action_success: true` — which used to overwrite what this
+    /// agent heard, in the same tick, before anything could act on it.
+    /// [`Self::merge_neighbor`] folds this set into the incoming snapshot
+    /// and consumes it, so a heard failure survives exactly the beat it
+    /// was heard on and then ages out normally.
+    pub heard_failures: HashSet<AgentId>,
 }
 
 impl Default for LocalAwareness {
@@ -175,14 +190,41 @@ impl Default for LocalAwareness {
             formation_momentum: MomentumTier::Cold,
             last_tick_reports: Vec::new(),
             morale: 0.5, // neutral
+            heard_failures: HashSet::new(),
         }
     }
 }
 
 impl LocalAwareness {
-    /// Update a neighbor's snapshot.
+    /// Update a neighbor's snapshot, replacing what was known about it.
     pub fn update_neighbor(&mut self, snapshot: NeighborSnapshot) {
         self.neighbor_states.insert(snapshot.agent_id, snapshot);
+    }
+
+    /// Merge a gossip snapshot over what is known, keeping what this agent
+    /// HEARD this beat where gossip cannot know better.
+    ///
+    /// Gossip derives `last_action_success` from the beat's tick reports
+    /// and defaults to `true` for a member that reported nothing, so a
+    /// plain [`Self::update_neighbor`] silently discarded the L2 utterance
+    /// fold. The heard failure wins and is consumed: the next beat's
+    /// gossip is authoritative again.
+    pub fn merge_neighbor(&mut self, mut snapshot: NeighborSnapshot) {
+        if self.heard_failures.remove(&snapshot.agent_id) {
+            snapshot.last_action_success = false;
+        }
+        self.neighbor_states.insert(snapshot.agent_id, snapshot);
+    }
+
+    /// Record that a peer was heard failing (L2 `Failed` utterance).
+    pub fn heard_failure(&mut self, agent: AgentId) {
+        self.heard_failures.insert(agent);
+    }
+
+    /// Record that a peer was heard working again — it is no longer the
+    /// last thing this agent heard from it.
+    pub fn heard_progress(&mut self, agent: &AgentId) {
+        self.heard_failures.remove(agent);
     }
 
     /// Remove a neighbor (disconnected or dead).
@@ -260,10 +302,25 @@ impl LocalAwareness {
             .sum::<f32>()
             .min(MAX_CONTAGION_DISTRESSED as f32);
 
+        // Neighbors whose LAST ACTION failed — heard directly (§19 implicit
+        // signals, folded by `agent::step::react`) or read off the beat's
+        // gossip. Total War: a unit whose neighbors are losing their fight
+        // wavers before any of them is a casualty. Bounded by the same
+        // contagion cap so a bad beat cannot rout a whole formation.
+        let failing: f32 = self
+            .neighbor_states
+            .values()
+            .filter(|n| !n.last_action_success)
+            .map(|n| aoi_weight(n.last_updated.elapsed()))
+            .sum::<f32>()
+            .min(MAX_CONTAGION_DISTRESSED as f32);
+
         // Base morale from (AoI-weighted) neighbor health ratio.
         let health_factor = healthy / total;
         // Penalty for distressed neighbors (cascade risk).
         let distress_penalty = distressed / total * 0.3;
+        // Penalty for neighbors whose last action failed.
+        let failure_penalty = failing / total * FAILURE_PENALTY;
         // Momentum bonus.
         let momentum_bonus = match self.formation_momentum {
             MomentumTier::Cold => 0.0,
@@ -272,7 +329,7 @@ impl LocalAwareness {
             MomentumTier::Fever => 0.2,
         };
 
-        (health_factor - distress_penalty + momentum_bonus).clamp(0.0, 1.0)
+        (health_factor - distress_penalty - failure_penalty + momentum_bonus).clamp(0.0, 1.0)
     }
 
     /// Advance the lerped morale one tick toward [`Self::morale_target`] at

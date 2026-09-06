@@ -56,7 +56,12 @@ pub async fn run(formation: &mut Formation, result: &FormationTickResult) {
     for m in formation.members.iter_mut() {
         for snap in &snapshots {
             if snap.agent_id != m.agent_id {
-                m.awareness.update_neighbor(snap.clone());
+                // Merge, not replace: the L2 react step folded what this
+                // member HEARD peers say earlier in this same beat, and
+                // gossip reports `last_action_success: true` for any peer
+                // that filed no report — which used to overwrite the fold
+                // before anything could act on it.
+                m.awareness.merge_neighbor(snap.clone());
             }
         }
         m.awareness.formation_momentum = tier;
