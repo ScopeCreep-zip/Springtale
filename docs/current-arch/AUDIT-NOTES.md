@@ -211,8 +211,15 @@ The OpenClaw migration path (§1.3 in SECURITY.md) is ambitious but vague:
 - Sentinel initialized at Phase 1 startup but documented as Phase 2a
 - Event loop uses ? propagation (kills bot on single message failure)
 - Fuel division formula (parent/4) undefined for varying child counts
-- Tauri CSP wildcard port on 127.0.0.1 too broad
-- Tauri API references are Tauri 1 style (tauri::api::dialog → tauri_plugin_dialog)
+- Tauri CSP wildcard port on 127.0.0.1: ruled and kept. The desktop
+  webview talks to the `springtaled` sidecar over loopback HTTP at a port
+  the OS assigns when the vault unlocks (`sidecar.rs` binds
+  `127.0.0.1:0`), and Tauri bakes `csp` into the app at build time with no
+  runtime override. Naming the port would mean the sidecar binding a
+  fixed port chosen at install — trading a loopback wildcard for a
+  collision-prone fixed port — and CSP source expressions have no
+  port-range syntax, so there is no narrower spelling. Revisit only if
+  the sidecar gains a fixed port.
 - rustup in Nix shell is anti-pattern (should use fenix/rust-overlay)
 - Missing WIT interface definition for TypeScript SDK
 

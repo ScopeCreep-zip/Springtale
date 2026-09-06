@@ -2261,7 +2261,7 @@ standalone in any browser — for headless/remote server management.
 | Deep link injection | Deep links (`springtale://`) parsed with strict schema validation. Only `connector-install` and `bot-pair` intents accepted. Malformed URLs rejected, not passed to handlers. |
 | WebView isolation | Tauri 2 runs WebView in separate process. WebView cannot access Rust memory directly — only through IPC commands. No `window.__TAURI__` global in production build. |
 | Canvas content injection | Canvas receives structured data (typed SolidJS stores), not raw HTML. No `innerHTML` or `dangerouslySetInnerHTML`. React-style XSS prevention via DOM API. |
-| Approval modal spoofing | Capability approval and destructive action modals are native Tauri dialogs (`tauri::api::dialog`), not WebView DOM elements. Cannot be spoofed by frontend JavaScript. |
+| Approval modal spoofing | Capability approval and destructive action modals are native Tauri dialogs (`tauri_plugin_dialog`), not WebView DOM elements. Cannot be spoofed by frontend JavaScript. |
 | Mobile: biometric bypass | Biometric auth failure falls back to vault passphrase, never to "no auth". Failed biometric attempts rate-limited by OS. |
 
 **Privacy audit for Tauri shell:**
