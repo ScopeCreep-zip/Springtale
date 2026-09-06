@@ -17,9 +17,6 @@ pub enum TelegramError {
     #[error("unknown trigger: {0}")]
     UnknownTrigger(String),
 
-    #[error("HTTP error: {0}")]
-    Reqwest(#[from] reqwest::Error),
-
     #[error("invalid configuration: {0}")]
     InvalidConfig(String),
 
@@ -31,6 +28,23 @@ pub enum TelegramError {
 
     #[error("rate limited: retry after {retry_after} seconds")]
     RateLimited { retry_after: u64 },
+}
+
+/// Map teloxide-core's request errors onto the connector's typed errors.
+///
+/// `RetryAfter` becomes [`TelegramError::RateLimited`] so the polling loop
+/// keeps its back-off behaviour. teloxide-core strips the bot token from
+/// `Network` errors (`hide_token`) before they reach us, so `Display` is
+/// safe to surface.
+impl From<teloxide_core::RequestError> for TelegramError {
+    fn from(e: teloxide_core::RequestError) -> Self {
+        match e {
+            teloxide_core::RequestError::RetryAfter(secs) => TelegramError::RateLimited {
+                retry_after: u64::from(secs.seconds()),
+            },
+            other => TelegramError::RequestFailed(other.to_string()),
+        }
+    }
 }
 
 impl From<TelegramError> for springtale_connector::error::ConnectorError {
