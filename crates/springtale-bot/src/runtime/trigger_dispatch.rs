@@ -19,6 +19,63 @@ pub(crate) fn parse_approval_callback(data: &str) -> Option<(uuid::Uuid, bool)> 
     }
 }
 
+/// One live formation's dispatch context for an incoming connector event:
+/// which members may act, and the momentum / policy their envelope carries.
+pub(crate) struct FormationDispatchCtx {
+    pub(crate) id: springtale_cooperation::types::FormationId,
+    /// Every member of the formation. A member-owned rule must name one.
+    members: Vec<springtale_cooperation::cadence::AgentId>,
+    /// First member declaring the event's connector. The fallback for rules
+    /// owned by the formation as a whole, which name no member.
+    connector_member: springtale_cooperation::cadence::AgentId,
+    pub(crate) tier: springtale_cooperation::momentum::MomentumTier,
+    pub(crate) policy: springtale_cooperation::types::ApprovalPolicy,
+}
+
+impl FormationDispatchCtx {
+    /// `None` when no member of the formation declares `connector` — then the
+    /// formation has nothing to do with this event.
+    pub(crate) fn new(
+        id: springtale_cooperation::types::FormationId,
+        members: &[crate::cooperation::formation::FormationMember],
+        connector: &str,
+        tier: springtale_cooperation::momentum::MomentumTier,
+        policy: springtale_cooperation::types::ApprovalPolicy,
+    ) -> Option<Self> {
+        let connector_member = members
+            .iter()
+            .find(|m| m.capabilities.iter().any(|c| c.name == connector))?
+            .agent_id;
+        Some(Self {
+            id,
+            members: members.iter().map(|m| m.agent_id).collect(),
+            connector_member,
+            tier,
+            policy,
+        })
+    }
+
+    /// The member that acts for a matched formation rule.
+    ///
+    /// A member-owned rule (`RuleOwner::FormationMember`, written per
+    /// `MemberAutomation` by `formation_synthesis`) names its member, so the
+    /// execution envelope and the attention sample go to the member whose
+    /// automation produced the rule. Only rules owned by the formation as a
+    /// whole fall back to the connector search — that search returns the first
+    /// member declaring the connector and so cannot tell two members sharing
+    /// one connector apart (plan 1.11).
+    pub(crate) fn acting_agent(
+        &self,
+        owner: Option<&springtale_core::rule::RuleOwner>,
+    ) -> springtale_cooperation::cadence::AgentId {
+        owner
+            .and_then(|o| o.member_agent_id())
+            .map(springtale_cooperation::cadence::AgentId)
+            .filter(|a| self.members.contains(a))
+            .unwrap_or(self.connector_member)
+    }
+}
+
 pub async fn handle_trigger_event(
     bot: &mut Bot,
     event: &springtale_core::rule::engine::TriggerEvent,
@@ -92,28 +149,19 @@ pub async fn handle_trigger_event(
     // connector. Their formation-scoped rules (synthesised from intent — see
     // `springtale-runtime` `operations::formation_synthesis`) only fire when we
     // dispatch with the owning formation's id, so we resolve the context here.
-    let formation_ctxs: Vec<(
-        springtale_cooperation::types::FormationId,
-        springtale_cooperation::cadence::AgentId,
-        springtale_cooperation::momentum::MomentumTier,
-        springtale_cooperation::types::ApprovalPolicy,
-    )> = match event.connector.as_deref() {
+    let formation_ctxs: Vec<FormationDispatchCtx> = match event.connector.as_deref() {
         Some(conn) => {
             let formations = bot.formations.read().await;
             formations
                 .iter()
                 .filter_map(|f| {
-                    f.members
-                        .iter()
-                        .find(|m| m.capabilities.iter().any(|c| c.name == conn))
-                        .map(|m| {
-                            (
-                                f.id,
-                                m.agent_id,
-                                f.momentum.tier,
-                                f.constraints.destructive_action_policy,
-                            )
-                        })
+                    FormationDispatchCtx::new(
+                        f.id,
+                        &f.members,
+                        conn,
+                        f.momentum.tier,
+                        f.constraints.destructive_action_policy,
+                    )
                 })
                 .collect()
         }
@@ -127,18 +175,27 @@ pub async fn handle_trigger_event(
         let global_ids: std::collections::HashSet<_> =
             global_matches.iter().map(|m| m.rule_id).collect();
 
+        // Owner per rule id — one scan of the engine's rules beats a lookup
+        // per match. `RuleOwner` is `Copy`.
+        let owners: std::collections::HashMap<_, _> = engine
+            .list_rules()
+            .iter()
+            .map(|r| (r.id, r.owner))
+            .collect();
+
         let mut formation_jobs = Vec::new();
-        for (fid, agent_id, tier, policy) in &formation_ctxs {
+        for ctx in &formation_ctxs {
             for m in springtale_core::router::dispatch::dispatch_event_with_owner(
                 &engine,
                 event,
                 None,
-                Some(fid.0),
+                Some(ctx.id.0),
             ) {
                 // `dispatch_event_with_owner` also returns Globals — skip those
                 // here so they fire exactly once via the global path below.
                 if !global_ids.contains(&m.rule_id) {
-                    formation_jobs.push((m, *fid, *agent_id, *tier, *policy));
+                    let agent_id = ctx.acting_agent(owners.get(&m.rule_id));
+                    formation_jobs.push((m, ctx.id, agent_id, ctx.tier, ctx.policy));
                 }
             }
         }
@@ -356,5 +413,68 @@ fn summarize_actions(actions: &[springtale_core::rule::action::Action]) -> Strin
         "no actions".to_owned()
     } else {
         kinds.join(" -> ")
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::FormationDispatchCtx;
+    use crate::cooperation::formation::FormationMember;
+    use springtale_cooperation::cadence::AgentId;
+    use springtale_cooperation::capability::CapabilityDecl;
+
+    fn member(connector: &str) -> FormationMember {
+        FormationMember::new(
+            AgentId::new(),
+            vec![CapabilityDecl::new(connector.to_owned())],
+        )
+    }
+
+    /// Two members share one connector. The envelope for a member-owned rule
+    /// goes to the member whose automation synthesized it, not to whichever
+    /// member the connector search finds first (plan 1.11 / finding 46).
+    #[test]
+    fn member_owned_rule_builds_context_for_its_own_member() {
+        let fid = springtale_cooperation::types::FormationId(uuid::Uuid::new_v4());
+        let members = vec![member("connector-telegram"), member("connector-telegram")];
+        let policy = springtale_cooperation::types::FormationConstraints::default()
+            .destructive_action_policy;
+        let ctx = FormationDispatchCtx::new(
+            fid,
+            &members,
+            "connector-telegram",
+            springtale_cooperation::momentum::MomentumTier::Warming,
+            policy,
+        )
+        .unwrap();
+
+        let second_members_rule = springtale_core::rule::RuleOwner::FormationMember {
+            formation_id: fid.0,
+            agent_id: members[1].agent_id.0,
+        };
+        let acting = ctx.acting_agent(Some(&second_members_rule));
+        let execution = springtale_cooperation::execution::ExecutionContext::for_formation(
+            springtale_core::rule::RuleId::new(),
+            acting,
+            fid,
+            springtale_cooperation::momentum::MomentumTier::Warming,
+            springtale_cooperation::execution::ExecutionMode::ConnectorEvent,
+            policy,
+            springtale_cooperation::AutonomyLevel::default(),
+        );
+        assert_eq!(execution.agent_id, Some(members[1].agent_id));
+        assert_ne!(execution.agent_id, Some(members[0].agent_id));
+
+        // A rule owned by the formation as a whole still takes the connector
+        // search — the first member declaring the connector.
+        let whole_formation = springtale_core::rule::RuleOwner::Formation {
+            formation_id: fid.0,
+        };
+        assert_eq!(
+            ctx.acting_agent(Some(&whole_formation)),
+            members[0].agent_id
+        );
+        assert_eq!(ctx.acting_agent(None), members[0].agent_id);
     }
 }

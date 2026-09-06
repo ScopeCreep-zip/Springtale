@@ -56,12 +56,14 @@ pub async fn run(
     let snapshots = decide::Snapshots::capture(formation);
     let drained_state = state_drain::run(formation);
 
-    // Members have no rule of their own yet (synthesized formation rules
-    // are owned by the formation), so autonomy resolves at the formation
-    // level: `autonomy:formation:{id}`, else ActAutonomously.
-    let autonomy = springtale_runtime::operations::agent::resolve_formation_autonomy(
+    // Autonomy: a member that owns synthesized rules (plan 1.11) resolves
+    // its own — `autonomy:agent:{rule_id}`, then the formation's row. A
+    // member with no rule of its own keeps the formation level:
+    // `autonomy:formation:{id}`, else ActAutonomously.
+    let formation_id_str = formation.id.0.to_string();
+    let formation_autonomy = springtale_runtime::operations::agent::resolve_formation_autonomy(
         store.as_ref(),
-        &formation.id.0.to_string(),
+        &formation_id_str,
     )
     .await;
 
@@ -94,6 +96,17 @@ pub async fn run(
             .find(|m| m.agent_id == decision.agent)
         else {
             continue;
+        };
+        let autonomy = match member.rule_ids.first().copied() {
+            Some(rule_id) => {
+                springtale_runtime::operations::agent::resolve_autonomy(
+                    store.as_ref(),
+                    &rule_id.0,
+                    Some(&formation_id_str),
+                )
+                .await
+            }
+            None => formation_autonomy,
         };
         let prepared = executor::prepare(ExecuteCtx {
             formation_id: formation.id.0,

@@ -66,6 +66,11 @@ pub struct FormationMember {
     /// reports `Requested` until `act` collects the finished handle;
     /// `supervision` reads `since` against `constraints.timeout`.
     pub pending: crate::cooperation::dispatch_outcome::PendingSlot,
+    /// The synthesized rules this member owns (`RuleOwner::FormationMember`),
+    /// filled at spawn from the store. Lets the tick loop resolve *this
+    /// member's* autonomy with a field read instead of scanning the rule
+    /// table every beat (plan 1.11 / 6.2).
+    pub rule_ids: Vec<springtale_core::rule::RuleId>,
     /// Per-agent AI adapter. Assigned by the composer at formation spawn time
     /// from config store key `ai:{agent_id}`. Only callable when formation
     /// momentum >= Fever AND agent has "ai_call" capability.
@@ -102,6 +107,7 @@ impl FormationMember {
             consecutive_idle_ticks: 0,
             active_task: None,
             pending: crate::cooperation::dispatch_outcome::PendingSlot::default(),
+            rule_ids: Vec::new(),
             ai_adapter: None,
         }
     }

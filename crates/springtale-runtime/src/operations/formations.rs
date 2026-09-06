@@ -682,6 +682,9 @@ pub async fn deploy_team(
         .iter()
         .filter(|a| !a.connector_name.is_empty() && !a.trigger_name.is_empty())
         .map(|a| MemberAutomation {
+            // Member rows don't exist yet — `regenerate_formation_rules`
+            // binds each automation to its member row after creation.
+            agent_id: None,
             connector_name: a.connector_name.clone(),
             trigger_name: a.trigger_name.clone(),
             action_connector: a.action_connector.clone(),
