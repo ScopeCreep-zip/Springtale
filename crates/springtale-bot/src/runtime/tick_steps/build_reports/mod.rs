@@ -1,33 +1,24 @@
 //! Build the per-formation `FormationTickResult` for one cadence tick.
 //!
-//! Five sub-passes per `docs/ROADMAP.md §3.2` step 1+1b+2+2b:
+//! Sub-passes per `docs/ROADMAP.md §3.2` step 1+1b+2+2b:
 //! 1. **L0 surface decay sweep** — drop expired stigmergy surfaces so
 //!    the agent step pipeline sees only fresh activity.
-//! 2. **Bus state pre-drain** — collect each member's queued state
-//!    broadcasts so `react::run` can fold them into awareness without
-//!    holding the `member_subs` mutex across the per-member loop body.
-//! 3. **Per-member agent loop** — `agent_pipeline::run` composes the four
-//!    `agent::step::*` files (sense → inbox → react → scan) and
-//!    `executor::execute` runs the chosen task through the
-//!    claim → dispatch → deposit pipeline gated by autonomy + pacing +
-//!    consensus policy.
-//! 4. **Async report drain** — pulls in `TickReport`s from the
-//!    `cadence.reports_sender()` mpsc that members completed between
-//!    cadence ticks (out-of-band reporting).
-//! 5. **Tick processor** — feeds reports + new shared-environment writes
-//!    through `tick_processor::process_tick_with_context` so §13
-//!    ActionNegation gets a proper Lamport split.
-//! 6. **Rally supervisor drain** — non-blocking pull of every completed
-//!    member task; supervision runs on the same cadence as the rest of
-//!    the formation (`COOPERATION.md §15.2`).
+//! 2. **The beat** — `agent_pipeline::run`: decide per member against
+//!    one snapshot, act together inside `tick.window`, gather in
+//!    agent-id order (plan 1.8). Bus state is pre-drained so `react`
+//!    never holds the `member_subs` mutex across the loop.
+//! 3. **Async report drain** — pulls in `TickReport`s from the
+//!    `cadence.reports_sender()` mpsc that arrived between ticks.
+//! 4. **Tick processor** — feeds reports + this beat's shared-environment
+//!    writes through `tick_processor::process_tick_with_context` so §13
+//!    ActionNegation gets a proper Lamport split. This is where members'
+//!    simultaneous actions are arbitrated — after the fact, from the log.
 //!
-//! There is no `decide_agent_tick` indirection here — `AgentLoop::tick`
-//! plus the `executor` module own the full per-member decision +
-//! execution path (forward refactor; the legacy `agent_loop` module was
-//! deleted with the directory restructure).
+//! Member supervision reads `FormationMember::pending` in
+//! `tick_steps/supervision.rs`; there is no separate supervisor task.
 
 mod agent_pipeline;
-mod executor;
+pub(crate) mod executor;
 mod fold_interference;
 mod state_drain;
 
@@ -47,7 +38,7 @@ pub async fn run(
     // every step downstream operates on the post-decay set.
     formation.surfaces.decay(std::time::Instant::now());
 
-    // 2 + 3. Per-member loop with pre-drained state messages.
+    // 2. The beat.
     let reports_sender = deps.cadence.reports_sender();
     let mut member_reports = agent_pipeline::run(
         formation,
@@ -61,12 +52,12 @@ pub async fn run(
     )
     .await;
 
-    // 4. Async report drain.
+    // 3. Async report drain.
     while let Ok(async_report) = deps.cadence_reports_rx.try_recv() {
         member_reports.push(async_report);
     }
 
-    // 5. Tick processor — slice the shared-env write log so ActionNegation
+    // 4. Tick processor — slice the shared-env write log so ActionNegation
     // gets the right history/records split.
     let snapshot = formation.shared_env.snapshot();
     let cursor = formation
@@ -80,19 +71,9 @@ pub async fn run(
     );
     formation.last_tick_write_count = snapshot.write_log.len();
 
-    // 5b. Fold write-log interference back into the reports so awareness
+    // 4b. Fold write-log interference back into the reports so awareness
     // and the mental model see it on the report they store (plan §1.10).
     fold_interference::run(&mut result);
-
-    // 6. Rally supervisor drain.
-    let drained = springtale_cooperation::rally::supervise::drain(&mut formation.rally);
-    if drained > 0 {
-        tracing::debug!(
-            formation_id = %formation.id.0,
-            drained,
-            "rally supervisor drained member outcomes"
-        );
-    }
 
     result
 }

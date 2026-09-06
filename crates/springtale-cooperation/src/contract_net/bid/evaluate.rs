@@ -81,6 +81,25 @@ impl Bidder for OwnedUtilityBidder {
 ///
 /// Returns `None` when the agent lacks the required capability (hard gate).
 /// Otherwise returns a `[0.0, 1.0]` utility via `WeightedSum`.
+/// Formation-scoped bidder: one instance shared by every member of the
+/// beat (plan 1.8 / 1.9). It scores each CFP against the capabilities in
+/// the bidding member's `AgentContext`, so it never owns one member's
+/// capability list the way `UtilityBidder` does.
+pub struct ContextBidder;
+
+#[async_trait]
+impl Bidder for ContextBidder {
+    async fn evaluate(&self, cfp: &CallForProposals, ctx: &AgentContext<'_>) -> Option<Bid> {
+        score(cfp, ctx, ctx.capabilities).map(|utility| Bid {
+            cfp_id: cfp.id,
+            bidder: ctx.agent_id,
+            utility,
+            estimated_completion: cfp.deadline / 2,
+            rationale: format!("beat bid (utility = {utility:.3})"),
+        })
+    }
+}
+
 pub fn score(
     cfp: &CallForProposals,
     ctx: &AgentContext<'_>,

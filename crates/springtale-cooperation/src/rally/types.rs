@@ -13,11 +13,10 @@
 //! §15.3 Escalation: Only if self-rally fails (tokens consumed, Cold momentum,
 //! multiple agents failing) does the formation escalate to orchestrator::intervention.
 //!
-//! Per spec §15.3 the rally primitives are `JoinSet` for member task
-//! supervision and `Arc<Semaphore>` for token accounting:
+//! Per spec §15.3 the rally primitive is `Arc<Semaphore>` for token
+//! accounting (member liveness is read from each member's in-flight
+//! dispatch by the bot's supervision step, plan 1.8):
 //!
-//! - `JoinSet::join_next()` acts as the failure detector — any dropped
-//!   task yields on the `await` point.
 //! - `Semaphore::try_acquire_owned()` plus `OwnedSemaphorePermit::forget()`
 //!   gives us the Monster Hunter cart semantic ("cart consumed, doesn't
 //!   come back"). Plain drop would recycle the permit, which is wrong.
@@ -25,12 +24,10 @@
 //!   subsequent consume fails with `Closed` and every waiter wakes — a
 //!   single primitive replaces an atomic counter + a manual notifier.
 
-use std::collections::HashMap;
 use std::sync::Arc;
 
 use thiserror::Error;
 use tokio::sync::{Semaphore, TryAcquireError, broadcast};
-use tokio::task::{AbortHandle, JoinSet};
 
 use crate::cadence::AgentId;
 
@@ -61,46 +58,6 @@ pub enum RallyEvent {
     TokenConsumed { remaining: u32 },
     /// Self-rally exhausted — escalating to orchestrator intervention.
     Escalated { reason: String },
-}
-
-/// Outcome of a member task supervised by `FormationRally`.
-#[derive(Debug, Clone)]
-pub enum AgentOutcome {
-    /// Planned shutdown (intent dissolve, role transformed out, etc.).
-    /// The formation does NOT consume a rally token on a clean exit.
-    CleanExit { agent: AgentId },
-    /// Task exited with an error; the formation should attempt self-rally.
-    Failed {
-        agent: AgentId,
-        reason: FailureReason,
-    },
-}
-
-impl AgentOutcome {
-    pub fn agent(&self) -> AgentId {
-        match self {
-            Self::CleanExit { agent } | Self::Failed { agent, .. } => *agent,
-        }
-    }
-
-    pub fn is_clean_exit(&self) -> bool {
-        matches!(self, Self::CleanExit { .. })
-    }
-}
-
-/// Why a member task terminated.
-#[derive(Debug, Clone)]
-pub enum FailureReason {
-    /// The future panicked.
-    Panic,
-    /// Agent ran out of fuel / capability quota.
-    CapabilityExhausted,
-    /// Wall-clock deadline elapsed.
-    TimeoutExceeded,
-    /// Agent drifted far enough from intent that the supervisor terminated it.
-    IntentMismatch,
-    /// Planned termination (reported for symmetry with CleanExit tests).
-    CleanExit,
 }
 
 #[derive(Debug, Error)]
@@ -175,22 +132,8 @@ impl std::fmt::Debug for RallyTokens {
     }
 }
 
-/// Formation rally runtime. Pairs [`RallyTokens`] with a `JoinSet` that
-/// supervises member tasks, an abort-handle map keyed by `AgentId` for
-/// planned-leave cancellation, and a broadcast channel of `RallyEvent`
-/// for observability.
-///
-/// `default_events_rx` is a receiver allocated at construction time and
-/// retained inside the rally so the event-broadcast channel has at
-/// least one always-alive subscriber. Without it, `events.send(...)`
-/// calls from `cascade::attempt_self_rally` and `supervise::drain`
-/// would return `SendError` every time (broadcast channels drop sends
-/// when no receivers exist), silently losing the transitions they
-/// announce. `drain_events` consumes from this receiver; external
-/// observers can still call `subscribe()` for their own view.
+/// Formation rally runtime: the token budget plus the rally event bus.
 pub struct FormationRally {
-    pub members: JoinSet<AgentOutcome>,
-    pub aborts: HashMap<AgentId, AbortHandle>,
     pub tokens: RallyTokens,
     pub events: broadcast::Sender<RallyEvent>,
     default_events_rx: broadcast::Receiver<RallyEvent>,
@@ -200,8 +143,6 @@ impl FormationRally {
     pub fn new(token_budget: usize, event_cap: usize) -> Self {
         let (events, default_events_rx) = broadcast::channel(event_cap.max(1));
         Self {
-            members: JoinSet::new(),
-            aborts: HashMap::new(),
             tokens: RallyTokens::new(token_budget),
             events,
             default_events_rx,
@@ -233,23 +174,6 @@ impl FormationRally {
     /// Spawn a member task under supervision. Stores the abort handle so
     /// planned leaves (`leave(agent)`) can cancel without the supervisor
     /// counting it as a failure.
-    pub fn spawn_member<F>(&mut self, agent: AgentId, fut: F)
-    where
-        F: std::future::Future<Output = AgentOutcome> + Send + 'static,
-    {
-        let handle = self.members.spawn(fut);
-        self.aborts.insert(agent, handle);
-    }
-
-    /// Planned leave. Aborts the member's task; the supervisor observes a
-    /// `JoinError::is_cancelled()` and does NOT consume a rally token.
-    pub fn leave(&mut self, agent: AgentId) {
-        if let Some(h) = self.aborts.remove(&agent) {
-            h.abort();
-        }
-    }
-
-    /// Subscribe an observer to rally events.
     pub fn subscribe(&self) -> broadcast::Receiver<RallyEvent> {
         self.events.subscribe()
     }
@@ -305,18 +229,5 @@ mod tests {
         rally.restore_tokens(1); // disk says 1 of 3 remain
         assert_eq!(rally.tokens.remaining(), 1);
         assert_eq!(rally.tokens.max(), 3);
-    }
-
-    #[tokio::test]
-    async fn spawn_then_leave_aborts_without_token() {
-        let mut rally = FormationRally::new(3, 8);
-        let agent = AgentId::new();
-        rally.spawn_member(agent, async move {
-            // Long-running task — we expect it to be aborted.
-            tokio::time::sleep(std::time::Duration::from_secs(60)).await;
-            AgentOutcome::CleanExit { agent }
-        });
-        rally.leave(agent);
-        assert_eq!(rally.tokens.remaining(), 3); // no token consumed
     }
 }
