@@ -101,5 +101,10 @@ pub async fn reload_connector(state: &RuntimeState, name: &str) -> Result<(), Op
     }
 
     tracing::info!(connector = name, was_enabled, "connector hot-reloaded");
+    // The rebuilt connector owns a fresh ChatSource — stop the old
+    // loop and start the new one.
+    super::chat::unwire_chat(state, name);
+    super::chat::wire_chat(state, name).await?;
+
     Ok(())
 }

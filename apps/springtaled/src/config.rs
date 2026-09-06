@@ -34,46 +34,19 @@ pub struct SpringtaleConfig {
     #[serde(default = "default_heartbeat_interval")]
     #[garde(skip)]
     pub heartbeat_interval_secs: u64,
+    // Chat connectors are NOT typed fields here (plan 6.4): every
+    // `[telegram]` / `[discord]` / … table is picked up verbatim by
+    // `extract_connector_configs` and installed through the same
+    // `setup_connector` path a runtime install takes, so the daemon
+    // holds no per-connector knowledge.
     /// Bot runtime configuration. If absent, bot is disabled.
     #[serde(default)]
     #[garde(skip)]
     pub bot: Option<springtale_bot::BotConfig>,
-    /// Telegram connector configuration. If absent, connector not loaded.
-    #[serde(default)]
-    #[garde(skip)]
-    pub telegram: Option<connector_telegram::TelegramConfig>,
     /// Sentinel behavioral monitor configuration. If absent, uses defaults.
     #[serde(default)]
     #[garde(skip)]
     pub sentinel: Option<springtale_sentinel::SentinelConfig>,
-    /// Nostr connector configuration. If absent, connector not loaded.
-    #[serde(default)]
-    #[garde(skip)]
-    pub nostr: Option<connector_nostr::NostrConfig>,
-    /// IRC connector configuration. If absent, connector not loaded.
-    #[serde(default)]
-    #[garde(skip)]
-    pub irc: Option<connector_irc::IrcConfig>,
-    /// Discord connector configuration. If absent, connector not loaded.
-    /// WARNING: Discord complies with government data requests.
-    #[serde(default)]
-    #[garde(skip)]
-    pub discord: Option<connector_discord::DiscordConfig>,
-    /// Slack connector configuration. If absent, connector not loaded.
-    /// WARNING: Workspace admins can read ALL messages including DMs.
-    #[serde(default)]
-    #[garde(skip)]
-    pub slack: Option<connector_slack::SlackConfig>,
-    /// Signal connector configuration. If absent, connector not loaded.
-    /// Bridges to signal-cli daemon for E2E encrypted messaging.
-    #[serde(default)]
-    #[garde(skip)]
-    pub signal: Option<connector_signal::SignalConfig>,
-    /// Bluesky connector configuration. If absent, connector not loaded.
-    /// Subscribes to the Jetstream firehose for own-post / mention triggers.
-    #[serde(default)]
-    #[garde(skip)]
-    pub bluesky: Option<connector_bluesky::BlueskyConfig>,
     // connector-matrix: DEFERRED — matrix-sdk 0.16 requires rusqlite 0.37
     // which has CVE-2025-70873. Waiting for matrix-sdk to update.
 }

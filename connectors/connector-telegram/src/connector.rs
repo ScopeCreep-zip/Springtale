@@ -12,6 +12,7 @@ use springtale_connector::manifest::types::{
 use springtale_connector::{Subscription, SubscriptionCounter, SubscriptionId};
 
 use crate::actions;
+use crate::chat::TelegramChatSource;
 use crate::client::TelegramClient;
 use crate::config::TelegramConfig;
 use crate::triggers;
@@ -20,7 +21,7 @@ use springtale_connector::manifest::SignatureAlgorithm;
 /// Telegram connector.
 /// Provides Telegram Bot API integration with polling or webhook triggers.
 pub struct TelegramConnector {
-    client: TelegramClient,
+    client: Arc<TelegramClient>,
     manifest: ConnectorManifest,
     triggers: Vec<TriggerDecl>,
     actions: Vec<ActionDecl>,
@@ -29,6 +30,9 @@ pub struct TelegramConnector {
     /// Optional webhook secret token (clone of config.webhook_secret).
     /// Used to verify incoming webhook requests by the daemon.
     webhook_secret: Option<SecretBox<String>>,
+    /// Receive loop + outbound half, handed to the runtime via
+    /// [`Connector::chat_source`].
+    chat: Arc<TelegramChatSource>,
 }
 
 impl TelegramConnector {
@@ -38,12 +42,14 @@ impl TelegramConnector {
         let manifest = build_manifest(&trigger_decls, &action_decls);
 
         let token = springtale_crypto::secret_use::clone_into_box(&config.bot_token);
-        let client = TelegramClient::new(&config.api_base, token)?;
+        let client = Arc::new(TelegramClient::new(&config.api_base, token)?);
 
         let webhook_secret = config
             .webhook_secret
             .as_ref()
             .map(springtale_crypto::secret_use::clone_into_box);
+
+        let chat = Arc::new(TelegramChatSource::new(config, Arc::clone(&client))?);
 
         Ok(Self {
             client,
@@ -53,6 +59,7 @@ impl TelegramConnector {
             handlers: Arc::new(Mutex::new(Vec::new())),
             sub_counter: SubscriptionCounter::new(),
             webhook_secret,
+            chat,
         })
     }
 
@@ -109,31 +116,33 @@ impl Connector for TelegramConnector {
         input: serde_json::Value,
     ) -> Result<ActionResult, ConnectorError> {
         match action {
-            "send_message" => actions::send_message::execute(&self.client, &input)
+            "send_message" => actions::send_message::execute(self.client.as_ref(), &input)
                 .await
                 .map_err(ConnectorError::from),
-            "send_photo" => actions::send_photo::execute(&self.client, &input)
+            "send_photo" => actions::send_photo::execute(self.client.as_ref(), &input)
                 .await
                 .map_err(ConnectorError::from),
-            "edit_message" => actions::edit_message::execute(&self.client, &input)
+            "edit_message" => actions::edit_message::execute(self.client.as_ref(), &input)
                 .await
                 .map_err(ConnectorError::from),
-            "delete_message" => actions::delete_message::execute(&self.client, &input)
+            "delete_message" => actions::delete_message::execute(self.client.as_ref(), &input)
                 .await
                 .map_err(ConnectorError::from),
-            "send_inline_keyboard" => actions::send_inline_keyboard::execute(&self.client, &input)
-                .await
-                .map_err(ConnectorError::from),
-            "answer_callback_query" => {
-                actions::answer_callback_query::execute(&self.client, &input)
+            "send_inline_keyboard" => {
+                actions::send_inline_keyboard::execute(self.client.as_ref(), &input)
                     .await
                     .map_err(ConnectorError::from)
             }
-            "onboard_url" => actions::onboard_url::execute(&self.client, &input)
+            "answer_callback_query" => {
+                actions::answer_callback_query::execute(self.client.as_ref(), &input)
+                    .await
+                    .map_err(ConnectorError::from)
+            }
+            "onboard_url" => actions::onboard_url::execute(self.client.as_ref(), &input)
                 .await
                 .map_err(ConnectorError::from),
             "discover_destinations" => {
-                actions::discover_destinations::execute(&self.client, &input)
+                actions::discover_destinations::execute(self.client.as_ref(), &input)
                     .await
                     .map_err(ConnectorError::from)
             }
@@ -181,6 +190,10 @@ impl Connector for TelegramConnector {
 
     fn manifest(&self) -> &ConnectorManifest {
         &self.manifest
+    }
+
+    fn chat_source(&self) -> Option<springtale_connector::chat::SharedChatSource> {
+        Some(self.chat.clone())
     }
 
     fn mention_extractor(&self) -> Option<&dyn springtale_connector::mention::MentionExtractor> {

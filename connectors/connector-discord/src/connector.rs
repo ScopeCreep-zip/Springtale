@@ -11,6 +11,7 @@ use springtale_connector::manifest::types::{
 use springtale_connector::{Subscription, SubscriptionCounter, SubscriptionId};
 
 use crate::actions;
+use crate::chat::DiscordChatSource;
 use crate::client::DiscordClient;
 use crate::config::DiscordConfig;
 use crate::triggers;
@@ -36,7 +37,8 @@ use springtale_connector::manifest::SignatureAlgorithm;
 /// survivors), this is an unacceptable privacy risk. Voice state can be
 /// monitored passively via VoiceStateUpdate events without joining.
 pub struct DiscordConnector {
-    client: DiscordClient,
+    client: Arc<DiscordClient>,
+    chat: Arc<DiscordChatSource>,
     manifest: ConnectorManifest,
     triggers: Vec<TriggerDecl>,
     actions: Vec<ActionDecl>,
@@ -57,12 +59,15 @@ impl DiscordConnector {
         // Validate token format before passing to twilight
         crate::auth::validate_bot_token(&token)?;
 
-        let client = DiscordClient::new(token, config.message_jitter_secs);
+        let client = Arc::new(DiscordClient::new(token, config.message_jitter_secs));
+
+        let chat = Arc::new(DiscordChatSource::new(config, Arc::clone(&client)));
 
         let manifest = build_manifest(&trigger_decls, &action_decls);
 
         Ok(Self {
             client,
+            chat,
             manifest,
             triggers: trigger_decls,
             actions: action_decls,
@@ -93,23 +98,23 @@ impl Connector for DiscordConnector {
         input: serde_json::Value,
     ) -> Result<ActionResult, ConnectorError> {
         match action {
-            "send_message" => actions::send_message::execute(&self.client, &input)
+            "send_message" => actions::send_message::execute(self.client.as_ref(), &input)
                 .await
                 .map_err(ConnectorError::from),
-            "send_embed" => actions::send_embed::execute(&self.client, &input)
+            "send_embed" => actions::send_embed::execute(self.client.as_ref(), &input)
                 .await
                 .map_err(ConnectorError::from),
-            "edit_message" => actions::edit_message::execute(&self.client, &input)
+            "edit_message" => actions::edit_message::execute(self.client.as_ref(), &input)
                 .await
                 .map_err(ConnectorError::from),
-            "delete_message" => actions::delete_message::execute(&self.client, &input)
+            "delete_message" => actions::delete_message::execute(self.client.as_ref(), &input)
                 .await
                 .map_err(ConnectorError::from),
-            "add_reaction" => actions::add_reaction::execute(&self.client, &input)
+            "add_reaction" => actions::add_reaction::execute(self.client.as_ref(), &input)
                 .await
                 .map_err(ConnectorError::from),
             "discover_destinations" => {
-                actions::discover_destinations::execute(&self.client, &input)
+                actions::discover_destinations::execute(self.client.as_ref(), &input)
                     .await
                     .map_err(ConnectorError::from)
             }
@@ -156,6 +161,10 @@ impl Connector for DiscordConnector {
 
     fn manifest(&self) -> &ConnectorManifest {
         &self.manifest
+    }
+
+    fn chat_source(&self) -> Option<springtale_connector::chat::SharedChatSource> {
+        Some(self.chat.clone())
     }
 
     fn mention_extractor(&self) -> Option<&dyn springtale_connector::mention::MentionExtractor> {

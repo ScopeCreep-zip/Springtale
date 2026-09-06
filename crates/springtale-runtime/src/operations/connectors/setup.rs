@@ -55,6 +55,11 @@ pub async fn setup_connector(
     let removed_key = format!("connector-removed:{name}");
     let _ = state.store.delete_config(&removed_key).await;
 
+    // Chat ingestion follows the registry: a connector configured at
+    // runtime starts receiving immediately, no restart, no TOML.
+    super::chat::unwire_chat(state, &registered_name);
+    super::chat::wire_chat(state, &registered_name).await?;
+
     tracing::info!(connector = %registered_name, "connector configured and loaded");
     Ok(registered_name)
 }

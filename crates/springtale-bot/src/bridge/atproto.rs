@@ -62,7 +62,7 @@ impl ATProtoBotBridge {
 
     /// Dispatch an incoming event to registered handlers.
     ///
-    /// Called by the bot event loop when an IncomingMessage arrives from
+    /// Called by the bot event loop when an ChatMessage arrives from
     /// connector-bluesky. The trigger name is extracted from the raw
     /// payload's "trigger" field.
     pub async fn dispatch(&self, trigger: &str, payload: serde_json::Value) {

@@ -384,7 +384,12 @@ pub async fn init(
     let role_registry = Arc::new(springtale_cooperation::role::RoleRegistry::with_builtins());
     register_persisted_manifest_roles(&store, &role_registry).await;
 
-    Ok(RuntimeState {
+    // Chat ingress (plan 6.4): one channel for every connector's
+    // `ChatSource`. Created here so the wiring below and the bot both
+    // hang off the runtime, not the daemon.
+    let (chat_tx, chat_rx) = tokio::sync::mpsc::channel(256);
+
+    let state = RuntimeState {
         store,
         registry,
         engine,
@@ -409,8 +414,19 @@ pub async fn init(
         formation_gossip,
         knowledge_store,
         swim_node,
+        chat_tx,
+        chat_rx: Arc::new(tokio::sync::Mutex::new(Some(chat_rx))),
+        chat_tasks: Arc::new(dashmap::DashMap::new()),
         _lock: lock,
-    })
+    };
+
+    // Chat ingestion follows the registry: every connector installed at
+    // this point (TOML-configured or persisted from a previous run) gets
+    // its receive loop started here, and runtime installs go through the
+    // same `wire_chat` from `setup_connector` / `enable_connector`.
+    crate::operations::connectors::wire_all_chat(&state).await;
+
+    Ok(state)
 }
 
 /// Walk all connector manifests already in the store and fold their

@@ -125,6 +125,16 @@ pub trait Connector: Send + Sync + 'static {
     /// events (Cron, Filesystem, HTTP, Browser, Shell) skip the
     /// harvest cleanly. See
     /// `springtale-connector::mention::MentionExtractor`.
+    /// The connector's chat ingestion half, when it has one.
+    ///
+    /// Returning `Some` opts the connector into the runtime's chat
+    /// wiring: `wire_chat` starts [`ChatSource::run`] when the
+    /// connector is installed or enabled and stops it on disable or
+    /// removal. Connectors with no chat surface leave this `None`.
+    fn chat_source(&self) -> Option<crate::chat::SharedChatSource> {
+        None
+    }
+
     fn mention_extractor(&self) -> Option<&dyn crate::mention::MentionExtractor> {
         None
     }

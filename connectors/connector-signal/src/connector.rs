@@ -11,6 +11,7 @@ use springtale_connector::manifest::types::{
 use springtale_connector::{Subscription, SubscriptionCounter, SubscriptionId};
 
 use crate::actions;
+use crate::chat::SignalChatSource;
 use crate::client::SignalClient;
 use crate::config::SignalConfig;
 use crate::triggers;
@@ -29,7 +30,8 @@ use springtale_connector::manifest::SignatureAlgorithm;
 /// - For device seizure protection: full-disk encryption + --ephemeral mode
 /// - Disappearing messages: reliable in 1:1, limited in groups (signal-cli limitation)
 pub struct SignalConnector {
-    client: SignalClient,
+    client: Arc<SignalClient>,
+    chat: Arc<SignalChatSource>,
     manifest: ConnectorManifest,
     triggers: Vec<TriggerDecl>,
     actions: Vec<ActionDecl>,
@@ -44,16 +46,19 @@ impl SignalConnector {
 
         crate::auth::validate_daemon_url(&config.daemon_url)?;
 
-        let client = SignalClient::new(
+        let client = Arc::new(SignalClient::new(
             config.daemon_url.clone(),
             config.account_id.clone(),
             config.message_jitter_secs,
-        );
+        ));
+
+        let chat = Arc::new(SignalChatSource::new(config, Arc::clone(&client)));
 
         let manifest = build_manifest(&trigger_decls, &action_decls);
 
         Ok(Self {
             client,
+            chat,
             manifest,
             triggers: trigger_decls,
             actions: action_decls,
@@ -84,19 +89,21 @@ impl Connector for SignalConnector {
         input: serde_json::Value,
     ) -> Result<ActionResult, ConnectorError> {
         match action {
-            "send_message" => actions::send_message::execute(&self.client, &input)
+            "send_message" => actions::send_message::execute(self.client.as_ref(), &input)
                 .await
                 .map_err(ConnectorError::from),
-            "send_group_message" => actions::send_group_message::execute(&self.client, &input)
-                .await
-                .map_err(ConnectorError::from),
+            "send_group_message" => {
+                actions::send_group_message::execute(self.client.as_ref(), &input)
+                    .await
+                    .map_err(ConnectorError::from)
+            }
             "set_disappearing_timer" => {
-                actions::set_disappearing_timer::execute(&self.client, &input)
+                actions::set_disappearing_timer::execute(self.client.as_ref(), &input)
                     .await
                     .map_err(ConnectorError::from)
             }
             "discover_destinations" => {
-                actions::discover_destinations::execute(&self.client, &input)
+                actions::discover_destinations::execute(self.client.as_ref(), &input)
                     .await
                     .map_err(ConnectorError::from)
             }
@@ -141,6 +148,10 @@ impl Connector for SignalConnector {
 
     fn manifest(&self) -> &ConnectorManifest {
         &self.manifest
+    }
+
+    fn chat_source(&self) -> Option<springtale_connector::chat::SharedChatSource> {
+        Some(self.chat.clone())
     }
 
     fn mention_extractor(&self) -> Option<&dyn springtale_connector::mention::MentionExtractor> {

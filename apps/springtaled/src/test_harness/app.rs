@@ -102,6 +102,7 @@ impl TestApp {
         let gossip_store: Arc<dyn springtale_cooperation::awareness::GossipStore> =
             Arc::new(springtale_cooperation::awareness::InMemoryGossipStore::new());
         let capability_bridge = springtale_runtime::CapabilityBridge::new(registry.clone());
+        let (bot_chat_tx, bot_chat_rx) = mpsc::channel(64);
         let role_registry = Arc::new(springtale_cooperation::role::RoleRegistry::with_builtins());
         let runtime = springtale_runtime::RuntimeState {
             store,
@@ -129,6 +130,9 @@ impl TestApp {
             knowledge_store,
             // Single-process test fixture — no SWIM node.
             swim_node: None,
+            chat_tx: bot_chat_tx,
+            chat_rx: Arc::new(tokio::sync::Mutex::new(Some(bot_chat_rx))),
+            chat_tasks: Default::default(),
             // In-memory store — no runtime lock.
             _lock: None,
         };

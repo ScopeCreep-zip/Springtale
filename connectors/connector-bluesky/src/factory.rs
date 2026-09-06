@@ -61,7 +61,10 @@ impl ConnectorFactory for BlueskyFactory {
         let client = crate::client::AtProtoClient::new(&config)
             .await
             .map_err(|e| ConnectorError::ExecutionFailed(e.to_string()))?;
-        Ok(Box::new(crate::BlueskyConnector::new(client)))
+        Ok(Box::new(crate::BlueskyConnector::new(
+            client,
+            config.jetstream_url,
+        )))
     }
 }
 

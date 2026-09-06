@@ -12,7 +12,8 @@ use springtale_connector::manifest::types::{
 use springtale_connector::{Subscription, SubscriptionCounter, SubscriptionId};
 
 use crate::actions;
-use crate::client::KickClient;
+use crate::chat::KickChatSource;
+use crate::client::{KickApi, KickClient};
 use crate::config::KickConfig;
 use crate::triggers;
 use crate::webhook;
@@ -25,7 +26,10 @@ use springtale_connector::manifest::SignatureAlgorithm;
 /// is registered via `on_event()`, the connector subscribes with Kick's
 /// event subscription API so webhooks are delivered.
 pub struct KickConnector {
-    client: KickClient,
+    client: Arc<KickClient>,
+    /// Inbound/outbound chat half. Kick's inbound stream is its own
+    /// webhook dispatch — see [`KickChatSource`].
+    chat: Arc<KickChatSource>,
     manifest: ConnectorManifest,
     triggers: Vec<TriggerDecl>,
     actions: Vec<ActionDecl>,
@@ -66,10 +70,12 @@ impl KickConnector {
         let trigger_decls = triggers::trigger_declarations();
         let action_decls = actions::action_declarations();
         let manifest = build_manifest(&trigger_decls, &action_decls);
-        let client = KickClient::new(&config.api_base, access_token)?;
+        let client = Arc::new(KickClient::new(&config.api_base, access_token)?);
+        let chat = Arc::new(KickChatSource::new(Arc::clone(&client)));
 
         Ok(Self {
             client,
+            chat,
             manifest,
             triggers: trigger_decls,
             actions: action_decls,
@@ -98,6 +104,9 @@ impl KickConnector {
 
     /// Dispatch a webhook event to registered handlers by trigger name.
     pub async fn dispatch_webhook(&self, trigger_name: &str, payload: serde_json::Value) {
+        // Chat webhooks also feed the connector's ChatSource, which is
+        // the only path a Kick chat message has to the bot runtime.
+        self.chat.ingest(trigger_name, &payload);
         let handlers = self.handlers.lock().await;
         for (_id, registered, handler) in handlers.iter() {
             if registered == trigger_name {
@@ -147,14 +156,15 @@ impl Connector for KickConnector {
         action: &str,
         input: serde_json::Value,
     ) -> Result<ActionResult, ConnectorError> {
+        let client: &dyn KickApi = self.client.as_ref();
         match action {
-            "send_chat" => actions::send_chat::execute(&self.client, &input)
+            "send_chat" => actions::send_chat::execute(client, &input)
                 .await
                 .map_err(ConnectorError::from),
-            "get_channel" => actions::get_channel::execute(&self.client, &input)
+            "get_channel" => actions::get_channel::execute(client, &input)
                 .await
                 .map_err(ConnectorError::from),
-            "get_stream" => actions::get_stream::execute(&self.client, &input)
+            "get_stream" => actions::get_stream::execute(client, &input)
                 .await
                 .map_err(ConnectorError::from),
             unknown => Err(ConnectorError::ExecutionFailed(format!(
@@ -269,6 +279,10 @@ impl Connector for KickConnector {
 
     fn manifest(&self) -> &ConnectorManifest {
         &self.manifest
+    }
+
+    fn chat_source(&self) -> Option<springtale_connector::chat::SharedChatSource> {
+        Some(self.chat.clone())
     }
 }
 

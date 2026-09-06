@@ -37,7 +37,7 @@ pub(super) async fn send_response(
 /// - Unknown users receive a pairing code they must give to the owner
 async fn check_access(
     bot: &mut Bot,
-    msg: &crate::runtime::lifecycle::IncomingMessage,
+    msg: &springtale_connector::chat::ChatMessage,
 ) -> Result<bool, crate::error::BotError> {
     let user_id = &msg.user_id;
 
@@ -48,7 +48,7 @@ async fn check_access(
     // content, so a remote connector can't spoof it. There is no stranger to
     // race the owner here, so skip the owner/pairing gate entirely. That gate
     // exists for REMOTE connectors (Telegram, Discord, …), which keep it.
-    if msg.source_connector == "in-app" {
+    if msg.connector == "in-app" {
         return Ok(true);
     }
 
@@ -102,7 +102,7 @@ async fn check_access(
                 &msg.channel_id,
                 "This bot has no owner configured. Ask the server admin to run `springtale init`."
                     .into(),
-                &msg.source_connector,
+                &msg.connector,
             )
             .await;
             return Ok(false);
@@ -143,7 +143,7 @@ async fn check_access(
                     &bot.response_tx,
                     &msg.channel_id,
                     "Pairing code expired. Ask the bot admin for a new one.".into(),
-                    &msg.source_connector,
+                    &msg.connector,
                 )
                 .await;
                 return Ok(false);
@@ -162,7 +162,7 @@ async fn check_access(
                 &bot.response_tx,
                 &msg.channel_id,
                 "Paired successfully. You now have access to this bot.".into(),
-                &msg.source_connector,
+                &msg.connector,
             )
             .await;
             return Ok(true);
@@ -188,7 +188,7 @@ async fn check_access(
         "Access requires a pairing code. Get one from the bot admin \
          (they run `springtale bot pair-init` on the server) and send it here."
             .into(),
-        &msg.source_connector,
+        &msg.connector,
     )
     .await;
 
@@ -198,7 +198,7 @@ async fn check_access(
 /// Handle an incoming chat message — route to command handler or AI fallback.
 pub(super) async fn handle_incoming_message(
     bot: &mut Bot,
-    msg: &crate::runtime::lifecycle::IncomingMessage,
+    msg: &springtale_connector::chat::ChatMessage,
 ) -> Result<(), crate::error::BotError> {
     // Access control — check pairing before processing
     if !check_access(bot, msg).await? {
@@ -245,7 +245,7 @@ pub(super) async fn handle_incoming_message(
                 &bot.response_tx,
                 &msg.channel_id,
                 reply.to_owned(),
-                &msg.source_connector,
+                &msg.connector,
             )
             .await;
         }
@@ -260,13 +260,7 @@ pub(super) async fn handle_incoming_message(
     match crate::conversation::continue_active(bot, &session_key, &msg.text).await {
         Ok(Some(reply)) => {
             let _ = bot.context.push(&session_key, "assistant", &reply).await;
-            send_response(
-                &bot.response_tx,
-                &msg.channel_id,
-                reply,
-                &msg.source_connector,
-            )
-            .await;
+            send_response(&bot.response_tx, &msg.channel_id, reply, &msg.connector).await;
             let _ = bot.context.compact(&session_key).await;
             return Ok(());
         }
@@ -283,7 +277,7 @@ pub(super) async fn handle_incoming_message(
                 let ctx = HandlerContext {
                     user_id: msg.user_id.clone(),
                     channel_id: msg.channel_id.clone(),
-                    source_connector: msg.source_connector.clone(),
+                    source_connector: msg.connector.clone(),
                     store: bot.store.clone(),
                     registry: bot.registry.clone(),
                     engine: bot.engine.clone(),
@@ -317,7 +311,7 @@ pub(super) async fn handle_incoming_message(
                             &bot.response_tx,
                             &msg.channel_id,
                             result.response,
-                            &msg.source_connector,
+                            &msg.connector,
                         )
                         .await;
                     }
@@ -327,7 +321,7 @@ pub(super) async fn handle_incoming_message(
                             &bot.response_tx,
                             &msg.channel_id,
                             format!("Error: {e}"),
-                            &msg.source_connector,
+                            &msg.connector,
                         )
                         .await;
                     }
@@ -337,7 +331,7 @@ pub(super) async fn handle_incoming_message(
                     &bot.response_tx,
                     &msg.channel_id,
                     format!("Command not found: {name}"),
-                    &msg.source_connector,
+                    &msg.connector,
                 )
                 .await;
             }
@@ -369,7 +363,7 @@ pub(super) async fn handle_incoming_message(
                         {
                             reply
                         } else if let Some(reply) =
-                            ai_fallback(bot, &session_key, &msg.text, &msg.source_connector).await
+                            ai_fallback(bot, &session_key, &msg.text, &msg.connector).await
                         {
                             reply
                         } else {
@@ -381,13 +375,7 @@ pub(super) async fn handle_incoming_message(
                 }
             };
             let _ = bot.context.push(&session_key, "assistant", &response).await;
-            send_response(
-                &bot.response_tx,
-                &msg.channel_id,
-                response,
-                &msg.source_connector,
-            )
-            .await;
+            send_response(&bot.response_tx, &msg.channel_id, response, &msg.connector).await;
         }
     }
 
