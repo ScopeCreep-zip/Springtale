@@ -40,6 +40,12 @@ async fn main() -> Result<()> {
         Command::New { template } => {
             commands::new::run(&template)?;
         }
+        Command::Login => {
+            commands::login::login().await?;
+        }
+        Command::Logout => {
+            commands::login::logout().await?;
+        }
         Command::Doctor => {
             commands::doctor::run(&pass_opts).await?;
         }

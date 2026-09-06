@@ -6124,6 +6124,7 @@ dependencies = [
  "twilight-http",
  "twilight-model",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]

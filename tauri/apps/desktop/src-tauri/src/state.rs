@@ -18,9 +18,9 @@ use crate::sidecar::Daemon;
 
 /// A running daemon plus the bearer token the frontend authenticates with.
 ///
-/// The token is the hex-encoded `derive_api_token_hash(passphrase)`, which
-/// is exactly what `apps/springtaled/src/runtime/boot/crypto.rs` derived on
-/// the other side of the pipe — no token is ever transmitted between them.
+/// The token is one the daemon issued at `POST /auth/login` (plan 6.6):
+/// 32 random bytes, held here for the life of the unlocked session and
+/// dropped when the vault locks. Nothing derives it from the passphrase.
 pub struct DaemonHandle {
     /// Loopback port the daemon's management API is listening on.
     pub port: u16,

@@ -3,23 +3,26 @@ use std::time::{Duration, Instant};
 use axum::Json;
 use axum::body::Body;
 use axum::extract::State;
-use axum::http::{Method, Request, StatusCode};
+use axum::http::{HeaderMap, Method, Request, StatusCode};
 use axum::middleware::Next;
 use axum::response::Response;
-use rand::RngCore;
-use subtle::ConstantTimeEq;
 
+use super::login::{self, StreamTicket};
 use super::state::AppState;
 
 /// Authentication middleware for the management API.
 ///
-/// Requires `Authorization: Bearer <token>` header on all protected routes.
-/// The token is the hex-encoded HMAC-SHA256(passphrase, "springtale-api-token")
-/// hash, which the user derives from their vault passphrase. This avoids
-/// managing a separate API key.
+/// Requires `Authorization: Bearer <token>` on all protected routes.
+/// The token is one the daemon *issued* — a session from
+/// `POST /auth/login` or a long-lived one from `POST /auth/tokens` —
+/// never anything derived from the vault passphrase. Both kinds are
+/// stored only as `sha256(token)`; the presented bearer is hashed and
+/// looked up, and the stored hash is compared with `subtle`
+/// (RustCrypto audited) so a hit and a miss cost the same.
 ///
-/// Verification uses `subtle::ConstantTimeEq` (RustCrypto audited) to
-/// prevent timing attacks.
+/// The old branch that compared the bearer against
+/// `derive_api_token_hash(passphrase)` is gone: that value is the login
+/// verifier and is no longer a bearer.
 pub async fn require_auth(
     State(state): State<AppState>,
     request: Request<axum::body::Body>,
@@ -27,22 +30,12 @@ pub async fn require_auth(
 ) -> Result<Response, StatusCode> {
     // Bearer header only. SSE routes cannot send headers; they use a
     // one-time ticket (`require_stream_ticket`) instead of a `?token=`
-    // fallback so the API token never lands in a URL.
-    let token = request
-        .headers()
-        .get("authorization")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|h| h.strip_prefix("Bearer "))
+    // fallback so the token never lands in a URL.
+    let token = login::bearer(request.headers()).ok_or(StatusCode::UNAUTHORIZED)?;
+
+    login::authenticate(&state, token)
+        .await
         .ok_or(StatusCode::UNAUTHORIZED)?;
-
-    let token_bytes = hex::decode(token).map_err(|_| StatusCode::UNAUTHORIZED)?;
-
-    // Constant-time comparison via `subtle` crate (RustCrypto audited).
-    // The token IS the hash derived from the passphrase — client computes
-    // it the same way the server did at boot time.
-    if token_bytes.len() != 32 || bool::from(!token_bytes.ct_eq(&state.api_token_hash)) {
-        return Err(StatusCode::UNAUTHORIZED);
-    }
 
     Ok(next.run(request).await)
 }
@@ -50,22 +43,38 @@ pub async fn require_auth(
 /// Lifetime of a stream ticket.
 const STREAM_TICKET_TTL: Duration = Duration::from_secs(30);
 
-/// POST /stream/ticket — one-time, 30 s ticket for the SSE routes.
-pub async fn issue_stream_ticket(State(state): State<AppState>) -> Json<serde_json::Value> {
-    let mut bytes = [0u8; 32];
-    rand::thread_rng().fill_bytes(&mut bytes);
-    let ticket = hex::encode(bytes);
-    state
-        .stream_tickets
-        .lock()
+/// POST /stream/ticket — one-time, 30 s ticket for the SSE routes,
+/// issued *against the presented session* (plan 6.6 step 4). The ticket
+/// carries the bearer's principal, so logging out or revoking the token
+/// kills every outstanding ticket with it.
+pub async fn issue_stream_ticket(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let presented = login::bearer(&headers).ok_or(StatusCode::UNAUTHORIZED)?;
+    let principal = login::authenticate(&state, presented)
         .await
-        .insert(ticket.clone(), Instant::now());
-    Json(serde_json::json!({ "ticket": ticket, "ttl_secs": STREAM_TICKET_TTL.as_secs() }))
+        .ok_or(StatusCode::UNAUTHORIZED)?;
+
+    let mut bytes = [0u8; 32];
+    rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut bytes);
+    let ticket = hex::encode(bytes);
+    state.stream_tickets.lock().await.insert(
+        ticket.clone(),
+        StreamTicket {
+            issued_at: Instant::now(),
+            principal,
+        },
+    );
+    Ok(Json(
+        serde_json::json!({ "ticket": ticket, "ttl_secs": STREAM_TICKET_TTL.as_secs() }),
+    ))
 }
 
 /// Auth middleware for the SSE routes: requires `?ticket=<hex>` issued by
-/// `issue_stream_ticket`, unexpired and never used before. The ticket is
-/// removed on first use, so a leaked URL cannot be replayed.
+/// `issue_stream_ticket`, unexpired, never used before, and whose issuing
+/// session is still valid. The ticket is removed on first use, so a
+/// leaked URL cannot be replayed.
 pub async fn require_stream_ticket(
     State(state): State<AppState>,
     request: Request<Body>,
@@ -77,9 +86,15 @@ pub async fn require_stream_ticket(
         .and_then(|q| q.split('&').find_map(|p| p.strip_prefix("ticket=")))
         .ok_or(StatusCode::UNAUTHORIZED)?;
     let mut tickets = state.stream_tickets.lock().await;
-    tickets.retain(|_, at| at.elapsed() < STREAM_TICKET_TTL);
-    tickets.remove(t).ok_or(StatusCode::UNAUTHORIZED)?; // single use
+    tickets.retain(|_, tk| tk.issued_at.elapsed() < STREAM_TICKET_TTL);
+    let redeemed = tickets.remove(t).ok_or(StatusCode::UNAUTHORIZED)?; // single use
     drop(tickets);
+
+    // The session behind the ticket may have been logged out (or the
+    // long-lived token revoked) in the 30 s since it was issued.
+    if !login::principal_valid(&state, &redeemed.principal).await {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
     Ok(next.run(request).await)
 }
 

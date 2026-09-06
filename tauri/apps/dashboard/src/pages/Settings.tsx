@@ -1,14 +1,14 @@
 import type { Locale } from "@springtale/ui";
-import { apiGet, apiPut, configureApi, useI18n } from "@springtale/ui";
+import { apiGet, apiLogin, apiPut, useI18n } from "@springtale/ui";
 import { createSignal, onMount } from "solid-js";
 
 /**
  * Settings page — configure API connection, auth, heartbeat, and language.
  *
- * The auth token is the hex-encoded HMAC-SHA256 hash derived from the
- * vault passphrase. Users compute it with:
- *   springtale-cli token
- * or derive it manually from their vault passphrase.
+ * Auth is a login, not a hash to paste (plan 6.6): the passphrase goes to
+ * `POST /auth/login`, which returns a random session token the API client
+ * keeps in module memory and renews on a 401. Nothing is derived here,
+ * and neither the passphrase nor the token is ever persisted.
  *
  * Heartbeat config controls the periodic rule evaluation interval.
  * For IPV survivors: set a short interval to check safety contacts frequently.
@@ -16,15 +16,25 @@ import { createSignal, onMount } from "solid-js";
 export function SettingsPage(props: { onSaved?: () => void }) {
   const { t, locale, setLocale } = useI18n();
   const [apiUrl, setApiUrl] = createSignal(`${window.location.protocol}//${window.location.host}`);
-  const [token, setToken] = createSignal("");
+  const [passphrase, setPassphrase] = createSignal("");
   const [saved, setSaved] = createSignal(false);
+  const [loginError, setLoginError] = createSignal("");
   const [heartbeatInterval, setHeartbeatInterval] = createSignal(1800);
   const [heartbeatEnabled, setHeartbeatEnabled] = createSignal(false);
   const [heartbeatSaved, setHeartbeatSaved] = createSignal(false);
 
-  const saveConnection = () => {
-    configureApi(apiUrl(), token());
-    setToken(""); // Clear token signal — only kept in client module memory
+  const saveConnection = async () => {
+    setLoginError("");
+    try {
+      await apiLogin(apiUrl(), passphrase());
+    } catch (e) {
+      setLoginError(e instanceof Error ? e.message : String(e));
+      return;
+    } finally {
+      // Clear the input either way — the passphrase lives only in the
+      // API client's module memory, for re-login on a 401.
+      setPassphrase("");
+    }
     setSaved(true);
     setTimeout(() => setSaved(false), 2000);
     props.onSaved?.();
@@ -66,7 +76,7 @@ export function SettingsPage(props: { onSaved?: () => void }) {
           <form
             onSubmit={(e) => {
               e.preventDefault();
-              saveConnection();
+              void saveConnection();
             }}
             class="mt-3 space-y-3"
           >
@@ -84,21 +94,27 @@ export function SettingsPage(props: { onSaved?: () => void }) {
               />
             </div>
             <div>
-              <label for="auth-token" class="block text-sm font-medium text-text-secondary">
-                {t("settings.authToken")}
+              <label for="auth-passphrase" class="block text-sm font-medium text-text-secondary">
+                {t("settings.passphrase")}
               </label>
               <input
-                id="auth-token"
+                id="auth-passphrase"
                 type="password"
-                value={token()}
-                onInput={(e) => setToken(e.currentTarget.value)}
+                autocomplete="current-password"
+                value={passphrase()}
+                onInput={(e) => setPassphrase(e.currentTarget.value)}
                 class="mt-1 w-full rounded border border-bark bg-soil-mid px-3 py-2 text-text-primary placeholder-text-dim focus:border-status-ok focus:outline-none"
-                placeholder={t("settings.authTokenPlaceholder")}
-                aria-describedby="auth-token-help"
+                placeholder={t("settings.passphrasePlaceholder")}
+                aria-describedby="auth-passphrase-help"
               />
-              <p id="auth-token-help" class="mt-1 text-xs text-text-dim">
-                {t("settings.authTokenHelp")}
+              <p id="auth-passphrase-help" class="mt-1 text-xs text-text-dim">
+                {t("settings.passphraseHelp")}
               </p>
+              {loginError() && (
+                <p role="alert" class="mt-1 text-xs text-status-error">
+                  {loginError()}
+                </p>
+              )}
             </div>
             <button
               type="submit"

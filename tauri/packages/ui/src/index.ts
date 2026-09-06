@@ -203,6 +203,8 @@ export {
   get as apiGet,
   getBaseUrl,
   getToken,
+  login as apiLogin,
+  logout as apiLogout,
   put as apiPut,
 } from "./web/api/client";
 // Panic wipe + travel mode (§2.6) — daemon-side operations, no JSON body.

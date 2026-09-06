@@ -1,5 +1,6 @@
 mod ai_token_usage;
 mod aliases;
+mod api_tokens;
 mod approvals;
 mod audit;
 mod config;
@@ -722,6 +723,36 @@ impl super::trait_::StorageBackend for SqliteBackend {
         now_ms: i64,
     ) -> Result<Vec<crate::schema::approvals::PendingApprovalRow>, StoreError> {
         self.expire_pending_approvals_impl(now_ms).await
+    }
+
+    // ── Long-lived API tokens (6.6) ───────────────────────────
+
+    async fn insert_api_token(
+        &self,
+        row: crate::schema::api_tokens::ApiTokenRow,
+    ) -> Result<(), StoreError> {
+        self.insert_api_token_impl(row).await
+    }
+
+    async fn list_api_tokens(
+        &self,
+    ) -> Result<Vec<crate::schema::api_tokens::ApiTokenRow>, StoreError> {
+        self.list_api_tokens_impl().await
+    }
+
+    async fn find_api_token_by_hash(
+        &self,
+        hash: &[u8],
+    ) -> Result<Option<crate::schema::api_tokens::ApiTokenRow>, StoreError> {
+        self.find_api_token_by_hash_impl(hash.to_vec()).await
+    }
+
+    async fn touch_api_token(&self, id: &str, now_ms: i64) -> Result<(), StoreError> {
+        self.touch_api_token_impl(id.to_owned(), now_ms).await
+    }
+
+    async fn delete_api_token(&self, id: &str) -> Result<bool, StoreError> {
+        self.delete_api_token_impl(id.to_owned()).await
     }
 
     async fn upsert_tool_loop_checkpoint(

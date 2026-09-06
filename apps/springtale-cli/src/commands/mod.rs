@@ -15,6 +15,7 @@ pub mod fix;
 pub mod formation;
 pub mod healthcheck;
 pub mod init;
+pub mod login;
 pub mod memory;
 pub mod new;
 pub mod panic;

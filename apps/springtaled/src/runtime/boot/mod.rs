@@ -212,6 +212,7 @@ pub async fn boot(
     let state = api::state::AppState {
         runtime: runtime.clone(),
         api_token_hash,
+        sessions: std::sync::Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
         ready: ready_flag.clone(),
         trigger_tx: trigger_tx.clone(),
         scheduler: embedded_scheduler,
