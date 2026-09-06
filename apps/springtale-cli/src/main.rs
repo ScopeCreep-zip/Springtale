@@ -58,9 +58,9 @@ async fn main() -> Result<()> {
             // so the plan's success-criterion prompt works literally.
             commands::server::run(cli.json).await?;
         }
-        Command::Healthcheck { url } => {
+        Command::Healthcheck { url, ready } => {
             // Used by container HEALTHCHECK — distroless has no wget/curl.
-            commands::healthcheck::run(&url, cli.json).await?;
+            commands::healthcheck::run(&url, ready, cli.json).await?;
         }
         Command::Panic => {
             let store = store::open_store(&pass_opts)?;
@@ -105,6 +105,15 @@ async fn main() -> Result<()> {
             }
         },
         Command::Bot { action } => match action {
+            BotAction::Status => {
+                commands::bot::status(cli.json).await?;
+            }
+            BotAction::Formations => {
+                commands::bot::formations(cli.json).await?;
+            }
+            BotAction::Memory => {
+                commands::bot::memory(cli.json).await?;
+            }
             BotAction::PairInit => {
                 commands::bot::pair_init(&pass_opts, cli.json).await?;
             }
@@ -116,8 +125,13 @@ async fn main() -> Result<()> {
             }
         },
         Command::Cooperation { action } => match action {
+            // `glyphs` reads the compiled-in def table for the font build;
+            // it must work with no daemon and no vault.
             CooperationAction::Glyphs { check } => {
                 commands::cooperation::glyphs(check.as_deref(), cli.json)?;
+            }
+            other => {
+                commands::cooperation::utterances(other, cli.json).await?;
             }
         },
         // Daemon-backed commands. The CLI is a client of springtaled:
@@ -168,8 +182,33 @@ async fn main() -> Result<()> {
                 commands::mcp::serve().await?;
             }
         },
-        Command::Canvas { stream } => {
-            commands::canvas::run(stream, cli.json).await?;
+        Command::Canvas {
+            stream,
+            connections,
+        } => {
+            commands::canvas::run(stream, connections, cli.json).await?;
+        }
+        Command::Auth { action } => {
+            commands::auth::run(action, cli.json).await?;
+        }
+        Command::Drift { action } => {
+            commands::drift::run(action, cli.json).await?;
+        }
+        Command::Execution { action } => {
+            commands::execution::run(action, cli.json).await?;
+        }
+        Command::Onboarding { action } => {
+            commands::onboarding::run(action, cli.json).await?;
+        }
+        Command::Workspace { action } => {
+            commands::workspace::run(action, cli.json).await?;
+        }
+        Command::Send {
+            connector,
+            target,
+            text,
+        } => {
+            commands::send::run(connector, target, text, cli.json).await?;
         }
         // Offline: needs the vault and the local store, not the daemon.
         Command::Author { action } => {

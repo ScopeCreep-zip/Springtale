@@ -17,6 +17,11 @@ use springtale_runtime::client_config;
 use crate::client::UNREACHABLE;
 use crate::output;
 
+/// The route a passphrase is exchanged at.
+const LOGIN: &str = "/auth/login";
+/// The route the long-lived token is revoked at.
+const LOGOUT: &str = "/auth/logout";
+
 /// Name the CLI gives the token it creates, so `springtale auth tokens`
 /// (and the dashboard) show where it came from.
 fn token_name() -> String {
@@ -50,7 +55,7 @@ pub async fn login(json_out: bool) -> Result<()> {
     // 1. Log in. The daemon mints a random session token; the passphrase
     //    never becomes a credential.
     let response = http
-        .post(format!("{base}/auth/login"))
+        .post(format!("{base}{LOGIN}"))
         // SECURITY: expose needed to put the passphrase in the login
         // body — the one request that is allowed to carry it.
         .json(&serde_json::json!({ "passphrase": passphrase.expose_secret() }))
@@ -98,7 +103,7 @@ pub async fn login(json_out: bool) -> Result<()> {
 
     // 3. Drop the session; the saved token is what the CLI uses now.
     let _ = http
-        .post(format!("{base}/auth/logout"))
+        .post(format!("{base}{LOGOUT}"))
         .bearer_auth(&session)
         .send()
         .await;

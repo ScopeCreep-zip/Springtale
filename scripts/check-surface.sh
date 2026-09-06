@@ -40,18 +40,24 @@ for list in routes verbs provider; do
   fi
 done
 
-# ── Known gaps ────────────────────────────────────────────────────
-# `scripts/surface-exemptions.txt` is a ledger of routes that do not yet
-# have a command-line verb and/or a provider method, one per line:
+# ── Known gaps, and deliberate non-surface ────────────────────────
+# Two files, same columns, opposite meanings:
+#
+#   surface-exemptions.txt    a ledger of routes that do not YET have a
+#                             command-line verb and/or provider method
+#   surface-not-surfaced.txt  routes that deliberately never will, each
+#                             with the reason on the line
 #
 #     /some/route        cli            # no verb yet
 #     /other/route       cli provider   # neither yet
 #
-# It is a ledger, not a permission slip: a NEW uncovered route fails the
-# check, and an entry naming a route that no longer exists fails it too,
-# so the file can only shrink.
+# Neither is a permission slip: a NEW uncovered route fails the check,
+# and an entry in either file naming a route that no longer exists fails
+# it too, so both can only shrink.
 exempt="$root/scripts/surface-exemptions.txt"
-sed -e 's/#.*$//' -e 's/[[:space:]]*$//' "$exempt" | grep -vE '^$' > "$work/exempt.raw"
+intentional="$root/scripts/surface-not-surfaced.txt"
+sed -e 's/#.*$//' -e 's/[[:space:]]*$//' "$exempt" "$intentional" \
+  | grep -vE '^$' > "$work/exempt.raw"
 awk '$0 ~ /(^| )cli( |$)/ { print $1 }' "$work/exempt.raw" | sort -u > "$work/exempt.cli"
 awk '$0 ~ /(^| )provider( |$)/ { print $1 }' "$work/exempt.raw" | sort -u > "$work/exempt.provider"
 awk '{ print $1 }' "$work/exempt.raw" | sort -u > "$work/exempt.all"
@@ -74,7 +80,7 @@ missing_provider="$(comm -23 "$work/routes.provider" "$work/provider")"
 # Stale exemptions are a lie about the surface: fail on them too.
 stale="$(comm -13 "$work/routes" "$work/exempt.all")"
 [ -z "$stale" ] || {
-  die "exemptions for routes that no longer exist:"
+  die "exempt/not-surfaced entries for routes that no longer exist:"
   printf '%s\n' "$stale" >&2
 }
 

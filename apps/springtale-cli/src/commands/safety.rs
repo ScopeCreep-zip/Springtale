@@ -25,6 +25,17 @@ pub async fn run(action: SafetyAction, json_out: bool) -> Result<()> {
                 format!("disguise {}", if active { "on" } else { "off" })
             })?;
         }
+        SafetyAction::DisguiseProfile { app_name, icon_id } => {
+            let body: Value = client
+                .post(
+                    "/safety/disguise/profile",
+                    &json!({ "app_name": app_name, "icon_id": icon_id }),
+                )
+                .await?;
+            output::emit_status(json_out, &body, |_| {
+                format!("disguise profile: {app_name} ({icon_id})")
+            })?;
+        }
         SafetyAction::PanicTaps { count } => {
             let body: Value = client
                 .post("/safety/panic_tap_count", &json!({ "count": count }))

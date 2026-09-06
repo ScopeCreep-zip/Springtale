@@ -6,12 +6,15 @@ use serde_json::Value;
 use crate::client::Client;
 use crate::output;
 
+/// The event log. Filters are appended to it as a query.
+const EVENTS: &str = "/events";
+
 /// Display the event log.
 pub async fn run(limit: u32, connector: Option<String>, json_out: bool) -> Result<()> {
     let client = Client::from_config()?;
     let path = match connector {
-        Some(name) => format!("/events?limit={limit}&connector={name}"),
-        None => format!("/events?limit={limit}"),
+        Some(name) => format!("{EVENTS}?limit={limit}&connector={name}"),
+        None => format!("{EVENTS}?limit={limit}"),
     };
     let body: Value = client.get(&path).await?;
     output::emit(json_out, &body, |v| {

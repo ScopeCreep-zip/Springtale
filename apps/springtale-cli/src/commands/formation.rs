@@ -56,6 +56,63 @@ pub async fn run(action: FormationAction, json_out: bool) -> Result<()> {
                 output::rows_table(&["ID", "LABEL", "ENABLED"], rows)
             })?;
         }
+        FormationAction::Intents => {
+            let body: Value = client.get("/formations/intents").await?;
+            output::emit(json_out, &body, |v| {
+                let rows = output::array(v, "intents")
+                    .iter()
+                    .map(|i| vec![output::cell(i, "value"), output::cell(i, "label")])
+                    .collect();
+                output::rows_table(&["VALUE", "LABEL"], rows)
+            })?;
+        }
+        FormationAction::Eligible { id } => {
+            let body: Value = client
+                .get(&format!("/formations/{id}/members/eligible"))
+                .await?;
+            output::emit(json_out, &body, |v| {
+                let rows = output::array(v, "members")
+                    .iter()
+                    .map(|m| vec![output::cell(m, "name"), output::cell(m, "kind")])
+                    .collect();
+                output::rows_table(&["NAME", "KIND"], rows)
+            })?;
+        }
+        FormationAction::ProposeIntent { id, intent } => {
+            let body: Value = client
+                .post(
+                    &format!("/formations/{id}/propose-intent"),
+                    &json!({ "intent": intent }),
+                )
+                .await?;
+            output::emit(json_out, &body, |v| format!("proposed: {v}"))?;
+        }
+        FormationAction::Vote { id, vote, choice } => {
+            let body: Value = client
+                .post(
+                    &format!("/formations/{id}/votes/{vote}"),
+                    &json!({ "choice": choice }),
+                )
+                .await?;
+            output::emit(json_out, &body, |v| format!("vote recorded: {v}"))?;
+        }
+        FormationAction::Run {
+            id,
+            command,
+            params,
+        } => {
+            let params = match params {
+                Some(path) => crate::commands::json_input::load(&path)?,
+                None => json!({}),
+            };
+            let body: Value = client
+                .post(
+                    &format!("/formations/{id}/run-command"),
+                    &json!({ "command_id": command, "params": params }),
+                )
+                .await?;
+            output::emit(json_out, &body, |v| format!("ran {command}: {v}"))?;
+        }
         FormationAction::DeployTeam { file } => {
             let text = std::fs::read_to_string(&file)
                 .map_err(|e| anyhow::anyhow!("failed to read {}: {e}", file.display()))?;

@@ -26,11 +26,23 @@ Use a **formation** when:
 
 ## Deploy a formation from the CLI
 
-The fastest path is the `deploy-team` operation via the API:
+The fastest path is the `deploy-team` operation via the API. It needs
+a bearer token the daemon issued — `springtale login` exchanges your
+vault passphrase for one and stores it for the CLI (mode 0600), so
+every `springtale` command authenticates by itself afterwards:
+
+```bash
+springtale login            # exchange the passphrase for a token
+springtale auth tokens      # the tokens the daemon has issued
+# springtale auth revoke <id>   # withdraw one you no longer trust
+```
+
+For a raw `curl`, point `SPRINGTALE_API_TOKEN` at a token you hold —
+the same variable the CLI reads before it falls back to the stored one:
 
 ```bash
 curl -sS -X POST http://127.0.0.1:8080/formations/deploy-team \
-    -H "Authorization: Bearer $(springtale api token print)" \
+    -H "Authorization: Bearer $SPRINGTALE_API_TOKEN" \
     -H "Content-Type: application/json" \
     -d '{
           "name": "Research Squad",

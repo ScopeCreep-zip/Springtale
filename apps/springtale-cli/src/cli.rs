@@ -63,6 +63,9 @@ pub enum Command {
     /// `HEALTHCHECK` and docker-compose because the distroless final
     /// image has no `wget` / `curl`.
     Healthcheck {
+        /// Probe readiness (`/ready`) instead of liveness (`/health`).
+        #[arg(long)]
+        ready: bool,
         /// Override the management API base URL.
         /// Defaults to `http://127.0.0.1:8080` (matches `springtaled` default).
         #[arg(long, default_value = "http://127.0.0.1:8080")]
@@ -195,11 +198,81 @@ pub enum Command {
         /// Follow live canvas updates instead of printing a snapshot.
         #[arg(long)]
         stream: bool,
+        /// Print the pipes between trees instead of the whole canvas.
+        #[arg(long, conflicts_with = "stream")]
+        connections: bool,
+    },
+    /// API tokens the daemon has issued.
+    Auth {
+        #[command(subcommand)]
+        action: AuthAction,
+    },
+    /// How far a deployed recipe or rule has drifted from its source.
+    Drift {
+        #[command(subcommand)]
+        action: DriftAction,
+    },
+    /// The execution log, and the vacuum that trims it.
+    Execution {
+        #[command(subcommand)]
+        action: ExecutionAction,
+    },
+    /// Guided per-platform setup forms.
+    Onboarding {
+        #[command(subcommand)]
+        action: OnboardingAction,
+    },
+    /// External workspaces a formation's connectors can reach.
+    Workspace {
+        #[command(subcommand)]
+        action: WorkspaceAction,
+    },
+    /// Send one message out through a connector.
+    Send {
+        /// Connector to send on.
+        connector: String,
+        /// Channel, chat, repo — whatever the connector addresses.
+        target: String,
+        /// Message body.
+        text: String,
     },
 }
 
 #[derive(Subcommand, Debug)]
 pub enum FormationAction {
+    /// The intents a formation can hold.
+    Intents,
+    /// Connectors eligible to join this formation.
+    Eligible {
+        /// Formation id.
+        id: String,
+    },
+    /// Propose an intent change for the formation to vote on.
+    ProposeIntent {
+        /// Formation id.
+        id: String,
+        /// Proposed intent.
+        intent: String,
+    },
+    /// Cast a vote on an open proposal.
+    Vote {
+        /// Formation id.
+        id: String,
+        /// Vote id.
+        vote: String,
+        /// Choice to record.
+        choice: String,
+    },
+    /// Run one of the formation's available commands.
+    Run {
+        /// Formation id.
+        id: String,
+        /// Command id, from `formation commands`.
+        command: String,
+        /// Optional JSON file of parameters (`-` for stdin).
+        #[arg(long)]
+        params: Option<PathBuf>,
+    },
     /// List formations.
     List,
     /// Show one formation.
@@ -279,6 +352,73 @@ pub enum FormationAction {
 
 #[derive(Subcommand, Debug)]
 pub enum RecipeAction {
+    /// The pieces one recipe is built from.
+    Pieces {
+        /// Recipe id.
+        id: String,
+    },
+    /// Toggle a recipe's favourite mark.
+    Favorite {
+        /// Recipe id.
+        id: String,
+    },
+    /// Record a recipe as recently used.
+    Recent {
+        /// Recipe id.
+        id: String,
+    },
+    /// Fork a recipe under a new name.
+    Fork {
+        /// Recipe id.
+        id: String,
+        /// Name for the fork.
+        name: String,
+    },
+    /// Check a recipe's inputs before applying it.
+    Preflight {
+        /// Recipe id.
+        id: String,
+        /// JSON file of `{ "values": { ... } }`.
+        inputs: Option<PathBuf>,
+    },
+    /// Run one step of a recipe against real inputs.
+    TestStep {
+        /// Recipe id.
+        id: String,
+        /// Rule index within the recipe.
+        rule_index: usize,
+        /// Step index within that rule.
+        step_index: usize,
+        /// JSON file of `{ "values": { ... } }`.
+        inputs: Option<PathBuf>,
+    },
+    /// Save a user recipe from a JSON file.
+    Save {
+        /// JSON file of the recipe (`-` for stdin).
+        file: PathBuf,
+    },
+    /// Delete one of your own recipes.
+    Delete {
+        /// Recipe id.
+        id: String,
+    },
+    /// Print a recipe as TOML.
+    Export {
+        /// Recipe id.
+        id: String,
+    },
+    /// Render a recipe with inputs filled in, as TOML.
+    Render {
+        /// Recipe id.
+        id: String,
+        /// JSON file of `{ "values": { ... } }`.
+        inputs: Option<PathBuf>,
+    },
+    /// Import a recipe from a TOML file.
+    Import {
+        /// TOML file to import.
+        file: PathBuf,
+    },
     /// List recipes.
     List {
         /// Filter by category.
@@ -340,6 +480,13 @@ pub enum SessionAction {
 
 #[derive(Subcommand, Debug)]
 pub enum SafetyAction {
+    /// Set the disguise the app wears when it is hidden.
+    DisguiseProfile {
+        /// App name to show.
+        app_name: String,
+        /// Icon id to show.
+        icon_id: String,
+    },
     /// Show the safety config.
     Get,
     /// Turn the disguise overlay on or off.
@@ -362,6 +509,14 @@ pub enum SafetyAction {
 
 #[derive(Subcommand, Debug)]
 pub enum CooperationAction {
+    /// The utterance definition table the daemon is serving.
+    Utterances,
+    /// Utterances the colony has spoken recently.
+    Recent {
+        /// Maximum rows.
+        #[arg(long, default_value_t = 50)]
+        limit: u32,
+    },
     /// Print every codepoint the utterance def table renders, one `U+XXXX`
     /// per line (the input to `scripts/build-symbol-font.sh`).
     Glyphs {
@@ -400,6 +555,12 @@ pub enum AuthorAction {
 
 #[derive(Subcommand, Debug)]
 pub enum BotAction {
+    /// What the bot runtime is doing right now.
+    Status,
+    /// The formations the bot is running.
+    Formations,
+    /// The session memory the bot is holding.
+    Memory,
     /// Generate a pairing code for a new user. Display on terminal only — never in chat.
     PairInit,
     /// Revoke ALL paired users and invalidate ALL outstanding codes.
@@ -462,6 +623,59 @@ pub enum VaultAction {
 
 #[derive(Subcommand, Debug)]
 pub enum ConnectorAction {
+    /// Connectors that can be installed.
+    Available,
+    /// The manifest schema of every installed connector.
+    Schemas,
+    /// Install and configure a connector in one step.
+    Setup {
+        /// Connector name.
+        name: String,
+        /// JSON file of config (`-` for stdin).
+        config: PathBuf,
+    },
+    /// Install a sandboxed WASM connector.
+    InstallWasm {
+        /// Manifest file (JSON or TOML).
+        manifest: PathBuf,
+        /// Compiled `.wasm` module.
+        wasm: PathBuf,
+    },
+    /// Remove a connector and every rule that used it.
+    Cascade {
+        /// Connector name.
+        name: String,
+    },
+    /// Show a connector's stored config.
+    Config {
+        /// Connector name.
+        name: String,
+    },
+    /// Create or replace a connector's stored config.
+    UpsertConfig {
+        /// Connector name.
+        name: String,
+        /// JSON file of config (`-` for stdin).
+        file: PathBuf,
+    },
+    /// Recent outputs a connector produced.
+    Outputs {
+        /// Connector name.
+        name: String,
+        /// Maximum rows.
+        #[arg(long, default_value_t = 20)]
+        limit: u32,
+    },
+    /// Reload a connector from disk.
+    Reload {
+        /// Connector name.
+        name: String,
+    },
+    /// Run a connector's self-test.
+    Test {
+        /// Connector name.
+        name: String,
+    },
     /// List installed connectors.
     List,
     /// Enable a connector.
@@ -494,6 +708,33 @@ pub enum ConnectorAction {
 
 #[derive(Subcommand, Debug)]
 pub enum RuleAction {
+    /// The JSON schema a rule definition must satisfy.
+    Schema,
+    /// Turn plain English into a rule the daemon would accept.
+    Parse {
+        /// What the rule should do, in plain English.
+        intent: String,
+    },
+    /// Add a rule bound to a connector's trigger vocabulary.
+    AddForConnector {
+        /// Rule file (TOML or JSON).
+        file: PathBuf,
+    },
+    /// List the rules that run on one connector.
+    ForConnector {
+        /// Connector name.
+        name: String,
+    },
+    /// Move a rule onto a different connector.
+    ///
+    /// Named `move`, not `reassign`: the drum rule bans an assign verb
+    /// anywhere in the tree, and a rule is re-homed, never handed out.
+    Move {
+        /// Rule id.
+        id: String,
+        /// Connector to move it to.
+        connector: String,
+    },
     /// List all rules.
     List,
     /// Toggle a rule's enabled/disabled status.
@@ -580,6 +821,18 @@ pub enum DataAction {
 
 #[derive(Subcommand, Debug)]
 pub enum ConfigAction {
+    /// Save a connector's config document.
+    Connector {
+        /// Connector name.
+        name: String,
+        /// JSON file of config (`-` for stdin).
+        file: PathBuf,
+    },
+    /// Show, or with a file replace, the heartbeat config.
+    Heartbeat {
+        /// JSON file of heartbeat config (`-` for stdin).
+        file: Option<PathBuf>,
+    },
     /// List every stored config key.
     List,
     /// AI adapter config — one socket per level (colony, formation, agent).
@@ -591,6 +844,11 @@ pub enum ConfigAction {
 
 #[derive(Subcommand, Debug)]
 pub enum AiConfigAction {
+    /// Apply a whole AI adapter document from a file.
+    Put {
+        /// JSON file of adapter config (`-` for stdin).
+        file: PathBuf,
+    },
     /// Print the AI config a level resolves to (API key redacted).
     Get {
         /// Level: colony, formation, or agent.
@@ -623,6 +881,15 @@ pub enum AiConfigAction {
 
 #[derive(Subcommand, Debug)]
 pub enum AgentAction {
+    /// Every agent's live state, as the colony canvas sees it.
+    States,
+    /// Nudge one agent's autonomy up or down a step.
+    StepAutonomy {
+        /// Rule name or id.
+        name: String,
+        /// `up` or `down`.
+        direction: String,
+    },
     /// Set an agent's autonomy level (observe, suggest, act-with-approval, act-autonomously).
     SetAutonomy {
         /// Rule name or rule id of the agent.
@@ -688,11 +955,15 @@ mod tests {
             // read-only inspection
             "list",
             "get",
-            "commands", // composition
+            "commands",
+            "intents",
+            "eligible", // composition
             "add-member",
             "rm-member",
             "deploy-team", // intent
-            "intent",      // constraints
+            "intent",
+            "propose-intent",
+            "vote", // constraints
             "guard",
             "autonomy", // intervention
             "deploy",
@@ -700,6 +971,9 @@ mod tests {
             "resume",
             "dissolve",
             "rally",
+            // `run` is the execution half of `commands`, not a fifth
+            // group: it runs a command the formation already declares.
+            "run",
         ];
         let cmd = Cli::command();
         let formation = cmd
@@ -737,4 +1011,142 @@ mod tests {
             );
         }
     }
+}
+
+#[derive(Subcommand, Debug)]
+pub enum AuthAction {
+    /// List the API tokens the daemon has issued.
+    Tokens,
+    /// Revoke one token by id.
+    Revoke {
+        /// Token id, from `springtale auth tokens`.
+        id: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum DriftAction {
+    /// Drift for one deployed recipe.
+    Recipe {
+        /// Recipe id.
+        id: String,
+    },
+    /// Drift for one rule.
+    Rule {
+        /// Rule id.
+        id: String,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum ExecutionAction {
+    /// List recent executions.
+    List {
+        /// Only executions of this rule.
+        #[arg(long)]
+        rule: Option<String>,
+        /// Maximum rows.
+        #[arg(long, default_value_t = 50)]
+        limit: u32,
+    },
+    /// The steps of one execution.
+    Steps {
+        /// Execution id.
+        id: String,
+    },
+    /// Delete executions older than `--keep-days`.
+    Vacuum {
+        /// Days of history to keep.
+        #[arg(long, default_value_t = 30)]
+        keep_days: u32,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum OnboardingAction {
+    /// The platforms with a guided setup form.
+    Platforms,
+    /// Apply one platform's answers.
+    Apply {
+        /// Platform name, from `onboarding platforms`.
+        platform: String,
+        /// JSON file of answers (`-` for stdin).
+        answers: PathBuf,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum WorkspaceAction {
+    /// List a formation's workspaces.
+    List {
+        /// Formation id.
+        #[arg(long)]
+        formation: String,
+        /// Only workspaces on this connector.
+        #[arg(long)]
+        connector: Option<String>,
+    },
+    /// Ask a connector what workspaces it can see.
+    Scan {
+        /// Formation id.
+        #[arg(long)]
+        formation: String,
+        /// Connector to scan.
+        #[arg(long)]
+        connector: String,
+    },
+    /// Record a workspace by hand.
+    Add {
+        /// Formation id.
+        #[arg(long)]
+        formation: String,
+        /// Connector-native key (channel id, repo slug, …).
+        #[arg(long)]
+        key: String,
+        /// Display name.
+        #[arg(long)]
+        name: String,
+        /// Connector the workspace lives on.
+        #[arg(long)]
+        connector: String,
+        /// Workspace kind (server, repo, channel, …).
+        #[arg(long)]
+        kind: String,
+    },
+    /// Forget a workspace.
+    Remove {
+        /// Formation id.
+        #[arg(long)]
+        formation: String,
+        /// Connector-native key.
+        #[arg(long)]
+        key: String,
+    },
+    /// Print the invite/authorisation URL for a connector.
+    OnboardUrl {
+        /// Connector name.
+        #[arg(long)]
+        connector: String,
+        /// JSON file of connector config (`-` for stdin).
+        #[arg(long)]
+        config: PathBuf,
+        /// Optional JSON file of extra payload.
+        #[arg(long)]
+        payload: Option<PathBuf>,
+    },
+    /// Follow a connector's onboarding stream.
+    Onboard {
+        /// Session id to correlate the stream with.
+        #[arg(long)]
+        session: String,
+        /// Connector name.
+        #[arg(long)]
+        connector: String,
+        /// JSON file of connector config (`-` for stdin).
+        #[arg(long)]
+        config: PathBuf,
+        /// Optional JSON file of extra payload.
+        #[arg(long)]
+        payload: Option<PathBuf>,
+    },
 }

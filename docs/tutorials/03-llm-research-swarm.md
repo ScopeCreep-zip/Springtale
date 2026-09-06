@@ -70,24 +70,26 @@ springtale-cli connector list | grep presearch
 
 Should show `connector-presearch` as Active.
 
-## Step 3 — Scaffold the formation
+## Step 3 — Apply the swarm recipe
 
-Use the LLM swarm template:
-
-```bash
-springtale-cli new llm-swarm
-# Creating llm-swarm project in ~/.local/share/springtale/projects/llm-swarm-20260610-091500
-cd ~/.local/share/springtale/projects/llm-swarm-*/
-```
-
-You now have a working starter. Look at what shipped:
+Recipes replaced the old project scaffolder — there is no `springtale
+new`, and nothing is copied into a directory. A recipe is applied into
+the running daemon, which is the only thing that owns state.
 
 ```bash
-cat springtale.toml
-ls rules/
+springtale recipe list --category swarm   # find the starter
+springtale recipe preview llm-swarm       # what it would create
+springtale recipe apply llm-swarm         # create it
 ```
 
-The template sets up three agents (researcher, writer, critic) but
+You now have a working starter. Look at what it made:
+
+```bash
+springtale recipe render llm-swarm        # the recipe as TOML
+springtale rule list                      # the rules it created
+```
+
+The recipe sets up three agents (researcher, writer, critic) but
 points them at a placeholder topic. We'll wire it to take real
 research requests next.
 

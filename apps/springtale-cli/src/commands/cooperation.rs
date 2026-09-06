@@ -14,6 +14,8 @@ use anyhow::{Context, Result, anyhow};
 use springtale_cooperation::utterance::UtteranceDefs;
 use springtale_cooperation::utterance::defs::{ALL_CODEPOINT_CONSTS, NAMED_CODEPOINTS};
 
+use crate::cli::CooperationAction;
+use crate::client::Client;
 use crate::output;
 
 /// Nerd Fonts' Material Design Icons block, `F0001–F1AF0`.
@@ -26,6 +28,25 @@ fn all_codepoints() -> BTreeSet<char> {
     cps.extend(ALL_CODEPOINT_CONSTS.iter().flat_map(|s| s.chars()));
     cps
 }
+
+pub async fn utterances(action: CooperationAction, json_out: bool) -> Result<()> {
+    let client = Client::from_config()?;
+    let body: serde_json::Value = match &action {
+        CooperationAction::Utterances => client.get("/cooperation/utterances").await?,
+        CooperationAction::Recent { limit } => {
+            client
+                .get(&format!("{UTTERANCES_RECENT}?limit={limit}"))
+                .await?
+        }
+        CooperationAction::Glyphs { .. } => unreachable!("glyphs is local"),
+    };
+    output::emit(json_out, &body, |v| {
+        serde_json::to_string_pretty(v).unwrap_or_default()
+    })
+}
+
+/// The recent-utterance feed. The limit is appended as a query.
+const UTTERANCES_RECENT: &str = "/cooperation/utterances/recent";
 
 pub fn glyphs(check: Option<&Path>, json_out: bool) -> Result<()> {
     let cps = all_codepoints();

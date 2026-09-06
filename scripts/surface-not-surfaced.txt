@@ -1,0 +1,35 @@
+# Routes that are deliberately NOT part of the command-line or web
+# surface, with the reason each one is not.
+#
+# Same columns and same rules as `surface-exemptions.txt` — a stale
+# entry still fails the check — but the meaning is the opposite. An
+# entry here is a decision that has been made, not a gap waiting to be
+# closed. Anything that is merely *not done yet* belongs in the ledger.
+#
+# Columns: <route>  <cli|provider|cli provider>   # why
+#
+# ── Not API: the daemon serving its own front end ──────────────────
+/ui                              cli provider   # static SPA assets the browser fetches; no surface calls them
+/ui/{}                           cli provider   # same, per-asset
+#
+# ── Not API: spoken by third parties, never by a surface ───────────
+/webhook/{}/{}                   cli provider   # inbound connector callback; the platform posts here, no user surface does
+#
+# ── Probes, not product ────────────────────────────────────────────
+/health                          provider       # liveness for supervisors; `springtale healthcheck` is the human-facing probe
+/ready                           provider       # readiness for orchestrators; same
+#
+# ── Streams whose surface half is a different route ────────────────
+/chat/stream                     cli            # SSE half of /chat; the CLI follows the multiplexed /stream with `springtale trace`
+#
+# ── Must work when springtaled is down ─────────────────────────────
+# These CLI verbs exist and are the reason the routes exist, but they
+# deliberately do NOT go through the daemon: each one has to work when
+# the daemon is dead, which is precisely when it is reached for.
+/diagnostics                     cli            # `springtale doctor` is what diagnoses a daemon that will not start
+/fixes                           cli            # `springtale fix` is offline first aid for that diagnosis
+/fixes/{}                        cli            # same
+/fixes/{}/apply                  cli            # same
+/safety/panic-wipe               cli            # `springtale panic` must destroy data with the daemon dead or wedged
+/travel/prepare                  cli            # border-crossing wipe: no daemon, no network, no vault session
+/travel/restore                  cli            # the other half of the same offline path

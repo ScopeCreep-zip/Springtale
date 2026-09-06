@@ -17,6 +17,7 @@ import type {
   SendOutcome,
 } from "@springtale/types";
 import type {
+  ApiTokenInfo,
   ApprovalInfo,
   ConnectorOutput,
   DataProvider,
@@ -527,6 +528,107 @@ export function createWebProvider(): DataProvider {
     // Cross-channel send
     async sendMessage(req) {
       return post<SendOutcome>("/send", req);
+    },
+
+    // Session and API tokens (plan 6.6). `logout()` in api/client.ts
+    // only drops the in-memory copy; this revokes it server-side.
+    async endSession() {
+      await post("/auth/logout");
+    },
+    async listApiTokens() {
+      const data = await get<{ tokens: ApiTokenInfo[] }>("/auth/tokens");
+      return data.tokens ?? [];
+    },
+    async revokeApiToken(id) {
+      await del(`/auth/tokens/${encodeURIComponent(id)}`);
+    },
+
+    // Bot runtime views — read-only, one route each.
+    async getBotStatus() {
+      return get<Record<string, unknown>>("/bot/status");
+    },
+    async listBotFormations() {
+      return get<Record<string, unknown>>("/bot/formations");
+    },
+    async getBotMemory() {
+      return get<Record<string, unknown>>("/bot/memory");
+    },
+
+    // Heartbeat
+    async getHeartbeatConfig() {
+      return get<Record<string, unknown>>("/config/heartbeat");
+    },
+    async setHeartbeatConfig(config) {
+      await put("/config/heartbeat", config);
+    },
+
+    // Connector installation
+    async installConnector(manifest) {
+      const data = await post<{ installed: string }>("/connectors/install", manifest);
+      return data.installed;
+    },
+    async installWasmConnector(manifest, wasm) {
+      // The route wants multipart: a `manifest` part (JSON text) and a
+      // `wasm` part (the module bytes). FormData sets its own boundary,
+      // so no Content-Type header here.
+      const form = new FormData();
+      form.append("manifest", JSON.stringify(manifest));
+      form.append("wasm", wasm, "module.wasm");
+      const response = await fetch(`${getBaseUrl()}/connectors/install-wasm`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${getToken()}` },
+        body: form,
+      });
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
+      const data = (await response.json()) as { installed: string };
+      return data.installed;
+    },
+
+    // Cooperation
+    async listRecentUtterances(limit = 50) {
+      const data = await get<{ utterances: Record<string, unknown>[] }>(
+        `/cooperation/utterances/recent?limit=${limit}`,
+      );
+      return data.utterances ?? [];
+    },
+
+    // Data
+    async importData(archive) {
+      return post<Record<string, unknown>>("/data/import", archive);
+    },
+    async purgeData() {
+      return post<Record<string, unknown>>("/data/purge");
+    },
+
+    // Drift and executions
+    async getRuleDrift(ruleId, filter) {
+      // The query is built first: a `??` inside the template would read
+      // as the start of a query string to anything scanning the literal.
+      const query = queryString(filter ?? {});
+      return get<DriftReport>(`/drift/rule/${encodeURIComponent(ruleId)}${query}`);
+    },
+    async vacuumExecutions(keepDays) {
+      const data = await post<{ deleted: number }>("/executions/vacuum", {
+        keep_days: keepDays,
+      });
+      return data.deleted ?? 0;
+    },
+
+    // Formation votes — the proposal half of the intent group.
+    async proposeFormationIntent(id, intent) {
+      return post<Record<string, unknown>>(`/formations/${id}/propose-intent`, { intent });
+    },
+    async castFormationVote(id, voteId, choice) {
+      return post<Record<string, unknown>>(
+        `/formations/${id}/votes/${encodeURIComponent(voteId)}`,
+        { choice },
+      );
+    },
+
+    // Chat sessions
+    async listSessions() {
+      const data = await get<{ sessions: Record<string, unknown>[] }>("/sessions");
+      return data.sessions ?? [];
     },
   };
 }
