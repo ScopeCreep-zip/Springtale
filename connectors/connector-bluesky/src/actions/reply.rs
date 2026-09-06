@@ -8,6 +8,7 @@ pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: false,
         destructive: None,
+        poll_interval_secs: None,
         name: "reply".to_owned(),
         description: "Reply to a Bluesky post.".to_owned(),
         input_schema: Some(serde_json::json!({

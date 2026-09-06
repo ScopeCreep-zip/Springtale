@@ -9,6 +9,7 @@ pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: true,
         destructive: None,
+        poll_interval_secs: None,
         name: "scrape".to_owned(),
         description: "Fetch the text content of a URL.".to_owned(),
         input_schema: Some(serde_json::json!({

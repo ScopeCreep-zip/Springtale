@@ -538,6 +538,7 @@ mod tests {
                         output_schema: None,
                         read_only,
                         destructive: None,
+                        poll_interval_secs: None,
                     }],
                     data_disclosure: vec![],
                     roles: vec![],

@@ -8,6 +8,7 @@ pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: false,
         destructive: None,
+        poll_interval_secs: None,
         name: "navigate".to_owned(),
         description: "Navigate to a URL. Domain must be in the connector's allow-list.".to_owned(),
         input_schema: Some(serde_json::json!({

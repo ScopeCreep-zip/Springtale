@@ -16,6 +16,7 @@ pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: true,
         destructive: None,
+        poll_interval_secs: None,
         name: "discover_destinations".to_owned(),
         description: "Enumerate Signal groups (listGroups) and contacts (listContacts) via the local signal-cli daemon."
             .to_owned(),

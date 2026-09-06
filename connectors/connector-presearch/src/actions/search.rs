@@ -9,6 +9,7 @@ pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: true,
         destructive: None,
+        poll_interval_secs: None,
         name: "search".to_owned(),
         description: "Search the web using Presearch's privacy-first decentralized search engine."
             .to_owned(),

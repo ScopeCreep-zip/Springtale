@@ -62,6 +62,7 @@ mod tests {
         let action = ActionDecl {
             read_only: false,
             destructive: None,
+            poll_interval_secs: None,
             name: "search".into(),
             description: "Search the web".into(),
             input_schema: Some(serde_json::json!({
@@ -89,6 +90,7 @@ mod tests {
         let action = ActionDecl {
             read_only: false,
             destructive: None,
+            poll_interval_secs: None,
             name: "ping".into(),
             description: "Ping the service".into(),
             input_schema: None,
@@ -110,6 +112,7 @@ mod tests {
             ActionDecl {
                 read_only: false,
                 destructive: None,
+                poll_interval_secs: None,
                 name: "a".into(),
                 description: "action a".into(),
                 input_schema: None,
@@ -118,6 +121,7 @@ mod tests {
             ActionDecl {
                 read_only: false,
                 destructive: None,
+                poll_interval_secs: None,
                 name: "b".into(),
                 description: "action b".into(),
                 input_schema: None,

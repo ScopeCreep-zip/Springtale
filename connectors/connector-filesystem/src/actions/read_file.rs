@@ -11,6 +11,7 @@ pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: true,
         destructive: None,
+        poll_interval_secs: None,
         name: "read_file".to_owned(),
         description: "Read the contents of a file. Path must be within the read allow-list."
             .to_owned(),

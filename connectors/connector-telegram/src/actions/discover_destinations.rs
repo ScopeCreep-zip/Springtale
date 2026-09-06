@@ -56,6 +56,7 @@ pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: true,
         destructive: None,
+        poll_interval_secs: None,
         name: "discover_destinations".to_owned(),
         description:
             "Stateless poll of Telegram's getUpdates surface. Returns every chat that has \

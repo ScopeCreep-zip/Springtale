@@ -11,6 +11,7 @@ pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: true,
         destructive: None,
+        poll_interval_secs: None,
         name: "get".to_owned(),
         description: "Send an HTTP GET request to an allow-listed host.".to_owned(),
         input_schema: Some(serde_json::json!({

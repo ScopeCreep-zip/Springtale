@@ -16,6 +16,7 @@ pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: true,
         destructive: None,
+        poll_interval_secs: None,
         name: "discover_destinations".to_owned(),
         description: "Fetch the bot's NIP-02 Kind 3 contact list and emit one row per follow."
             .to_owned(),

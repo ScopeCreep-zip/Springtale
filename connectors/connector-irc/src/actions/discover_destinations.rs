@@ -17,6 +17,7 @@ pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: true,
         destructive: None,
+        poll_interval_secs: None,
         name: "discover_destinations".to_owned(),
         description:
             "Enumerate channels this bot has joined + nicks it has DM'd this session (no network-wide LIST)."

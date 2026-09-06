@@ -114,6 +114,7 @@ mod tests {
             actions: vec![ActionDecl {
                 read_only: false,
                 destructive: None,
+                poll_interval_secs: None,
                 name: "call_api".into(),
                 description: "call an api".into(),
                 input_schema: None,

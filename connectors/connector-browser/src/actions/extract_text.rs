@@ -8,6 +8,7 @@ pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: true,
         destructive: None,
+        poll_interval_secs: None,
         name: "extract_text".to_owned(),
         description: "Extract text content from an element by CSS selector.".to_owned(),
         input_schema: Some(serde_json::json!({

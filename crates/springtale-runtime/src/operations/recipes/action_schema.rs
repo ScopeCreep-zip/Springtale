@@ -124,6 +124,7 @@ mod tests {
             output_schema: None,
             read_only: false,
             destructive: None,
+            poll_interval_secs: None,
         }]
     }
 
@@ -193,6 +194,7 @@ mod tests {
             output_schema: None,
             read_only: false,
             destructive: None,
+            poll_interval_secs: None,
         };
         let mut params = serde_json::Map::new();
         params.insert(

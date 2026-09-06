@@ -18,6 +18,7 @@ pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: true,
         destructive: None,
+        poll_interval_secs: None,
         name: "wait_for_selector".to_owned(),
         description: "Wait for a CSS selector to appear in the DOM, up to `timeout_ms` \
              (default 5000). Returns `{ found: bool }`. Does not error on \

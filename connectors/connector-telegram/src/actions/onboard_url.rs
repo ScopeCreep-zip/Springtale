@@ -32,6 +32,7 @@ pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: true,
         destructive: None,
+        poll_interval_secs: None,
         name: "onboard_url".to_owned(),
         description: "Build a `https://t.me/<bot>?start=<payload>` deep link. The user \
              taps the link, Telegram sends `/start <payload>` to the bot, and \

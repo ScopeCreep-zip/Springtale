@@ -8,6 +8,7 @@ pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: false,
         destructive: None,
+        poll_interval_secs: None,
         name: "send_message".to_owned(),
         description: "Send a message — routes to send_dm (if chat_id is a pubkey) or publish_note."
             .to_owned(),

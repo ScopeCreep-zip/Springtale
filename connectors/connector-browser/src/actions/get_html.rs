@@ -14,6 +14,7 @@ pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: true,
         destructive: None,
+        poll_interval_secs: None,
         name: "get_html".to_owned(),
         description:
             "Return the full rendered HTML of the current page (post-JavaScript execution). \

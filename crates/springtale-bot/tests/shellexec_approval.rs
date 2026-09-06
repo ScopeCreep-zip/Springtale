@@ -72,6 +72,7 @@ impl ShellLikeConnector {
                     output_schema: None,
                     read_only: false,
                     destructive: None,
+                    poll_interval_secs: None,
                 }],
                 data_disclosure: vec![],
                 roles: vec![],

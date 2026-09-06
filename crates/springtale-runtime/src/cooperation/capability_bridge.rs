@@ -539,6 +539,7 @@ mod tests {
                     actions: vec![ActionDecl {
                         read_only: false,
                         destructive: None,
+                        poll_interval_secs: None,
                         name: "echo".into(),
                         description: "echo".into(),
                         input_schema: None,

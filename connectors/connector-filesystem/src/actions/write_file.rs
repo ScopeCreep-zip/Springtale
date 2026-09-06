@@ -11,6 +11,7 @@ pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: false,
         destructive: None,
+        poll_interval_secs: None,
         name: "write_file".to_owned(),
         description: "Write content to a file. Path must be within the write allow-list."
             .to_owned(),

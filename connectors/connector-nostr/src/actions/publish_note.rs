@@ -8,6 +8,7 @@ pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: false,
         destructive: None,
+        poll_interval_secs: None,
         name: "publish_note".to_owned(),
         description: "Publish a public text note (kind 1) to connected relays.".to_owned(),
         input_schema: Some(serde_json::json!({

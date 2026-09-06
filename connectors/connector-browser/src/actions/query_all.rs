@@ -18,6 +18,7 @@ pub fn declaration() -> ActionDecl {
     ActionDecl {
         read_only: true,
         destructive: None,
+        poll_interval_secs: None,
         name: "query_all".to_owned(),
         description: "Return every element matching a CSS selector with its text, outer HTML, \
              tag name, and full attribute map. Empty array when nothing matches."
