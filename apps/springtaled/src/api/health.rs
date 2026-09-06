@@ -21,7 +21,7 @@ pub async fn ready(State(state): State<AppState>) -> impl IntoResponse {
     if !state.is_ready() {
         return (
             StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({ "status": "booting" })),
+            Json(serde_json::json!({ "status": "booting", "locked": false })),
         );
     }
 
@@ -34,6 +34,10 @@ pub async fn ready(State(state): State<AppState>) -> impl IntoResponse {
             Json(serde_json::json!({
                 "status": "ready",
                 "store": "ok",
+                // Reaching this handler at all means the daemon is
+                // unlocked — the outer lock router answers `/ready`
+                // itself while the vault is closed (plan 6.10).
+                "locked": false,
             })),
         )
     } else {
@@ -42,6 +46,7 @@ pub async fn ready(State(state): State<AppState>) -> impl IntoResponse {
             Json(serde_json::json!({
                 "status": "degraded",
                 "store": "error",
+                "locked": false,
             })),
         )
     }

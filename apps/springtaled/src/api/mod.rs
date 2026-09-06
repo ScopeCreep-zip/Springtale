@@ -17,6 +17,7 @@ pub mod extractors;
 pub mod fixes;
 pub mod formations;
 pub mod health;
+pub mod lock;
 pub mod mcp;
 pub mod memory;
 pub mod onboarding;
@@ -62,6 +63,50 @@ use tower_http::timeout::TimeoutLayer;
 use tower_http::trace::TraceLayer;
 
 use state::AppState;
+
+/// Content-Security-Policy for every API response.
+const CSP: &str = "default-src 'self'; script-src 'self'; \
+                   style-src 'self' 'unsafe-inline'; \
+                   connect-src 'self' http://127.0.0.1:*; \
+                   img-src 'self' data:; \
+                   frame-ancestors 'none'";
+
+/// Features the dashboard never needs, denied for every response.
+const PERMISSIONS_POLICY: &str =
+    "camera=(), microphone=(), geolocation=(), accelerometer=(), gyroscope=()";
+
+/// Apply the response security headers (ARCHITECTURE.md §9 dashboard
+/// security audit).
+///
+/// Generic over the router's state so the same stack covers both the
+/// management API and the outer lock router, which is stateful in
+/// `RuntimeGuard` and answers while the vault is closed.
+pub(crate) fn security_headers<S>(router: Router<S>) -> Router<S>
+where
+    S: Clone + Send + Sync + 'static,
+{
+    router
+        .layer(SetResponseHeaderLayer::overriding(
+            header::X_FRAME_OPTIONS,
+            header::HeaderValue::from_static("DENY"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::HeaderName::from_static("content-security-policy"),
+            header::HeaderValue::from_static(CSP),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::HeaderName::from_static("x-content-type-options"),
+            header::HeaderValue::from_static("nosniff"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::HeaderName::from_static("referrer-policy"),
+            header::HeaderValue::from_static("no-referrer"),
+        ))
+        .layer(SetResponseHeaderLayer::overriding(
+            header::HeaderName::from_static("permissions-policy"),
+            header::HeaderValue::from_static(PERMISSIONS_POLICY),
+        ))
+}
 
 /// Build the complete axum router for the management API.
 ///
@@ -335,41 +380,12 @@ pub fn build_router(state: AppState) -> Router {
         .merge(mcp_endpoint)
         .layer(RequestBodyLimitLayer::new(1024 * 1024));
 
-    Router::new()
-        .merge(limited)
-        .merge(install_wasm)
+    let hardened = security_headers(Router::new().merge(limited).merge(install_wasm));
+
+    hardened
         .layer(
             ServiceBuilder::new()
                 .layer(TraceLayer::new_for_http())
-                // Security headers (ARCHITECTURE.md §9 dashboard security audit)
-                .layer(SetResponseHeaderLayer::overriding(
-                    header::X_FRAME_OPTIONS,
-                    header::HeaderValue::from_static("DENY"),
-                ))
-                .layer(SetResponseHeaderLayer::overriding(
-                    header::HeaderName::from_static("content-security-policy"),
-                    header::HeaderValue::from_static(
-                        "default-src 'self'; script-src 'self'; \
-                         style-src 'self' 'unsafe-inline'; \
-                         connect-src 'self' http://127.0.0.1:*; \
-                         img-src 'self' data:; \
-                         frame-ancestors 'none'",
-                    ),
-                ))
-                .layer(SetResponseHeaderLayer::overriding(
-                    header::HeaderName::from_static("x-content-type-options"),
-                    header::HeaderValue::from_static("nosniff"),
-                ))
-                .layer(SetResponseHeaderLayer::overriding(
-                    header::HeaderName::from_static("referrer-policy"),
-                    header::HeaderValue::from_static("no-referrer"),
-                ))
-                .layer(SetResponseHeaderLayer::overriding(
-                    header::HeaderName::from_static("permissions-policy"),
-                    header::HeaderValue::from_static(
-                        "camera=(), microphone=(), geolocation=(), accelerometer=(), gyroscope=()",
-                    ),
-                ))
                 // NOTE: HSTS (Strict-Transport-Security) deliberately omitted.
                 // RFC 6797 §8.1: HSTS MUST NOT be sent over plain HTTP.
                 // springtaled binds 127.0.0.1 without TLS by default.

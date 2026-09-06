@@ -113,6 +113,8 @@ impl TestApp {
             engine,
             ai_adapter,
             bot_settings: Arc::new(arc_swap::ArcSwap::from_pointee(Default::default())),
+            tasks: springtale_runtime::TaskHandles::new(),
+            activity: springtale_runtime::ActivityClock::new(),
             sentinel,
             wasm_engine,
             wasm_tier_cache,
@@ -165,6 +167,7 @@ impl TestApp {
             trigger_registry,
             chat_tx,
             stream_tickets: Arc::new(Mutex::new(HashMap::new())),
+            lock_signal: tokio::sync::watch::channel(false).0,
         };
 
         Self {

@@ -54,6 +54,11 @@ fn default_context_window() -> usize {
     50
 }
 
+/// Five minutes, matching the `vault_timeout_secs` this setting replaced.
+fn default_auto_lock_secs() -> u64 {
+    300
+}
+
 impl Default for BotPersona {
     fn default() -> Self {
         Self {
@@ -78,6 +83,16 @@ pub struct BotSettings {
     /// actions only; see `springtale_ai::ToolPolicy`).
     #[serde(default)]
     pub tool_policy: springtale_ai::ToolPolicy,
+    /// Idle seconds before the daemon locks itself: drops the runtime,
+    /// closes the database and zeroizes the vault key (plan 6.10).
+    /// `0` disables auto-lock. Default: 300.
+    ///
+    /// Moved here from `springtale_bot::BotConfig::vault_timeout_secs`,
+    /// which nothing read and which could only be changed by editing a
+    /// TOML file and restarting — exactly what the product model
+    /// forbids of a setting.
+    #[serde(default = "default_auto_lock_secs")]
+    pub auto_lock_secs: u64,
 }
 
 impl Default for BotSettings {
@@ -86,6 +101,7 @@ impl Default for BotSettings {
             persona: BotPersona::default(),
             context_window: default_context_window(),
             tool_policy: springtale_ai::ToolPolicy::default(),
+            auto_lock_secs: default_auto_lock_secs(),
         }
     }
 }
@@ -180,5 +196,19 @@ mod tests {
         let settings = get(&*state.store).await.expect("defaults");
         assert_eq!(settings.persona.prefix, '/');
         assert_eq!(settings.context_window, 50);
+        assert_eq!(settings.auto_lock_secs, 300);
+    }
+
+    #[tokio::test]
+    async fn test_auto_lock_secs_round_trips() {
+        let state = boot().await;
+        let settings = BotSettings {
+            auto_lock_secs: 30,
+            ..Default::default()
+        };
+        set(&state, settings).await.expect("store settings");
+        let read_back = get(&*state.store).await.expect("read back");
+        assert_eq!(read_back.auto_lock_secs, 30);
+        assert_eq!(state.bot_settings.load().auto_lock_secs, 30);
     }
 }

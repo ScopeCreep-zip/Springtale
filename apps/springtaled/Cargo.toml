@@ -10,11 +10,14 @@ default = []
 # Test-only fixture (`src/test_harness`), shared by the springtaled and
 # springtale-cli test suites. Never in `default`: a normal build must not
 # compile an in-memory AppState builder into the daemon.
-test-harness = ["dep:arc-swap"]
+test-harness = []
 
 [dependencies]
 tokio = { workspace = true }
 tokio-stream = { workspace = true }
+# `take_until` — tokio-stream has no equivalent, and the SSE streams must
+# end on lock (plan 6.10). Already a workspace dependency.
+futures-util = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
 anyhow = { workspace = true }
@@ -60,8 +63,9 @@ twilight-http = { workspace = true }
 twilight-model = { workspace = true }
 irc = { workspace = true }
 secrecy = { workspace = true }
+zeroize = { workspace = true }
 rand = { workspace = true }
-arc-swap = { workspace = true, optional = true }
+arc-swap = { workspace = true }
 nostr-sdk = { workspace = true }
 
 [dev-dependencies]
@@ -70,7 +74,6 @@ nostr-sdk = { workspace = true }
 springtaled = { path = ".", features = ["test-harness"] }
 tokio = { workspace = true, features = ["test-util"] }
 http-body-util = "0.1"
-arc-swap = { workspace = true }
 # event_recipe_e2e: exercises a real connector's normalize_event against
 # recorded provider payloads + the real recipe dispatch chain.
 connector-github = { workspace = true }

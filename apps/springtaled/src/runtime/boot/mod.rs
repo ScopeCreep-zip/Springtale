@@ -2,20 +2,27 @@ mod bot;
 mod crypto;
 mod formations;
 pub mod options;
+pub mod pipeline;
 mod sentinel;
 mod transport;
 
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use secrecy::SecretString;
 
 use crate::api;
+use crate::api::lock::{Live, RebuildFuture, RuntimeGuard};
 use crate::config::SpringtaleConfig;
 
 /// Boot the springtaled daemon.
 ///
 /// Executes the ordered startup sequence from the architecture doc (§8.1).
 /// Each step must succeed before the next. Errors are fatal.
+///
+/// Steps 2 through 8 live in [`pipeline::build_live`] rather than here,
+/// because `POST /vault/unlock` runs exactly the same sequence after a
+/// lock has dropped the previous one (plan 6.10).
 pub async fn boot(
     config: SpringtaleConfig,
     connector_configs: std::collections::HashMap<String, serde_json::Value>,
@@ -42,176 +49,43 @@ pub async fn boot(
     // are moved into RuntimeConfig, the rest stays available by name).
     let SpringtaleConfig {
         ephemeral,
-        store: store_config,
+        store,
         crypto: crypto_config,
-        transport: transport_config,
+        transport,
         api: api_config,
         heartbeat_interval_secs,
         sentinel,
     } = config;
 
-    // ── Step 2: Initialize crypto vault (before runtime, no dependencies) ──
-    let (vault, keypair, api_token_hash, db_key_hex) =
-        crypto::init_crypto(ephemeral, &crypto_config, options.passphrase_stdin)?;
-
-    // ── Step 3: Initialize shared runtime (store + engine + registry + AI + sentinel + canvas) ──
-    let runtime_config = springtale_runtime::RuntimeConfig {
-        store: springtale_runtime::config::StoreConfig {
-            path: store_config.path.clone(),
-            ephemeral,
-            encryption_key_hex: if ephemeral { None } else { Some(db_key_hex) },
-            retention_days: store_config.retention_days,
-        },
+    let ctx = Arc::new(pipeline::BootContext {
+        ephemeral,
+        store,
+        crypto: crypto_config,
+        transport,
+        api: api_config,
+        heartbeat_interval_secs,
         sentinel,
         connector_configs,
-        // Default cooperation config is single-process in-memory gossip.
-        // Cross-process (chitchat) is opt-in via springtaled.toml:
-        //     [cooperation]
-        //     cross_process = true
-        //     chitchat_listen_addr = "127.0.0.1:18000"
-        //     chitchat_seeds = ["127.0.0.1:18001"]
-        cooperation: springtale_runtime::config::CooperationConfig::default(),
-    };
-    // Formation command channel: sender goes to runtime (operations send commands),
-    // receiver goes to bot (event loop materializes/removes formations).
-    let (formation_cmd_tx, formation_cmd_rx) =
-        tokio::sync::mpsc::channel::<springtale_cooperation::command::FormationCommand>(32);
-    // Kept for restoring persisted formations after `init_bot` spawns the
-    // event loop that owns `formation_cmd_rx` below (§6.11 / finding 119).
-    let formation_cmd_tx_for_restore = formation_cmd_tx.clone();
-
-    // Create the shared formations handle BEFORE runtime init.
-    // The BotBuilder will use this same Arc, and BotFormationReader reads from it.
-    let formations_handle = Arc::new(tokio::sync::RwLock::new(Vec::new()));
-    let live_reader: Option<Arc<dyn springtale_runtime::LiveFormationReader>> = Some(Arc::new(
-        bot::BotFormationReader::new(formations_handle.clone()),
-    ));
-
-    // springtaled is the headless daemon — no UI gate to prompt the
-    // user, so leave `approval_gate: None`. The sentinel falls back
-    // to `DefaultDenyApprovalGate` per W1.F design. The desktop wraps
-    // springtaled via Tauri and supplies its own `ChannelApprovalGate`.
-    let runtime = springtale_runtime::init(&runtime_config, formation_cmd_tx, live_reader, None)
-        .await
-        .context("failed to initialize runtime")?;
-
-    // ── Step 3b: Verify audit-log row-hash chain ──
-    // Tamper-evident audit trail (Phase-7 Finding B): walk every row
-    // in `audit_trail`, recompute the SHA-256 chain, and fail closed
-    // on any mismatch. The chain's genesis is bound to the vault
-    // identity — a different vault on the same SQLite or a tampered
-    // row both refuse to start.
-    sentinel::verify_audit_chain(&runtime.store, &keypair)
-        .await
-        .context("audit chain verification failed at startup")?;
-
-    // ── Step 4: Initialize transport ──
-    let _transport = transport::init_transport(&transport_config, &keypair).await?;
-
-    // ── Step 5/6: Start scheduler + job queue + trigger event loop ──
-    // Shared bootstrap with the desktop app (CLAUDE.md: "The desktop
-    // app IS springtaled with a GUI. Same runtime underneath."). Both
-    // surfaces now drive identical cron/fs_watcher/queue/event-loop
-    // wiring from `springtale_runtime::embedded::bootstrap`.
-    let springtale_runtime::EmbeddedBootHandle {
-        scheduler: embedded_scheduler,
-        heartbeat_monitor,
-    } = springtale_runtime::bootstrap_embedded(&runtime, heartbeat_interval_secs)
-        .await
-        .map_err(|e| anyhow::anyhow!("scheduler bootstrap failed: {e}"))?;
-    let trigger_tx = embedded_scheduler.trigger_tx.clone();
-
-    // ── Step 7: Initialize bot + connector gateways ──
-    // Chat ingress lives on the runtime (plan 6.4): connector chat loops
-    // are wired off the registry, so the daemon only takes the receiving
-    // end for the bot and clones the sender for webhook ingress.
-    let bot_msg_rx = runtime
-        .take_chat_rx()
-        .await
-        .context("runtime chat receiver already taken")?;
-    let api_bot_msg_tx = runtime.chat_tx.clone();
-    // W5 in-app chat broadcast — created here so both the bot response
-    // dispatcher (producer) and AppState's `GET /chat/stream` (consumers)
-    // share the same channel.
-    let (chat_tx, _chat_rx) = tokio::sync::broadcast::channel::<api::chat::ChatStreamMessage>(256);
-    let bot_handle = bot::init_bot(
-        &runtime,
-        embedded_scheduler.clone(),
-        bot::BotChannels {
-            bot_msg_rx,
-            chat_tx: chat_tx.clone(),
-        },
-        formation_cmd_rx,
-        formations_handle,
-    )
-    .await?;
-
-    // ── Step 7a2: Restore formations persisted from a previous run ──
-    // `init_bot` has already spawned the event loop that owns
-    // `formation_cmd_rx`, so these sends queue behind it rather than
-    // blocking boot (§6.11 / finding 119).
-    let formations_restored =
-        formations::restore_formations(&runtime.store, &formation_cmd_tx_for_restore).await?;
-    tracing::info!(
-        formations_restored,
-        "formation restore step complete at boot"
-    );
-
-    // ── Step 7b: ConnectorEvent handlers are wired inside
-    // `bootstrap_embedded` (shared with desktop), which publishes the
-    // registry on `RuntimeState`. Clone it for AppState so the rule CRUD
-    // handlers attach/detach through the same instance.
-    let trigger_registry = runtime.trigger_registry.get().cloned().unwrap_or_else(|| {
-        springtale_runtime::TriggerRegistry::new(trigger_tx.clone(), runtime.store.clone())
     });
 
-    // ── Step 7c: Start data retention purge (if configured) ──
-    if let Some(days) = store_config.retention_days {
-        let purge_store = runtime.store.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
-            loop {
-                interval.tick().await;
-                if let Err(e) =
-                    springtale_runtime::operations::data::purge_expired_data(&*purge_store, days)
-                        .await
-                {
-                    tracing::warn!(error = %e, "data retention purge failed");
-                }
-            }
-        });
-        tracing::info!(
-            retention_days = days,
-            "data retention purge started (hourly)"
-        );
-    }
-
-    // ── Step 8: Build and start API server ──
-
-    let ready_flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
-
-    // Plan 6.7 — the runtime owns the events broadcast so runtime-side
-    // announcers (approval gate) reach `GET /events/stream`.
-    let event_tx = runtime.event_tx.clone();
-
-    let state = api::state::AppState {
-        runtime: runtime.clone(),
-        api_token_hash,
-        ready: ready_flag.clone(),
-        trigger_tx: trigger_tx.clone(),
-        scheduler: embedded_scheduler,
-        rate_limit_per_sec: u64::from(api_config.rate_limit_per_sec),
-        event_tx,
-        heartbeat_monitor,
-        trigger_registry,
-        bot_msg_tx: api_bot_msg_tx,
-        chat_tx,
-        stream_tickets: std::sync::Arc::new(tokio::sync::Mutex::new(
-            std::collections::HashMap::new(),
-        )),
+    // ── Steps 2–8: open the vault and build the world ──
+    // The passphrase is read once here and zeroized on drop; an unlock
+    // supplies its own from the request body.
+    let live = {
+        let passphrase = crypto::read_passphrase(options.passphrase_stdin)?;
+        pipeline::build_live(&ctx, &passphrase).await?
     };
 
-    let router = api::build_router(state);
+    // ── Step 8b: the lock ──
+    // The router served below is the OUTER one: `GET /health`,
+    // `GET /ready` and `POST /vault/unlock` always answer, everything
+    // else is forwarded to the live router or refused with 503. Locking
+    // drops `Live` — and with it the store handle and the vault key —
+    // without the process exiting.
+    let guard = RuntimeGuard::new(live, rebuild_from(ctx));
+    let auto_lock = guard.spawn_auto_lock();
+    let router = api::lock::build_outer_router(guard.clone());
+
     let listener = tokio::net::TcpListener::bind(&bind_addr)
         .await
         .with_context(|| format!("failed to bind API to {bind_addr}"))?;
@@ -223,7 +97,6 @@ pub async fn boot(
     tracing::info!(bind = %bound, "management API listening");
 
     // ── Step 9: Signal readiness ──
-    ready_flag.store(true, std::sync::atomic::Ordering::Release);
     // The desktop sidecar (plan 2.1) blocks on this exact line to learn
     // the port. Process supervisors that only matched the old bare
     // `READY` still match the prefix.
@@ -236,29 +109,39 @@ pub async fn boot(
 
     // ── Run: API server (cron + queue + event loop run inside the
     //         shared `bootstrap_embedded` from springtale-runtime) ──
-    let api_handle = tokio::spawn(async move {
-        if let Err(e) = axum::serve(listener, router)
-            .with_graceful_shutdown(crate::shutdown::shutdown_signal())
-            .await
-        {
-            tracing::error!(error = %e, "API server error");
-        }
-    });
-
-    // Wait for shutdown
-    tokio::select! {
-        _ = api_handle => tracing::info!("API server stopped"),
-        _ = bot_handle => tracing::info!("bot event loop stopped"),
+    //
+    // Only the shutdown signal ends this. The bot event loop stopping
+    // no longer takes the daemon down with it: after a lock there is no
+    // bot, and the daemon has to stay up to accept the unlock.
+    if let Err(e) = axum::serve(listener, router)
+        .with_graceful_shutdown(crate::shutdown::shutdown_signal())
+        .await
+    {
+        tracing::error!(error = %e, "API server error");
     }
+    tracing::info!("API server stopped");
 
-    // Signal every connector chat loop (Telegram polling, Discord, IRC,
-    // ...) to drain its in-flight work and exit. Without this, tasks that
-    // own persistent WebSocket/polling loops keep running until the
-    // runtime is dropped, which can leave outbound messages half-sent.
-    springtale_runtime::operations::connectors::unwire_all_chat(&runtime);
+    auto_lock.abort();
 
-    // Cleanup
-    drop(vault);
+    // Shutdown is a lock: it signals every connector chat loop
+    // (Telegram polling, Discord, IRC, ...) to drain its in-flight work
+    // and exit, stops the scheduler, ends the background tasks, and
+    // zeroizes the vault key — the same teardown `POST /vault/lock`
+    // performs, so the two paths cannot drift.
+    guard.lock().await;
+
     tracing::info!("springtaled shutdown complete");
     Ok(())
+}
+
+/// The unlock hook: re-run the pipeline over a caller-supplied passphrase.
+fn rebuild_from(ctx: Arc<pipeline::BootContext>) -> api::lock::Rebuild {
+    Arc::new(move |passphrase: SecretString| -> RebuildFuture {
+        let ctx = ctx.clone();
+        Box::pin(async move {
+            let bytes = api::lock::expose_passphrase(&passphrase);
+            let live: Live = pipeline::build_live(&ctx, bytes).await?;
+            Ok(live)
+        })
+    })
 }

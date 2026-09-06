@@ -107,6 +107,35 @@ impl EmbeddedScheduler {
         }
     }
 
+    /// Stop every trigger this scheduler owns — used when the daemon
+    /// locks (plan 6.10). Cancels all cron jobs and drops every
+    /// filesystem watch, so no rule can fire while the vault is
+    /// closed. Idempotent, and reversible only by a fresh
+    /// [`bootstrap`]: unlock rebuilds the runtime from scratch.
+    pub async fn pause(&self) {
+        let cancelled = {
+            let mut cron = self.cron.lock().await;
+            let n = cron.list().len();
+            cron.cancel_all();
+            n
+        };
+        let unwatched = {
+            let mut watcher = self.fs_watcher.lock().await;
+            let paths: Vec<std::path::PathBuf> = watcher.watched_paths().to_vec();
+            for path in &paths {
+                if let Err(e) = watcher.unwatch(path) {
+                    tracing::warn!(path = %path.display(), error = %e, "failed to unwatch on pause");
+                }
+            }
+            paths.len()
+        };
+        tracing::info!(
+            cron_cancelled = cancelled,
+            paths_unwatched = unwatched,
+            "scheduler paused"
+        );
+    }
+
     /// Cancel a previously-registered trigger. Idempotent —
     /// unscheduling something that was never scheduled is a no-op.
     pub async fn unschedule(&self, rule: &Rule) {
@@ -265,7 +294,7 @@ pub async fn bootstrap(
             Ok(())
         })
     }));
-    tokio::spawn(async move {
+    runtime.tasks.spawn(async move {
         if let Err(e) = consumer.run().await {
             tracing::error!(error = %e, "job consumer error");
         }
@@ -279,7 +308,7 @@ pub async fn bootstrap(
     let engine = runtime.engine.clone();
     let normalize_registry = runtime.registry.clone();
     let event_producer = producer.clone();
-    tokio::spawn(async move {
+    runtime.tasks.spawn(async move {
         let mut rx = trigger_rx;
         while let Some(mut event) = rx.recv().await {
             // Anti-corruption boundary: every ConnectorEvent entering the

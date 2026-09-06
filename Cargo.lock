@@ -6085,6 +6085,7 @@ dependencies = [
  "connector-slack",
  "connector-telegram",
  "figment",
+ "futures-util",
  "garde",
  "hex",
  "hmac",
@@ -6124,6 +6125,7 @@ dependencies = [
  "twilight-http",
  "twilight-model",
  "uuid",
+ "zeroize",
 ]
 
 [[package]]

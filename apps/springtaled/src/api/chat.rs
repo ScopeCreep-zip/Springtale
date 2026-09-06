@@ -105,5 +105,7 @@ pub async fn stream(
             }
             Err(_) => None, // lagged subscriber — skip
         });
-    Sse::new(stream).keep_alive(KeepAlive::default())
+    // Ends on lock so the connection releases its `AppState` clone.
+    Sse::new(futures_util::StreamExt::take_until(stream, state.locked()))
+        .keep_alive(KeepAlive::default())
 }

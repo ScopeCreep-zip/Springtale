@@ -9,7 +9,9 @@
 //! compiles it.
 
 pub mod app;
+pub mod lock;
 pub mod server;
 
 pub use app::TestApp;
+pub use lock::{TEST_PASSPHRASE, TestGuard};
 pub use server::TestServer;

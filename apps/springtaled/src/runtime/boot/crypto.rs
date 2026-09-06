@@ -1,18 +1,39 @@
 use anyhow::{Context, Result};
+use zeroize::Zeroizing;
 
 use springtale_crypto::identity::keypair::Keypair;
 use springtale_crypto::vault::store::Vault;
 
+/// What [`init_crypto`] produces: the open vault, this node's identity,
+/// and the two values derived from the passphrase.
+pub(super) struct CryptoBoot {
+    pub(super) vault: Vault,
+    pub(super) keypair: Keypair,
+    pub(super) api_token_hash: [u8; 32],
+    pub(super) db_key_hex: String,
+}
+
+/// Read the vault passphrase the way boot does — stdin, Docker secret
+/// file, environment, or an interactive prompt.
+///
+/// Split out from [`init_crypto`] because `POST /vault/unlock` supplies
+/// the passphrase from the request body instead: there is no terminal
+/// to prompt at, and the daemon has been running for hours.
+pub(super) fn read_passphrase(passphrase_stdin: bool) -> Result<Zeroizing<Vec<u8>>> {
+    get_passphrase(passphrase_stdin).map(Zeroizing::new)
+}
+
 /// Initialize crypto vault, load identity keypair, derive API token hash.
-/// Returns (vault, keypair, api_token_hash, db_encryption_key_hex).
+///
+/// Takes the passphrase rather than reading it, so boot and unlock run
+/// exactly the same code over a passphrase from different sources.
 pub(super) fn init_crypto(
     ephemeral: bool,
     crypto_config: &crate::config::CryptoConfig,
-    passphrase_stdin: bool,
-) -> Result<(Vault, Keypair, [u8; 32], String)> {
-    let passphrase = get_passphrase(passphrase_stdin)?;
+    passphrase: &[u8],
+) -> Result<CryptoBoot> {
     let (vault, keypair) = if ephemeral {
-        let mut vault = springtale_crypto::vault::store::Vault::create_ephemeral(&passphrase)
+        let mut vault = springtale_crypto::vault::store::Vault::create_ephemeral(passphrase)
             .context("failed to create ephemeral vault")?;
         let keypair = springtale_crypto::identity::keypair::Keypair::generate()
             .context("failed to generate ephemeral keypair")?;
@@ -28,7 +49,7 @@ pub(super) fn init_crypto(
                 format!("failed to create vault directory: {}", parent.display())
             })?;
         }
-        open_or_create_vault(&crypto_config.vault_path, &passphrase)?
+        open_or_create_vault(&crypto_config.vault_path, passphrase)?
     };
     let node_id = keypair.node_id();
     tracing::info!(node_id = %hex::encode(node_id.as_bytes()), "identity loaded");
@@ -44,10 +65,15 @@ pub(super) fn init_crypto(
     // Both live in springtale-crypto::token so init.rs and the daemon
     // agree on the exact derivation (historical bug: trace.rs had its
     // own copy with key/msg swapped).
-    let api_token_hash = springtale_crypto::token::derive_api_token_hash(&passphrase);
-    let db_key_hex = springtale_crypto::token::derive_db_encryption_key_hex(&passphrase);
+    let api_token_hash = springtale_crypto::token::derive_api_token_hash(passphrase);
+    let db_key_hex = springtale_crypto::token::derive_db_encryption_key_hex(passphrase);
 
-    Ok((vault, keypair, api_token_hash, db_key_hex))
+    Ok(CryptoBoot {
+        vault,
+        keypair,
+        api_token_hash,
+        db_key_hex,
+    })
 }
 
 /// Get the vault passphrase from Docker secret file, environment, or interactive prompt.

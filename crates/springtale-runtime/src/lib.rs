@@ -34,6 +34,7 @@ extern crate connector_signal;
 extern crate connector_slack;
 extern crate connector_telegram;
 
+pub mod activity;
 pub mod approval;
 pub mod client_config;
 pub mod config;
@@ -48,9 +49,11 @@ pub mod notification;
 pub mod operations;
 pub mod quota;
 pub mod state;
+pub mod tasks;
 pub mod triggers;
 pub mod utterance_ring;
 
+pub use activity::ActivityClock;
 pub use approval::{
     ApprovalDecision, ApprovalError, ApprovalGate, ApprovalRequest, ApprovalRequestId,
     DEFAULT_APPROVAL_TIMEOUT, DefaultDenyApprovalGate,
@@ -65,4 +68,5 @@ pub use init::init;
 pub use notification::NotificationEvent;
 pub use quota::SqliteTokenQuota;
 pub use state::{LiveFormationReader, RuntimeState};
+pub use tasks::TaskHandles;
 pub use triggers::{TriggerRegistry, activate_rule, deactivate_rule, wire_connector_events};

@@ -21,7 +21,7 @@ A minimal config is **empty** — every section has safe defaults. You only writ
   │
   │   (AI adapters are not TOML — per colony/formation/agent, §7)
   │
-  ├── [bot]                context_window, vault_timeout_secs  ─── §8
+  ├── [bot]                (settings, not TOML — see §8)   ─── §8
   │     └── [bot.persona]  name, tone, prefix          ─── §8.1
   │
   ├── [sentinel]           rate limits, breaker, dead-man ─── §9
@@ -143,7 +143,7 @@ Bot runtime configuration. If absent, the bot is disabled — rules and connecto
 | Key | Type | Default | Description |
 |---|---|---|---|
 | `context_window` | `usize` | `50` | Conversation context window size (entries kept in memory for AI fallback) |
-| `vault_timeout_secs` | `u64` | `300` | Auto-lock timeout in seconds |
+| ~~`vault_timeout_secs`~~ | — | — | **Removed (plan 6.10).** Auto-lock is now the `auto_lock_secs` bot setting (`GET|PUT /bot/settings`, default `300`, `0` = never) — a setting the UI can change, not a file you edit and restart for. |
 | `tool_policy` | `ToolPolicy` | default mode | Which connector actions the AI may invoke as tools (OWASP LLM06). Fields: `allow` (glob list, e.g. `["connector-github__read_*"]`), `deny` (glob list, always wins), `max_iterations` (0 = default 5), `writes_with_approval` (bool). With `allow` empty (**default mode**), only `read_only` actions are callable — mutating actions stay invisible unless `writes_with_approval = true`, which routes each through the blocking approval gate. A non-empty `allow` switches to explicit mode: exactly the listed tools. |
 | `[bot.persona]` | table | (defaults) | Persona block |
 
@@ -405,7 +405,6 @@ update_mode = "polling"
 
 [bot]
 context_window = 50
-vault_timeout_secs = 300
 persona.name = "Spring"
 persona.tone = "neutral"
 persona.prefix = "/"

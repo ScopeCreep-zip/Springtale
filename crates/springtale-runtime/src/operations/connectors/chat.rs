@@ -48,8 +48,12 @@ pub async fn wire_chat(state: &RuntimeState, name: &str) -> Result<(), Operation
     let bot_tx = state.chat_tx.clone();
     let trigger_registry = state.trigger_registry.clone();
     let fanout_name = name.to_owned();
+    // Inbound chat counts as user activity, so the auto-lock timer
+    // (plan 6.10) does not close the vault under an active conversation.
+    let activity = state.activity.clone();
     tokio::spawn(async move {
         while let Some(msg) = raw_rx.recv().await {
+            activity.touch();
             if !msg.rule_events.is_empty()
                 && let Some(registry) = trigger_registry.get()
             {

@@ -10,7 +10,7 @@ use springtale_store::SqliteBackend;
 use crate::error::BotError;
 use springtale_connector::chat::ChatMessage;
 
-use crate::runtime::lifecycle::{BotBuilder, BotConfig, OutgoingResponse};
+use crate::runtime::lifecycle::{BotBuilder, OutgoingResponse};
 
 /// A headless bot for testing. No Telegram, no network.
 ///
@@ -26,14 +26,9 @@ pub struct HeadlessBot {
 }
 
 impl HeadlessBot {
-    /// Create a headless bot with in-memory SQLite and default config.
+    /// Create a headless bot with in-memory SQLite and default settings.
     pub async fn new() -> Result<Self, BotError> {
-        Self::with_config(BotConfig::default()).await
-    }
-
-    /// Create a headless bot with a custom config.
-    pub async fn with_config(config: BotConfig) -> Result<Self, BotError> {
-        Self::with_config_and_deployer(config, None).await
+        Self::with_deployer(None).await
     }
 
     /// Create a headless bot with custom bot settings (persona, context
@@ -42,7 +37,6 @@ impl HeadlessBot {
         settings: springtale_runtime::operations::bot_settings::BotSettings,
     ) -> Result<Self, BotError> {
         Self::build(
-            BotConfig::default(),
             None,
             Some(std::sync::Arc::new(arc_swap::ArcSwap::from_pointee(
                 settings,
@@ -53,15 +47,13 @@ impl HeadlessBot {
 
     /// Create a headless bot, optionally wiring a conversational-setup
     /// deploy port (tests use a mock to observe what would be deployed).
-    pub async fn with_config_and_deployer(
-        config: BotConfig,
+    pub async fn with_deployer(
         deployer: Option<crate::conversation::deploy::SharedDeployer>,
     ) -> Result<Self, BotError> {
-        Self::build(config, deployer, None).await
+        Self::build(deployer, None).await
     }
 
     async fn build(
-        config: BotConfig,
         deployer: Option<crate::conversation::deploy::SharedDeployer>,
         settings: Option<
             std::sync::Arc<
@@ -113,7 +105,6 @@ impl HeadlessBot {
             .registry(registry)
             .engine(engine)
             .sentinel(sentinel)
-            .config(config)
             .connector_rx(msg_rx)
             .rule_rx(rule_rx)
             .response_tx(response_tx)
@@ -227,10 +218,9 @@ mod tests {
     async fn test_conversational_weather_setup_no_ai_end_to_end() {
         let deployer = RecordingDeployer::default();
         let recorded = deployer.last.clone();
-        let mut bot =
-            HeadlessBot::with_config_and_deployer(BotConfig::default(), Some(Arc::new(deployer)))
-                .await
-                .unwrap();
+        let mut bot = HeadlessBot::with_deployer(Some(Arc::new(deployer)))
+            .await
+            .unwrap();
 
         // The exact order the user reported — a city NOT in any list.
         let r1 = bot
@@ -277,10 +267,9 @@ mod tests {
     async fn test_conversational_correction_before_deploy() {
         let deployer = RecordingDeployer::default();
         let recorded = deployer.last.clone();
-        let mut bot =
-            HeadlessBot::with_config_and_deployer(BotConfig::default(), Some(Arc::new(deployer)))
-                .await
-                .unwrap();
+        let mut bot = HeadlessBot::with_deployer(Some(Arc::new(deployer)))
+            .await
+            .unwrap();
 
         let _ = bot.ask("user1", "morning weather for Phoenix").await;
         let _ = bot.ask("user1", "actually make it Tucson").await;
@@ -298,10 +287,9 @@ mod tests {
     async fn test_conversational_cancel_deploys_nothing() {
         let deployer = RecordingDeployer::default();
         let recorded = deployer.last.clone();
-        let mut bot =
-            HeadlessBot::with_config_and_deployer(BotConfig::default(), Some(Arc::new(deployer)))
-                .await
-                .unwrap();
+        let mut bot = HeadlessBot::with_deployer(Some(Arc::new(deployer)))
+            .await
+            .unwrap();
 
         let _ = bot.ask("user1", "set up the morning weather").await;
         let _ = bot.ask("user1", "never mind").await;
@@ -315,10 +303,9 @@ mod tests {
     async fn test_secret_recipe_handed_off_and_no_token_in_session_store() {
         let deployer = RecordingDeployer::default();
         let recorded = deployer.last.clone();
-        let mut bot =
-            HeadlessBot::with_config_and_deployer(BotConfig::default(), Some(Arc::new(deployer)))
-                .await
-                .unwrap();
+        let mut bot = HeadlessBot::with_deployer(Some(Arc::new(deployer)))
+            .await
+            .unwrap();
 
         let r = bot
             .ask("user1", "set up a telegram echo bot")

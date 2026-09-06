@@ -83,8 +83,11 @@ pub(super) struct BotChannels {
 
 /// Initialize the bot runtime.
 ///
-/// Spawns the bot event loop and the response dispatcher. Connector chat
-/// loops are NOT started here — they follow the registry, wired by
+/// Spawns the bot event loop, the response dispatcher and the delivery
+/// forwarder, all registered on `tasks` so a lock (plan 6.10) can end
+/// them — each holds a `RuntimeState` clone, which would otherwise keep
+/// the database open and the key in memory. Connector chat loops are
+/// NOT started here: they follow the registry, wired by
 /// `springtale_runtime::operations::connectors::wire_chat` (plan 6.4).
 pub(super) async fn init_bot(
     runtime: &springtale_runtime::RuntimeState,
@@ -95,7 +98,8 @@ pub(super) async fn init_bot(
         springtale_cooperation::command::FormationCommand,
     >,
     formations_handle: Arc<RwLock<Vec<Formation>>>,
-) -> Result<tokio::task::JoinHandle<()>> {
+    tasks: &springtale_runtime::TaskHandles,
+) -> Result<()> {
     let BotChannels {
         bot_msg_rx,
         chat_tx,
@@ -140,7 +144,7 @@ pub(super) async fn init_bot(
         .context("failed to initialize bot runtime")?;
 
     // Spawn bot event loop
-    let bot_handle = tokio::spawn(async move {
+    tasks.spawn(async move {
         bot.start().await;
     });
 
@@ -150,7 +154,7 @@ pub(super) async fn init_bot(
     // synthetic and has no `send_message`, so it MUST branch here.
     let response_runtime = runtime.clone();
     let response_chat_tx = chat_tx.clone();
-    let _response_handle = tokio::spawn(async move {
+    tasks.spawn(async move {
         while let Some(response) = bot_response_rx.recv().await {
             if response.connector == crate::api::chat::IN_APP_CONNECTOR {
                 // Broadcast to in-app chat clients. A send error just means
@@ -208,7 +212,7 @@ pub(super) async fn init_bot(
     // the user's chat panel instead of vanishing into a log line.
     let notif_chat_tx = chat_tx.clone();
     let mut notif_rx = runtime.notification_tx.subscribe();
-    let _notif_handle = tokio::spawn(async move {
+    tasks.spawn(async move {
         loop {
             match notif_rx.recv().await {
                 Ok(event) => {
@@ -233,5 +237,5 @@ pub(super) async fn init_bot(
 
     tracing::info!("bot runtime started");
 
-    Ok(bot_handle)
+    Ok(())
 }
