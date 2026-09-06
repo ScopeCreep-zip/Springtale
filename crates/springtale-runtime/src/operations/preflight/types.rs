@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 /// Severity tier for an individual preflight check.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Type, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum PreflightStatus {
     /// 🔴 Deploy is blocked. The bot literally cannot run without
@@ -29,7 +29,7 @@ pub enum PreflightStatus {
 }
 
 /// One row in the preflight report.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 pub struct PreflightItem {
     /// Stable id for the row (`"secret_present:bot_token"`,
     /// `"connector_loaded:connector-telegram"`). Frontends can
@@ -49,7 +49,7 @@ pub struct PreflightItem {
 
 /// What the frontend should offer to resolve a failing check.
 /// `kind` is a stable enum so the UI maps to the right panel.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum PreflightFix {
     /// User needs to fill in a recipe input — frontend should scroll
@@ -65,7 +65,7 @@ pub enum PreflightFix {
 
 /// Full preflight report — the response body for the `preflight_recipe`
 /// command / `/recipes/{id}/preflight` route.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 pub struct PreflightReport {
     pub recipe_id: String,
     pub items: Vec<PreflightItem>,

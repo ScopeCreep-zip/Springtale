@@ -26,7 +26,7 @@ use super::library;
 use super::types::{AiConfigStep, ConnectorConfigStep, Recipe, RuleStep};
 
 /// One slot the caller can borrow from a recipe.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RecipePiece {
     Trigger { rule: RuleStep },
@@ -34,7 +34,7 @@ pub enum RecipePiece {
     AiConfig { step: AiConfigStep },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 pub struct RecipePieceSummary {
     /// `"trigger:0"`, `"connector_config:1"`, etc. — stable id the
     /// frontend uses as a list key + to request the full piece.

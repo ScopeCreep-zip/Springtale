@@ -125,7 +125,7 @@ pub async fn update_rule(
 /// module doc), rule-shaped types stay schemars-only. The Tauri
 /// command takes `serde_json::Value` and deserializes into this struct
 /// internally — the frontend learns the shape from `get_rule_schema()`.
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct CreateConnectorRuleRequest {
     pub name: String,
@@ -134,6 +134,7 @@ pub struct CreateConnectorRuleRequest {
     pub action_connector: String,
     pub action_name: String,
     #[serde(default)]
+    #[schema(value_type = Vec<Object>)]
     pub conditions: Vec<springtale_core::rule::Condition>,
     /// W6 chain composer — additional action steps run in order after the
     /// primary action. When non-empty, the rule's actions become a single
@@ -148,7 +149,7 @@ pub struct CreateConnectorRuleRequest {
 }
 
 /// One step in a W6 action chain.
-#[derive(Debug, serde::Deserialize)]
+#[derive(Debug, serde::Deserialize, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct ConnectorActionStep {
     pub action_connector: String,

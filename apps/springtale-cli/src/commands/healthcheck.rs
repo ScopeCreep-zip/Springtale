@@ -11,7 +11,9 @@ use std::time::Duration;
 
 use anyhow::{Result, anyhow};
 
-pub async fn run(base_url: &str) -> Result<()> {
+use crate::output;
+
+pub async fn run(base_url: &str, json_out: bool) -> Result<()> {
     let client = springtale_transport::safe_http::builder()
         .timeout(Duration::from_secs(3))
         .build()
@@ -24,12 +26,14 @@ pub async fn run(base_url: &str) -> Result<()> {
         .await
         .map_err(|e| anyhow!("healthcheck request: {e}"))?;
 
-    if response.status().is_success() {
-        Ok(())
-    } else {
-        Err(anyhow!(
+    if !response.status().is_success() {
+        return Err(anyhow!(
             "healthcheck failed: HTTP {}",
             response.status().as_u16()
-        ))
+        ));
     }
+    // A healthy probe stays silent for the container runtime; `--json`
+    // gives a scriptable body without changing the exit-code contract.
+    let body = serde_json::json!({ "healthy": true, "url": url });
+    output::emit_status(json_out, &body, |_| String::new())
 }

@@ -11,6 +11,12 @@ use axum::http::StatusCode;
 use springtale_runtime::operations::templates::{self, Template, TemplateError, WriteReport};
 
 /// GET /templates — every available starter.
+#[utoipa::path(
+    get, operation_id = "templates_list",
+    path = "/templates",
+    tag = "templates",
+    responses((status = 200, description = "Scaffolding templates", body = Vec<Object>))
+)]
 pub async fn list() -> Json<Vec<&'static Template>> {
     Json(templates::list().iter().collect())
 }
@@ -20,6 +26,13 @@ pub async fn list() -> Json<Vec<&'static Template>> {
 /// The daemon picks the destination directory and returns the path in
 /// the response. No `dir` field accepted — the caller cannot influence
 /// where files land (OWASP ASVS §12.3).
+#[utoipa::path(
+    post, operation_id = "templates_write",
+    path = "/templates/{name}",
+    tag = "templates",
+    params(("name" = String, Path, description = "Template name")),
+    responses((status = 200, description = "Files written", body = WriteReport))
+)]
 pub async fn write(
     AxumPath(name): AxumPath<String>,
 ) -> Result<Json<WriteReport>, (StatusCode, String)> {

@@ -10,6 +10,11 @@
 //!
 //! The old version appended bot tokens to `springtale.toml` directly.
 //! That's banned — secrets never land in user-editable TOML files.
+//!
+//! `--json` is deliberately not honoured here: `init` is an interactive
+//! wizard whose stdout is prompts the user answers on stdin, not a result
+//! document. Scripted setup goes through `springtale new <template>` plus
+//! the daemon's config routes, both of which do honour the flag.
 
 use std::collections::BTreeMap;
 use std::io::{self, Write};

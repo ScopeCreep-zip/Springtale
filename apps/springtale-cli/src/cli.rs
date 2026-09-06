@@ -353,6 +353,12 @@ pub enum SafetyAction {
     /// Turn the disguise overlay on or off.
     Disguise {
         /// `true` to activate the disguise, `false` to clear it.
+        ///
+        /// A positional `bool` derives `ArgAction::SetTrue` by default,
+        /// which clap rejects for a positional (it would take no value).
+        /// `Set` makes it the value-taking positional the help text
+        /// describes.
+        #[arg(action = clap::ArgAction::Set)]
         active: bool,
     },
     /// Set how many rapid title-bar taps trigger the panic wipe.
@@ -635,6 +641,16 @@ pub enum CryptoAction {
 mod tests {
     use super::*;
     use clap::CommandFactory;
+
+    /// clap's own consistency check over the whole tree. `build.rs`
+    /// generates completions and the man page from this same definition,
+    /// so a malformed arg (e.g. a positional `bool`, which derives
+    /// `SetTrue` and takes no value) breaks the build rather than
+    /// panicking the first user who runs the subcommand.
+    #[test]
+    fn test_cli_definition_passes_clap_debug_assert() {
+        Cli::command().debug_assert();
+    }
 
     /// Walk the whole clap tree, collecting `parent/child` verb paths.
     fn verb_paths(cmd: &clap::Command, prefix: &str, out: &mut Vec<String>) {

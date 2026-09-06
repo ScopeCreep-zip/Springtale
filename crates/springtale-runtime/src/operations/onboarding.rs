@@ -38,7 +38,10 @@ use super::config::set_config;
 use crate::error::OperationError;
 
 /// Summary of a successful `apply_platform` call.
-#[derive(Debug, Clone, Serialize, Type)]
+#[derive(Debug, Clone, Serialize, Type, utoipa::ToSchema)]
+// Distinct OpenAPI name: `operations::recipes::ApplyReport` is a
+// different shape under the same Rust type name.
+#[schema(as = OnboardingApplyReport)]
 pub struct ApplyReport {
     pub platform: &'static str,
     pub stored_key: String,

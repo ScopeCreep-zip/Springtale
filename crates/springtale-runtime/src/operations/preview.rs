@@ -28,7 +28,7 @@ use super::recipes::library;
 use super::recipes::types::{Recipe, RecipeInputs};
 
 /// One step in the comic-strip narrative.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 pub struct PreviewStep {
     /// Who is "speaking" (rule name, connector name, or "system").
     pub speaker: String,
@@ -39,7 +39,7 @@ pub struct PreviewStep {
     pub would_send_to: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 pub struct PreviewReport {
     pub recipe_id: String,
     pub steps: Vec<PreviewStep>,

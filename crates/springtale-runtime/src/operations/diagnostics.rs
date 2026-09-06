@@ -12,7 +12,7 @@ use serde::Serialize;
 use specta::Type;
 
 /// Severity of a diagnostic finding.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Type, utoipa::ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum Severity {
     /// Everything is fine.
@@ -24,7 +24,7 @@ pub enum Severity {
 }
 
 /// One diagnostic finding.
-#[derive(Debug, Clone, Serialize, Type)]
+#[derive(Debug, Clone, Serialize, Type, utoipa::ToSchema)]
 pub struct Check {
     /// Short identifier (e.g. `"config.exists"`).
     pub id: &'static str,
@@ -85,7 +85,7 @@ pub enum CallerContext {
 }
 
 /// Aggregated result of running all diagnostics.
-#[derive(Debug, Clone, Serialize, Type)]
+#[derive(Debug, Clone, Serialize, Type, utoipa::ToSchema)]
 pub struct Report {
     pub checks: Vec<Check>,
 }

@@ -10,11 +10,23 @@ use springtale_cooperation::utterance::{Utterance, UtteranceDefs};
 use crate::api::state::AppState;
 
 /// `GET /cooperation/utterances` — the def table this daemon speaks with.
+#[utoipa::path(
+    get, operation_id = "utterances_utterance_defs",
+    path = "/cooperation/utterances",
+    tag = "utterances",
+    responses((status = 200, description = "Simlish utterance definitions", body = Object))
+)]
 pub async fn utterance_defs(State(state): State<AppState>) -> Json<UtteranceDefs> {
     Json((*state.runtime.utterance_defs).clone())
 }
 
 /// `GET /cooperation/utterances/recent` — the ring, newest first (cap 1000).
+#[utoipa::path(
+    get, operation_id = "utterances_recent",
+    path = "/cooperation/utterances/recent",
+    tag = "utterances",
+    responses((status = 200, description = "Recent utterances", body = Vec<Object>))
+)]
 pub async fn recent(State(state): State<AppState>) -> Json<Vec<Utterance>> {
     Json(springtale_runtime::utterance_ring::recent(&state.runtime.utterances).await)
 }

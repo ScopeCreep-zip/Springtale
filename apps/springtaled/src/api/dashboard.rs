@@ -21,11 +21,25 @@ struct DashboardAssets;
 ///
 /// Falls back to index.html for SPA client-side routing.
 /// Mount this at `/ui/` in the router.
+#[utoipa::path(
+    get, operation_id = "dashboard_serve_dashboard",
+    path = "/ui/{path}",
+    tag = "dashboard",
+    params(("path" = String, Path, description = "Asset path under the SPA root")),
+    responses((status = 200, description = "Dashboard asset", body = String))
+)]
 pub async fn serve_dashboard(axum::extract::Path(path): axum::extract::Path<String>) -> Response {
     serve_embedded_file(&path)
 }
 
 /// Serve the dashboard index page (root of /ui/).
+#[utoipa::path(
+    get, operation_id = "dashboard_serve_dashboard_index",
+    path = "/ui",
+    tag = "dashboard",
+    security(()),
+    responses((status = 200, description = "Dashboard SPA index", body = String))
+)]
 pub async fn serve_dashboard_index() -> Response {
     serve_embedded_file("index.html")
 }

@@ -36,7 +36,7 @@ use crate::error::OperationError;
 use crate::state::RuntimeState;
 
 /// Request to send a message through a specific connector.
-#[derive(Debug, Clone, Deserialize, Type)]
+#[derive(Debug, Clone, Deserialize, Type, utoipa::ToSchema)]
 pub struct SendRequest {
     /// Connector name, e.g. `connector-telegram`.
     pub connector: String,
@@ -48,7 +48,7 @@ pub struct SendRequest {
 
 /// Outcome returned to the caller — connector-friendly message string
 /// and whatever structured output the connector produced.
-#[derive(Debug, Clone, Serialize, Type)]
+#[derive(Debug, Clone, Serialize, Type, utoipa::ToSchema)]
 pub struct SendOutcome {
     pub connector: String,
     pub channel_id: String,

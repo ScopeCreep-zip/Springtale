@@ -23,7 +23,7 @@ use chrono::Utc;
 use serde::Serialize;
 
 /// A static starter template.
-#[derive(Debug, Clone, Serialize, Type)]
+#[derive(Debug, Clone, Serialize, Type, utoipa::ToSchema)]
 pub struct Template {
     pub name: &'static str,
     pub description: &'static str,
@@ -31,17 +31,19 @@ pub struct Template {
     pub files: &'static [TemplateFile],
 }
 
-#[derive(Debug, Clone, Serialize, Type)]
+#[derive(Debug, Clone, Serialize, Type, utoipa::ToSchema)]
 pub struct TemplateFile {
     pub relative_path: &'static str,
     pub contents: &'static str,
 }
 
 /// Outcome of writing a template to disk.
-#[derive(Debug, Clone, Serialize, Type)]
+#[derive(Debug, Clone, Serialize, Type, utoipa::ToSchema)]
 pub struct WriteReport {
     pub template: &'static str,
+    #[schema(value_type = String)]
     pub dir: PathBuf,
+    #[schema(value_type = Vec<String>)]
     pub created: Vec<PathBuf>,
 }
 

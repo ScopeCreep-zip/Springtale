@@ -26,11 +26,13 @@ pub async fn run(stream: bool, json_out: bool) -> Result<()> {
         .and_then(|t| t.as_str())
         .ok_or_else(|| anyhow::anyhow!("daemon did not issue a stream ticket"))?;
     let response = client.stream(&format!("/stream?ticket={ticket}")).await?;
-    follow(response).await
+    follow(response, json_out).await
 }
 
-/// Print each SSE `data:` payload as it arrives.
-async fn follow(response: reqwest::Response) -> Result<()> {
+/// Print each SSE `data:` payload as it arrives. The payloads are already
+/// JSON, so `--json` only decides pretty vs. one-line — but it still goes
+/// through `output::emit`, so the flag has exactly one implementation.
+async fn follow(response: reqwest::Response, json_out: bool) -> Result<()> {
     use anyhow::Context;
     use futures_util::StreamExt;
 
@@ -48,8 +50,13 @@ async fn follow(response: reqwest::Response) -> Result<()> {
                     data.push_str(d);
                 }
             }
-            if !data.is_empty() {
-                println!("{data}");
+            if data.is_empty() {
+                continue;
+            }
+            match serde_json::from_str::<Value>(&data) {
+                Ok(event) => output::emit(json_out, &event, |v| v.to_string())?,
+                // Unparseable frame: pass it through rather than drop it.
+                Err(_) => output::emit(json_out, &data, |raw| raw.clone())?,
             }
         }
     }

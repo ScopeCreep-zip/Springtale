@@ -24,7 +24,7 @@ use super::state::AppState;
 /// Query parameters for `GET /recipes`. Mirrors the fields of
 /// `RecipeFilter` but flat so curl / fetch can compose URLs without
 /// needing a nested JSON body.
-#[derive(Debug, Default, Deserialize)]
+#[derive(Debug, Default, Deserialize, utoipa::IntoParams)]
 pub struct RecipeListQuery {
     #[serde(default)]
     pub query: Option<String>,
@@ -81,6 +81,13 @@ impl RecipeListQuery {
 }
 
 /// GET /recipes — list with optional filter via query params.
+#[utoipa::path(
+    get, operation_id = "recipes_list",
+    path = "/recipes",
+    tag = "recipes",
+    params(RecipeListQuery),
+    responses((status = 200, description = "Matching recipes", body = Vec<Recipe>))
+)]
 pub async fn list(
     State(state): State<AppState>,
     Query(query): Query<RecipeListQuery>,
@@ -93,11 +100,24 @@ pub async fn list(
 
 /// GET /recipes/categories — render the sidebar from this. Server is
 /// authoritative on the category list (no frontend hardcoding).
+#[utoipa::path(
+    get, operation_id = "recipes_list_categories",
+    path = "/recipes/categories",
+    tag = "recipes",
+    responses((status = 200, description = "Recipe categories", body = Vec<Object>))
+)]
 pub async fn list_categories() -> impl IntoResponse {
     Json(recipes::list_categories())
 }
 
 /// GET /recipes/{id} — fetch one. 404 if not found.
+#[utoipa::path(
+    get, operation_id = "recipes_get_one",
+    path = "/recipes/{id}",
+    tag = "recipes",
+    params(("id" = String, Path, description = "Recipe id")),
+    responses((status = 200, description = "One recipe", body = Recipe))
+)]
 pub async fn get_one(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -109,13 +129,20 @@ pub async fn get_one(
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct FavoriteResponse {
     pub recipe_id: String,
     pub now_favorite: bool,
 }
 
 /// POST /recipes/{id}/favorite — toggle a recipe in/out of favorites.
+#[utoipa::path(
+    post, operation_id = "recipes_toggle_favorite",
+    path = "/recipes/{id}/favorite",
+    tag = "recipes",
+    params(("id" = String, Path, description = "Recipe id")),
+    responses((status = 200, description = "New favorite state", body = FavoriteResponse))
+)]
 pub async fn toggle_favorite(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -130,6 +157,13 @@ pub async fn toggle_favorite(
 }
 
 /// POST /recipes/{id}/recent — push onto the recently-used list.
+#[utoipa::path(
+    post, operation_id = "recipes_record_recent",
+    path = "/recipes/{id}/recent",
+    tag = "recipes",
+    params(("id" = String, Path, description = "Recipe id")),
+    responses((status = 200, description = "Recorded"))
+)]
 pub async fn record_recent(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -141,6 +175,14 @@ pub async fn record_recent(
 }
 
 /// POST /recipes/{id}/apply — W1.C deploy with user inputs.
+#[utoipa::path(
+    post, operation_id = "recipes_apply",
+    path = "/recipes/{id}/apply",
+    tag = "recipes",
+    params(("id" = String, Path, description = "Recipe id")),
+    request_body = RecipeInputs,
+    responses((status = 200, description = "Recipe applied", body = ApplyReport))
+)]
 pub async fn apply(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -179,6 +221,14 @@ pub async fn apply(
 /// POST /recipes/{id}/render — show-as-code disclosure renders the
 /// assembled TOML for the user's current inputs. Read-only; takes
 /// the same payload as `/apply` but doesn't materialise.
+#[utoipa::path(
+    post, operation_id = "recipes_render",
+    path = "/recipes/{id}/render",
+    tag = "recipes",
+    params(("id" = String, Path, description = "Recipe id")),
+    request_body = RecipeInputs,
+    responses((status = 200, description = "Rendered rule TOML", body = String))
+)]
 pub async fn render(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -190,6 +240,14 @@ pub async fn render(
 }
 
 /// POST /recipes/{id}/preflight — W1.D Deploy-readiness checklist.
+#[utoipa::path(
+    post, operation_id = "recipes_preflight",
+    path = "/recipes/{id}/preflight",
+    tag = "recipes",
+    params(("id" = String, Path, description = "Recipe id")),
+    request_body = RecipeInputs,
+    responses((status = 200, description = "Preflight report", body = PreflightReport))
+)]
 pub async fn preflight(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -202,6 +260,14 @@ pub async fn preflight(
 }
 
 /// POST /recipes/{id}/preview — W2.C dry-run with comic-strip narrative.
+#[utoipa::path(
+    post, operation_id = "recipes_preview",
+    path = "/recipes/{id}/preview",
+    tag = "recipes",
+    params(("id" = String, Path, description = "Recipe id")),
+    request_body = RecipeInputs,
+    responses((status = 200, description = "Preview report", body = PreviewReport))
+)]
 pub async fn preview(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -214,6 +280,13 @@ pub async fn preview(
 }
 
 /// GET /recipes/{id}/pieces — W2.D borrowable slots.
+#[utoipa::path(
+    get, operation_id = "recipes_list_pieces",
+    path = "/recipes/{id}/pieces",
+    tag = "recipes",
+    params(("id" = String, Path, description = "Recipe id")),
+    responses((status = 200, description = "Recipe pieces", body = Vec<RecipePieceSummary>))
+)]
 pub async fn list_pieces(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -227,6 +300,13 @@ pub async fn list_pieces(
 // ── W2.B Recipe authoring ─────────────────────────────────────
 
 /// POST /recipes/user — save to the user library. Runs Clear Check.
+#[utoipa::path(
+    post, operation_id = "recipes_save_user",
+    path = "/recipes/user",
+    tag = "recipes",
+    request_body = Recipe,
+    responses((status = 200, description = "Saved user recipe", body = Recipe))
+)]
 pub async fn save_user(
     State(state): State<AppState>,
     Json(recipe): Json<Recipe>,
@@ -240,12 +320,20 @@ pub async fn save_user(
     Ok(Json(saved))
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct ForkBody {
     pub new_name: String,
 }
 
 /// POST /recipes/{id}/fork — duplicate into the user library.
+#[utoipa::path(
+    post, operation_id = "recipes_fork",
+    path = "/recipes/{id}/fork",
+    tag = "recipes",
+    params(("id" = String, Path, description = "Recipe id")),
+    request_body = ForkBody,
+    responses((status = 200, description = "Forked recipe", body = Recipe))
+)]
 pub async fn fork(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -266,6 +354,13 @@ pub async fn fork(
 }
 
 /// DELETE /recipes/user/{id} — remove a user recipe.
+#[utoipa::path(
+    delete, operation_id = "recipes_delete_user",
+    path = "/recipes/user/{id}",
+    tag = "recipes",
+    params(("id" = String, Path, description = "Recipe id")),
+    responses((status = 200, description = "Deleted"))
+)]
 pub async fn delete_user(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -287,6 +382,13 @@ pub async fn delete_user(
 }
 
 /// GET /recipes/{id}/export — TOML for sharing.
+#[utoipa::path(
+    get, operation_id = "recipes_export_toml",
+    path = "/recipes/{id}/export",
+    tag = "recipes",
+    params(("id" = String, Path, description = "Recipe id")),
+    responses((status = 200, description = "Recipe TOML", body = String))
+)]
 pub async fn export_toml(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -300,6 +402,13 @@ pub async fn export_toml(
 }
 
 /// POST /recipes/import — import a recipe from raw TOML.
+#[utoipa::path(
+    post, operation_id = "recipes_import_toml",
+    path = "/recipes/import",
+    tag = "recipes",
+    request_body = String,
+    responses((status = 200, description = "Imported recipe", body = Recipe))
+)]
 pub async fn import_toml(
     State(state): State<AppState>,
     payload: String,
@@ -314,7 +423,7 @@ pub async fn import_toml(
 }
 
 /// Body for `POST /recipes/{id}/test-step`.
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct TestStepBody {
     pub inputs: RecipeInputs,
     pub rule_index: usize,
@@ -323,6 +432,14 @@ pub struct TestStepBody {
 
 /// POST /recipes/{id}/test-step — Phase C "Test This Step" dry run
 /// through `step_index` of `rule_index`.
+#[utoipa::path(
+    post, operation_id = "recipes_test_step",
+    path = "/recipes/{id}/test-step",
+    tag = "recipes",
+    params(("id" = String, Path, description = "Recipe id")),
+    request_body = TestStepBody,
+    responses((status = 200, description = "Step test report", body = test_step_ops::TestStepReport))
+)]
 pub async fn test_step(
     State(state): State<AppState>,
     Path(id): Path<String>,

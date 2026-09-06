@@ -60,12 +60,14 @@ pub async fn run(action: AuthorAction, store: &SqliteBackend, json: bool) -> Res
                 .await
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-            if json {
-                output::print_json(&serde_json::json!({ "name": name, "pubkey": pubkey_hex }))?;
-            } else {
-                println!("Trusted author added: {name}");
-                println!("  pubkey: {pubkey_hex}");
-            }
+            let added = serde_json::json!({ "name": name, "pubkey": pubkey_hex });
+            output::emit(json, &added, |v| {
+                format!(
+                    "Trusted author added: {}\n  pubkey: {}",
+                    output::cell(v, "name"),
+                    output::cell(v, "pubkey")
+                )
+            })?;
         }
         AuthorAction::List => {
             let configs = store
@@ -88,17 +90,17 @@ pub async fn run(action: AuthorAction, store: &SqliteBackend, json: bool) -> Res
                 })
                 .collect();
 
-            if json {
-                let authors: Vec<serde_json::Value> = rows
-                    .iter()
-                    .map(|r| serde_json::json!({ "name": r.name, "pubkey": r.pubkey }))
-                    .collect();
-                output::print_json(&authors)?;
-            } else if rows.is_empty() {
-                println!("No trusted authors.");
-            } else {
-                println!("{}", Table::new(rows));
-            }
+            let authors: Vec<serde_json::Value> = rows
+                .iter()
+                .map(|r| serde_json::json!({ "name": r.name, "pubkey": r.pubkey }))
+                .collect();
+            output::emit(json, &authors, |_| {
+                if rows.is_empty() {
+                    "No trusted authors.".to_owned()
+                } else {
+                    Table::new(rows).to_string()
+                }
+            })?;
         }
         AuthorAction::Remove { name } => {
             let key = format!("{TRUSTED_AUTHOR_PREFIX}{name}");
@@ -106,7 +108,10 @@ pub async fn run(action: AuthorAction, store: &SqliteBackend, json: bool) -> Res
                 .delete_config(&key)
                 .await
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
-            println!("Removed trusted author: {name}");
+            let removed = serde_json::json!({ "name": name, "removed": true });
+            output::emit(json, &removed, |v| {
+                format!("Removed trusted author: {}", output::cell(v, "name"))
+            })?;
         }
     }
     Ok(())

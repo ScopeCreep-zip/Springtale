@@ -9,6 +9,12 @@ use super::extractors::ValidatedPath;
 use super::state::AppState;
 
 /// GET /agents/states
+#[utoipa::path(
+    get, operation_id = "agents_list_states",
+    path = "/agents/states",
+    tag = "agents",
+    responses((status = 200, description = "Aggregated agent states", body = Object))
+)]
 pub async fn list_states(State(state): State<AppState>) -> Result<impl IntoResponse, StatusCode> {
     let states = operations::agent::list_agent_states(&state.runtime)
         .await
@@ -28,6 +34,13 @@ async fn agent_target(
 }
 
 /// GET /agents/:name/autonomy — `:name` is a rule name or rule id.
+#[utoipa::path(
+    get, operation_id = "agents_get_autonomy",
+    path = "/agents/{name}/autonomy",
+    tag = "agents",
+    params(("name" = String, Path, description = "Agent name")),
+    responses((status = 200, description = "Current autonomy level", body = Object))
+)]
 pub async fn get_autonomy(
     State(state): State<AppState>,
     ValidatedPath(name): ValidatedPath,
@@ -42,15 +55,20 @@ pub async fn get_autonomy(
 }
 
 /// PUT /agents/:name/autonomy — `:name` is a rule name or rule id.
+#[utoipa::path(
+    put, operation_id = "agents_set_autonomy",
+    path = "/agents/{name}/autonomy",
+    tag = "agents",
+    params(("name" = String, Path, description = "Agent name")),
+    request_body = operations::agent::SetAutonomyRequest,
+    responses((status = 200, description = "Updated autonomy level", body = Object))
+)]
 pub async fn set_autonomy(
     State(state): State<AppState>,
     ValidatedPath(name): ValidatedPath,
-    Json(body): Json<serde_json::Value>,
+    Json(req): Json<operations::agent::SetAutonomyRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let level = body
-        .get("level")
-        .and_then(|v| v.as_str())
-        .ok_or(StatusCode::BAD_REQUEST)?;
+    let level = req.level.as_str();
     let target = agent_target(&state, &name).await?;
     operations::agent::set_autonomy(&*state.runtime.store, &target, level)
         .await
@@ -59,20 +77,21 @@ pub async fn set_autonomy(
 }
 
 /// POST /agents/:name/autonomy/step — step autonomy up or down.
+#[utoipa::path(
+    post, operation_id = "agents_step_autonomy",
+    path = "/agents/{name}/autonomy/step",
+    tag = "agents",
+    params(("name" = String, Path, description = "Agent name")),
+    request_body = operations::agent::StepAutonomyRequest,
+    responses((status = 200, description = "Stepped autonomy level", body = Object))
+)]
 pub async fn step_autonomy(
     State(state): State<AppState>,
     ValidatedPath(name): ValidatedPath,
-    Json(body): Json<serde_json::Value>,
+    Json(req): Json<operations::agent::StepAutonomyRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let direction_str = body
-        .get("direction")
-        .and_then(|v| v.as_str())
-        .ok_or(StatusCode::BAD_REQUEST)?;
-    let direction: operations::agent::AutonomyDirection =
-        serde_json::from_value(serde_json::Value::String(direction_str.to_owned()))
-            .map_err(|_| StatusCode::BAD_REQUEST)?;
     let target = agent_target(&state, &name).await?;
-    let level = operations::agent::step_autonomy(&*state.runtime.store, &target, direction)
+    let level = operations::agent::step_autonomy(&*state.runtime.store, &target, req.direction)
         .await
         .map_err(|_| StatusCode::BAD_REQUEST)?;
     Ok(Json(serde_json::json!({ "name": name, "level": level })))

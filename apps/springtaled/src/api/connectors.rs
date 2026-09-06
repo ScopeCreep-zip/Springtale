@@ -9,18 +9,37 @@ use super::extractors::ValidatedPath;
 use super::state::AppState;
 
 /// GET /connectors — list all installed connectors.
+#[utoipa::path(
+    get, operation_id = "connectors_list",
+    path = "/connectors",
+    tag = "connectors",
+    responses((status = 200, description = "Installed connectors", body = Vec<Object>))
+)]
 pub async fn list(State(state): State<AppState>) -> impl IntoResponse {
     let connectors = operations::connectors::list_connectors(&state.runtime).await;
     Json(serde_json::json!({ "connectors": connectors }))
 }
 
 /// GET /connectors/available — list ALL connectors from factory registry.
+#[utoipa::path(
+    get, operation_id = "connectors_list_available",
+    path = "/connectors/available",
+    tag = "connectors",
+    responses((status = 200, description = "Connectors available to install", body = Vec<Object>))
+)]
 pub async fn list_available(State(state): State<AppState>) -> impl IntoResponse {
     let available = operations::connectors::list_available_connectors(&state.runtime).await;
     Json(serde_json::json!({ "available": available }))
 }
 
 /// POST /connectors/setup — configure and load an available connector.
+#[utoipa::path(
+    post, operation_id = "connectors_setup",
+    path = "/connectors/setup",
+    tag = "connectors",
+    request_body = Object,
+    responses((status = 200, description = "Connector set up", body = Object))
+)]
 pub async fn setup(
     State(state): State<AppState>,
     Json(body): Json<serde_json::Value>,
@@ -37,6 +56,13 @@ pub async fn setup(
 }
 
 /// DELETE /connectors/{name} — remove a connector.
+#[utoipa::path(
+    delete, operation_id = "connectors_remove",
+    path = "/connectors/{name}",
+    tag = "connectors",
+    params(("name" = String, Path, description = "Connector name")),
+    responses((status = 200, description = "Connector removed", body = Object))
+)]
 pub async fn remove(
     State(state): State<AppState>,
     ValidatedPath(name): ValidatedPath,
@@ -48,6 +74,13 @@ pub async fn remove(
 }
 
 /// DELETE /connectors/{name}/cascade — remove connector + dependent rules.
+#[utoipa::path(
+    delete, operation_id = "connectors_remove_cascade",
+    path = "/connectors/{name}/cascade",
+    tag = "connectors",
+    params(("name" = String, Path, description = "Connector name")),
+    responses((status = 200, description = "Connector and dependent rules removed", body = Object))
+)]
 pub async fn remove_cascade(
     State(state): State<AppState>,
     ValidatedPath(name): ValidatedPath,
@@ -62,6 +95,13 @@ pub async fn remove_cascade(
 }
 
 /// GET /connectors/{name}/config — get connector config.
+#[utoipa::path(
+    get, operation_id = "connectors_get_config",
+    path = "/connectors/{name}/config",
+    tag = "connectors",
+    params(("name" = String, Path, description = "Connector name")),
+    responses((status = 200, description = "Connector config (secrets redacted)", body = Object))
+)]
 pub async fn get_config(
     State(state): State<AppState>,
     ValidatedPath(name): ValidatedPath,
@@ -75,6 +115,13 @@ pub async fn get_config(
 }
 
 /// GET /connectors/{name}/outputs — list recent execution results.
+#[utoipa::path(
+    get, operation_id = "connectors_list_outputs",
+    path = "/connectors/{name}/outputs",
+    tag = "connectors",
+    params(("name" = String, Path, description = "Connector name")),
+    responses((status = 200, description = "Declared connector outputs", body = Vec<Object>))
+)]
 pub async fn list_outputs(
     State(state): State<AppState>,
     ValidatedPath(name): ValidatedPath,
@@ -86,6 +133,13 @@ pub async fn list_outputs(
 }
 
 /// POST /connectors/{name}/enable — enable a connector.
+#[utoipa::path(
+    post, operation_id = "connectors_enable",
+    path = "/connectors/{name}/enable",
+    tag = "connectors",
+    params(("name" = String, Path, description = "Connector name")),
+    responses((status = 200, description = "Connector enabled", body = Object))
+)]
 pub async fn enable(
     State(state): State<AppState>,
     ValidatedPath(name): ValidatedPath,
@@ -97,6 +151,13 @@ pub async fn enable(
 }
 
 /// POST /connectors/{name}/disable — disable a connector.
+#[utoipa::path(
+    post, operation_id = "connectors_disable",
+    path = "/connectors/{name}/disable",
+    tag = "connectors",
+    params(("name" = String, Path, description = "Connector name")),
+    responses((status = 200, description = "Connector disabled", body = Object))
+)]
 pub async fn disable(
     State(state): State<AppState>,
     ValidatedPath(name): ValidatedPath,
@@ -113,6 +174,13 @@ pub async fn disable(
 /// POST /connectors/{name}/reload — G4 hot-reload a connector without
 /// dropping in-flight calls. The connector's persisted config is
 /// re-applied verbatim; subsequent dispatches land on the new host.
+#[utoipa::path(
+    post, operation_id = "connectors_reload",
+    path = "/connectors/{name}/reload",
+    tag = "connectors",
+    params(("name" = String, Path, description = "Connector name")),
+    responses((status = 200, description = "Connector reloaded", body = Object))
+)]
 pub async fn reload(
     State(state): State<AppState>,
     ValidatedPath(name): ValidatedPath,
@@ -130,12 +198,25 @@ pub async fn reload(
 }
 
 /// GET /connectors/schemas — return all connector manifests with trigger/action schemas.
+#[utoipa::path(
+    get, operation_id = "connectors_schemas",
+    path = "/connectors/schemas",
+    tag = "connectors",
+    responses((status = 200, description = "Config JSON schemas per connector", body = Object))
+)]
 pub async fn schemas(State(state): State<AppState>) -> impl IntoResponse {
     let schemas = operations::connectors::get_connector_schemas(&state.runtime).await;
     Json(serde_json::json!({ "manifests": schemas }))
 }
 
 /// POST /connectors/install — install a connector from manifest JSON.
+#[utoipa::path(
+    post, operation_id = "connectors_install",
+    path = "/connectors/install",
+    tag = "connectors",
+    request_body = Object,
+    responses((status = 200, description = "Connector installed", body = Object))
+)]
 pub async fn install(
     State(state): State<AppState>,
     Json(manifest): Json<springtale_connector::ConnectorManifest>,
@@ -156,6 +237,13 @@ pub async fn install(
 /// POST /connectors/install-wasm — multipart with a `manifest` part
 /// (JSON text) and a `wasm` part (binary). Signature, hash and
 /// capability checks all live in the operation.
+#[utoipa::path(
+    post, operation_id = "connectors_install_wasm",
+    path = "/connectors/install-wasm",
+    tag = "connectors",
+    request_body = Vec<u8>,
+    responses((status = 200, description = "WASM connector installed", body = Object))
+)]
 pub async fn install_wasm(
     State(state): State<AppState>,
     mut multipart: axum::extract::Multipart,
