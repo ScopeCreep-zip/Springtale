@@ -1,5 +1,5 @@
 import type { Component } from "solid-js";
-import { createSignal, For, Show } from "solid-js";
+import { For, Show } from "solid-js";
 import type { CommandDecl } from "../../dashboard/types";
 import type { ColonyCommand, ColonySelection } from "../types";
 import { COMMANDS } from "../types";
@@ -47,49 +47,35 @@ export const CommandGrid: Component<{
 };
 
 /**
- * W6 Nintendo 3-action grid for the frontend-owned command contexts.
- * Leads with the (≤3) `primary` commands; the rest are revealed by a MORE
- * toggle. When a context has no primaries flagged (or ≤3 real commands
- * total), every command shows and the toggle is hidden — so this is a safe
- * superset of the old "show everything" behaviour.
+ * The static 3×3 command card for the frontend-owned contexts.
+ *
+ * Plan 3.3: every slot is fixed, the whole card is always visible (no MORE /
+ * LESS paging), and a slot with no verb renders as an empty cell rather than
+ * an empty button — so the verbs that do exist never move between contexts.
  */
 export const CommandGridStatic: Component<{
   commands: (ColonyCommand | null)[] | undefined;
   onCommand: (action: string) => void;
 }> = (props) => {
-  const [expanded, setExpanded] = createSignal(false);
-
-  const real = () => (props.commands ?? []).filter((c): c is ColonyCommand => c !== null);
-  const primaries = () => real().filter((c) => c.primary);
-  // No primaries flagged → treat all as visible (legacy contexts).
-  const hasDrawer = () => primaries().length > 0 && real().length > primaries().length;
-  const visible = () => {
-    if (!hasDrawer() || expanded()) return real();
-    return primaries();
-  };
-
-  const button = (cmd: ColonyCommand) => (
-    <button type="button" class="colony-command-btn" onClick={() => props.onCommand(cmd.action)}>
-      <span class="colony-text-icon">{cmd.icon}</span>
-      {cmd.label}
-      <span class="colony-text-3xs bg-soil-deep px-0.5 text-text-dim">{cmd.key}</span>
-    </button>
-  );
-
   return (
     <div class="grid h-[calc(100%-16px)] grid-cols-3 gap-0.5">
-      <For each={visible()}>{(cmd) => button(cmd)}</For>
-      <Show when={hasDrawer()}>
-        <button
-          type="button"
-          class="colony-command-btn"
-          onClick={() => setExpanded((v) => !v)}
-          title={expanded() ? "Show fewer actions" : "Show more actions"}
-        >
-          <span class="colony-text-icon">{expanded() ? "<" : "…"}</span>
-          {expanded() ? "LESS" : "MORE"}
-        </button>
-      </Show>
+      <For each={props.commands ?? []}>
+        {(slot) => (
+          <Show when={slot} fallback={<div aria-hidden="true" />}>
+            {(cmd) => (
+              <button
+                type="button"
+                class="colony-command-btn"
+                onClick={() => props.onCommand(cmd().action)}
+              >
+                <span class="colony-text-icon">{cmd().icon}</span>
+                {cmd().label}
+                <span class="colony-text-3xs bg-soil-deep px-0.5 text-text-dim">{cmd().key}</span>
+              </button>
+            )}
+          </Show>
+        )}
+      </For>
     </div>
   );
 };
