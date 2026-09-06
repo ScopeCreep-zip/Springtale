@@ -20,7 +20,7 @@ Springtale ships in five phases. Each phase builds on the last — no phase skip
 |---|---|---|---|
 | 1a | Framework + Connectors | Daemon, CLI, 14 library crates, 8 baseline connectors (kick, presearch, bluesky, github, filesystem, shell, http, opencode), SQLite (declarative schema v1 in `schema/sql/`), crypto vault, WASM sandbox, MCP endpoint | Present. Connector roster grew to 15 first-party through Phases 1b/2a. |
 | 1b | Bot Foundations | `springtale-bot`, command router (prefix / pattern / alias), cooperation framework, `connector-telegram`, session memory | Present. Cooperation framework extracted to its own `springtale-cooperation` crate (42 pub modules) and wired into a 25-step formation tick; see §3.2. |
-| 2a | Chat + AI | Discord, Slack, IRC, Signal, Nostr connectors. Anthropic / Ollama / OpenAI-compat adapters (all three stream). `HttpTransport` (rustls mTLS). `springtale-sentinel`. Tool-calling across all AI adapters. | Present. Matrix is held on upstream `rusqlite` CVE. |
+| 2a | Chat + AI | Discord, Slack, IRC, Signal, Nostr connectors. Anthropic / Ollama / OpenAI-compat adapters (all three stream). `HttpTransport` (rustls mTLS). `springtale-sentinel`. Tool-calling across all AI adapters. | Present. No Matrix connector exists — `connectors/connector-matrix` was never written, not merely deferred; see the `members` comment in the workspace `Cargo.toml` for what bringing it back would take. |
 | 2b | Desktop + Safety | Tauri 2 shell, SolidJS dashboard + colony canvas (RTS formation visualisation), duress vault, panic wipe, travel mode. Visual rule builder, i18n, a11y. | Shell, dashboard, colony canvas (with formation command grid, rally pips, attention bar, liveness/health encoding), duress, panic wipe, travel mode present. Visual rule builder (`RuleBuilderOverlay`), i18n (eight locales), quick-hide, and lock-screen content protection present. a11y present — see §5.1: skip link (`ColonyShell`), `aria-live` regions, `role="application"` + `tabindex` + per-sprite `aria-label`s on the colony canvas with keyboard selection handled at the document level, a 7 px floor on the colony text scale, and `prefers-reduced-motion` / `prefers-contrast` styles. User-controlled font scaling is the one a11y item still missing (§5.2). |
 | 3 | Veilid Mesh | `VeilidTransport`, P2P mesh, distributed registry, Rekindle integration | Not implemented. `VeilidTransport` exists as a stub — every method returns `TransportError::NotConnected`. |
 
@@ -63,7 +63,7 @@ The foundation. A single-binary daemon, CLI, rule engine, crypto vault, WASM san
 - WASM sandbox with 10M instruction fuel, 64MB memory, 30s timeout
 - Manifest signing and verification
 - Capability-based permission system with toxic pair detection
-- RESTful management API with HMAC bearer auth and rate limiting
+- RESTful management API with issued bearer tokens (login-minted sessions + named long-lived tokens) and rate limiting
 - Cron scheduling + filesystem watching + webhook ingestion
 - MCP over Streamable HTTP at `/mcp`, covering the whole registry, behind the
   daemon's Origin check and bearer auth (`apps/springtaled/src/api/mcp.rs`)
@@ -173,7 +173,7 @@ Broad chat platform support and optional AI integration.
 | `connector-slack` | Slack | Socket Mode + webhooks | Present |
 | `connector-nostr` | Nostr | relay WebSocket + NIP-44 | Present |
 | `connector-browser` | Headless browser | Chromium via CDP | Present |
-| `connector-matrix` | Matrix | matrix-sdk | Not in workspace. Held on `matrix-sdk`'s pinned `rusqlite` 0.37 (CVE-2025-70873). Springtale uses the patched 0.39. |
+| `connector-matrix` | Matrix | matrix-sdk | **No crate exists.** Never written, because `matrix-sdk-sqlite` pins `rusqlite` 0.37 (CVE-2025-70873) and Springtale uses the patched 0.39. Needs an upstream bump *and* a connector written from scratch. |
 
 ### 4.2. AI Integration
 

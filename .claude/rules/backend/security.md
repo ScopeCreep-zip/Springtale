@@ -44,6 +44,9 @@ paths:
 
 ## Network
 - Management API binds `127.0.0.1` by default. Warn on `0.0.0.0`.
-- HMAC bearer tokens for API auth.
+- API bearers are issued, never derived: `POST /auth/login` mints a random session token,
+  `POST /auth/tokens` mints named long-lived ones.
+- Both stored only as `sha256(token)`, compared constant-time via `subtle`.
+- The passphrase-derived hash is the login verifier only. Never accepted as a bearer.
 - Rate limiting via `tower-http::limit`.
 - No secrets in URLs, query params, or error messages.
