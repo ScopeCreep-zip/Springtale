@@ -9,6 +9,12 @@ use axum::http::StatusCode;
 use springtale_runtime::operations::diagnostics::{self, CallerContext, Report};
 
 /// GET /diagnostics — run every check and return the structured report.
+#[utoipa::path(
+    get, operation_id = "diagnostics_list",
+    path = "/diagnostics",
+    tag = "diagnostics",
+    responses((status = 200, description = "Diagnostic report", body = Report))
+)]
 pub async fn list() -> Result<Json<Report>, (StatusCode, String)> {
     let report = diagnostics::run_default_checks(CallerContext::Api).await;
     Ok(Json(report))

@@ -8,6 +8,13 @@ use super::state::AppState;
 /// GET /health — liveness probe.
 ///
 /// Returns 200 OK if the process is running. No authentication required.
+#[utoipa::path(
+    get, operation_id = "health_health",
+    path = "/health",
+    tag = "health",
+    security(()),
+    responses((status = 200, description = "Liveness probe", body = Object))
+)]
 pub async fn health() -> impl IntoResponse {
     (StatusCode::OK, Json(serde_json::json!({ "status": "ok" })))
 }
@@ -17,6 +24,13 @@ pub async fn health() -> impl IntoResponse {
 /// Returns 200 OK if the daemon has completed its boot sequence and
 /// all subsystems are accessible. Returns 503 if not ready.
 /// No authentication required.
+#[utoipa::path(
+    get, operation_id = "health_ready",
+    path = "/ready",
+    tag = "health",
+    security(()),
+    responses((status = 200, description = "Readiness probe", body = Object))
+)]
 pub async fn ready(State(state): State<AppState>) -> impl IntoResponse {
     if !state.is_ready() {
         return (

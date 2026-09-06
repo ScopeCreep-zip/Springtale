@@ -4,6 +4,8 @@ use anyhow::{Context, Result};
 
 use springtale_store::backend::trait_::StorageBackend;
 
+use crate::output;
+
 /// Prepare for travel: export encrypted backup, then wipe local data.
 ///
 /// 1. Prompts for a travel passphrase (separate from vault passphrase)
@@ -18,6 +20,7 @@ pub fn prepare(
     db_path: &Path,
     config_path: &Path,
     store: &dyn StorageBackend,
+    json_out: bool,
 ) -> Result<()> {
     // Prompt for travel passphrase
     let passphrase = rpassword::read_password_from_tty(Some("Travel passphrase: "))
@@ -44,10 +47,16 @@ pub fn prepare(
     )
     .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    eprintln!("Backup saved to: {}", backup_path.display());
-    eprintln!("Local data wiped. Safe travels.");
-
-    Ok(())
+    let body = serde_json::json!({
+        "backup": backup_path.display().to_string(),
+        "wiped": true,
+    });
+    output::emit_status(json_out, &body, |v| {
+        format!(
+            "Backup saved to: {}\nLocal data wiped. Safe travels.",
+            output::cell(v, "backup")
+        )
+    })
 }
 
 /// Restore from an encrypted backup after travel.
@@ -59,6 +68,7 @@ pub fn restore(
     vault_path: &Path,
     db_path: &Path,
     config_path: &Path,
+    json_out: bool,
 ) -> Result<()> {
     if !backup_path.exists() {
         anyhow::bail!("backup file not found: {}", backup_path.display());
@@ -76,7 +86,9 @@ pub fn restore(
     )
     .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    eprintln!("Data restored from backup.");
-
-    Ok(())
+    let body = serde_json::json!({
+        "restored": true,
+        "backup": backup_path.display().to_string(),
+    });
+    output::emit_status(json_out, &body, |_| "Data restored from backup.".to_owned())
 }

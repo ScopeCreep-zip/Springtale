@@ -19,7 +19,16 @@ pub const AI_COLONY_KEY: &str = "ai:colony";
 
 /// One level of the AI command hierarchy. One config key per level:
 /// `ai:colony`, `ai:formation:{formation_id}`, `ai:agent:{rule_id}`.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, specta::Type)]
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    specta::Type,
+    utoipa::ToSchema,
+)]
 #[serde(tag = "scope", rename_all = "snake_case")]
 pub enum AiTarget {
     Colony,

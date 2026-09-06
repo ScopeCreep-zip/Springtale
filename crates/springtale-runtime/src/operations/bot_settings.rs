@@ -25,7 +25,7 @@ pub const KEY: &str = "bot:settings";
 /// Moved here from `springtale-bot` (plan 6.3): the bot depends on the
 /// runtime, not the reverse, so the settings type the runtime owns and
 /// hands out has to live on this side of the dependency edge.
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, utoipa::ToSchema)]
 pub struct BotPersona {
     /// Bot display name. Default: "Springtale".
     #[serde(default = "default_name")]
@@ -59,6 +59,18 @@ fn default_auto_lock_secs() -> u64 {
     300
 }
 
+/// Session idle timeout: 30 minutes (plan 6.6).
+fn default_session_idle_secs() -> u64 {
+    1_800
+}
+
+/// Session absolute lifetime: 12 hours (plan 6.6). OWASP: "the absolute
+/// timeout limits the maximum amount of time a session can be active"
+/// regardless of activity.
+fn default_session_absolute_secs() -> u64 {
+    43_200
+}
+
 impl Default for BotPersona {
     fn default() -> Self {
         Self {
@@ -70,7 +82,7 @@ impl Default for BotPersona {
 }
 
 /// The user-editable bot settings.
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, utoipa::ToSchema)]
 pub struct BotSettings {
     /// Persona (name, tone, command prefix).
     #[serde(default)]
@@ -82,6 +94,7 @@ pub struct BotSettings {
     /// allow-list — the same default-mode posture as before (read-only
     /// actions only; see `springtale_ai::ToolPolicy`).
     #[serde(default)]
+    #[schema(value_type = Object)]
     pub tool_policy: springtale_ai::ToolPolicy,
     /// Idle seconds before the daemon locks itself: drops the runtime,
     /// closes the database and zeroizes the vault key (plan 6.10).
@@ -93,6 +106,15 @@ pub struct BotSettings {
     /// forbids of a setting.
     #[serde(default = "default_auto_lock_secs")]
     pub auto_lock_secs: u64,
+    /// Management-API session idle timeout, seconds. A session with no
+    /// accepted request inside this window is dropped. Default 1800.
+    #[serde(default = "default_session_idle_secs")]
+    pub session_idle_secs: u64,
+    /// Management-API session absolute lifetime, seconds. A session is
+    /// dropped this long after login however active it is, so a stolen
+    /// token has a bounded life. Default 43200 (12 h).
+    #[serde(default = "default_session_absolute_secs")]
+    pub session_absolute_secs: u64,
 }
 
 impl Default for BotSettings {
@@ -102,6 +124,8 @@ impl Default for BotSettings {
             context_window: default_context_window(),
             tool_policy: springtale_ai::ToolPolicy::default(),
             auto_lock_secs: default_auto_lock_secs(),
+            session_idle_secs: default_session_idle_secs(),
+            session_absolute_secs: default_session_absolute_secs(),
         }
     }
 }
@@ -129,6 +153,16 @@ pub async fn set(state: &RuntimeState, settings: BotSettings) -> Result<(), Oper
     if settings.context_window == 0 {
         return Err(OperationError::Validation(
             "context_window must be at least 1".to_owned(),
+        ));
+    }
+    if settings.session_idle_secs < 60 {
+        return Err(OperationError::Validation(
+            "session_idle_secs must be at least 60".to_owned(),
+        ));
+    }
+    if settings.session_absolute_secs < settings.session_idle_secs {
+        return Err(OperationError::Validation(
+            "session_absolute_secs must be at least session_idle_secs".to_owned(),
         ));
     }
     {

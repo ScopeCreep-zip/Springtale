@@ -23,6 +23,9 @@ async-trait = { workspace = true }
 tokio       = { workspace = true }
 serde       = { workspace = true }
 serde_json  = { workspace = true }
+# Sentence templates ship as per-locale YAML (plan 5.4); already pinned
+# at the workspace root for the recipe/template loaders.
+serde_yaml  = { workspace = true }
 toml        = { workspace = true }
 thiserror   = { workspace = true }
 tracing     = { workspace = true }

@@ -84,10 +84,14 @@ function tooltip(r: DriftReport): string {
     );
   }
   if (r.success_rate.recent != null) {
-    parts.push(`success: ${pct(r.success_rate.recent)} (was ${pct(r.success_rate.baseline)})`);
+    parts.push(
+      `success: ${pct(r.success_rate.recent)} (was ${pct(r.success_rate.baseline ?? null)})`,
+    );
   }
   if (r.refusal_rate.recent != null) {
-    parts.push(`refusal: ${pct(r.refusal_rate.recent)} (was ${pct(r.refusal_rate.baseline)})`);
+    parts.push(
+      `refusal: ${pct(r.refusal_rate.recent)} (was ${pct(r.refusal_rate.baseline ?? null)})`,
+    );
   }
   return parts.join(" · ");
 }

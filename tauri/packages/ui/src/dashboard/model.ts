@@ -2,7 +2,7 @@
  * Data model types for the dashboard state layer.
  *
  * These types define the shape of data flowing from backend → provider → context → components.
- * Previously scattered across legacy component files (CommandPanel, ResourceBar, Roster, SwarmCard).
+ * Previously scattered across legacy component files (CommandPanel, ResourceBar, Roster, FormationCard).
  * Consolidated here so the types outlive their original rendering components.
  */
 
@@ -46,24 +46,4 @@ export interface EventItem {
 export function eventSeverity(actionTaken: string): EventItem["severity"] {
   const a = actionTaken.toLowerCase();
   return a.includes("error") || a.includes("fail") || a.includes("block") ? "error" : "ok";
-}
-
-export interface SwarmInfo {
-  id: string;
-  name: string;
-  intent: string;
-  status: string;
-  member_count: number;
-  members: string[];
-  operational_count?: number;
-  momentum_tier?: string;
-  momentum_label?: string;
-  momentum_consecutive_successes?: number;
-  momentum_interference_count?: number;
-  momentum_successes_to_next_tier?: number | null;
-  capabilities?: string[];
-  guard_status?: string;
-  guard_engaged?: boolean;
-  rally_tokens?: number;
-  rally_max?: number;
 }

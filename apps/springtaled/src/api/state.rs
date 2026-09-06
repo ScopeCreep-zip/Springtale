@@ -1,7 +1,6 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::Instant;
 
 use tokio::sync::{Mutex, broadcast, mpsc};
 
@@ -19,8 +18,14 @@ pub struct AppState {
     /// Shared runtime — store, registry, engine, AI, sentinel, canvas.
     /// Same struct used by the desktop app.
     pub runtime: springtale_runtime::RuntimeState,
-    /// HMAC-SHA256 hash of the API token (derived from vault passphrase).
+    /// `HMAC-SHA256(vault passphrase)` — the **login verifier** (6.6).
+    /// `POST /auth/login` compares the presented passphrase against this
+    /// in constant time. It is never accepted as a bearer token.
     pub api_token_hash: [u8; 32],
+    /// Live login sessions, keyed by `sha256(token)` (plan 6.6). In
+    /// memory only: locking the vault stops the daemon and every
+    /// session with it.
+    pub sessions: crate::api::login::SessionMap,
     /// Set to true after the full boot sequence completes.
     pub ready: Arc<AtomicBool>,
     /// Channel for dispatching trigger events to the rule engine event loop.
@@ -49,7 +54,7 @@ pub struct AppState {
     /// `GET /chat/stream`). Issued by `POST /stream/ticket` under bearer
     /// auth, consumed by `require_stream_ticket`. Keeps bearer tokens out
     /// of URLs (EventSource cannot send headers; plan 0.7).
-    pub stream_tickets: Arc<Mutex<HashMap<String, Instant>>>,
+    pub stream_tickets: Arc<Mutex<HashMap<String, crate::api::login::StreamTicket>>>,
     /// Flipped to `true` exactly once, when the daemon locks (plan
     /// 6.10). Every SSE handler ends its stream on it.
     ///

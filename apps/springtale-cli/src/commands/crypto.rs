@@ -1,10 +1,12 @@
 use anyhow::{Context, Result};
 
+use crate::output;
+
 /// Re-encrypt the vault with a new passphrase.
 ///
 /// Opens the vault with the current passphrase, reads all entries,
 /// creates a new vault with the new passphrase, copies entries, and saves.
-pub fn rotate_vault_key() -> Result<()> {
+pub fn rotate_vault_key(json_out: bool) -> Result<()> {
     let vault_path = springtale_store::paths::default_vault_path();
     if !vault_path.exists() {
         anyhow::bail!("no vault found at {}", vault_path.display());
@@ -58,6 +60,8 @@ pub fn rotate_vault_key() -> Result<()> {
 
     new_vault.save().context("failed to save new vault")?;
 
-    eprintln!("Vault key rotated successfully.");
-    Ok(())
+    let body = serde_json::json!({ "rotated": true, "entries": keys.len() });
+    output::emit_status(json_out, &body, |_| {
+        "Vault key rotated successfully.".to_owned()
+    })
 }

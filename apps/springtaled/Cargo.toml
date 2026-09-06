@@ -28,6 +28,7 @@ rustls = { workspace = true }
 garde = { workspace = true }
 chrono = { workspace = true }
 subtle = { workspace = true }
+zeroize = { workspace = true }
 uuid = { workspace = true }
 tower = { workspace = true }
 tower-http = { workspace = true }
@@ -36,6 +37,7 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 rpassword = { workspace = true }
 clap = { workspace = true }
+utoipa = { workspace = true }
 hmac = { workspace = true }
 sha2 = { workspace = true }
 hex = { workspace = true }
@@ -63,7 +65,6 @@ twilight-http = { workspace = true }
 twilight-model = { workspace = true }
 irc = { workspace = true }
 secrecy = { workspace = true }
-zeroize = { workspace = true }
 rand = { workspace = true }
 arc-swap = { workspace = true }
 nostr-sdk = { workspace = true }

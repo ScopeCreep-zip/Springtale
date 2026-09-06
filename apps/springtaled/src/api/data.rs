@@ -8,6 +8,12 @@ use springtale_runtime::operations;
 use super::state::AppState;
 
 /// POST /data/export
+#[utoipa::path(
+    post, operation_id = "data_export_data",
+    path = "/data/export",
+    tag = "data",
+    responses((status = 200, description = "Full data snapshot", body = operations::data::DataExport))
+)]
 pub async fn export_data(State(state): State<AppState>) -> Result<impl IntoResponse, StatusCode> {
     let data = operations::data::export_data(&*state.runtime.store)
         .await
@@ -18,13 +24,20 @@ pub async fn export_data(State(state): State<AppState>) -> Result<impl IntoRespo
 /// Body of `POST /data/purge`. Purge destroys every rule, connector,
 /// event, session, and memory row in the store, so the confirmation is
 /// part of the wire format: a stray POST with no body cannot wipe it.
-#[derive(serde::Deserialize)]
+#[derive(serde::Deserialize, utoipa::ToSchema)]
 pub struct PurgeBody {
     /// Must be `true`. Anything else is a 400.
     pub confirm: bool,
 }
 
 /// POST /data/import — restore a snapshot produced by `POST /data/export`.
+#[utoipa::path(
+    post, operation_id = "data_import_data",
+    path = "/data/import",
+    tag = "data",
+    request_body = operations::data::DataExport,
+    responses((status = 200, description = "Import counts", body = Object))
+)]
 pub async fn import_data(
     State(state): State<AppState>,
     Json(export): Json<operations::data::DataExport>,
@@ -36,6 +49,13 @@ pub async fn import_data(
 }
 
 /// POST /data/purge — delete all user data. The vault is left intact.
+#[utoipa::path(
+    post, operation_id = "data_purge_data",
+    path = "/data/purge",
+    tag = "data",
+    request_body = PurgeBody,
+    responses((status = 200, description = "Store purged", body = Object))
+)]
 pub async fn purge_data(
     State(state): State<AppState>,
     Json(body): Json<PurgeBody>,

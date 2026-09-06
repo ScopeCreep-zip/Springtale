@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 use specta::Type;
 
 /// Top-level catalogued recipe.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 pub struct Recipe {
     /// Stable identifier (kebab-case). Built-ins use literal slugs
     /// (`"telegram-echo"`); user recipes use UUIDs.
@@ -90,7 +90,9 @@ impl Recipe {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Type)]
+#[derive(
+    Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Hash, Type, utoipa::ToSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum RecipeCategory {
     Messaging,
@@ -116,7 +118,7 @@ impl RecipeCategory {
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Type, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum Difficulty {
     /// 3-click deploy.
@@ -127,7 +129,7 @@ pub enum Difficulty {
     Power,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type, utoipa::ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum RecipeSource {
     /// Compiled into the binary.
@@ -142,7 +144,7 @@ pub enum RecipeSource {
 
 /// A typed input field the user fills (or that has a default the
 /// recipe author baked in).
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 pub struct InputField {
     pub id: String,
     pub label: String,
@@ -175,7 +177,7 @@ pub struct InputField {
 /// pattern) so a click-and-play user can deploy after touching only
 /// `Required` fields, while a power user can drill into `Optional`
 /// → `Advanced` on the same surface.
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Type, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum FieldVisibility {
     /// User MUST fill this before deploy. The W1.D preflight blocks
@@ -199,7 +201,7 @@ pub enum FieldVisibility {
 /// the fields next to the tag. Without this serde defaults to external
 /// tagging, which puts unit variants on the wire as bare strings and
 /// breaks the frontend type contract for input rendering.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type, utoipa::ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum FieldKind {
     /// Free-form text (no secrecy).
@@ -274,7 +276,7 @@ pub enum FieldKind {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type, utoipa::ToSchema)]
 pub struct SelectOption {
     pub value: String,
     pub label: String,
@@ -283,7 +285,7 @@ pub struct SelectOption {
 /// Blueprint — what `apply_recipe` performs against the running
 /// runtime. All strings may contain `${input_id}` placeholders which
 /// [`crate::operations::recipes::apply`] substitutes from user inputs.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 pub struct RecipeBlueprint {
     /// Connector configs to upsert (keyed by connector name).
     #[serde(default)]
@@ -315,7 +317,7 @@ pub struct RecipeBlueprint {
 /// the JSON wire matches the TS discriminated-union shape, like
 /// [`FieldKind`]. The extension point for the universal-recipe
 /// mechanism — new resolvers (timezone, currency, …) add variants here.
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Type, utoipa::ToSchema)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum DerivedInputResolver {
     /// Geocode a free-text place (the value of `source_input_id`, e.g.
@@ -329,7 +331,7 @@ pub enum DerivedInputResolver {
     },
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 pub struct ConnectorConfigStep {
     pub connector_name: String,
     /// JSON value template — placeholders substituted before passing
@@ -337,13 +339,13 @@ pub struct ConnectorConfigStep {
     pub config: serde_json::Value,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 pub struct RuleStep {
     /// TOML rule body — placeholders substituted before parse.
     pub toml: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 pub struct AiConfigStep {
     /// Which level the config applies to (colony, formation, or agent).
     pub target: crate::operations::config::AiTarget,
@@ -355,7 +357,7 @@ pub struct AiConfigStep {
 /// All filtering happens server-side. Frontend sends the filter, gets
 /// the matching slice back — never holds the full catalogue and never
 /// filters in-memory.
-#[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, Type, utoipa::ToSchema)]
 pub struct RecipeFilter {
     /// Fuzzy match on `name` + `description` + connectors_used.
     #[serde(default)]
@@ -381,7 +383,7 @@ pub struct RecipeFilter {
     pub sort: RecipeSort,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Type, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum RecipeSourceFilter {
     Builtin,
@@ -389,7 +391,9 @@ pub enum RecipeSourceFilter {
     Community,
 }
 
-#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Type)]
+#[derive(
+    Debug, Clone, Copy, Default, Serialize, Deserialize, PartialEq, Eq, Type, utoipa::ToSchema,
+)]
 #[serde(rename_all = "snake_case")]
 pub enum RecipeSort {
     /// Recommended order — built-ins first, sorted by Difficulty (Quick first).
@@ -402,7 +406,7 @@ pub enum RecipeSort {
 }
 
 /// What the user submitted when picking a recipe.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 pub struct RecipeInputs {
     /// Map from `InputField.id` → user-supplied value.
     pub values: std::collections::BTreeMap<String, serde_json::Value>,
@@ -423,7 +427,7 @@ impl RecipeInputs {
 }
 
 /// Outcome of a successful `apply_recipe` call.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 pub struct ApplyReport {
     /// Recipe that was applied.
     pub recipe_id: String,

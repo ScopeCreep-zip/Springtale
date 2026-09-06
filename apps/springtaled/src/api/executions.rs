@@ -17,6 +17,13 @@ use super::state::AppState;
 
 /// GET /executions — newest-first, filtered by query params
 /// (`bot_id`, `formation_id`, `rule_id`, `status`, `before`, `limit`).
+#[utoipa::path(
+    get, operation_id = "executions_list",
+    path = "/executions",
+    tag = "executions",
+    params(ExecutionFilterIpc),
+    responses((status = 200, description = "Newest-first executions", body = Vec<ExecutionInfo>))
+)]
 pub async fn list(
     State(state): State<AppState>,
     Query(filter): Query<ExecutionFilterIpc>,
@@ -34,6 +41,13 @@ pub async fn list(
 }
 
 /// GET /executions/{id}/steps — every step row for one execution.
+#[utoipa::path(
+    get, operation_id = "executions_steps",
+    path = "/executions/{id}/steps",
+    tag = "executions",
+    params(("id" = String, Path, description = "Execution id")),
+    responses((status = 200, description = "Steps of one execution", body = Vec<ExecutionStepInfo>))
+)]
 pub async fn steps(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
@@ -50,12 +64,18 @@ pub async fn steps(
         })
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct VacuumResponse {
     pub purged: u64,
 }
 
 /// POST /executions/vacuum — drop rows past their retention window.
+#[utoipa::path(
+    post, operation_id = "executions_vacuum",
+    path = "/executions/vacuum",
+    tag = "executions",
+    responses((status = 200, description = "Rows purged", body = VacuumResponse))
+)]
 pub async fn vacuum(
     State(state): State<AppState>,
 ) -> Result<Json<VacuumResponse>, (StatusCode, String)> {

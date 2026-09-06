@@ -49,9 +49,24 @@ impl TestApp {
         )));
         let engine = Arc::new(RwLock::new(RuleEngine::new()));
 
+        // The passphrase-derived hash is the LOGIN VERIFIER only (6.6);
+        // it is never a bearer. Tests get a real minted session, exactly
+        // as `POST /auth/login` would have handed one out.
         let passphrase = b"test-passphrase";
         let api_token_hash = derive_api_token_hash(passphrase);
-        let token_hex = hex::encode(api_token_hash);
+        let mut token_bytes = [0u8; 32];
+        rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut token_bytes);
+        let token_hex = hex::encode(token_bytes);
+        let now = std::time::Instant::now();
+        let mut seeded = HashMap::new();
+        seeded.insert(
+            crate::api::login::hash_token(&token_bytes),
+            crate::api::login::SessionRecord {
+                issued_at: now,
+                last_seen: now,
+            },
+        );
+        let sessions = Arc::new(Mutex::new(seeded));
 
         let (trigger_tx, _trigger_rx) = mpsc::channel(256);
         let cron = Arc::new(Mutex::new(CronExecutor::new(trigger_tx.clone())));
@@ -157,6 +172,7 @@ impl TestApp {
         let state = AppState {
             runtime,
             api_token_hash,
+            sessions,
             ready: ready_flag,
             trigger_tx,
             scheduler,

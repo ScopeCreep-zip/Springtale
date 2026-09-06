@@ -19,6 +19,13 @@ use super::state::AppState;
 /// ```json
 /// { "connector": "connector-telegram", "channel_id": "123", "text": "hi" }
 /// ```
+#[utoipa::path(
+    post, operation_id = "send_send",
+    path = "/send",
+    tag = "send",
+    request_body = SendRequest,
+    responses((status = 200, description = "Send outcome", body = SendOutcome))
+)]
 pub async fn send(
     State(state): State<AppState>,
     Json(req): Json<SendRequest>,

@@ -1,0 +1,7006 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Springtale management API",
+    "description": "Local-first bot automation. Binds loopback; bearer-authenticated.",
+    "license": {
+      "name": "AGPL-3.0"
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/agents/states": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "GET /agents/states",
+        "operationId": "agents_list_states",
+        "responses": {
+          "200": {
+            "description": "Aggregated agent states",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agents/{name}/autonomy": {
+      "get": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "GET /agents/:name/autonomy — `:name` is a rule name or rule id.",
+        "operationId": "agents_get_autonomy",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Agent name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Current autonomy level",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "PUT /agents/:name/autonomy — `:name` is a rule name or rule id.",
+        "operationId": "agents_set_autonomy",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Agent name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetAutonomyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated autonomy level",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/agents/{name}/autonomy/step": {
+      "post": {
+        "tags": [
+          "agents"
+        ],
+        "summary": "POST /agents/:name/autonomy/step — step autonomy up or down.",
+        "operationId": "agents_step_autonomy",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Agent name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StepAutonomyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Stepped autonomy level",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/approvals": {
+      "get": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "`GET /approvals` — list outstanding approval requests.",
+        "operationId": "approvals_list_pending",
+        "responses": {
+          "200": {
+            "description": "Pending approval requests",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/approvals/{id}": {
+      "post": {
+        "tags": [
+          "approvals"
+        ],
+        "summary": "`POST /approvals/{id}` — land a decision for a pending approval.",
+        "description": "Status mapping:\n- 200: decision recorded, requestor will see it.\n- 404: no pending request with that id (timeout already fired, or\n  wrong id).\n- 409: a prior decision already landed (idempotent — UI shouldn't\n  double-click).\n- 503: no approval gate wired (test build or boot-incomplete).",
+        "operationId": "approvals_resolve",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Approval request id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Approval resolved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "POST /auth/login — unauthenticated, rate-limited. Verifies the\npassphrase and mints a fresh session token.",
+        "operationId": "login_login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Session token minted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/auth/logout": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "POST /auth/logout — drops the presented session. A long-lived token\nis not a session; revoke those with `DELETE /auth/tokens/{id}`.",
+        "operationId": "login_logout",
+        "responses": {
+          "200": {
+            "description": "Session revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/tokens": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "GET /auth/tokens — metadata only. The hash never crosses the wire.",
+        "operationId": "login_list_tokens",
+        "responses": {
+          "200": {
+            "description": "Named long-lived tokens",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "POST /auth/tokens — mint a long-lived named token. Authenticated.\nThe token string is in the response and nowhere else, ever.",
+        "operationId": "login_create_token",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Long-lived token minted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/auth/tokens/{id}": {
+      "delete": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "DELETE /auth/tokens/{id} — revoke. The next request carrying that\ntoken fails its lookup, so revocation is immediate.",
+        "operationId": "login_delete_token",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Token id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Token revoked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/authors": {
+      "get": {
+        "tags": [
+          "authors"
+        ],
+        "summary": "GET /authors — list all trusted authors.",
+        "operationId": "authors_list",
+        "responses": {
+          "200": {
+            "description": "Trusted authors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/authors/{name}": {
+      "post": {
+        "tags": [
+          "authors"
+        ],
+        "summary": "POST /authors/{name} — add a trusted author.",
+        "operationId": "authors_add",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Author name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AddAuthorRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Author added",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "authors"
+        ],
+        "summary": "DELETE /authors/{name} — remove a trusted author.",
+        "operationId": "authors_remove",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Author name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Author removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bot/formations": {
+      "get": {
+        "tags": [
+          "bot"
+        ],
+        "summary": "GET /bot/formations — active formations with member info.",
+        "operationId": "bot_formations",
+        "responses": {
+          "200": {
+            "description": "Formations the bot belongs to",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bot/memory": {
+      "get": {
+        "tags": [
+          "bot"
+        ],
+        "summary": "GET /bot/memory — list conversation session metadata (zero-knowledge).",
+        "description": "Per zero-knowledge architecture pattern (Bitwarden, Signal, Matrix):\nthe server never exposes decrypted conversation content. Memory is\nencrypted with XChaCha20-Poly1305 and the decryption key lives in\nthe bot runtime — not the API layer.\n\nThis endpoint returns session metadata only:\n- user_id, channel_id (who)\n- last_active (when)\n- entry_count (how much)\n\nAdmin can see what sessions exist and how active they are without\nreading message content. This protects vulnerable users' conversations\nfrom API-level data exfiltration, even if the API token is compromised.\n\nSources:\n- Bitwarden: \"systems have no knowledge of, way to retrieve\" encrypted content\n- Matrix Synapse: \"encrypted rooms, messages are encrypted, but not their metadata\"\n- Signal: separates delivery metadata from encrypted contents",
+        "operationId": "bot_memory",
+        "responses": {
+          "200": {
+            "description": "Session memory summary",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bot/settings": {
+      "get": {
+        "tags": [
+          "bot"
+        ],
+        "summary": "GET /bot/settings — persona, context window, tool policy (plan 6.3).",
+        "operationId": "bot_get_settings",
+        "responses": {
+          "200": {
+            "description": "Current bot settings",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BotSettings"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "bot"
+        ],
+        "summary": "PUT /bot/settings — replace them. Every literal tool in the allow-list\nis checked against the connector registry, so a typo is a 400 rather\nthan a silently tool-less AI.",
+        "operationId": "bot_put_settings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BotSettings"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Settings saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/bot/status": {
+      "get": {
+        "tags": [
+          "bot"
+        ],
+        "summary": "GET /bot/status — runtime status summary.",
+        "operationId": "bot_status",
+        "responses": {
+          "200": {
+            "description": "Bot runtime status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/canvas": {
+      "get": {
+        "tags": [
+          "canvas"
+        ],
+        "summary": "Get the current canvas state snapshot.",
+        "operationId": "canvas_get_canvas",
+        "responses": {
+          "200": {
+            "description": "Colony canvas state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/canvas/connections": {
+      "get": {
+        "tags": [
+          "canvas"
+        ],
+        "summary": "Get computed connection graph.",
+        "operationId": "canvas_get_connections",
+        "responses": {
+          "200": {
+            "description": "Mycelium connections between trees",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat": {
+      "post": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "`POST /chat` — inject a chat message from the in-app panel.",
+        "description": "Fire-and-forget: the bot processes asynchronously and the reply arrives\nover `GET /chat/stream`. Returns `202 Accepted` once queued.",
+        "operationId": "chat_send",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/IncomingMessage"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Chat reply",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/chat/stream": {
+      "get": {
+        "tags": [
+          "chat"
+        ],
+        "summary": "`GET /chat/stream` — SSE stream of bot replies for the in-app panel.",
+        "description": "Auth required (Bearer). Read-only. Each event's data is a\n`ChatStreamMessage` JSON object.",
+        "operationId": "chat_stream",
+        "responses": {
+          "200": {
+            "description": "text/event-stream of chat deltas",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "GET /config — list all config entries.",
+        "operationId": "config_api_list_config",
+        "responses": {
+          "200": {
+            "description": "All config entries",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/ai": {
+      "post": {
+        "tags": [
+          "config"
+        ],
+        "summary": "POST /config/ai — set the colony AI adapter and hot-swap.",
+        "operationId": "config_api_set_ai_adapter",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "AI adapter selected",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/ai/configure": {
+      "post": {
+        "tags": [
+          "config"
+        ],
+        "summary": "POST /config/ai/configure — configure AI at one level of the hierarchy.",
+        "operationId": "config_api_configure_ai_adapter",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConfigureAiBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "AI adapter configured",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/connector/{name}": {
+      "post": {
+        "tags": [
+          "config"
+        ],
+        "summary": "POST /config/connector/:name",
+        "operationId": "config_api_set_connector_config",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Connector name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Connector config stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/heartbeat": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "GET /config/heartbeat",
+        "operationId": "config_api_get_heartbeat",
+        "responses": {
+          "200": {
+            "description": "Heartbeat monitor state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeartbeatStatus"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "config"
+        ],
+        "summary": "PUT /config/heartbeat — persist the interval and apply it to the monitor.",
+        "operationId": "config_api_set_heartbeat",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetHeartbeatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Heartbeat interval applied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeartbeatStatus"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/config/{key}": {
+      "get": {
+        "tags": [
+          "config"
+        ],
+        "summary": "GET /config/:key",
+        "operationId": "config_api_get_config",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "description": "Config key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Config value",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "config"
+        ],
+        "summary": "PUT /config/:key",
+        "operationId": "config_api_set_config",
+        "parameters": [
+          {
+            "name": "key",
+            "in": "path",
+            "description": "Config key",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Config value stored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors": {
+      "get": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "GET /connectors — list all installed connectors.",
+        "operationId": "connectors_list",
+        "responses": {
+          "200": {
+            "description": "Installed connectors",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors/available": {
+      "get": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "GET /connectors/available — list ALL connectors from factory registry.",
+        "operationId": "connectors_list_available",
+        "responses": {
+          "200": {
+            "description": "Connectors available to install",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors/install": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "POST /connectors/install — install a connector from manifest JSON.",
+        "operationId": "connectors_install",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Connector installed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors/install-wasm": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "POST /connectors/install-wasm — multipart with a `manifest` part\n(JSON text) and a `wasm` part (binary). Signature, hash and\ncapability checks all live in the operation.",
+        "operationId": "connectors_install_wasm",
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "WASM connector installed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors/schemas": {
+      "get": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "GET /connectors/schemas — return all connector manifests with trigger/action schemas.",
+        "operationId": "connectors_schemas",
+        "responses": {
+          "200": {
+            "description": "Config JSON schemas per connector",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors/setup": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "POST /connectors/setup — configure and load an available connector.",
+        "operationId": "connectors_setup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Connector set up",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors/{name}": {
+      "delete": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "DELETE /connectors/{name} — remove a connector.",
+        "operationId": "connectors_remove",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Connector name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Connector removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors/{name}/cascade": {
+      "delete": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "DELETE /connectors/{name}/cascade — remove connector + dependent rules.",
+        "operationId": "connectors_remove_cascade",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Connector name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Connector and dependent rules removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors/{name}/config": {
+      "get": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "GET /connectors/{name}/config — get connector config.",
+        "operationId": "connectors_get_config",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Connector name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Connector config (secrets redacted)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors/{name}/disable": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "POST /connectors/{name}/disable — disable a connector.",
+        "operationId": "connectors_disable",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Connector name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Connector disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors/{name}/enable": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "POST /connectors/{name}/enable — enable a connector.",
+        "operationId": "connectors_enable",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Connector name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Connector enabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors/{name}/outputs": {
+      "get": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "GET /connectors/{name}/outputs — list recent execution results.",
+        "operationId": "connectors_list_outputs",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Connector name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Declared connector outputs",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors/{name}/reload": {
+      "post": {
+        "tags": [
+          "connectors"
+        ],
+        "summary": "POST /connectors/{name}/reload — G4 hot-reload a connector without\ndropping in-flight calls. The connector's persisted config is\nre-applied verbatim; subsequent dispatches land on the new host.",
+        "operationId": "connectors_reload",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Connector name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Connector reloaded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors/{name}/test": {
+      "post": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "POST /connectors/{name}/test — test a connector by dry-running its first rule.",
+        "operationId": "rules_test_connector",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Connector name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Connector test outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/connectors/{name}/upsert-config": {
+      "post": {
+        "tags": [
+          "config"
+        ],
+        "summary": "POST /connectors/{name}/upsert-config — setup if new, update if exists.",
+        "operationId": "config_api_upsert_connector_config",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Connector name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Connector config merged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cooperation/utterances": {
+      "get": {
+        "tags": [
+          "utterances"
+        ],
+        "summary": "`GET /cooperation/utterances` — the def table this daemon speaks with.",
+        "operationId": "utterances_utterance_defs",
+        "responses": {
+          "200": {
+            "description": "Simlish utterance definitions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/cooperation/utterances/recent": {
+      "get": {
+        "tags": [
+          "utterances"
+        ],
+        "summary": "`GET /cooperation/utterances/recent` — the ring, newest first (cap 1000).",
+        "operationId": "utterances_recent",
+        "responses": {
+          "200": {
+            "description": "Recent utterances",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/export": {
+      "post": {
+        "tags": [
+          "data"
+        ],
+        "summary": "POST /data/export",
+        "operationId": "data_export_data",
+        "responses": {
+          "200": {
+            "description": "Full data snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataExport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/import": {
+      "post": {
+        "tags": [
+          "data"
+        ],
+        "summary": "POST /data/import — restore a snapshot produced by `POST /data/export`.",
+        "operationId": "data_import_data",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DataExport"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Import counts",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/data/purge": {
+      "post": {
+        "tags": [
+          "data"
+        ],
+        "summary": "POST /data/purge — delete all user data. The vault is left intact.",
+        "operationId": "data_purge_data",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PurgeBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Store purged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/diagnostics": {
+      "get": {
+        "tags": [
+          "diagnostics"
+        ],
+        "summary": "GET /diagnostics — run every check and return the structured report.",
+        "operationId": "diagnostics_list",
+        "responses": {
+          "200": {
+            "description": "Diagnostic report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Report"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/drift/recipe/{id}": {
+      "get": {
+        "tags": [
+          "drift"
+        ],
+        "summary": "GET /drift/recipe/{id} — drift window for one recipe.",
+        "operationId": "drift_recipe",
+        "parameters": [
+          {
+            "name": "bot_id",
+            "in": "query",
+            "description": "Filter to one bot's runs. Both this and `formation_id`\ncan be set — they intersect.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "formation_id",
+            "in": "query",
+            "description": "Filter to one formation's runs.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "rule_id",
+            "in": "query",
+            "description": "Filter to one rule's runs. Required for `rule_drift`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "recent_n",
+            "in": "query",
+            "description": "Most-recent run count. Default 10.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "baseline_n",
+            "in": "query",
+            "description": "Older runs preceding `recent_n`. Default 30.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Recipe id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recipe drift report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriftReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/drift/rule/{id}": {
+      "get": {
+        "tags": [
+          "drift"
+        ],
+        "summary": "GET /drift/rule/{id} — drift window for one rule.",
+        "operationId": "drift_rule",
+        "parameters": [
+          {
+            "name": "bot_id",
+            "in": "query",
+            "description": "Filter to one bot's runs. Both this and `formation_id`\ncan be set — they intersect.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "formation_id",
+            "in": "query",
+            "description": "Filter to one formation's runs.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "rule_id",
+            "in": "query",
+            "description": "Filter to one rule's runs. Required for `rule_drift`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "recent_n",
+            "in": "query",
+            "description": "Most-recent run count. Default 10.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "baseline_n",
+            "in": "query",
+            "description": "Older runs preceding `recent_n`. Default 30.",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Rule id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rule drift report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DriftReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/events": {
+      "get": {
+        "tags": [
+          "events"
+        ],
+        "summary": "GET /events — paginated event log.",
+        "description": "Returns recent events (trigger type, connector, timestamp, action taken).\nEvent payloads are NOT stored (ephemeral in PipelineContext per privacy model).\nThe limit clamp lives in `operations::events::list`.",
+        "operationId": "events_list",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          },
+          {
+            "name": "connector",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Page of the event log",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/executions": {
+      "get": {
+        "tags": [
+          "executions"
+        ],
+        "summary": "GET /executions — newest-first, filtered by query params\n(`bot_id`, `formation_id`, `rule_id`, `status`, `before`, `limit`).",
+        "operationId": "executions_list",
+        "parameters": [
+          {
+            "name": "bot_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "formation_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "rule_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "description": "One of the status enum strings — `succeeded | failed | ...`.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "before",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int64"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Newest-first executions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExecutionInfo"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/executions/vacuum": {
+      "post": {
+        "tags": [
+          "executions"
+        ],
+        "summary": "POST /executions/vacuum — drop rows past their retention window.",
+        "operationId": "executions_vacuum",
+        "responses": {
+          "200": {
+            "description": "Rows purged",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VacuumResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/executions/{id}/steps": {
+      "get": {
+        "tags": [
+          "executions"
+        ],
+        "summary": "GET /executions/{id}/steps — every step row for one execution.",
+        "operationId": "executions_steps",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Execution id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Steps of one execution",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ExecutionStepInfo"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/fixes": {
+      "get": {
+        "tags": [
+          "fixes"
+        ],
+        "summary": "GET /fixes — static guide table, stable across the session.",
+        "operationId": "fixes_list",
+        "responses": {
+          "200": {
+            "description": "Known fix guides",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FixGuide"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/fixes/{id}": {
+      "get": {
+        "tags": [
+          "fixes"
+        ],
+        "summary": "GET /fixes/{id} — single guide lookup.",
+        "operationId": "fixes_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Fix guide id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One fix guide",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FixGuide"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/fixes/{id}/apply": {
+      "post": {
+        "tags": [
+          "fixes"
+        ],
+        "summary": "POST /fixes/{id}/apply — attempt the automated fix for this error.",
+        "operationId": "fixes_apply",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Fix guide id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Fix outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FixOutcome"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/formations": {
+      "get": {
+        "tags": [
+          "formations"
+        ],
+        "summary": "GET /formations — list all formations.",
+        "operationId": "formations_list",
+        "responses": {
+          "200": {
+            "description": "All formations",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "formations"
+        ],
+        "summary": "POST /formations — create a new formation.",
+        "operationId": "formations_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFormationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Formation created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/formations/deploy-team": {
+      "post": {
+        "tags": [
+          "formations"
+        ],
+        "summary": "POST /formations/deploy-team — deploy a complete team atomically.",
+        "operationId": "formations_deploy_team",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TeamDeployRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Team deployed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/formations/intents": {
+      "get": {
+        "tags": [
+          "formations"
+        ],
+        "summary": "GET /formations/intents — list valid formation intents.",
+        "operationId": "formations_list_intents",
+        "responses": {
+          "200": {
+            "description": "Selectable intents",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/formations/{id}": {
+      "get": {
+        "tags": [
+          "formations"
+        ],
+        "summary": "GET /formations/{id} — get a single formation.",
+        "operationId": "formations_get",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Formation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One formation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/formations/{id}/commands": {
+      "get": {
+        "tags": [
+          "formations"
+        ],
+        "summary": "GET /formations/{id}/commands — backend-supplied 3×3 command grid with\nstatus-aware enable/disable. Frontend renders the list; no eligibility\nlogic on the JS side.",
+        "operationId": "formations_commands",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Formation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Command grid for the formation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/formations/{id}/cycle-autonomy": {
+      "post": {
+        "tags": [
+          "formations"
+        ],
+        "summary": "POST /formations/{id}/cycle-autonomy — cycle formation autonomy.",
+        "operationId": "formations_cycle_autonomy",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Formation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Autonomy cycled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/formations/{id}/cycle-intent": {
+      "post": {
+        "tags": [
+          "formations"
+        ],
+        "summary": "POST /formations/{id}/cycle-intent — cycle formation intent.",
+        "operationId": "formations_cycle_intent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Formation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Intent cycled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/formations/{id}/deploy": {
+      "post": {
+        "tags": [
+          "formations"
+        ],
+        "summary": "POST /formations/{id}/deploy — deploy a formation.",
+        "operationId": "formations_deploy",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Formation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Formation deployed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/formations/{id}/dissolve": {
+      "post": {
+        "tags": [
+          "formations"
+        ],
+        "summary": "POST /formations/{id}/dissolve — dissolve a formation.",
+        "operationId": "formations_dissolve",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Formation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Formation dissolved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/formations/{id}/intent": {
+      "put": {
+        "tags": [
+          "formations"
+        ],
+        "summary": "PUT /formations/{id}/intent — update formation intent.",
+        "operationId": "formations_update_intent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Formation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Intent updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/formations/{id}/members": {
+      "post": {
+        "tags": [
+          "formations"
+        ],
+        "summary": "POST /formations/{id}/members — add a member to a formation.",
+        "operationId": "formations_add_member",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Formation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Member added",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "formations"
+        ],
+        "summary": "DELETE /formations/{id}/members — remove a member from a formation.",
+        "operationId": "formations_remove_member",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Formation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Member removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/formations/{id}/members/eligible": {
+      "get": {
+        "tags": [
+          "formations"
+        ],
+        "summary": "GET /formations/{id}/members/eligible — eligible-removal list for the\nRM MBR overlay. Backend decides which members are removable; frontend\nrenders the list.",
+        "operationId": "formations_eligible_members",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Formation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Agents eligible to join",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/formations/{id}/pause": {
+      "post": {
+        "tags": [
+          "formations"
+        ],
+        "summary": "POST /formations/{id}/pause — pause a formation.",
+        "operationId": "formations_pause",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Formation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Formation paused",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/formations/{id}/propose-intent": {
+      "post": {
+        "tags": [
+          "formations"
+        ],
+        "summary": "POST /formations/{id}/propose-intent — open a consensus vote to change\nthe formation's intent (§5.5 formation self-governance, Fever-gated).",
+        "operationId": "formations_propose_intent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Formation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Intent proposal opened",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/formations/{id}/rally": {
+      "post": {
+        "tags": [
+          "formations"
+        ],
+        "summary": "POST /formations/{id}/rally — manually trigger self-rally.",
+        "operationId": "formations_rally",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Formation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Formation rallied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/formations/{id}/resume": {
+      "post": {
+        "tags": [
+          "formations"
+        ],
+        "summary": "POST /formations/{id}/resume — resume a formation.",
+        "operationId": "formations_resume",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Formation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Formation resumed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/formations/{id}/run-command": {
+      "post": {
+        "tags": [
+          "formations"
+        ],
+        "summary": "POST /formations/{id}/run-command — generic command dispatcher. Body:\n`{ \"command_id\": \"formation:rally\", \"params\": {…}? }`. ALL command→action\nmapping lives in the backend so the frontend just forwards the clicked id.",
+        "operationId": "formations_run_command",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Formation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Command outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/formations/{id}/toggle-guard": {
+      "post": {
+        "tags": [
+          "config"
+        ],
+        "summary": "POST /formations/{id}/toggle-guard — toggle guard mode.",
+        "operationId": "config_api_toggle_formation_guard",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Formation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Guard toggled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/formations/{id}/votes/{vote_id}": {
+      "post": {
+        "tags": [
+          "formations"
+        ],
+        "summary": "POST /formations/{id}/votes/{vote_id} — cast a ballot on an open\nconsensus vote (§11). Body: { \"voter\": \"<agent uuid>\", \"approve\": bool }.",
+        "operationId": "formations_cast_vote",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Formation id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "vote_id",
+            "in": "path",
+            "description": "Vote id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Vote recorded",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/health": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "GET /health — liveness probe.",
+        "description": "Returns 200 OK if the process is running. No authentication required.",
+        "operationId": "health_health",
+        "responses": {
+          "200": {
+            "description": "Liveness probe",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/memory/audit": {
+      "post": {
+        "tags": [
+          "memory"
+        ],
+        "summary": "POST /memory/audit",
+        "operationId": "memory_audit_memory",
+        "responses": {
+          "200": {
+            "description": "Memory audit report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/memory/compact": {
+      "post": {
+        "tags": [
+          "memory"
+        ],
+        "summary": "POST /memory/compact",
+        "operationId": "memory_compact_memory",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompactMemoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Memory compacted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/onboarding/platforms": {
+      "get": {
+        "tags": [
+          "onboarding"
+        ],
+        "summary": "GET /onboarding/platforms — list every platform form the wizard knows.",
+        "operationId": "onboarding_list",
+        "responses": {
+          "200": {
+            "description": "Platform onboarding forms",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/onboarding/{platform}": {
+      "post": {
+        "tags": [
+          "onboarding"
+        ],
+        "summary": "POST /onboarding/{platform} — persist a wizard answer set as a\nconnector config entry in the encrypted config_store.",
+        "operationId": "onboarding_apply",
+        "parameters": [
+          {
+            "name": "platform",
+            "in": "path",
+            "description": "Platform id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApplyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Wizard answers applied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardingApplyReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ready": {
+      "get": {
+        "tags": [
+          "health"
+        ],
+        "summary": "GET /ready — readiness probe.",
+        "description": "Returns 200 OK if the daemon has completed its boot sequence and\nall subsystems are accessible. Returns 503 if not ready.\nNo authentication required.",
+        "operationId": "health_ready",
+        "responses": {
+          "200": {
+            "description": "Readiness probe",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/recipes": {
+      "get": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "GET /recipes — list with optional filter via query params.",
+        "operationId": "recipes_list",
+        "parameters": [
+          {
+            "name": "query",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "category",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/RecipeCategory"
+                }
+              ]
+            }
+          },
+          {
+            "name": "tags",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "sources",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "favorites_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "boolean",
+                "null"
+              ]
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "integer",
+                "null"
+              ],
+              "minimum": 0
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "oneOf": [
+                {
+                  "type": "null"
+                },
+                {
+                  "$ref": "#/components/schemas/RecipeSort"
+                }
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Matching recipes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/Recipe"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recipes/categories": {
+      "get": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "GET /recipes/categories — render the sidebar from this. Server is\nauthoritative on the category list (no frontend hardcoding).",
+        "operationId": "recipes_list_categories",
+        "responses": {
+          "200": {
+            "description": "Recipe categories",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recipes/import": {
+      "post": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "POST /recipes/import — import a recipe from raw TOML.",
+        "operationId": "recipes_import_toml",
+        "requestBody": {
+          "content": {
+            "text/plain": {
+              "schema": {
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Imported recipe",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Recipe"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recipes/user": {
+      "post": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "POST /recipes/user — save to the user library. Runs Clear Check.",
+        "operationId": "recipes_save_user",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Recipe"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Saved user recipe",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Recipe"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recipes/user/{id}": {
+      "delete": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "DELETE /recipes/user/{id} — remove a user recipe.",
+        "operationId": "recipes_delete_user",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Recipe id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Deleted"
+          }
+        }
+      }
+    },
+    "/recipes/{id}": {
+      "get": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "GET /recipes/{id} — fetch one. 404 if not found.",
+        "operationId": "recipes_get_one",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Recipe id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One recipe",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Recipe"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recipes/{id}/apply": {
+      "post": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "POST /recipes/{id}/apply — W1.C deploy with user inputs.",
+        "operationId": "recipes_apply",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Recipe id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecipeInputs"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Recipe applied",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApplyReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recipes/{id}/export": {
+      "get": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "GET /recipes/{id}/export — TOML for sharing.",
+        "operationId": "recipes_export_toml",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Recipe id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recipe TOML",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recipes/{id}/favorite": {
+      "post": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "POST /recipes/{id}/favorite — toggle a recipe in/out of favorites.",
+        "operationId": "recipes_toggle_favorite",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Recipe id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "New favorite state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FavoriteResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recipes/{id}/fork": {
+      "post": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "POST /recipes/{id}/fork — duplicate into the user library.",
+        "operationId": "recipes_fork",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Recipe id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForkBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Forked recipe",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Recipe"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recipes/{id}/pieces": {
+      "get": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "GET /recipes/{id}/pieces — W2.D borrowable slots.",
+        "operationId": "recipes_list_pieces",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Recipe id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recipe pieces",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/RecipePieceSummary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recipes/{id}/preflight": {
+      "post": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "POST /recipes/{id}/preflight — W1.D Deploy-readiness checklist.",
+        "operationId": "recipes_preflight",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Recipe id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecipeInputs"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Preflight report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreflightReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recipes/{id}/preview": {
+      "post": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "POST /recipes/{id}/preview — W2.C dry-run with comic-strip narrative.",
+        "operationId": "recipes_preview",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Recipe id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecipeInputs"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Preview report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PreviewReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recipes/{id}/recent": {
+      "post": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "POST /recipes/{id}/recent — push onto the recently-used list.",
+        "operationId": "recipes_record_recent",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Recipe id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Recorded"
+          }
+        }
+      }
+    },
+    "/recipes/{id}/render": {
+      "post": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "POST /recipes/{id}/render — show-as-code disclosure renders the\nassembled TOML for the user's current inputs. Read-only; takes\nthe same payload as `/apply` but doesn't materialise.",
+        "operationId": "recipes_render",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Recipe id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecipeInputs"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Rendered rule TOML",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/recipes/{id}/test-step": {
+      "post": {
+        "tags": [
+          "recipes"
+        ],
+        "summary": "POST /recipes/{id}/test-step — Phase C \"Test This Step\" dry run\nthrough `step_index` of `rule_index`.",
+        "operationId": "recipes_test_step",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Recipe id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TestStepBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Step test report",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TestStepReport"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules": {
+      "get": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "GET /rules — list all rules.",
+        "operationId": "rules_list",
+        "responses": {
+          "200": {
+            "description": "All rules",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "POST /rules — create a new rule.",
+        "operationId": "rules_create",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Rule created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules/connector": {
+      "post": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "POST /rules/connector — create a connector-event rule from simple fields.",
+        "operationId": "rules_create_connector_rule",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateConnectorRuleRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Connector rule created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules/connector/{name}": {
+      "get": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "GET /rules/connector/{name} — list rules for a specific connector.",
+        "operationId": "rules_list_for_connector",
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "description": "Connector name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rules bound to one connector",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules/parse": {
+      "post": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "POST /rules/parse — generate a Rule from natural language intent.",
+        "description": "Returns the generated Rule for preview (not persisted).\nThe frontend shows the preview and the user calls POST /rules to save.",
+        "operationId": "rules_parse",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Parsed rule",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules/schema": {
+      "get": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "GET /rules/schema — return JSON schemas for trigger, condition, and action types.",
+        "description": "Used by the visual rule builder to generate input forms for each type.",
+        "operationId": "rules_schema",
+        "responses": {
+          "200": {
+            "description": "Rule JSON schema",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules/{id}": {
+      "put": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "PUT /rules/{id} — update a rule (replace).",
+        "operationId": "rules_update",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Rule id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Rule updated",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "DELETE /rules/{id} — delete a rule.",
+        "operationId": "rules_delete",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Rule id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rule deleted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules/{id}/reassign": {
+      "post": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "POST /rules/{id}/reassign — reassign a rule to a new connector.",
+        "operationId": "rules_reassign",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Rule id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Rule reassigned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules/{id}/run": {
+      "post": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "POST /rules/{id}/run — manually trigger a rule (dry-run).",
+        "operationId": "rules_run",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Rule id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rule run once",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/rules/{id}/toggle": {
+      "post": {
+        "tags": [
+          "rules"
+        ],
+        "summary": "POST /rules/{id}/toggle — toggle a rule's enabled/disabled status.",
+        "operationId": "rules_toggle",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Rule id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Rule enabled/disabled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/safety": {
+      "get": {
+        "tags": [
+          "safety"
+        ],
+        "summary": "GET /safety — get the current safety configuration.",
+        "operationId": "safety_get_config",
+        "responses": {
+          "200": {
+            "description": "Safety config",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "safety"
+        ],
+        "summary": "PUT /safety — save the safety configuration.",
+        "operationId": "safety_save_config",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Safety config saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/safety/disguise/active": {
+      "post": {
+        "tags": [
+          "safety"
+        ],
+        "summary": "POST /safety/disguise/active — focused endpoint that flips just\nthe disguise-active flag without re-sending the whole config.\nAvoids the lost-update race two tabs would hit on the full-config\nPUT path.",
+        "operationId": "safety_set_disguise_active",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisguiseActiveBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Disguise flag flipped",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/safety/disguise/profile": {
+      "post": {
+        "tags": [
+          "safety"
+        ],
+        "summary": "POST /safety/disguise/profile — atomic two-field update of which\ndisguise the app should display. Doesn't touch `disguise_active`.",
+        "operationId": "safety_set_disguise_profile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DisguiseProfileBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Disguise profile switched",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/safety/panic-wipe": {
+      "post": {
+        "tags": [
+          "safety"
+        ],
+        "summary": "POST /safety/panic-wipe — irreversibly destroy every row of local data.",
+        "description": "Plan 2.1: the desktop used to reach `operations::safety::panic_wipe`\nthrough its own in-process runtime. The daemon owns the store now, so\nthe route has to exist here or the button is dead on both shells.",
+        "operationId": "safety_panic_wipe",
+        "responses": {
+          "200": {
+            "description": "Panic wipe executed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/safety/panic_tap_count": {
+      "post": {
+        "tags": [
+          "safety"
+        ],
+        "summary": "POST /safety/panic_tap_count — update how many rapid title-bar\ntaps trigger panic-wipe. Server-bounded `[0, 10]`; values out of\nrange return 400 to prevent a survivor accidentally configuring\npanic-wipe unreachable.",
+        "operationId": "safety_set_panic_tap_count",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PanicTapCountBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Panic tap threshold saved",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/send": {
+      "post": {
+        "tags": [
+          "send"
+        ],
+        "summary": "POST /send — send a message to a channel on a specific connector.",
+        "description": "Request body:\n```json\n{ \"connector\": \"connector-telegram\", \"channel_id\": \"123\", \"text\": \"hi\" }\n```",
+        "operationId": "send_send",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SendRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Send outcome",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SendOutcome"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sessions": {
+      "get": {
+        "tags": [
+          "sessions"
+        ],
+        "summary": "GET /sessions — list all active bot sessions.",
+        "description": "Shows per-user, per-channel conversation state. Useful for\nmonitoring which automated conversations are in progress.",
+        "operationId": "sessions_list",
+        "responses": {
+          "200": {
+            "description": "Active bot sessions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "type": "object"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stream": {
+      "get": {
+        "tags": [
+          "stream"
+        ],
+        "summary": "GET /stream — Server-Sent Events, multiplexed. Ticket auth. Read-only.",
+        "operationId": "stream_stream",
+        "responses": {
+          "200": {
+            "description": "text/event-stream of events, canvas and cooperation frames",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/stream/ticket": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "POST /stream/ticket — one-time, 30 s ticket for the SSE routes,\nissued *against the presented session* (plan 6.6 step 4). The ticket\ncarries the bearer's principal, so logging out or revoking the token\nkills every outstanding ticket with it.",
+        "operationId": "auth_issue_stream_ticket",
+        "responses": {
+          "200": {
+            "description": "One-time SSE ticket",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/travel/prepare": {
+      "post": {
+        "tags": [
+          "safety"
+        ],
+        "summary": "POST /travel/prepare — write an encrypted backup, then wipe local data.",
+        "description": "Per `ARCHITECTURE.md` §2.6 border-crossing mode. The caller is expected\nto stop the daemon afterwards; unlike the old desktop command this does\nnot call `std::process::exit`, because the daemon may be serving other\nclients and killing it out from under them is the wrong shutdown path.",
+        "operationId": "safety_travel_prepare",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TravelBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Travel backup written",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/travel/restore": {
+      "post": {
+        "tags": [
+          "safety"
+        ],
+        "summary": "POST /travel/restore — decrypt a backup back into vault, database, config.",
+        "description": "The daemon must be restarted afterwards: it is still holding the handles\nto the files that were just replaced underneath it.",
+        "operationId": "safety_travel_restore",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TravelBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Travel backup restored",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ui": {
+      "get": {
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Serve the dashboard index page (root of /ui/).",
+        "operationId": "dashboard_serve_dashboard_index",
+        "responses": {
+          "200": {
+            "description": "Dashboard SPA index",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/ui/{path}": {
+      "get": {
+        "tags": [
+          "dashboard"
+        ],
+        "summary": "Serve an embedded dashboard file by path.",
+        "description": "Falls back to index.html for SPA client-side routing.\nMount this at `/ui/` in the router.",
+        "operationId": "dashboard_serve_dashboard",
+        "parameters": [
+          {
+            "name": "path",
+            "in": "path",
+            "description": "Asset path under the SPA root",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Dashboard asset",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/webhook/{connector}/{trigger}": {
+      "post": {
+        "tags": [
+          "webhooks"
+        ],
+        "summary": "POST /webhook/{connector}/{trigger} — receive an inbound webhook.",
+        "description": "The management API receives webhook POSTs from external services (GitHub, Kick, etc.)\nand routes them to the appropriate connector for signature verification and dispatch.\n\nFlow:\n1. Look up connector in registry\n2. Connector-specific signature verification (GitHub: HMAC-SHA256, Kick: RSA)\n3. Dispatch trigger event to the rule engine via the trigger channel",
+        "operationId": "webhooks_receive",
+        "parameters": [
+          {
+            "name": "connector",
+            "in": "path",
+            "description": "Connector name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "trigger",
+            "in": "path",
+            "description": "Trigger name",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Webhook accepted",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/workspaces": {
+      "get": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "GET /workspaces?formation_id=..&connector=.. — directory listing.",
+        "operationId": "workspaces_list",
+        "parameters": [
+          {
+            "name": "formation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "connector",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Known workspaces",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkspaceInfo"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "POST /workspaces — manual-entry escape hatch. `entered_by` is a\nfresh `AgentId` until Phase 3 auth, same as the desktop command.",
+        "operationId": "workspaces_upsert_manual",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpsertManualBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Workspace stored"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "DELETE /workspaces?formation_id=..&workspace_key=..",
+        "operationId": "workspaces_delete",
+        "parameters": [
+          {
+            "name": "formation_id",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "workspace_key",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Workspace removed"
+          }
+        }
+      }
+    },
+    "/workspaces/onboard": {
+      "post": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "POST /workspaces/onboard?ticket=.. — SSE of `chat-discovered`\nframes (same payload as the desktop `ChatDiscovered` event) until\nthe first match, the 60 s window, or client disconnect.",
+        "operationId": "workspaces_onboard",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "text/event-stream of onboarding progress",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/workspaces/onboard-url": {
+      "post": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "POST /workspaces/onboard-url — resolve the connector's deep link.",
+        "operationId": "workspaces_onboard_url",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OnboardBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Deep link",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OnboardUrlResponse"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/workspaces/scan": {
+      "post": {
+        "tags": [
+          "workspaces"
+        ],
+        "summary": "POST /workspaces/scan — active `discover_destinations` sweep.",
+        "operationId": "workspaces_scan",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ScanBody"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Discovered workspaces",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/WorkspaceInfo"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AddAuthorRequest": {
+        "type": "object",
+        "description": "Request body for adding a trusted author.",
+        "required": [
+          "pubkey"
+        ],
+        "properties": {
+          "pubkey": {
+            "type": "string",
+            "description": "Hex-encoded Ed25519 public key (64 hex chars)."
+          }
+        }
+      },
+      "AiConfigStep": {
+        "type": "object",
+        "required": [
+          "target",
+          "config"
+        ],
+        "properties": {
+          "config": {},
+          "target": {
+            "$ref": "#/components/schemas/AiTarget",
+            "description": "Which level the config applies to (colony, formation, or agent)."
+          }
+        }
+      },
+      "AiTarget": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "scope"
+            ],
+            "properties": {
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "colony"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "id",
+              "scope"
+            ],
+            "properties": {
+              "id": {
+                "type": "string"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "formation"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "rule_id",
+              "scope"
+            ],
+            "properties": {
+              "rule_id": {
+                "type": "string",
+                "format": "uuid"
+              },
+              "scope": {
+                "type": "string",
+                "enum": [
+                  "agent"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "One level of the AI command hierarchy. One config key per level:\n`ai:colony`, `ai:formation:{formation_id}`, `ai:agent:{rule_id}`."
+      },
+      "ApplyReport": {
+        "type": "object",
+        "description": "Outcome of a successful `apply_recipe` call.",
+        "required": [
+          "recipe_id",
+          "connectors_configured",
+          "rules_created",
+          "ai_configured",
+          "summary"
+        ],
+        "properties": {
+          "ai_configured": {
+            "type": "boolean",
+            "description": "Whether the AI adapter step ran."
+          },
+          "connectors_configured": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Connector names whose config was upserted."
+          },
+          "recipe_id": {
+            "type": "string",
+            "description": "Recipe that was applied."
+          },
+          "rules_created": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Rule ids created."
+          },
+          "summary": {
+            "type": "string",
+            "description": "Plain-language summary rendered to the user post-deploy."
+          }
+        }
+      },
+      "ApplyRequest": {
+        "type": "object",
+        "description": "Request body for POST /onboarding/{platform}.",
+        "required": [
+          "answers"
+        ],
+        "properties": {
+          "answers": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "AutonomyDirection": {
+        "type": "string",
+        "description": "Direction for stepping autonomy.",
+        "enum": [
+          "up",
+          "down"
+        ]
+      },
+      "BotPersona": {
+        "type": "object",
+        "description": "Bot persona — display name, tone hint, command prefix.\n\nMoved here from `springtale-bot` (plan 6.3): the bot depends on the\nruntime, not the reverse, so the settings type the runtime owns and\nhands out has to live on this side of the dependency edge.",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Bot display name. Default: \"Springtale\"."
+          },
+          "prefix": {
+            "type": "string",
+            "description": "Command prefix character. Default: '/'."
+          },
+          "tone": {
+            "type": "string",
+            "description": "Response tone hint. Default: \"neutral\"."
+          }
+        }
+      },
+      "BotSettings": {
+        "type": "object",
+        "description": "The user-editable bot settings.",
+        "properties": {
+          "auto_lock_secs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Idle seconds before the daemon locks itself: drops the runtime,\ncloses the database and zeroizes the vault key (plan 6.10).\n`0` disables auto-lock. Default: 300.\n\nMoved here from `springtale_bot::BotConfig::vault_timeout_secs`,\nwhich nothing read and which could only be changed by editing a\nTOML file and restarting — exactly what the product model\nforbids of a setting.",
+            "minimum": 0
+          },
+          "context_window": {
+            "type": "integer",
+            "description": "Conversation context window size. Default: 50.",
+            "minimum": 0
+          },
+          "persona": {
+            "$ref": "#/components/schemas/BotPersona",
+            "description": "Persona (name, tone, command prefix)."
+          },
+          "session_absolute_secs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Management-API session absolute lifetime, seconds. A session is\ndropped this long after login however active it is, so a stolen\ntoken has a bounded life. Default 43200 (12 h).",
+            "minimum": 0
+          },
+          "session_idle_secs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Management-API session idle timeout, seconds. A session with no\naccepted request inside this window is dropped. Default 1800.",
+            "minimum": 0
+          },
+          "tool_policy": {
+            "type": "object",
+            "description": "Which connector actions the AI may call as tools. Default: empty\nallow-list — the same default-mode posture as before (read-only\nactions only; see `springtale_ai::ToolPolicy`)."
+          }
+        }
+      },
+      "Check": {
+        "type": "object",
+        "description": "One diagnostic finding.",
+        "required": [
+          "id",
+          "label",
+          "severity"
+        ],
+        "properties": {
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Longer description / detected value."
+          },
+          "fix_hint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Suggested remediation, if any."
+          },
+          "id": {
+            "type": "string",
+            "description": "Short identifier (e.g. `\"config.exists\"`)."
+          },
+          "label": {
+            "type": "string",
+            "description": "Human-readable label."
+          },
+          "severity": {
+            "$ref": "#/components/schemas/Severity"
+          }
+        }
+      },
+      "CompactMemoryRequest": {
+        "type": "object",
+        "description": "Request body for compacting memory.\n\n`max_entries` is required: a silent default would quietly delete a\ndifferent amount of history than the caller intended.",
+        "required": [
+          "max_entries"
+        ],
+        "properties": {
+          "max_entries": {
+            "type": "integer",
+            "description": "Entries to keep per session.",
+            "minimum": 0
+          }
+        }
+      },
+      "ConfigureAiBody": {
+        "type": "object",
+        "description": "Body of `POST /config/ai/configure`.",
+        "required": [
+          "target",
+          "config"
+        ],
+        "properties": {
+          "config": {},
+          "target": {
+            "$ref": "#/components/schemas/AiTarget"
+          }
+        }
+      },
+      "ConnectorActionStep": {
+        "type": "object",
+        "description": "One step in a W6 action chain.",
+        "required": [
+          "action_connector",
+          "action_name"
+        ],
+        "properties": {
+          "action_connector": {
+            "type": "string"
+          },
+          "action_name": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "ConnectorConfigStep": {
+        "type": "object",
+        "required": [
+          "connector_name",
+          "config"
+        ],
+        "properties": {
+          "config": {
+            "description": "JSON value template — placeholders substituted before passing\nto [`crate::operations::config::upsert_connector_config`]."
+          },
+          "connector_name": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateConnectorRuleRequest": {
+        "type": "object",
+        "description": "Request to create a connector-event rule with simple fields.\n\nFrontend sends field names, backend assembles the full Rule struct.\nEliminates hardcoded \"ConnectorEvent\"/\"RunConnector\" type tags in frontend.\n\nIntentionally has no `specta::Type` derive: this struct transitively\nreferences the recursive `Condition` enum (in `conditions`), and per\nthe rule-module specta policy (see `springtale_core::rule::types`\nmodule doc), rule-shaped types stay schemars-only. The Tauri\ncommand takes `serde_json::Value` and deserializes into this struct\ninternally — the frontend learns the shape from `get_rule_schema()`.",
+        "required": [
+          "name",
+          "trigger_connector",
+          "trigger_event",
+          "action_connector",
+          "action_name"
+        ],
+        "properties": {
+          "action_connector": {
+            "type": "string"
+          },
+          "action_name": {
+            "type": "string"
+          },
+          "conditions": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "extra_actions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectorActionStep"
+            },
+            "description": "W6 chain composer — additional action steps run in order after the\nprimary action. When non-empty, the rule's actions become a single\n`Action::Chain` of `[primary, ...extra]`."
+          },
+          "match_any": {
+            "type": "boolean",
+            "description": "W6 all-of / any-of toggle. `false` (default) = every condition must\nhold (the engine's implicit AND over the flat list). `true` = any one\nsuffices: the conditions are wrapped in a single `Condition::Or`."
+          },
+          "name": {
+            "type": "string"
+          },
+          "trigger_connector": {
+            "type": "string"
+          },
+          "trigger_event": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CreateFormationRequest": {
+        "type": "object",
+        "description": "Request body for creating a formation.\n\nEvery field is required. An intent that silently defaults to\n`Reconnoiter` is a formation whose posture nobody chose.",
+        "required": [
+          "name",
+          "intent",
+          "connectors"
+        ],
+        "properties": {
+          "connectors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Connector names the formation's members live on."
+          },
+          "intent": {
+            "type": "string",
+            "description": "Formation intent: `Reconnoiter`, `Execute`, `Stabilize`, `Surge`."
+          },
+          "name": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateTokenRequest": {
+        "type": "object",
+        "description": "`POST /auth/tokens` body.",
+        "required": [
+          "name"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "User-chosen label, e.g. `springtale-cli@laptop`."
+          }
+        }
+      },
+      "DataExport": {
+        "type": "object",
+        "description": "Exported data snapshot.\n\n`Serialize + Deserialize` so the same type is both the export format and\nthe import contract — per rust-conventions, serde on data types that\ncross boundaries (API, storage) is explicitly allowed.\n\nNo `specta::Type` derive — `DataExport` transitively contains\n`Rule` (recursive). The Tauri `export_data` command converts to\n`serde_json::Value` before crossing the wire, so specta never\nsees this type.",
+        "required": [
+          "rules",
+          "connectors",
+          "events"
+        ],
+        "properties": {
+          "connectors": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "All registered connectors."
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "Recent events (up to 10,000)."
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "All automation rules."
+          }
+        }
+      },
+      "DerivedInputResolver": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Geocode a free-text place (the value of `source_input_id`, e.g.\n`\"city\"`) into a `\"latitude=..&longitude=..\"` query fragment\nstored under `target_input_id` (e.g. `\"location\"`), via the\nkeyless Open-Meteo geocoding API. Lets the weather strategy take\nany city instead of a hardcoded dropdown.",
+            "required": [
+              "source_input_id",
+              "target_input_id",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "geocode"
+                ]
+              },
+              "source_input_id": {
+                "type": "string"
+              },
+              "target_input_id": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "description": "How a derived input is resolved at deploy time. Internally-tagged so\nthe JSON wire matches the TS discriminated-union shape, like\n[`FieldKind`]. The extension point for the universal-recipe\nmechanism — new resolvers (timezone, currency, …) add variants here."
+      },
+      "Difficulty": {
+        "type": "string",
+        "enum": [
+          "quick",
+          "standard",
+          "power"
+        ]
+      },
+      "DisguiseActiveBody": {
+        "type": "object",
+        "description": "G5d — request body for toggling disguise-active.",
+        "required": [
+          "active"
+        ],
+        "properties": {
+          "active": {
+            "type": "boolean"
+          }
+        }
+      },
+      "DisguiseProfileBody": {
+        "type": "object",
+        "description": "G5d — request body for switching the disguise profile.",
+        "required": [
+          "app_name",
+          "icon_id"
+        ],
+        "properties": {
+          "app_name": {
+            "type": "string"
+          },
+          "icon_id": {
+            "type": "string"
+          }
+        }
+      },
+      "DriftClass": {
+        "type": "string",
+        "description": "Per-signal verdict. Each signal can independently land on any\nof these; the aggregate `DriftReport.overall` is the worst of\nthe three.",
+        "enum": [
+          "not_enough_data",
+          "steady",
+          "improving",
+          "degrading"
+        ]
+      },
+      "DriftFilter": {
+        "type": "object",
+        "description": "Input shape for [`recipe_drift`] / [`rule_drift`].",
+        "properties": {
+          "baseline_n": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Older runs preceding `recent_n`. Default 30.",
+            "minimum": 0
+          },
+          "bot_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Filter to one bot's runs. Both this and `formation_id`\ncan be set — they intersect."
+          },
+          "formation_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Filter to one formation's runs."
+          },
+          "recent_n": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "description": "Most-recent run count. Default 10.",
+            "minimum": 0
+          },
+          "rule_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Filter to one rule's runs. Required for `rule_drift`."
+          }
+        }
+      },
+      "DriftReport": {
+        "type": "object",
+        "description": "Aggregate drift signal for a recipe / rule.",
+        "required": [
+          "recent_runs",
+          "baseline_runs",
+          "latency",
+          "success_rate",
+          "refusal_rate",
+          "overall"
+        ],
+        "properties": {
+          "baseline_runs": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How many baseline runs informed the analysis.",
+            "minimum": 0
+          },
+          "latency": {
+            "$ref": "#/components/schemas/LatencyDrift",
+            "description": "Latency drift — median + p95 duration_ms delta."
+          },
+          "overall": {
+            "$ref": "#/components/schemas/DriftClass",
+            "description": "Overall verdict — the worst-of the three signals."
+          },
+          "recent_runs": {
+            "type": "integer",
+            "format": "int32",
+            "description": "How many recent runs informed the analysis.",
+            "minimum": 0
+          },
+          "refusal_rate": {
+            "$ref": "#/components/schemas/RateDrift",
+            "description": "Refusal-rate drift (fraction of `extract` steps with\n`schema_invalid` / `refused` errors)."
+          },
+          "success_rate": {
+            "$ref": "#/components/schemas/RateDrift",
+            "description": "Success-rate drift (fraction of `succeeded` rows)."
+          }
+        }
+      },
+      "EventListParams": {
+        "type": "object",
+        "description": "Query parameters for a page of the event log.",
+        "properties": {
+          "connector": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          },
+          "offset": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "ExecutionFilterIpc": {
+        "type": "object",
+        "description": "Mirror of [`ExecutionFilter`] for IPC. Flat, derives `Type`\n(the store filter doesn't because it's not crossing the boundary).",
+        "properties": {
+          "before": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "bot_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "formation_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int32",
+            "minimum": 0
+          },
+          "rule_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "status": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "One of the status enum strings — `succeeded | failed | ...`."
+          }
+        }
+      },
+      "ExecutionInfo": {
+        "type": "object",
+        "description": "IPC-shaped projection of [`ExecutionSummary`]. Flat strings —\nno recursion — per `feedback_specta_recursive_types`. Tauri\ncommands return `Vec<ExecutionInfo>`; the web dashboard reads\nthe JSON form of the same shape.",
+        "required": [
+          "id",
+          "started_at",
+          "mode",
+          "status"
+        ],
+        "properties": {
+          "bot_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "duration_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "error_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "finished_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "formation_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "mode": {
+            "type": "string",
+            "description": "`cron | webhook | connector_event | file_watch | manual | cooperation | retry | dry_run`."
+          },
+          "momentum": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`cold | warming | hot | fever` — None when momentum unknown."
+          },
+          "recipe_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "rule_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "started_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "type": "string",
+            "description": "`running | succeeded | empty | failed | aborted | timed_out`."
+          },
+          "trigger_summary": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "ExecutionStepInfo": {
+        "type": "object",
+        "description": "IPC-shaped projection of [`ExecutionStepRow`]. Flat. Sizes-only —\ncontent blob refs forwarded as opaque strings for Phase C.",
+        "required": [
+          "execution_id",
+          "step_index",
+          "step_kind",
+          "started_at",
+          "status",
+          "input_bytes",
+          "output_bytes"
+        ],
+        "properties": {
+          "action": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "connector": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "error_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "execution_id": {
+            "type": "string"
+          },
+          "finished_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "input_blob_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "input_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "output_blob_ref": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "output_bytes": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "output_kind": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "started_at": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "status": {
+            "type": "string",
+            "description": "`succeeded | failed | suppressed | skipped`."
+          },
+          "step_index": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "step_kind": {
+            "type": "string"
+          }
+        }
+      },
+      "FavoriteResponse": {
+        "type": "object",
+        "required": [
+          "recipe_id",
+          "now_favorite"
+        ],
+        "properties": {
+          "now_favorite": {
+            "type": "boolean"
+          },
+          "recipe_id": {
+            "type": "string"
+          }
+        }
+      },
+      "FieldKind": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Free-form text (no secrecy).",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "text"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Sensitive value — frontend renders as password input + stores\nthrough the vault rather than plain config.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "secret"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Numeric input.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "number"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Boolean toggle.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "bool"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "URL (validated to scheme http/https).",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "url"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Picked from a fixed list of options.",
+            "required": [
+              "options",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "select"
+                ]
+              },
+              "options": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/SelectOption"
+                }
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Cron expression (5- or 6-field). Frontend renders a\n`CronFrequencyChip` next to the input that shows:\n\n  - red 🔴 on sub-minute schedules (preflight blocking)\n  - yellow 🟡 on 1–4 minute polls (preflight warning)\n  - green 🟢 on ≥5 minute cadences (preflight verified)\n\nPlus a \"next 5 fire times\" preview computed against the\n`cron` crate. Surfaces the same classification the backend's\n`check_schedule_frequency` produces so frontend never invents\nits own thresholds (per `feedback_zero_frontend_logic`).",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "cron"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "CSS selector. Frontend opens the Tauri webview selector picker\nat the recipe's target URL — hover-highlights elements,\ngenerates `:nth-of-type` selectors, posts back. Phase B\nactivates the picker; for now the field renders as text input\nwith a \"test against URL\" probe button.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "css_selector"
+                ]
+              },
+              "sample_url": {
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "description": "Recipe input id whose value the selector picker should\nload when launched. E.g. `\"watch_url\"`. Optional — when\n`None`, the picker prompts for the URL inline."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "JSON Schema for the AI-driven extraction step. Frontend\nrenders a Monaco-style schema editor (Phase B); falls back to\na textarea today. Schema posts as `serde_json::Value` since\nit carries arbitrary user-defined fields.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "example": {
+                "description": "Optional example payload the editor shows alongside the\nschema. Recipe authors use this to convey \"extract this\nshape from a page that looks like X.\""
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "json_schema"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "D1 — external workspace target (messaging chat / channel /\ngroup / user). Renders as a dropdown over the formation's\n`mental_model_workspaces` filtered by `connector`, plus a\n🔍 Scan button (active discovery via the connector's\n`discover_destinations` action), a 🎯 Onboard button\n(Telegram-specific deep-link affordance), and an\n✏️ Manual entry escape hatch. At deploy time the field\nresolves to the raw destination id parsed off the chosen\n`WorkspaceKey` URI — recipe TOML stays string-for-string\ncompatible with the existing `${chat_id}` / `${to}`\nsubstitution. See `docs/intended-arch/COOPERATION.md §21`\n(Shared Mental Model — Directory Facilitator extension).",
+            "required": [
+              "connector",
+              "kind"
+            ],
+            "properties": {
+              "connector": {
+                "type": "string",
+                "description": "Connector this destination belongs to. e.g.\n`\"connector-telegram\"`."
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "workspace_target"
+                ]
+              },
+              "kinds": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Optional `kind` filter — `[\"channel\"]` excludes user DMs,\n`[\"user\", \"group\"]` excludes channels. Empty / unset =\nno filter (show everything for this connector)."
+              }
+            }
+          }
+        ],
+        "description": "Internally-tagged so the JSON wire matches the TS discriminated-union\nshape `{ kind: \"text\" } | { kind: \"select\", options: [...] }`. Unit\nvariants serialize as `{ \"kind\": \"text\" }`, struct variants flatten\nthe fields next to the tag. Without this serde defaults to external\ntagging, which puts unit variants on the wire as bare strings and\nbreaks the frontend type contract for input rendering."
+      },
+      "FieldVisibility": {
+        "type": "string",
+        "description": "Where an [`InputField`] surfaces in the progressive-disclosure\ndeploy form, and whether the user is asked at all.\n\nAuthors declare this explicitly per field. The frontend renders\neach tier behind a chevron (Apple print-dialog \"Show Details\"\npattern) so a click-and-play user can deploy after touching only\n`Required` fields, while a power user can drill into `Optional`\n→ `Advanced` on the same surface.",
+        "enum": [
+          "required",
+          "optional",
+          "advanced",
+          "baked"
+        ]
+      },
+      "FixGuide": {
+        "type": "object",
+        "description": "Static guidance for a single error ID.",
+        "required": [
+          "id",
+          "title",
+          "causes",
+          "suggestions",
+          "has_auto_fix"
+        ],
+        "properties": {
+          "causes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "has_auto_fix": {
+            "type": "boolean",
+            "description": "Whether [`auto_fix`] can attempt a repair."
+          },
+          "id": {
+            "type": "string"
+          },
+          "suggestions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "title": {
+            "type": "string"
+          }
+        }
+      },
+      "FixOutcome": {
+        "type": "object",
+        "description": "Result of an attempted automated fix.",
+        "required": [
+          "id",
+          "success",
+          "messages"
+        ],
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "messages": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "success": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ForkBody": {
+        "type": "object",
+        "required": [
+          "new_name"
+        ],
+        "properties": {
+          "new_name": {
+            "type": "string"
+          }
+        }
+      },
+      "HeartbeatStatus": {
+        "type": "object",
+        "description": "Live heartbeat state.",
+        "required": [
+          "interval_secs",
+          "enabled"
+        ],
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Whether the monitor is currently ticking."
+          },
+          "interval_secs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Interval in seconds. `0` means disabled.",
+            "minimum": 0
+          }
+        }
+      },
+      "IncomingMessage": {
+        "type": "object",
+        "description": "A message arriving from an in-app chat panel.",
+        "required": [
+          "text"
+        ],
+        "properties": {
+          "session": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Optional session id; defaults to the single local in-app session."
+          },
+          "text": {
+            "type": "string",
+            "description": "The user's message."
+          }
+        }
+      },
+      "InputField": {
+        "type": "object",
+        "description": "A typed input field the user fills (or that has a default the\nrecipe author baked in).",
+        "required": [
+          "id",
+          "label",
+          "kind",
+          "visibility"
+        ],
+        "properties": {
+          "default": {
+            "description": "Default value rendered as the field's initial value. `None`\nmeans the field is empty until the user types."
+          },
+          "hint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Short hint rendered under the input (e.g. \"Get this from\n@BotFather on Telegram\"). Plaintext only — never user-supplied\nHTML."
+          },
+          "id": {
+            "type": "string"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/FieldKind"
+          },
+          "label": {
+            "type": "string"
+          },
+          "visibility": {
+            "$ref": "#/components/schemas/FieldVisibility",
+            "description": "Author-declared visibility. Drives progressive-disclosure\nlayering (Required → Optional → Advanced) and the\nrecipe-authoring flow (`Baked` fields never show as user\ninputs — they ship the recipe's default unchanged).\n\nPer industry research (IFTTT applets, Zapier Zap templates,\nGitHub Actions input metadata), this field is **author-declared\nper field**, never inferred. No `auto_classify` heuristic."
+          }
+        }
+      },
+      "LatencyDrift": {
+        "type": "object",
+        "required": [
+          "class"
+        ],
+        "properties": {
+          "baseline_median_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "baseline_p95_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "class": {
+            "$ref": "#/components/schemas/DriftClass"
+          },
+          "median_delta_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "`recent_median - baseline_median`. Negative = recent faster."
+          },
+          "recent_median_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          },
+          "recent_p95_ms": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "LoginRequest": {
+        "type": "object",
+        "description": "`POST /auth/login` body.",
+        "required": [
+          "passphrase"
+        ],
+        "properties": {
+          "passphrase": {
+            "type": "string",
+            "description": "The vault passphrase. Verified, never stored, zeroized here."
+          }
+        }
+      },
+      "OnboardBody": {
+        "type": "object",
+        "description": "Body for both onboarding routes. `config` is the not-yet-deployed\nconnector config from the deploy form (bot token etc.) — it\ntravels in the body, never the URL.",
+        "required": [
+          "connector_name",
+          "config"
+        ],
+        "properties": {
+          "config": {},
+          "connector_name": {
+            "type": "string"
+          },
+          "payload": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "session_id": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "OnboardUrlResponse": {
+        "type": "object",
+        "required": [
+          "url"
+        ],
+        "properties": {
+          "url": {
+            "type": "string"
+          }
+        }
+      },
+      "OnboardingApplyReport": {
+        "type": "object",
+        "description": "Summary of a successful `apply_platform` call.",
+        "required": [
+          "platform",
+          "stored_key",
+          "fields_stored"
+        ],
+        "properties": {
+          "fields_stored": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "platform": {
+            "type": "string"
+          },
+          "stored_key": {
+            "type": "string"
+          }
+        }
+      },
+      "PanicTapCountBody": {
+        "type": "object",
+        "description": "G5d — request body for the panic-tap threshold.",
+        "required": [
+          "count"
+        ],
+        "properties": {
+          "count": {
+            "type": "integer",
+            "format": "int32",
+            "minimum": 0
+          }
+        }
+      },
+      "PreflightFix": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "User needs to fill in a recipe input — frontend should scroll\nthe matching field into view + focus.",
+            "required": [
+              "input_id",
+              "kind"
+            ],
+            "properties": {
+              "input_id": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "focus_input"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "User needs to configure an AI provider (no AI:global yet).",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "open_ai_config"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Connector isn't loaded and needs setup before deploy.",
+            "required": [
+              "connector_name",
+              "kind"
+            ],
+            "properties": {
+              "connector_name": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "open_connector_config"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Generic message — show as plain text, no action.",
+            "required": [
+              "message",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "note"
+                ]
+              },
+              "message": {
+                "type": "string"
+              }
+            }
+          }
+        ],
+        "description": "What the frontend should offer to resolve a failing check.\n`kind` is a stable enum so the UI maps to the right panel."
+      },
+      "PreflightItem": {
+        "type": "object",
+        "description": "One row in the preflight report.",
+        "required": [
+          "id",
+          "label",
+          "status"
+        ],
+        "properties": {
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the row failed when `status` is `Blocking` or `Warning`,\nor extra confirmation text when `Verified`. Plain text."
+          },
+          "fix_hint": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PreflightFix",
+                "description": "Optional \"fix this\" hint — server-side recommendation\nrendered as an inline action. Frontend may turn it into a\nbutton (e.g. \"Configure AI\" → opens AiConfigPanel)."
+              }
+            ]
+          },
+          "id": {
+            "type": "string",
+            "description": "Stable id for the row (`\"secret_present:bot_token\"`,\n`\"connector_loaded:connector-telegram\"`). Frontends can\ndeduplicate / scroll-to-item by this."
+          },
+          "label": {
+            "type": "string",
+            "description": "Human-readable label rendered to the survivor (one line)."
+          },
+          "status": {
+            "$ref": "#/components/schemas/PreflightStatus"
+          }
+        }
+      },
+      "PreflightReport": {
+        "type": "object",
+        "description": "Full preflight report — the response body for the `preflight_recipe`\ncommand / `/recipes/{id}/preflight` route.",
+        "required": [
+          "recipe_id",
+          "items",
+          "deployable",
+          "has_warnings"
+        ],
+        "properties": {
+          "deployable": {
+            "type": "boolean",
+            "description": "Convenience aggregate the frontend uses to enable/disable the\nDeploy button without iterating through items itself."
+          },
+          "has_warnings": {
+            "type": "boolean",
+            "description": "`true` when at least one item is `Warning` and none are\n`Blocking` — frontend prompts the user for confirmation\nbefore allowing Deploy."
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreflightItem"
+            }
+          },
+          "recipe_id": {
+            "type": "string"
+          }
+        }
+      },
+      "PreflightStatus": {
+        "type": "string",
+        "description": "Severity tier for an individual preflight check.",
+        "enum": [
+          "blocking",
+          "warning",
+          "verified",
+          "pending"
+        ]
+      },
+      "PreviewReport": {
+        "type": "object",
+        "required": [
+          "recipe_id",
+          "steps",
+          "passed",
+          "errors"
+        ],
+        "properties": {
+          "errors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Errors encountered during preview (parse failure, missing\nplaceholder, etc.). Empty when `passed`."
+          },
+          "passed": {
+            "type": "boolean",
+            "description": "`false` when at least one rule failed to parse or evaluate.\nThe frontend uses this to gate the recipe-authoring \"Clear\nCheck\" (W2.B); deploy form just renders the steps regardless."
+          },
+          "recipe_id": {
+            "type": "string"
+          },
+          "steps": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/PreviewStep"
+            }
+          }
+        }
+      },
+      "PreviewStep": {
+        "type": "object",
+        "description": "One step in the comic-strip narrative.",
+        "required": [
+          "speaker",
+          "narrative"
+        ],
+        "properties": {
+          "narrative": {
+            "type": "string",
+            "description": "Plain-language description of what happens at this step."
+          },
+          "speaker": {
+            "type": "string",
+            "description": "Who is \"speaking\" (rule name, connector name, or \"system\")."
+          },
+          "would_send_to": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What target (chat id, file path, etc.) the bot would have\ndispatched to. `None` when the step is informational."
+          }
+        }
+      },
+      "PurgeBody": {
+        "type": "object",
+        "description": "Body of `POST /data/purge`. Purge destroys every rule, connector,\nevent, session, and memory row in the store, so the confirmation is\npart of the wire format: a stray POST with no body cannot wipe it.",
+        "required": [
+          "confirm"
+        ],
+        "properties": {
+          "confirm": {
+            "type": "boolean",
+            "description": "Must be `true`. Anything else is a 400."
+          }
+        }
+      },
+      "RateDrift": {
+        "type": "object",
+        "required": [
+          "class"
+        ],
+        "properties": {
+          "baseline": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "0.0..=1.0 over the baseline window."
+          },
+          "class": {
+            "$ref": "#/components/schemas/DriftClass"
+          },
+          "delta": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "`recent - baseline`. Negative for success_rate = worse;\npositive for refusal_rate = worse. The `class` field\nresolves direction so consumers don't have to."
+          },
+          "recent": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "0.0..=1.0 over the recent window."
+          }
+        }
+      },
+      "Recipe": {
+        "type": "object",
+        "description": "Top-level catalogued recipe.",
+        "required": [
+          "id",
+          "name",
+          "description",
+          "icon_id",
+          "category",
+          "tags",
+          "connectors_used",
+          "ai_required",
+          "difficulty",
+          "source",
+          "inputs",
+          "blueprint"
+        ],
+        "properties": {
+          "ai_required": {
+            "type": "boolean",
+            "description": "`true` if the recipe needs a working AI adapter to operate\nmeaningfully. Surfaces in the card so users running NoopAdapter\ncan self-filter."
+          },
+          "blueprint": {
+            "$ref": "#/components/schemas/RecipeBlueprint",
+            "description": "What `apply_recipe` actually does once the inputs are filled."
+          },
+          "category": {
+            "$ref": "#/components/schemas/RecipeCategory"
+          },
+          "connectors_used": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "description": {
+            "type": "string"
+          },
+          "difficulty": {
+            "$ref": "#/components/schemas/Difficulty"
+          },
+          "icon_id": {
+            "type": "string",
+            "description": "Sprite id rendered by the frontend (`@springtale/ui` sprite map)."
+          },
+          "id": {
+            "type": "string",
+            "description": "Stable identifier (kebab-case). Built-ins use literal slugs\n(`\"telegram-echo\"`); user recipes use UUIDs."
+          },
+          "inputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InputField"
+            },
+            "description": "Author-declared input fields. Each carries its own\n`FieldVisibility` (Required / Optional / Advanced / Baked) so\nthe progressive-disclosure UI renders the right tier and\npreflight blocks deploy on missing Required values. Order is\nthe author's preferred render order — frontend does not\nre-sort by visibility."
+          },
+          "name": {
+            "type": "string"
+          },
+          "source": {
+            "$ref": "#/components/schemas/RecipeSource"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Free-form filter tags (`[\"telegram\", \"ai-optional\"]`)."
+          }
+        }
+      },
+      "RecipeBlueprint": {
+        "type": "object",
+        "description": "Blueprint — what `apply_recipe` performs against the running\nruntime. All strings may contain `${input_id}` placeholders which\n[`crate::operations::recipes::apply`] substitutes from user inputs.",
+        "properties": {
+          "ai_config": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AiConfigStep",
+                "description": "AI adapter config to apply, scoped to the colony, an agent,\nor a formation."
+              }
+            ]
+          },
+          "connector_configs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ConnectorConfigStep"
+            },
+            "description": "Connector configs to upsert (keyed by connector name)."
+          },
+          "derived_inputs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DerivedInputResolver"
+            },
+            "description": "Derived inputs resolved at deploy time, BEFORE placeholder\nsubstitution. This is what makes a recipe a universal\n\"playbook strategy\": the commander supplies a free-text target\n(e.g. a city), and a resolver turns it into the concrete value\nthe blueprint needs (e.g. `latitude=..&longitude=..`). Each\nresolver's `target_input_id` is treated as a declared\nplaceholder by `apply`, so the rule TOML can reference it."
+          },
+          "rules": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RuleStep"
+            },
+            "description": "Rules to create."
+          },
+          "summary": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Plain-language \"what this will do\" summary rendered in the\nquick-view. Backend-authored so it stays accurate as recipes\nevolve (vs. relying on the frontend to compose a summary)."
+          }
+        }
+      },
+      "RecipeCategory": {
+        "type": "string",
+        "enum": [
+          "messaging",
+          "coding",
+          "web",
+          "ai_assistant",
+          "daily",
+          "safety_privacy",
+          "custom"
+        ]
+      },
+      "RecipeFilter": {
+        "type": "object",
+        "description": "Filter passed to [`crate::operations::recipes::library::list_recipes`].\n\nAll filtering happens server-side. Frontend sends the filter, gets\nthe matching slice back — never holds the full catalogue and never\nfilters in-memory.",
+        "properties": {
+          "category": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/RecipeCategory",
+                "description": "Restrict to a single category. `None` = all."
+              }
+            ]
+          },
+          "favorites_only": {
+            "type": "boolean",
+            "description": "Whether to include only favorites."
+          },
+          "limit": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "description": "Maximum results to return (server caps at 100 even if larger).",
+            "minimum": 0
+          },
+          "query": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Fuzzy match on `name` + `description` + connectors_used."
+          },
+          "sort": {
+            "$ref": "#/components/schemas/RecipeSort",
+            "description": "Sort order."
+          },
+          "sources": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/RecipeSourceFilter"
+            },
+            "description": "Source filter: `[\"builtin\"]`, `[\"user\"]`, `[\"community\"]`, or any\ncombination. Empty = all sources."
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Free-form tag filter (AND across multiple)."
+          }
+        }
+      },
+      "RecipeInputs": {
+        "type": "object",
+        "description": "What the user submitted when picking a recipe.",
+        "required": [
+          "values"
+        ],
+        "properties": {
+          "values": {
+            "type": "object",
+            "description": "Map from `InputField.id` → user-supplied value.",
+            "additionalProperties": {},
+            "propertyNames": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      "RecipePiece": {
+        "oneOf": [
+          {
+            "type": "object",
+            "required": [
+              "rule",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "trigger"
+                ]
+              },
+              "rule": {
+                "$ref": "#/components/schemas/RuleStep"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "step",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "connector_config"
+                ]
+              },
+              "step": {
+                "$ref": "#/components/schemas/ConnectorConfigStep"
+              }
+            }
+          },
+          {
+            "type": "object",
+            "required": [
+              "step",
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "ai_config"
+                ]
+              },
+              "step": {
+                "$ref": "#/components/schemas/AiConfigStep"
+              }
+            }
+          }
+        ],
+        "description": "One slot the caller can borrow from a recipe."
+      },
+      "RecipePieceSummary": {
+        "type": "object",
+        "required": [
+          "id",
+          "label",
+          "piece"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "`\"trigger:0\"`, `\"connector_config:1\"`, etc. — stable id the\nfrontend uses as a list key + to request the full piece."
+          },
+          "label": {
+            "type": "string",
+            "description": "One-line label rendered in the picker dropdown."
+          },
+          "piece": {
+            "$ref": "#/components/schemas/RecipePiece"
+          }
+        }
+      },
+      "RecipeSort": {
+        "type": "string",
+        "enum": [
+          "recommended",
+          "name",
+          "recent"
+        ]
+      },
+      "RecipeSource": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Compiled into the binary.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "builtin"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Saved by the local user via W2.B authoring flow.",
+            "required": [
+              "kind"
+            ],
+            "properties": {
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "user"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Reserved for the future community marketplace; carries author\nidentity + Ed25519 signature so the sentinel can verify before\ninstall (W3.A; wire-shape only today).",
+            "required": [
+              "author",
+              "signature",
+              "kind"
+            ],
+            "properties": {
+              "author": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "community"
+                ]
+              },
+              "signature": {
+                "type": "string"
+              }
+            }
+          }
+        ]
+      },
+      "RecipeSourceFilter": {
+        "type": "string",
+        "enum": [
+          "builtin",
+          "user",
+          "community"
+        ]
+      },
+      "Report": {
+        "type": "object",
+        "description": "Aggregated result of running all diagnostics.",
+        "required": [
+          "checks"
+        ],
+        "properties": {
+          "checks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Check"
+            }
+          }
+        }
+      },
+      "ResolveDecision": {
+        "type": "string",
+        "description": "The decision a caller landed on a pending request.",
+        "enum": [
+          "approve",
+          "deny"
+        ]
+      },
+      "ResolveRequest": {
+        "type": "object",
+        "description": "Request body for resolving one pending approval.",
+        "required": [
+          "decision"
+        ],
+        "properties": {
+          "approver": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "decision": {
+            "$ref": "#/components/schemas/ResolveDecision"
+          },
+          "reason": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        }
+      },
+      "RuleStep": {
+        "type": "object",
+        "required": [
+          "toml"
+        ],
+        "properties": {
+          "toml": {
+            "type": "string",
+            "description": "TOML rule body — placeholders substituted before parse."
+          }
+        }
+      },
+      "ScanBody": {
+        "type": "object",
+        "required": [
+          "formation_id",
+          "connector_name"
+        ],
+        "properties": {
+          "connector_name": {
+            "type": "string"
+          },
+          "formation_id": {
+            "type": "string"
+          }
+        }
+      },
+      "SelectOption": {
+        "type": "object",
+        "required": [
+          "value",
+          "label"
+        ],
+        "properties": {
+          "label": {
+            "type": "string"
+          },
+          "value": {
+            "type": "string"
+          }
+        }
+      },
+      "SendOutcome": {
+        "type": "object",
+        "description": "Outcome returned to the caller — connector-friendly message string\nand whatever structured output the connector produced.",
+        "required": [
+          "connector",
+          "channel_id",
+          "message",
+          "output"
+        ],
+        "properties": {
+          "channel_id": {
+            "type": "string"
+          },
+          "connector": {
+            "type": "string"
+          },
+          "message": {
+            "type": "string"
+          },
+          "output": {}
+        }
+      },
+      "SendRequest": {
+        "type": "object",
+        "description": "Request to send a message through a specific connector.",
+        "required": [
+          "connector",
+          "channel_id",
+          "text"
+        ],
+        "properties": {
+          "channel_id": {
+            "type": "string",
+            "description": "Destination channel/chat id as the connector understands it."
+          },
+          "connector": {
+            "type": "string",
+            "description": "Connector name, e.g. `connector-telegram`."
+          },
+          "text": {
+            "type": "string",
+            "description": "Message body."
+          }
+        }
+      },
+      "SetAutonomyRequest": {
+        "type": "object",
+        "description": "Request body for setting an agent's autonomy level.",
+        "required": [
+          "level"
+        ],
+        "properties": {
+          "level": {
+            "type": "string",
+            "description": "Level name: `observe`, `suggest`, `approve`, or `autonomous`."
+          }
+        }
+      },
+      "SetHeartbeatRequest": {
+        "type": "object",
+        "description": "Request body for setting the heartbeat interval.",
+        "required": [
+          "interval_secs"
+        ],
+        "properties": {
+          "interval_secs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Interval in seconds. `0` stops the monitor.",
+            "minimum": 0
+          }
+        }
+      },
+      "Severity": {
+        "type": "string",
+        "description": "Severity of a diagnostic finding.",
+        "enum": [
+          "ok",
+          "warn",
+          "fail"
+        ]
+      },
+      "StepAutonomyRequest": {
+        "type": "object",
+        "description": "Request body for stepping an agent's autonomy up or down.",
+        "required": [
+          "direction"
+        ],
+        "properties": {
+          "direction": {
+            "$ref": "#/components/schemas/AutonomyDirection"
+          }
+        }
+      },
+      "TeamAgentSlot": {
+        "type": "object",
+        "description": "Single agent slot in a team deploy request.",
+        "required": [
+          "connector_name",
+          "trigger_name",
+          "action_connector",
+          "action_name"
+        ],
+        "properties": {
+          "action_connector": {
+            "type": "string"
+          },
+          "action_name": {
+            "type": "string"
+          },
+          "connector_name": {
+            "type": "string"
+          },
+          "trigger_name": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TeamDeployRequest": {
+        "type": "object",
+        "description": "Request to deploy a complete team — creates rules + formation atomically.",
+        "required": [
+          "name",
+          "intent",
+          "agents",
+          "guard_mode"
+        ],
+        "properties": {
+          "agents": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TeamAgentSlot"
+            }
+          },
+          "guard_mode": {
+            "type": "boolean"
+          },
+          "intent": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": false
+      },
+      "TestStepBody": {
+        "type": "object",
+        "description": "Body for `POST /recipes/{id}/test-step`.",
+        "required": [
+          "inputs",
+          "rule_index",
+          "step_index"
+        ],
+        "properties": {
+          "inputs": {
+            "$ref": "#/components/schemas/RecipeInputs"
+          },
+          "rule_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "step_index": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      },
+      "TestStepOutput": {
+        "type": "object",
+        "description": "IPC-shaped projection of [`StepOutput`]. Flat for specta;\n`output` is a serialized JSON value rather than a recursive\ntype (matches the executions log pattern).",
+        "required": [
+          "index",
+          "kind",
+          "output_json",
+          "duration_ms"
+        ],
+        "properties": {
+          "duration_ms": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "kind": {
+            "type": "string"
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "output_json": {
+            "type": "string",
+            "description": "JSON output rendered as a string so specta can describe it\nwithout recursing into `serde_json::Value` (per\n`feedback_specta_recursive_types`)."
+          }
+        }
+      },
+      "TestStepReport": {
+        "type": "object",
+        "description": "Result of one test-step run.",
+        "required": [
+          "recipe_id",
+          "rule_index",
+          "step_index",
+          "ran",
+          "upstream"
+        ],
+        "properties": {
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Set when the chain failed. Mirrors the executions-log\n`error_kind` taxonomy."
+          },
+          "ran": {
+            "type": "boolean",
+            "description": "`true` when the dispatcher returned `Ok` and the targeted\nstep was reached. `false` when the chain failed or\nshort-circuited before the step."
+          },
+          "recipe_id": {
+            "type": "string"
+          },
+          "rule_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "step": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/TestStepOutput",
+                "description": "The targeted step's recorded output. Populated only when\n`ran == true`. Schema mirrors the dispatcher's\n[`StepOutput`]."
+              }
+            ]
+          },
+          "step_index": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "upstream": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/TestStepOutput"
+            },
+            "description": "Every step the dispatcher recorded en route — useful for\nthe UI's \"see the upstream\" disclosure. Steps prior to the\ntargeted one ran in DryRun mode (read-only arms real,\nside-effecting arms stubbed)."
+          }
+        }
+      },
+      "TravelBody": {
+        "type": "object",
+        "description": "Body for both travel routes.",
+        "required": [
+          "passphrase",
+          "backup_path"
+        ],
+        "properties": {
+          "backup_path": {
+            "type": "string",
+            "description": "Absolute path of the encrypted backup file."
+          },
+          "passphrase": {
+            "type": "string",
+            "description": "Vault passphrase — encrypts (prepare) or decrypts (restore) the backup."
+          }
+        }
+      },
+      "UpsertManualBody": {
+        "type": "object",
+        "required": [
+          "formation_id",
+          "workspace_key",
+          "display_name",
+          "connector_name",
+          "kind"
+        ],
+        "properties": {
+          "connector_name": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "formation_id": {
+            "type": "string"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "workspace_key": {
+            "type": "string"
+          }
+        }
+      },
+      "VacuumResponse": {
+        "type": "object",
+        "required": [
+          "purged"
+        ],
+        "properties": {
+          "purged": {
+            "type": "integer",
+            "format": "int64",
+            "minimum": 0
+          }
+        }
+      },
+      "WorkspaceInfo": {
+        "type": "object",
+        "description": "IPC-shaped projection of [`MentalModelWorkspaceRow`]. Flat,\nderives `specta::Type` for the Tauri boundary.",
+        "required": [
+          "workspace_key",
+          "connector_name",
+          "display_name",
+          "kind",
+          "first_seen_at_unix_ms",
+          "last_seen_at_unix_ms",
+          "provenance_json"
+        ],
+        "properties": {
+          "connector_name": {
+            "type": "string"
+          },
+          "display_name": {
+            "type": "string"
+          },
+          "first_seen_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "last_seen_at_unix_ms": {
+            "type": "integer",
+            "format": "int64"
+          },
+          "metadata_json": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Metadata serialized as a JSON string so specta doesn't\nrecurse into `serde_json::Value` (per\n`feedback_specta_recursive_types`)."
+          },
+          "provenance_json": {
+            "type": "string",
+            "description": "Serialized `WorkspaceProvenance` enum. The frontend parses\nfor the tooltip \"discovered by … via …\" copy."
+          },
+          "workspace_key": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "agents"
+    },
+    {
+      "name": "approvals"
+    },
+    {
+      "name": "auth"
+    },
+    {
+      "name": "authors"
+    },
+    {
+      "name": "bot"
+    },
+    {
+      "name": "canvas"
+    },
+    {
+      "name": "chat"
+    },
+    {
+      "name": "config_api"
+    },
+    {
+      "name": "connectors"
+    },
+    {
+      "name": "dashboard"
+    },
+    {
+      "name": "data"
+    },
+    {
+      "name": "diagnostics"
+    },
+    {
+      "name": "drift"
+    },
+    {
+      "name": "events"
+    },
+    {
+      "name": "executions"
+    },
+    {
+      "name": "fixes"
+    },
+    {
+      "name": "formations"
+    },
+    {
+      "name": "health"
+    },
+    {
+      "name": "login"
+    },
+    {
+      "name": "memory"
+    },
+    {
+      "name": "onboarding"
+    },
+    {
+      "name": "recipes"
+    },
+    {
+      "name": "rules"
+    },
+    {
+      "name": "safety"
+    },
+    {
+      "name": "send"
+    },
+    {
+      "name": "sessions"
+    },
+    {
+      "name": "stream"
+    },
+    {
+      "name": "utterances"
+    },
+    {
+      "name": "webhooks"
+    },
+    {
+      "name": "workspaces"
+    }
+  ]
+}

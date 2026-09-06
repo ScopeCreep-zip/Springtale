@@ -1,0 +1,9 @@
+# STUB — ja sentence templates for the platform verbs (plan 5.4).
+#
+# Only `en` is populated today. This file exists so the layout is the
+# one the plan asks for (one file per locale the UI speaks) and so a
+# translator has somewhere to write. `verbs` being empty means the ja
+# chat falls back to the English phrasings; nothing breaks, but nothing
+# is translated either.
+locale: ja
+verbs: {}

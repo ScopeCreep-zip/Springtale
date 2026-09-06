@@ -1,12 +1,28 @@
 use springtaled::cli::Cli;
 use springtaled::config;
 use springtaled::runtime;
+use utoipa::OpenApi;
 
 use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() {
-    let options = Cli::from_args().into_boot_options();
+    let cli = Cli::from_args();
+
+    // The contract is derived from the handler annotations, so it can be
+    // printed before any vault, store or socket exists.
+    if cli.dump_openapi {
+        match serde_json::to_string_pretty(&springtaled::api::openapi::ApiDoc::openapi()) {
+            Ok(doc) => println!("{doc}"),
+            Err(e) => {
+                eprintln!("failed to serialise the OpenAPI document: {e}");
+                std::process::exit(1);
+            }
+        }
+        return;
+    }
+
+    let options = cli.into_boot_options();
 
     // Install rustls CryptoProvider before any TLS usage.
     //

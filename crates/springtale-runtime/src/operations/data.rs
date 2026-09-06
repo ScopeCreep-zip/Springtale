@@ -18,13 +18,16 @@ use crate::error::OperationError;
 /// `Rule` (recursive). The Tauri `export_data` command converts to
 /// `serde_json::Value` before crossing the wire, so specta never
 /// sees this type.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, utoipa::ToSchema)]
 pub struct DataExport {
     /// All automation rules.
+    #[schema(value_type = Vec<Object>)]
     pub rules: Vec<Rule>,
     /// All registered connectors.
+    #[schema(value_type = Vec<Object>)]
     pub connectors: Vec<ConnectorRow>,
     /// Recent events (up to 10,000).
+    #[schema(value_type = Vec<Object>)]
     pub events: Vec<EventEntry>,
 }
 

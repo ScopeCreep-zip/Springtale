@@ -120,10 +120,18 @@ pub async fn build_live(ctx: &BootContext, passphrase: &[u8]) -> Result<Live> {
     // surfaces now drive identical cron/fs_watcher/queue/event-loop
     // wiring from `springtale_runtime::embedded::bootstrap`. Those
     // tasks register on `runtime.tasks`, so a lock ends them.
+    // The heartbeat interval is durable config: a `PUT /config/heartbeat`
+    // persists it, so boot reads the stored key back and only falls
+    // through to the config-file value when nothing was ever set.
+    let heartbeat_interval_secs = springtale_runtime::operations::heartbeat::boot_interval(
+        &*runtime.store,
+        ctx.heartbeat_interval_secs,
+    )
+    .await;
     let springtale_runtime::EmbeddedBootHandle {
         scheduler: embedded_scheduler,
         heartbeat_monitor,
-    } = springtale_runtime::bootstrap_embedded(&runtime, ctx.heartbeat_interval_secs)
+    } = springtale_runtime::bootstrap_embedded(&runtime, heartbeat_interval_secs)
         .await
         .map_err(|e| anyhow::anyhow!("scheduler bootstrap failed: {e}"))?;
     let trigger_tx = embedded_scheduler.trigger_tx.clone();
@@ -213,6 +221,7 @@ pub async fn build_live(ctx: &BootContext, passphrase: &[u8]) -> Result<Live> {
     let state = api::state::AppState {
         runtime,
         api_token_hash,
+        sessions: Arc::new(tokio::sync::Mutex::new(HashMap::new())),
         ready: ready_flag,
         trigger_tx,
         scheduler: embedded_scheduler,

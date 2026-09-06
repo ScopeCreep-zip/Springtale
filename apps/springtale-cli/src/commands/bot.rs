@@ -12,32 +12,36 @@ use crate::output;
 use crate::store::PassphraseOpts;
 use springtale_runtime::operations::pairing;
 
-pub async fn pair_init(opts: &PassphraseOpts) -> Result<()> {
+pub async fn pair_init(opts: &PassphraseOpts, json_out: bool) -> Result<()> {
     let store = crate::store::open_store(opts)?;
     let code = pairing::generate_pairing_code(&store)
         .await
         .context("failed to generate pairing code")?;
 
-    println!("Pairing code (give this to the user, do NOT send via chat):\n");
-    println!("  {code}\n");
-    println!("The user types this code into their chat with the bot.");
-    println!("Code expires in 10 minutes. Single-use.");
-    Ok(())
+    let body = serde_json::json!({ "pairing_code": code, "single_use": true });
+    output::emit(json_out, &body, |v| {
+        format!(
+            "Pairing code (give this to the user, do NOT send via chat):\n\n  {}\n\nThe user types this code into their chat with the bot.\nCode expires in 10 minutes. Single-use.",
+            output::cell(v, "pairing_code")
+        )
+    })
 }
 
-pub async fn panic_unpair(opts: &PassphraseOpts) -> Result<()> {
+pub async fn panic_unpair(opts: &PassphraseOpts, json_out: bool) -> Result<()> {
     let store = crate::store::open_store(opts)?;
     let removed = pairing::panic_unpair(&store)
         .await
         .context("failed to revoke paired users")?;
 
-    println!("Removed {removed} pairing/paired entries.");
-    if removed > 0 {
-        println!("All users must re-pair to regain access.");
-    } else {
-        println!("No paired users were found.");
-    }
-    Ok(())
+    let body = serde_json::json!({ "removed": removed });
+    output::emit(json_out, &body, |_| {
+        let tail = if removed > 0 {
+            "All users must re-pair to regain access."
+        } else {
+            "No paired users were found."
+        };
+        format!("Removed {removed} pairing/paired entries.\n{tail}")
+    })
 }
 
 /// `springtale bot settings …` — plan 6.3. Goes through the daemon so the

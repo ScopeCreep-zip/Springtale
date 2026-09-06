@@ -36,7 +36,6 @@ use axum::routing::{get, post};
 use axum::{Router, middleware};
 use secrecy::{ExposeSecret, SecretString};
 use serde::{Deserialize, Deserializer};
-use subtle::ConstantTimeEq;
 use tower::ServiceBuilder;
 use tower::ServiceExt;
 use tower::buffer::BufferLayer;
@@ -196,9 +195,11 @@ impl RuntimeGuard {
         live.state.scheduler.pause().await;
         live.state.heartbeat_monitor.lock().await.stop();
 
-        // 4 — sessions: the one-time SSE tickets go here; the stored
-        // per-user/per-channel bot sessions go with the database handle
-        // that closes in step 7.
+        // 4 — sessions: the login session map and the one-time SSE
+        // tickets both die here, so a token issued before the lock
+        // cannot be replayed after it. The stored per-user/per-channel
+        // bot sessions go with the database handle that closes in step 7.
+        live.state.sessions.lock().await.clear();
         live.state.stream_tickets.lock().await.clear();
 
         // The one observable proof that the lock worked: when the last
@@ -477,7 +478,18 @@ async fn lock(State(guard): State<RuntimeGuard>, headers: HeaderMap) -> Response
     let Some(live) = guard.live() else {
         return (StatusCode::OK, Json(serde_json::json!({ "locked": true }))).into_response();
     };
-    if !bearer_matches(&headers, &live.state.api_token_hash) {
+    // Same session check `api::auth::require_auth` makes, run by hand:
+    // `POST /vault/lock` is served by the outer router, which has no
+    // `AppState` for that middleware to sit over. A passphrase-derived
+    // hash is the login verifier, never a bearer (plan 6.6), so the
+    // presented token has to be looked up in the live session map.
+    let Some(token) = super::login::bearer(&headers) else {
+        return StatusCode::UNAUTHORIZED.into_response();
+    };
+    if super::login::authenticate(&live.state, token)
+        .await
+        .is_none()
+    {
         return StatusCode::UNAUTHORIZED.into_response();
     }
     // Release before locking — `lock` waits for exactly this `Arc`.
@@ -536,25 +548,6 @@ async fn unlock(State(guard): State<RuntimeGuard>, Json(body): Json<UnlockReques
     }
 }
 
-/// Constant-time bearer-token check against the daemon's token hash.
-///
-/// The same comparison `api::auth::require_auth` makes; repeated here
-/// because `POST /vault/lock` is served by the outer router, which has
-/// no `AppState` to run that middleware over.
-fn bearer_matches(headers: &HeaderMap, expected: &[u8; 32]) -> bool {
-    let Some(token) = headers
-        .get("authorization")
-        .and_then(|v| v.to_str().ok())
-        .and_then(|h| h.strip_prefix("Bearer "))
-    else {
-        return false;
-    };
-    let Ok(bytes) = hex::decode(token) else {
-        return false;
-    };
-    bytes.len() == 32 && bool::from(bytes.ct_eq(expected))
-}
-
 /// The passphrase bytes, for the one call site that needs them.
 ///
 /// SECURITY: expose needed to hand the passphrase to Argon2id in
@@ -569,39 +562,6 @@ pub fn expose_passphrase(passphrase: &SecretString) -> &[u8] {
 mod tests {
     use super::*;
     use axum::http::HeaderValue;
-
-    #[test]
-    fn test_bearer_matches_only_the_exact_token() {
-        let expected = [7u8; 32];
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            "authorization",
-            HeaderValue::from_str(&format!("Bearer {}", hex::encode(expected))).unwrap(),
-        );
-        assert!(bearer_matches(&headers, &expected));
-
-        let mut wrong = HeaderMap::new();
-        wrong.insert(
-            "authorization",
-            HeaderValue::from_str(&format!("Bearer {}", hex::encode([8u8; 32]))).unwrap(),
-        );
-        assert!(!bearer_matches(&wrong, &expected));
-
-        assert!(!bearer_matches(&HeaderMap::new(), &expected));
-    }
-
-    #[test]
-    fn test_bearer_rejects_wrong_length_and_non_hex() {
-        let expected = [7u8; 32];
-        for value in ["Bearer 00", "Bearer zzzz", "Basic abcd", "Bearer "] {
-            let mut headers = HeaderMap::new();
-            headers.insert("authorization", HeaderValue::from_static(value));
-            assert!(
-                !bearer_matches(&headers, &expected),
-                "{value} must not authenticate"
-            );
-        }
-    }
 
     #[test]
     fn test_is_credentialed_counts_tokens_and_tickets_only() {

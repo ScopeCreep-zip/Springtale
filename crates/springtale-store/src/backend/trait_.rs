@@ -701,6 +701,48 @@ pub trait StorageBackend: Send + Sync + 'static {
         Ok(Vec::new())
     }
 
+    // ── Long-lived API tokens (6.6) ────────────────────────────
+    //
+    // A token is stored ONLY as `sha256(token)`; the backend can verify
+    // a presented bearer but can never produce one. The default impls
+    // are the deny-everything shape: a backend that does not implement
+    // them accepts no long-lived token at all.
+
+    /// Persist a freshly minted long-lived token (hash + name).
+    async fn insert_api_token(
+        &self,
+        _row: crate::schema::api_tokens::ApiTokenRow,
+    ) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Every long-lived token, newest first. Callers must never leak
+    /// `token_hash` past the API boundary.
+    async fn list_api_tokens(
+        &self,
+    ) -> Result<Vec<crate::schema::api_tokens::ApiTokenRow>, StoreError> {
+        Ok(Vec::new())
+    }
+
+    /// Look one up by `sha256(token)`. `None` means "never issued, or
+    /// revoked" — both are a 401.
+    async fn find_api_token_by_hash(
+        &self,
+        _hash: &[u8],
+    ) -> Result<Option<crate::schema::api_tokens::ApiTokenRow>, StoreError> {
+        Ok(None)
+    }
+
+    /// Record the last accepted request against a token (unix ms).
+    async fn touch_api_token(&self, _id: &str, _now_ms: i64) -> Result<(), StoreError> {
+        Ok(())
+    }
+
+    /// Revoke. `false` when the id was already gone.
+    async fn delete_api_token(&self, _id: &str) -> Result<bool, StoreError> {
+        Ok(false)
+    }
+
     /// Persist the chat tool-loop state paused behind an approval.
     async fn upsert_tool_loop_checkpoint(
         &self,

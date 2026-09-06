@@ -24,6 +24,26 @@ pub fn emit<T: Serialize>(json: bool, data: &T, table: impl FnOnce(&T) -> String
     Ok(())
 }
 
+/// The stderr sibling of [`emit`], for commands whose human output is a
+/// progress notice rather than data (`travel prepare`, `panic`, `vault
+/// duress-setup`, …). The notice keeps going to stderr so stdout stays
+/// clean for piping; `--json` still gets a machine-readable object on
+/// stdout. The `--json` branch itself lives in [`emit`] and nowhere else.
+pub fn emit_status<T: Serialize>(
+    json: bool,
+    data: &T,
+    notice: impl FnOnce(&T) -> String,
+) -> Result<()> {
+    emit(json, data, |value| {
+        let text = notice(value);
+        if !text.is_empty() {
+            eprintln!("{text}");
+        }
+        // Nothing for stdout: `emit` prints only a non-empty return.
+        String::new()
+    })
+}
+
 /// Render a table from string cells. Used by every daemon-backed
 /// subcommand, which sees JSON rather than typed rows.
 pub fn rows_table(headers: &[&str], rows: Vec<Vec<String>>) -> String {

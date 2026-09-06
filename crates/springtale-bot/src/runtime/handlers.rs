@@ -290,6 +290,7 @@ pub(super) async fn handle_incoming_message(
                     // Formation-scoped tick dispatch sets this to the
                     // caller's mapped `MomentumTier` before invoking.
                     formation_tier: None,
+                    runtime: bot.runtime.clone(),
                 };
 
                 match handler.handle(&args, &ctx).await {

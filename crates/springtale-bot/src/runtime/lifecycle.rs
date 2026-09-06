@@ -122,6 +122,11 @@ pub struct Bot {
     /// engine degrades to a graceful "can't deploy here". See
     /// `crate::conversation::deploy`.
     pub(crate) recipe_deployer: Option<crate::conversation::deploy::SharedDeployer>,
+    /// Shared runtime state (plan 5.4). `Some` in the daemon / desktop,
+    /// `None` in headless / CLI / test builds. Chat's platform verbs
+    /// (`/formation`, `/approvals`, `/memory`, `/safety`, `/ai`) and the
+    /// platform intent documents read it.
+    pub(crate) runtime: Option<springtale_runtime::state::RuntimeState>,
 }
 
 impl Bot {
@@ -185,6 +190,10 @@ pub struct BotBuilder {
     /// Optional conversational-setup deploy port (daemon / desktop wire
     /// a `RuntimeState`-backed impl; tests + headless leave None).
     recipe_deployer: Option<crate::conversation::deploy::SharedDeployer>,
+    /// Optional shared runtime state (plan 5.4). The daemon/desktop pass
+    /// `RuntimeState` so chat commands reach the same operations every
+    /// other surface calls; tests + headless leave None.
+    runtime: Option<springtale_runtime::state::RuntimeState>,
 }
 
 impl BotBuilder {
@@ -211,7 +220,16 @@ impl BotBuilder {
             utterance_defs: None,
             cadence_tick: None,
             recipe_deployer: None,
+            runtime: None,
         }
+    }
+
+    /// Inject the shared runtime state so chat can run the platform
+    /// verbs (plan 5.4). Without it `/formation`, `/safety` and `/ai`
+    /// report that this bot has no runtime instead of acting.
+    pub fn runtime(mut self, runtime: springtale_runtime::state::RuntimeState) -> Self {
+        self.runtime = Some(runtime);
+        self
     }
 
     /// Inject the conversational-setup deploy port. The daemon / desktop
@@ -563,6 +581,7 @@ impl BotBuilder {
             formation_gossip: self.formation_gossip,
             knowledge_store: self.knowledge_store,
             recipe_deployer: self.recipe_deployer,
+            runtime: self.runtime,
         })
     }
 }

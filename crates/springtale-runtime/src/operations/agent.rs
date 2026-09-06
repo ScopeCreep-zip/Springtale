@@ -179,7 +179,7 @@ pub async fn step_autonomy(
 }
 
 /// Direction for stepping autonomy.
-#[derive(Debug, Clone, Copy, serde::Deserialize, Type)]
+#[derive(Debug, Clone, Copy, serde::Deserialize, Type, utoipa::ToSchema)]
 #[serde(rename_all = "lowercase")]
 pub enum AutonomyDirection {
     Up,
@@ -543,4 +543,17 @@ mod tests {
         assert_eq!(fuel_status_label(21), "warn");
         assert_eq!(fuel_status_label(20), "critical");
     }
+}
+
+/// Request body for setting an agent's autonomy level.
+#[derive(Debug, Clone, serde::Deserialize, utoipa::ToSchema)]
+pub struct SetAutonomyRequest {
+    /// Level name: `observe`, `suggest`, `approve`, or `autonomous`.
+    pub level: String,
+}
+
+/// Request body for stepping an agent's autonomy up or down.
+#[derive(Debug, Clone, serde::Deserialize, utoipa::ToSchema)]
+pub struct StepAutonomyRequest {
+    pub direction: AutonomyDirection,
 }

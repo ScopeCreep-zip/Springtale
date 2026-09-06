@@ -37,6 +37,21 @@ pub struct HandlerContext {
     /// scoped dispatch via `runtime::event_loop` sets it to the calling
     /// formation's `MomentumTier` mapped through `momentum_to_wasm_tier`.
     pub formation_tier: Option<WasmTier>,
+    /// Shared runtime state — what lets a chat command steer a
+    /// formation, answer an approval, audit memory, or change safety
+    /// and model configuration (plan 5.4). `None` in headless and test
+    /// bots, which have no `RuntimeState`; the platform handlers say so
+    /// rather than pretending to act.
+    pub runtime: Option<springtale_runtime::state::RuntimeState>,
+}
+
+/// Borrow the runtime state, or explain that this bot has none.
+pub fn runtime_or_err(
+    ctx: &HandlerContext,
+) -> Result<&springtale_runtime::state::RuntimeState, BotError> {
+    ctx.runtime.as_ref().ok_or_else(|| {
+        BotError::NotInitialized("this bot runs without a platform runtime".to_owned())
+    })
 }
 
 /// Result returned by a handler.

@@ -9,6 +9,12 @@ use springtale_runtime::operations;
 use super::state::AppState;
 
 /// GET /safety — get the current safety configuration.
+#[utoipa::path(
+    get, operation_id = "safety_get_config",
+    path = "/safety",
+    tag = "safety",
+    responses((status = 200, description = "Safety config", body = Object))
+)]
 pub async fn get_config(State(state): State<AppState>) -> impl IntoResponse {
     match operations::safety::get_safety_config(&state.runtime).await {
         Ok(config) => (StatusCode::OK, Json(serde_json::json!(config))),
@@ -20,6 +26,13 @@ pub async fn get_config(State(state): State<AppState>) -> impl IntoResponse {
 }
 
 /// PUT /safety — save the safety configuration.
+#[utoipa::path(
+    put, operation_id = "safety_save_config",
+    path = "/safety",
+    tag = "safety",
+    request_body = Object,
+    responses((status = 200, description = "Safety config saved", body = Object))
+)]
 pub async fn save_config(
     State(state): State<AppState>,
     Json(config): Json<springtale_store::SafetyConfigRow>,
@@ -34,7 +47,7 @@ pub async fn save_config(
 }
 
 /// G5d — request body for toggling disguise-active.
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct DisguiseActiveBody {
     pub active: bool,
 }
@@ -43,6 +56,13 @@ pub struct DisguiseActiveBody {
 /// the disguise-active flag without re-sending the whole config.
 /// Avoids the lost-update race two tabs would hit on the full-config
 /// PUT path.
+#[utoipa::path(
+    post, operation_id = "safety_set_disguise_active",
+    path = "/safety/disguise/active",
+    tag = "safety",
+    request_body = DisguiseActiveBody,
+    responses((status = 200, description = "Disguise flag flipped", body = Object))
+)]
 pub async fn set_disguise_active(
     State(state): State<AppState>,
     Json(body): Json<DisguiseActiveBody>,
@@ -60,7 +80,7 @@ pub async fn set_disguise_active(
 }
 
 /// G5d — request body for switching the disguise profile.
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct DisguiseProfileBody {
     pub app_name: String,
     pub icon_id: String,
@@ -68,6 +88,13 @@ pub struct DisguiseProfileBody {
 
 /// POST /safety/disguise/profile — atomic two-field update of which
 /// disguise the app should display. Doesn't touch `disguise_active`.
+#[utoipa::path(
+    post, operation_id = "safety_set_disguise_profile",
+    path = "/safety/disguise/profile",
+    tag = "safety",
+    request_body = DisguiseProfileBody,
+    responses((status = 200, description = "Disguise profile switched", body = Object))
+)]
 pub async fn set_disguise_profile(
     State(state): State<AppState>,
     Json(body): Json<DisguiseProfileBody>,
@@ -82,7 +109,7 @@ pub async fn set_disguise_profile(
 }
 
 /// G5d — request body for the panic-tap threshold.
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct PanicTapCountBody {
     pub count: u32,
 }
@@ -91,6 +118,13 @@ pub struct PanicTapCountBody {
 /// taps trigger panic-wipe. Server-bounded `[0, 10]`; values out of
 /// range return 400 to prevent a survivor accidentally configuring
 /// panic-wipe unreachable.
+#[utoipa::path(
+    post, operation_id = "safety_set_panic_tap_count",
+    path = "/safety/panic_tap_count",
+    tag = "safety",
+    request_body = PanicTapCountBody,
+    responses((status = 200, description = "Panic tap threshold saved", body = Object))
+)]
 pub async fn set_panic_tap_count(
     State(state): State<AppState>,
     Json(body): Json<PanicTapCountBody>,
@@ -112,6 +146,12 @@ pub async fn set_panic_tap_count(
 /// Plan 2.1: the desktop used to reach `operations::safety::panic_wipe`
 /// through its own in-process runtime. The daemon owns the store now, so
 /// the route has to exist here or the button is dead on both shells.
+#[utoipa::path(
+    post, operation_id = "safety_panic_wipe",
+    path = "/safety/panic-wipe",
+    tag = "safety",
+    responses((status = 200, description = "Panic wipe executed", body = Object))
+)]
 pub async fn panic_wipe(State(state): State<AppState>) -> impl IntoResponse {
     match operations::safety::panic_wipe(state.runtime.store.as_ref()).await {
         Ok(()) => (StatusCode::OK, Json(serde_json::json!({ "wiped": true }))),
@@ -123,7 +163,7 @@ pub async fn panic_wipe(State(state): State<AppState>) -> impl IntoResponse {
 }
 
 /// Body for both travel routes.
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct TravelBody {
     /// Vault passphrase — encrypts (prepare) or decrypts (restore) the backup.
     pub passphrase: String,
@@ -137,6 +177,13 @@ pub struct TravelBody {
 /// to stop the daemon afterwards; unlike the old desktop command this does
 /// not call `std::process::exit`, because the daemon may be serving other
 /// clients and killing it out from under them is the wrong shutdown path.
+#[utoipa::path(
+    post, operation_id = "safety_travel_prepare",
+    path = "/travel/prepare",
+    tag = "safety",
+    request_body = TravelBody,
+    responses((status = 200, description = "Travel backup written", body = Object))
+)]
 pub async fn travel_prepare(
     State(state): State<AppState>,
     Json(body): Json<TravelBody>,
@@ -175,6 +222,13 @@ pub async fn travel_prepare(
 ///
 /// The daemon must be restarted afterwards: it is still holding the handles
 /// to the files that were just replaced underneath it.
+#[utoipa::path(
+    post, operation_id = "safety_travel_restore",
+    path = "/travel/restore",
+    tag = "safety",
+    request_body = TravelBody,
+    responses((status = 200, description = "Travel backup restored", body = Object))
+)]
 pub async fn travel_restore(Json(body): Json<TravelBody>) -> impl IntoResponse {
     let result = tokio::task::spawn_blocking(move || {
         operations::travel::restore(

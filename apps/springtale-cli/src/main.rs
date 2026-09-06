@@ -32,33 +32,39 @@ async fn main() -> Result<()> {
         Command::Init => {
             commands::init::run().await?;
         }
+        Command::Login => {
+            commands::login::login(cli.json).await?;
+        }
+        Command::Logout => {
+            commands::login::logout(cli.json).await?;
+        }
         Command::Doctor => {
-            commands::doctor::run(&pass_opts).await?;
+            commands::doctor::run(&pass_opts, cli.json).await?;
         }
         Command::Fix { error_id } => {
-            commands::fix::run(&error_id, &pass_opts).await?;
+            commands::fix::run(&error_id, &pass_opts, cli.json).await?;
         }
         Command::Trace { connector, rule } => {
-            commands::trace::run(connector.as_deref(), rule.as_deref()).await?;
+            commands::trace::run(connector.as_deref(), rule.as_deref(), cli.json).await?;
         }
         Command::Server { action } => match action {
             ServerAction::Start => {
-                commands::server::run().await?;
+                commands::server::run(cli.json).await?;
             }
         },
         Command::Run => {
             // Plan §16.4: `springtale init cli-runner && springtale run`.
             // `run` is the plain-English name for the daemon entry point
             // so the plan's success-criterion prompt works literally.
-            commands::server::run().await?;
+            commands::server::run(cli.json).await?;
         }
         Command::Healthcheck { url } => {
             // Used by container HEALTHCHECK — distroless has no wget/curl.
-            commands::healthcheck::run(&url).await?;
+            commands::healthcheck::run(&url, cli.json).await?;
         }
         Command::Panic => {
             let store = store::open_store(&pass_opts)?;
-            commands::panic::run(&store).await?;
+            commands::panic::run(&store, cli.json).await?;
         }
         Command::Travel { action } => {
             let vault_path = springtale_store::paths::default_vault_path();
@@ -73,30 +79,37 @@ async fn main() -> Result<()> {
                         &db_path,
                         &config_path,
                         &store,
+                        cli.json,
                     )?;
                 }
                 TravelAction::Restore { from } => {
-                    commands::travel::restore(&from, &vault_path, &db_path, &config_path)?;
+                    commands::travel::restore(
+                        &from,
+                        &vault_path,
+                        &db_path,
+                        &config_path,
+                        cli.json,
+                    )?;
                 }
             }
         }
         Command::Vault { action } => match action {
             VaultAction::DuressSetup => {
                 let vault_path = springtale_store::paths::default_vault_path();
-                commands::vault::duress_setup(&vault_path)?;
+                commands::vault::duress_setup(&vault_path, cli.json)?;
             }
         },
         Command::Crypto { action } => match action {
             CryptoAction::RotateVaultKey => {
-                commands::crypto::rotate_vault_key()?;
+                commands::crypto::rotate_vault_key(cli.json)?;
             }
         },
         Command::Bot { action } => match action {
             BotAction::PairInit => {
-                commands::bot::pair_init(&pass_opts).await?;
+                commands::bot::pair_init(&pass_opts, cli.json).await?;
             }
             BotAction::PanicUnpair => {
-                commands::bot::panic_unpair(&pass_opts).await?;
+                commands::bot::panic_unpair(&pass_opts, cli.json).await?;
             }
             BotAction::Settings { action } => {
                 commands::bot::settings(action, cli.json).await?;
@@ -104,7 +117,7 @@ async fn main() -> Result<()> {
         },
         Command::Cooperation { action } => match action {
             CooperationAction::Glyphs { check } => {
-                commands::cooperation::glyphs(check.as_deref())?;
+                commands::cooperation::glyphs(check.as_deref(), cli.json)?;
             }
         },
         // Daemon-backed commands. The CLI is a client of springtaled:
@@ -124,7 +137,7 @@ async fn main() -> Result<()> {
             commands::memory::run(action, cli.json).await?;
         }
         Command::Data { action } => {
-            commands::data::run(action).await?;
+            commands::data::run(action, cli.json).await?;
         }
         Command::Agent { action } => {
             commands::agent::run(action, cli.json).await?;

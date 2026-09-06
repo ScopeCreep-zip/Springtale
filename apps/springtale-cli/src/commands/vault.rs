@@ -3,6 +3,8 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
+use crate::output;
+
 /// Set up a duress passphrase for an existing vault.
 ///
 /// Converts a legacy single-region vault to dual-region format.
@@ -12,7 +14,7 @@ use anyhow::{Context, Result};
 /// Both passphrases are required during setup. After setup, only
 /// one passphrase is needed to open the vault — the system cannot
 /// tell which one was used.
-pub fn duress_setup(vault_path: &Path) -> Result<()> {
+pub fn duress_setup(vault_path: &Path, json_out: bool) -> Result<()> {
     if !vault_path.exists() {
         anyhow::bail!(
             "vault file not found: {}. Run `springtale init` first.",
@@ -68,10 +70,11 @@ pub fn duress_setup(vault_path: &Path) -> Result<()> {
     )
     .context("failed to create dual vault")?;
 
-    eprintln!("Duress passphrase configured.");
-    eprintln!("Real passphrase → full access.");
-    eprintln!("Duress passphrase → decoy profile.");
-    eprintln!("File size is constant — observer cannot tell which was used.");
-
-    Ok(())
+    let body = serde_json::json!({
+        "duress_configured": true,
+        "vault": vault_path.display().to_string(),
+    });
+    output::emit_status(json_out, &body, |_| {
+        "Duress passphrase configured.\nReal passphrase → full access.\nDuress passphrase → decoy profile.\nFile size is constant — observer cannot tell which was used.".to_owned()
+    })
 }

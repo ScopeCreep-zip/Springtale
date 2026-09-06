@@ -6,8 +6,8 @@
  * comes from the backend via AgentState — no frontend inference.
  */
 import type { AgentState } from "@springtale/types";
-import type { ConnectorStatus, RuleItem, SwarmInfo } from "../dashboard/model";
-import type { CooperationEventEnvelope } from "../dashboard/types";
+import type { ConnectorStatus, RuleItem } from "../dashboard/model";
+import type { CooperationEventEnvelope, FormationInfo } from "../dashboard/types";
 import type { ColonyAgent, ColonyFormation, ColonyNode } from "./types";
 import { MOMENTUM_COLORS, seeded } from "./types";
 
@@ -88,11 +88,11 @@ const TIER_TO_INDEX: Record<string, number> = {
   Fever: 3,
 };
 
-/** Map swarms to formations. Momentum tier + label come from backend.
+/** Map formations to formations. Momentum tier + label come from backend.
  *  Optionally folds the cooperation events stream so each formation's
  *  `pacingPhase` reflects the most-recent `pacing_phase_changed` event. */
 export function mapFormations(
-  swarms: SwarmInfo[],
+  formations: FormationInfo[],
   cooperationEvents: CooperationEventEnvelope[] = [],
 ): ColonyFormation[] {
   // Most-recent-first; first `pacing_phase_changed` per formation wins.
@@ -119,7 +119,7 @@ export function mapFormations(
     }
   }
 
-  return swarms.map((s) => {
+  return formations.map((s) => {
     const momentum = TIER_TO_INDEX[s.momentum_tier ?? "Cold"] ?? 0;
     const rawPhase = latestPacing.get(s.id);
     // Show the cascade glow only while the hit is recent on the colony's

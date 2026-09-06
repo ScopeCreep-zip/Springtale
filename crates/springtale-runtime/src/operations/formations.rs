@@ -630,7 +630,7 @@ pub async fn list_formations(state: &RuntimeState) -> Result<Vec<FormationInfo>,
 // ── Team deploy (atomic OOBE operation) ─────────────────────────────────────
 
 /// Single agent slot in a team deploy request.
-#[derive(Debug, Deserialize, Type)]
+#[derive(Debug, Deserialize, Type, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TeamAgentSlot {
     pub connector_name: String,
@@ -640,7 +640,7 @@ pub struct TeamAgentSlot {
 }
 
 /// Request to deploy a complete team — creates rules + formation atomically.
-#[derive(Debug, Deserialize, Type)]
+#[derive(Debug, Deserialize, Type, utoipa::ToSchema)]
 #[serde(deny_unknown_fields)]
 pub struct TeamDeployRequest {
     pub name: String,
@@ -1044,4 +1044,17 @@ mod tests {
         assert_eq!(guard_status_label(true), "GUARD");
         assert_eq!(guard_status_label(false), "--");
     }
+}
+
+/// Request body for creating a formation.
+///
+/// Every field is required. An intent that silently defaults to
+/// `Reconnoiter` is a formation whose posture nobody chose.
+#[derive(Debug, Clone, serde::Deserialize, utoipa::ToSchema)]
+pub struct CreateFormationRequest {
+    pub name: String,
+    /// Formation intent: `Reconnoiter`, `Execute`, `Stabilize`, `Surge`.
+    pub intent: String,
+    /// Connector names the formation's members live on.
+    pub connectors: Vec<String>,
 }

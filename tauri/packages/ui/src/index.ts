@@ -136,7 +136,6 @@ export type {
   EventItem,
   RuleDetail,
   RuleItem,
-  SwarmInfo,
 } from "./dashboard/model";
 export type { MutationResult } from "./dashboard/query";
 export { createProviderMutation, createProviderQuery } from "./dashboard/query";
@@ -203,6 +202,8 @@ export {
   get as apiGet,
   getBaseUrl,
   getToken,
+  login as apiLogin,
+  logout as apiLogout,
   put as apiPut,
 } from "./web/api/client";
 // Panic wipe + travel mode (§2.6) — daemon-side operations, no JSON body.

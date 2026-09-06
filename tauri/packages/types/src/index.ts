@@ -10,6 +10,15 @@
  */
 
 export type { AgentState } from "./agent-state";
+/**
+ * The generated API contract.
+ *
+ * `src/api.ts` is produced by `pnpm --filter @springtale/types build`
+ * (openapi-typescript over `openapi.json`, which springtaled derives
+ * from its own handlers via `--dump-openapi`). Do not edit it by hand:
+ * a wire shape changes in Rust, and the TypeScript follows.
+ */
+export type { components, operations, paths } from "./api";
 export type { AuditEntry, AuditFilter } from "./audit";
 export type { AvailableConnector, ConfigSchema, ConfigSchemaProperty } from "./available-connector";
 export type { CanvasBlock, CanvasState, CanvasUpdate, StatusState } from "./canvas";
@@ -46,3 +55,6 @@ export type {
 } from "./operations";
 export type { Rule, RuleId, RuleStatus } from "./rule";
 export type { Session } from "./session";
+
+/** Every response/request schema the daemon declares, by name. */
+export type ApiSchemas = import("./api").components["schemas"];

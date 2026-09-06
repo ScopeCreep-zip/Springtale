@@ -21,6 +21,14 @@ const MAX_JSON_DEPTH: usize = 64;
 /// 1. Look up connector in registry
 /// 2. Connector-specific signature verification (GitHub: HMAC-SHA256, Kick: RSA)
 /// 3. Dispatch trigger event to the rule engine via the trigger channel
+#[utoipa::path(
+    post, operation_id = "webhooks_receive",
+    path = "/webhook/{connector}/{trigger}",
+    tag = "webhooks",
+    params(("connector" = String, Path, description = "Connector name"), ("trigger" = String, Path, description = "Trigger name")),
+    request_body = Vec<u8>,
+    responses((status = 200, description = "Webhook accepted", body = Object))
+)]
 pub async fn receive(
     State(state): State<AppState>,
     Path((connector_name, trigger_name)): Path<(String, String)>,

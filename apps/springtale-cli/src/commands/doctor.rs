@@ -9,9 +9,10 @@ use springtale_runtime::operations::diagnostics::{
     self, CallerContext, Check, DiagnosticPaths, Report, Severity,
 };
 
+use crate::output;
 use crate::store::{PassphraseOpts, derive_db_key_hex};
 
-pub async fn run(opts: &PassphraseOpts) -> Result<()> {
+pub async fn run(opts: &PassphraseOpts, json_out: bool) -> Result<()> {
     // The integrity check needs the store key; derive it from the
     // passphrase rather than reporting "vault locked". A first run has
     // no database yet, so do not prompt for one then.
@@ -22,43 +23,43 @@ pub async fn run(opts: &PassphraseOpts) -> Result<()> {
         None
     };
 
-    println!("Springtale Doctor");
-    println!("=================\n");
-
+    // The whole report is rendered in one go so `--json` can hand back
+    // the serialized `Report` instead — the header used to be printed
+    // before the checks even ran, which left JSON output unparseable.
     let report = diagnostics::run_checks(&paths, key.as_deref(), CallerContext::Cli).await;
-    render(&report);
+    output::emit(json_out, &report, render)
+}
 
-    println!();
+fn render(report: &Report) -> String {
+    let mut out = String::from("Springtale Doctor\n=================\n\n");
+    for check in &report.checks {
+        out.push_str(&render_check(check));
+    }
+    out.push('\n');
     let issues = report.issue_count();
     if issues == 0 {
-        println!("All checks passed. Springtale is ready to run.");
+        out.push_str("All checks passed. Springtale is ready to run.");
     } else {
-        println!(
+        out.push_str(&format!(
             "{issues} issue{} found. Fix the items above and run `springtale doctor` again.",
             if issues == 1 { "" } else { "s" }
-        );
+        ));
     }
-
-    Ok(())
+    out
 }
 
-fn render(report: &Report) {
-    for check in &report.checks {
-        print_check(check);
-    }
-}
-
-fn print_check(check: &Check) {
+fn render_check(check: &Check) -> String {
     let tag = match check.severity {
         Severity::Ok => "[OK]  ",
         Severity::Warn => "[WARN]",
         Severity::Fail => "[FAIL]",
     };
-    println!("{tag} {}", check.label);
+    let mut out = format!("{tag} {}\n", check.label);
     if let Some(detail) = &check.detail {
-        println!("       {detail}");
+        out.push_str(&format!("       {detail}\n"));
     }
     if let Some(hint) = &check.fix_hint {
-        println!("       {hint}");
+        out.push_str(&format!("       {hint}\n"));
     }
+    out
 }

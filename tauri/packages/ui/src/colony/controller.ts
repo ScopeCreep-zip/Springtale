@@ -138,7 +138,7 @@ export function createColonyController(db: ColonyDb, opts: ColonyControllerOptio
   // ── Data → Colony visual model (real data, no fakes) ───
   const nodes = () => mapNodes(db.connectors());
   const agents = () => mapAgents(db.rules(), db.agentStates());
-  const formations = () => mapFormations(db.swarms(), db.cooperationEvents());
+  const formations = () => mapFormations(db.formations(), db.cooperationEvents());
 
   // ── Selection → detail-view wiring ─────────────────────
   const selectAgent = (id: string) => {
@@ -445,7 +445,7 @@ export function createColonyController(db: ColonyDb, opts: ColonyControllerOptio
           }
           break;
 
-        // ── Formation (swarm selected) ──
+        // ── Formation (formation selected) ──
         // Parameterless lifecycle/capability commands → backend generic
         // dispatcher (`run_formation_command`). The frontend forwards the
         // clicked id; ALL command→action mapping lives in Rust.
@@ -507,7 +507,7 @@ export function createColonyController(db: ColonyDb, opts: ColonyControllerOptio
           // persists at `ai:formation:{id}` and the next Fever-tier
           // orchestrate call picks it up via `resolve_ai_config`.
           if (sel.id) {
-            const fm = db.swarms().find((s) => s.id === sel.id);
+            const fm = db.formations().find((s) => s.id === sel.id);
             setAiConfigAgent({ id: sel.id, name: fm?.name ?? sel.id, scope: "formation" });
           }
           break;

@@ -23,7 +23,7 @@ use crate::state::RuntimeState;
 
 /// IPC-shaped projection of [`MentalModelWorkspaceRow`]. Flat,
 /// derives `specta::Type` for the Tauri boundary.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 pub struct WorkspaceInfo {
     pub workspace_key: String,
     pub connector_name: String,

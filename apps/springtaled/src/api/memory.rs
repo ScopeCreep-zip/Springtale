@@ -8,6 +8,12 @@ use springtale_runtime::operations;
 use super::state::AppState;
 
 /// POST /memory/audit
+#[utoipa::path(
+    post, operation_id = "memory_audit_memory",
+    path = "/memory/audit",
+    tag = "memory",
+    responses((status = 200, description = "Memory audit report", body = Object))
+)]
 pub async fn audit_memory(State(state): State<AppState>) -> Result<impl IntoResponse, StatusCode> {
     let result = operations::memory::audit_memory(&*state.runtime.store)
         .await
@@ -16,16 +22,21 @@ pub async fn audit_memory(State(state): State<AppState>) -> Result<impl IntoResp
 }
 
 /// POST /memory/compact
+#[utoipa::path(
+    post, operation_id = "memory_compact_memory",
+    path = "/memory/compact",
+    tag = "memory",
+    request_body = operations::memory::CompactMemoryRequest,
+    responses((status = 200, description = "Memory compacted", body = Object))
+)]
 pub async fn compact_memory(
     State(state): State<AppState>,
-    Json(body): Json<serde_json::Value>,
+    Json(req): Json<operations::memory::CompactMemoryRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let max_entries = body
-        .get("max_entries")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(1000) as usize;
-    operations::memory::compact_memory(&*state.runtime.store, max_entries)
+    let deleted = operations::memory::compact_memory(&*state.runtime.store, req.max_entries)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    Ok(Json(serde_json::json!({ "compacted": true })))
+    Ok(Json(
+        serde_json::json!({ "compacted": true, "deleted": deleted }),
+    ))
 }

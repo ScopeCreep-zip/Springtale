@@ -1,79 +1,67 @@
+//! Trusted-author HTTP surface. All validation lives in
+//! `springtale_runtime::operations::authors`.
+
 use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 
+use springtale_runtime::operations::authors::{self, AddAuthorRequest};
+
 use super::extractors::ValidatedPath;
 use super::state::AppState;
 
 /// GET /authors — list all trusted authors.
+#[utoipa::path(
+    get, operation_id = "authors_list",
+    path = "/authors",
+    tag = "authors",
+    responses((status = 200, description = "Trusted authors", body = Vec<Object>))
+)]
 pub async fn list(State(state): State<AppState>) -> Result<impl IntoResponse, StatusCode> {
-    let configs = state
-        .runtime
-        .store
-        .list_config()
+    let authors = authors::list(&*state.runtime.store)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    let authors: Vec<serde_json::Value> = configs
-        .into_iter()
-        .filter_map(|(key, value)| {
-            let name = key.strip_prefix("trusted-author:")?;
-            let data: serde_json::Value = serde_json::from_str(&value).ok()?;
-            Some(serde_json::json!({
-                "name": name,
-                "pubkey": data.get("pubkey").and_then(|v| v.as_str()).unwrap_or(""),
-            }))
-        })
-        .collect();
-
     Ok(Json(serde_json::json!({ "authors": authors })))
 }
 
 /// POST /authors/{name} — add a trusted author.
+#[utoipa::path(
+    post, operation_id = "authors_add",
+    path = "/authors/{name}",
+    tag = "authors",
+    params(("name" = String, Path, description = "Author name")),
+    request_body = AddAuthorRequest,
+    responses((status = 200, description = "Author added", body = Object))
+)]
 pub async fn add(
     State(state): State<AppState>,
     ValidatedPath(name): ValidatedPath,
-    Json(body): Json<serde_json::Value>,
+    Json(req): Json<AddAuthorRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let pubkey = body
-        .get("pubkey")
-        .and_then(|v| v.as_str())
-        .ok_or(StatusCode::BAD_REQUEST)?;
-
-    // Validate pubkey is valid hex and 32 bytes (Ed25519 public key)
-    let pubkey_bytes = hex::decode(pubkey).map_err(|_| StatusCode::BAD_REQUEST)?;
-    if pubkey_bytes.len() != 32 {
-        return Err(StatusCode::BAD_REQUEST);
-    }
-
-    let key = format!("trusted-author:{name}");
-    let value = serde_json::json!({ "pubkey": pubkey }).to_string();
-
-    state
-        .runtime
-        .store
-        .set_config(&key, &value)
+    let author = authors::add(&*state.runtime.store, &name, &req.pubkey)
         .await
-        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    tracing::info!(author = %name, "trusted author added");
-    Ok(Json(serde_json::json!({ "name": name, "pubkey": pubkey })))
+        .map_err(|e| match e {
+            springtale_runtime::OperationError::Validation(_) => StatusCode::BAD_REQUEST,
+            _ => StatusCode::INTERNAL_SERVER_ERROR,
+        })?;
+    Ok(Json(author))
 }
 
 /// DELETE /authors/{name} — remove a trusted author.
+#[utoipa::path(
+    delete, operation_id = "authors_remove",
+    path = "/authors/{name}",
+    tag = "authors",
+    params(("name" = String, Path, description = "Author name")),
+    responses((status = 200, description = "Author removed", body = Object))
+)]
 pub async fn remove(
     State(state): State<AppState>,
     ValidatedPath(name): ValidatedPath,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let key = format!("trusted-author:{name}");
-    state
-        .runtime
-        .store
-        .delete_config(&key)
+    authors::remove(&*state.runtime.store, &name)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    tracing::info!(author = %name, "trusted author removed");
     Ok(Json(serde_json::json!({ "removed": name })))
 }

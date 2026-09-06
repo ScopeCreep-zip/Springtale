@@ -124,18 +124,12 @@ async fn start_session(
         return Ok(session);
     }
 
-    // The daemon derives the same value from the same passphrase in
-    // `runtime/boot/crypto.rs`; it is never sent over the pipe.
-    // SECURITY: expose needed to derive the API token hash the daemon
-    // independently derives from the same passphrase.
-    let token = {
-        use secrecy::ExposeSecret as _;
-        hex::encode(springtale_crypto::token::derive_api_token_hash(
-            passphrase.expose_secret().as_bytes(),
-        ))
-    };
-
     let daemon = sidecar::start(app, &passphrase).await?;
+
+    // Plan 6.6: the shell no longer derives its bearer. Once the sidecar
+    // has reported READY it logs in with the passphrase it already holds
+    // and the daemon issues a random session token.
+    let token = sidecar::login(daemon.port, &passphrase).await?;
     let session = VaultSession {
         status,
         port: daemon.port,

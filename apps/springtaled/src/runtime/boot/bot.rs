@@ -120,6 +120,9 @@ pub(super) async fn init_bot(
 
     let bot = springtale_bot::BotBuilder::new()
         .recipe_deployer(recipe_deployer)
+        // Plan 5.4 — chat reaches the platform verbs through the same
+        // runtime every other surface calls.
+        .runtime(runtime.clone())
         .store(runtime.store.clone())
         .registry(runtime.registry.clone())
         .engine(runtime.engine.clone())

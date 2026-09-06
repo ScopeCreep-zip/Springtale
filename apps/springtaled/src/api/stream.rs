@@ -47,6 +47,12 @@ fn frame(name: &'static str, data: String) -> Option<Result<Event, Infallible>> 
 }
 
 /// GET /stream — Server-Sent Events, multiplexed. Ticket auth. Read-only.
+#[utoipa::path(
+    get, operation_id = "stream_stream",
+    path = "/stream",
+    tag = "stream",
+    responses((status = 200, description = "text/event-stream of events, canvas and cooperation frames", body = String))
+)]
 pub async fn stream(
     State(state): State<AppState>,
 ) -> Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>> {

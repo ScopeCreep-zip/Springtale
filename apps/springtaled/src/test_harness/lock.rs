@@ -50,13 +50,21 @@ impl TestGuard {
     pub fn build() -> Self {
         let held: Arc<Mutex<Vec<mpsc::Receiver<FormationCommand>>>> =
             Arc::new(Mutex::new(Vec::new()));
-        let token_hex = TestApp::build(true).token_hex;
+        // One session, seeded into every world this fixture builds.
+        // The real daemon clears the session map on lock, so a client
+        // logs in again after an unlock; the fixture re-seeds the same
+        // token instead, so a test can assert "the route serves again"
+        // without a login round trip standing in the way.
+        let mut token_bytes = [0u8; 32];
+        rand::RngCore::fill_bytes(&mut rand::rngs::OsRng, &mut token_bytes);
+        let token_hex = hex::encode(token_bytes);
 
-        let live = build_test_live(&held);
+        let live = build_test_live(&held, &token_bytes);
         let rebuild_held = held.clone();
         let rebuild: crate::api::lock::Rebuild =
             Arc::new(move |passphrase: SecretString| -> RebuildFuture {
                 let held = rebuild_held.clone();
+                let token_bytes = token_bytes;
                 Box::pin(async move {
                     // Stands in for `Vault::open`, which is the real
                     // passphrase check: a wrong passphrase fails AEAD
@@ -66,7 +74,7 @@ impl TestGuard {
                     if passphrase.expose_secret() != TEST_PASSPHRASE {
                         anyhow::bail!("wrong passphrase or corrupted vault");
                     }
-                    Ok(build_test_live(&held))
+                    Ok(build_test_live(&held, &token_bytes))
                 })
             });
 
@@ -81,7 +89,10 @@ impl TestGuard {
 }
 
 /// One in-memory world, with its formation receiver parked in `held`.
-fn build_test_live(held: &Arc<Mutex<Vec<mpsc::Receiver<FormationCommand>>>>) -> Live {
+fn build_test_live(
+    held: &Arc<Mutex<Vec<mpsc::Receiver<FormationCommand>>>>,
+    token_bytes: &[u8; 32],
+) -> Live {
     let TestApp {
         state,
         formation_cmd_rx,
@@ -90,6 +101,20 @@ fn build_test_live(held: &Arc<Mutex<Vec<mpsc::Receiver<FormationCommand>>>>) -> 
     match held.lock() {
         Ok(mut list) => list.push(formation_cmd_rx),
         Err(poisoned) => poisoned.into_inner().push(formation_cmd_rx),
+    }
+    // `TestApp` mints its own random session; replace it with the
+    // fixture's so the same bearer works across a lock/unlock cycle.
+    // The mutex is fresh and uncontended, so `try_lock` cannot fail.
+    if let Ok(mut sessions) = state.sessions.try_lock() {
+        sessions.clear();
+        let now = std::time::Instant::now();
+        sessions.insert(
+            crate::api::login::hash_token(token_bytes),
+            crate::api::login::SessionRecord {
+                issued_at: now,
+                last_seen: now,
+            },
+        );
     }
     let vault = Vault::create_ephemeral(TEST_PASSPHRASE.as_bytes()).expect("ephemeral vault");
     Live::new(state, TaskHandles::new(), vault, None)

@@ -39,6 +39,7 @@ const DDL_IN_ORDER: &[(&str, &str)] = &[
     ),
     ("ai_token_usage", include_str!("sql/ai_token_usage.sql")),
     ("approvals", include_str!("sql/approvals.sql")),
+    ("api_tokens", include_str!("sql/api_tokens.sql")),
 ];
 
 /// Apply the declarative schema to a connection.

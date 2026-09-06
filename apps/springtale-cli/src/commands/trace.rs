@@ -13,6 +13,7 @@ use anyhow::{Context, Result};
 use serde_json::json;
 
 use crate::client::Client;
+use crate::output;
 
 /// Real-time execution trace — connects to the daemon's SSE event stream
 /// and prints rule triggers, action dispatches, and sentinel verdicts.
@@ -21,7 +22,11 @@ use crate::client::Client;
 ///   springtale trace                        # all events
 ///   springtale trace --connector telegram   # filter by connector
 ///   springtale trace --rule my-rule         # filter by rule name
-pub async fn run(connector_filter: Option<&str>, rule_filter: Option<&str>) -> Result<()> {
+pub async fn run(
+    connector_filter: Option<&str>,
+    rule_filter: Option<&str>,
+    json_out: bool,
+) -> Result<()> {
     let client = Client::from_config()?;
 
     // The SSE routes are ticket-authenticated, never bearer-in-URL:
@@ -33,17 +38,22 @@ pub async fn run(connector_filter: Option<&str>, rule_filter: Option<&str>) -> R
         .and_then(|t| t.as_str())
         .ok_or_else(|| anyhow::anyhow!("daemon did not issue a stream ticket"))?;
 
-    println!("Connecting to the event stream ...");
-    println!("Press Ctrl+C to stop.\n");
+    // The banner is human chrome — under `--json` stdout carries only
+    // events, so a consumer can parse the stream from the first byte.
+    if !json_out {
+        println!("Connecting to the event stream ...");
+        println!("Press Ctrl+C to stop.\n");
+    }
 
     let response = client.stream(&format!("/stream?ticket={ticket}")).await?;
-    stream_events(response, connector_filter, rule_filter).await
+    stream_events(response, connector_filter, rule_filter, json_out).await
 }
 
 async fn stream_events(
     response: reqwest::Response,
     connector_filter: Option<&str>,
     rule_filter: Option<&str>,
+    json_out: bool,
 ) -> Result<()> {
     use futures_util::StreamExt;
 
@@ -87,14 +97,14 @@ async fn stream_events(
                 continue;
             }
 
-            print_event(&event);
+            output::emit(json_out, &event, format_event)?;
         }
     }
 
     Ok(())
 }
 
-fn print_event(event: &serde_json::Value) {
+fn format_event(event: &serde_json::Value) -> String {
     let timestamp = event
         .get("timestamp")
         .and_then(|v| v.as_str())
@@ -115,5 +125,5 @@ fn print_event(event: &serde_json::Value) {
         .and_then(|v| v.as_str())
         .unwrap_or("");
 
-    println!("[{timestamp}] {trigger_type:15} {connector:25} {action}");
+    format!("[{timestamp}] {trigger_type:15} {connector:25} {action}")
 }

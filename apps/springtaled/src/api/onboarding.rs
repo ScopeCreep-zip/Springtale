@@ -18,18 +18,32 @@ use springtale_runtime::operations::onboarding::{self, ApplyReport, PlatformForm
 use super::state::AppState;
 
 /// GET /onboarding/platforms — list every platform form the wizard knows.
+#[utoipa::path(
+    get, operation_id = "onboarding_list",
+    path = "/onboarding/platforms",
+    tag = "onboarding",
+    responses((status = 200, description = "Platform onboarding forms", body = Vec<Object>))
+)]
 pub async fn list() -> Json<Vec<&'static PlatformForm>> {
     Json(onboarding::list_platforms())
 }
 
 /// Request body for POST /onboarding/{platform}.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct ApplyRequest {
     pub answers: BTreeMap<String, String>,
 }
 
 /// POST /onboarding/{platform} — persist a wizard answer set as a
 /// connector config entry in the encrypted config_store.
+#[utoipa::path(
+    post, operation_id = "onboarding_apply",
+    path = "/onboarding/{platform}",
+    tag = "onboarding",
+    params(("platform" = String, Path, description = "Platform id")),
+    request_body = ApplyRequest,
+    responses((status = 200, description = "Wizard answers applied", body = ApplyReport))
+)]
 pub async fn apply(
     State(state): State<AppState>,
     Path(platform): Path<String>,

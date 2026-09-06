@@ -54,6 +54,7 @@ serde_json = { workspace = true }
 jsonschema = { workspace = true }
 serde_yaml = { workspace = true }
 specta = { workspace = true }
+utoipa = { workspace = true }
 rand = { workspace = true }
 regex = { workspace = true }
 uuid = { workspace = true }
