@@ -66,6 +66,7 @@ export function mapAgents(rules: RuleItem[], agentStates: AgentState[] = []): Co
       fuelStatus: (state?.fuel_status ?? "ok") as ColonyAgent["fuelStatus"],
       hp: state ? Math.round(state.liveness * 100) : 100,
       connectorId: r.connector ?? r.triggerType,
+      actionConnectorId: state?.action_connector ?? null,
       task: state?.task_display ?? "",
       status: r.status === "enabled" ? ("ok" as const) : ("idle" as const),
       pipeline: r.triggerType,

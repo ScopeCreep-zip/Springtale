@@ -5,6 +5,8 @@ import type { ConnectorOutput, Recipe, RecipeApplyReport } from "../dashboard/ty
 import { useI18n } from "../i18n/context";
 import type { CreateMode } from "./ModeSelectOverlay";
 import { mapAgents, mapFormations, mapNodes } from "./mappers";
+import type { OverlayMode } from "./overlay";
+import { nextOverlay } from "./overlay";
 import type { RecipeLibraryVariant } from "./RecipeLibraryOverlay";
 import type { TeamBuilderSeed } from "./TeamBuilder";
 import type { ColonyConnection, ColonySelection, DetailView } from "./types";
@@ -87,6 +89,9 @@ export function createColonyController(db: ColonyDb, opts: ColonyControllerOptio
 
   // ── Colony state ────────────────────────────────────────
   const [selection, setSelection] = createSignal<ColonySelection>({ id: null, type: null });
+  // Plan 3.6 — canvas overlay mode, cycled by `O`. Lives here (not in a
+  // component) so the canvas, the chip and the hotkey all read one signal.
+  const [overlay, setOverlay] = createSignal<OverlayMode>("none");
   const [detailView, setDetailView] = createSignal<DetailView>({ mode: "colony" });
   const [connectorPositions, setConnectorPositions] = createSignal<
     Record<string, { x: number; y: number }>
@@ -633,12 +638,13 @@ export function createColonyController(db: ColonyDb, opts: ColonyControllerOptio
 
       const modalOpen = overlayOpen();
 
-      // W2.E — `O` toggles the canvas (OUTPUT) view in the bottom panel.
-      // Lets the user reach the A2UI surface without hunting through
-      // nested menus.
-      if (key === "o" && !e.ctrlKey && !e.metaKey && !e.shiftKey && !modalOpen) {
+      // Plan 3.6 — `O` cycles the canvas overlay (none → momentum →
+      // attention → fuel), the ONI convention. W2.E's canvas (OUTPUT) view
+      // moves to Shift+O so both keep the same mnemonic without colliding.
+      if (key === "o" && !e.ctrlKey && !e.metaKey && !modalOpen) {
         e.preventDefault();
-        setDetailView({ mode: "canvas" });
+        if (e.shiftKey) setDetailView({ mode: "canvas" });
+        else setOverlay(nextOverlay(overlay()));
         return;
       }
 
@@ -692,6 +698,8 @@ export function createColonyController(db: ColonyDb, opts: ColonyControllerOptio
     // Selection + detail view
     selection,
     setSelection,
+    overlay,
+    setOverlay,
     detailView,
     setDetailView,
     selectAgent,

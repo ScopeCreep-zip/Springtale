@@ -26,6 +26,10 @@ export interface ColonyAgent {
   fuelStatus: "ok" | "warn" | "critical";
   hp: number;
   connectorId: string | null;
+  /** Plan 3.5 — the connector this agent's rule *acts on* (`AgentState.action_connector`).
+   *  While the agent is firing the canvas walks it part-way along the mycelium
+   *  toward this tree; `null` means it stays home. */
+  actionConnectorId: string | null;
   task: string;
   status: "ok" | "warn" | "idle" | "error";
   pipeline: string | null;
@@ -198,7 +202,8 @@ export const COMMANDS: Record<string, (ColonyCommand | null)[]> = {
     cmd(">", "TEST", "T", "connector", "connector:test"),
     cmd("%", "CONFIG", "C", "connector", "connector:config"),
     cmd(".", "EVENTS", "V", "connector", "connector:events"),
-    // "O" is the global canvas-view hotkey, so OUTPUTS binds "U".
+    // "O" cycles the canvas overlay (plan 3.6) and Shift+O opens the
+    // canvas/OUTPUT view, so OUTPUTS binds "U".
     cmd("^", "OUTPUTS", "U", "connector", "connector:outputs"),
     null,
     null,

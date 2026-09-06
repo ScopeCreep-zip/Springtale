@@ -396,6 +396,7 @@ export const App = () => {
           connectorSchemas={db.schemas()}
           onSetupConnector={ctl.setupConnector}
           onParseRule={async (intent) => db.provider.parseRuleFromIntent(intent)}
+          canvasOverlay={ctl.overlay()}
         />
       }
       bottomPanel={

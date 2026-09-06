@@ -8,6 +8,8 @@ import type { Utterance } from "../dashboard/types";
 import type { Locale } from "../i18n/types";
 import { getAgentPosition, getConnectorPosition, getFormationBounds } from "./geometry";
 import { MoteStack } from "./MoteStack";
+import type { OverlayMode } from "./overlay";
+import { overlayColor } from "./overlay";
 import type {
   ColonyAgent,
   ColonyConnection,
@@ -16,6 +18,9 @@ import type {
   ColonySelection,
 } from "./types";
 import { MUSHROOM_SPRITES, NODE_SIZES, NODE_SPRITES, ROLE_SPRITES, seeded } from "./types";
+
+/** Mushrooms live 12 s on the colony tick clock (plan 3.6). */
+const MUSHROOM_TTL_TICKS = 12;
 
 export interface ColonyCanvasProps {
   nodes: ColonyNode[];
@@ -39,6 +44,8 @@ export interface ColonyCanvasProps {
   framesFor: (u: Utterance, locale: Locale) => string[];
   roleOf: (agentId: string) => string | undefined;
   viewScale?: number; // 3.5 supplies it; 1 until then
+  /** Plan 3.6 — which field recolours the springtails; "none" is the plain canvas. */
+  overlay?: OverlayMode;
   // OOBE TeamBuilder props
   availableConnectors?: AvailableConnector[];
   connectorSchemas?: ConnectorSchema[];
@@ -58,8 +65,25 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
   const getConnectorPos = (id: string) =>
     getConnectorPosition(id, props.nodes, props.connectorPositions);
 
+  /** Live activity from the cooperation ring — the one source both the
+   *  sprite class and the sprite's *position* read (plan 3.5). */
+  const actOf = (agent: ColonyAgent) =>
+    activityOf(agent, props.utterances, props.colonyNow, props.agentToConnector);
+
   const agentPos = (agent: ColonyAgent) =>
-    getAgentPosition(agent, props.nodes, props.connectorPositions);
+    getAgentPosition(agent, props.nodes, props.connectorPositions, actOf(agent));
+
+  /** How many agents are firing along this exact path right now. Drives the
+   *  mycelium stroke width: a busy strand is visibly fatter. */
+  const firingOnPath = (conn: ColonyConnection) =>
+    props.agents.filter(
+      (a) =>
+        a.connectorId != null &&
+        a.actionConnectorId != null &&
+        actOf(a) === "firing" &&
+        ((a.connectorId === conn.a && a.actionConnectorId === conn.b) ||
+          (a.connectorId === conn.b && a.actionConnectorId === conn.a)),
+    ).length;
 
   const getMyceliumPath = (conn: ColonyConnection, width: number, height: number) => {
     const posA = getConnectorPos(conn.a);
@@ -99,6 +123,65 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
     }
   });
 
+  // ── Tree pulse (plan 3.5) ──────────────────────────────
+  // A tree pulses for one animation cycle each time one of its agents says
+  // something new. The trigger is the cooperation ring's own seq per
+  // connector, so the pulse is a real utterance arriving, never a timer.
+  const [pulsingTrees, setPulsingTrees] = createSignal<Set<string>>(new Set());
+  const lastSeqByConnector: Record<string, number> = {};
+
+  /** Which tree an utterance was said at, or undefined if we cannot place it. */
+  const connectorOfUtterance = (u: Utterance): string | undefined => {
+    if (u.agent && props.agentToConnector[u.agent]) return props.agentToConnector[u.agent];
+    if (u.rule_id) return props.agents.find((a) => a.id === u.rule_id)?.connectorId ?? undefined;
+    return undefined;
+  };
+
+  createEffect(() => {
+    const newest: Record<string, number> = {};
+    for (const u of props.utterances) {
+      const conn = connectorOfUtterance(u);
+      if (!conn) continue;
+      if ((newest[conn] ?? -1) < u.seq) newest[conn] = u.seq;
+    }
+    const next = new Set<string>();
+    for (const [conn, seq] of Object.entries(newest)) {
+      const prev = lastSeqByConnector[conn];
+      if (prev !== undefined && seq > prev) next.add(conn);
+      lastSeqByConnector[conn] = seq;
+    }
+    if (next.size > 0) {
+      setPulsingTrees(next);
+      // One animation cycle; the CSS keyframe is 600ms.
+      setTimeout(() => setPulsingTrees(new Set<string>()), 620);
+    }
+  });
+
+  // ── Mushrooms — real successful work (plan 3.6) ────────
+  // One mushroom per `working` utterance whose dispatch went on to succeed
+  // (no `failed` from the same speaker at or after it). They fade out on the
+  // colony tick clock, not on a wall-clock timer, so a paused colony keeps
+  // its mushrooms exactly as it left them.
+  const sameSpeaker = (a: Utterance, b: Utterance) =>
+    (a.rule_id != null && a.rule_id === b.rule_id) || (a.agent != null && a.agent === b.agent);
+
+  const mushrooms = () => {
+    const out: { key: string; connectorId: string; seq: number; remaining: number }[] = [];
+    for (const u of props.utterances) {
+      if (u.utterance.utter !== "working") continue;
+      const remaining = u.seq + MUSHROOM_TTL_TICKS - props.colonyNow;
+      if (remaining <= 0) continue;
+      const conn = connectorOfUtterance(u);
+      if (!conn || !props.nodes.some((n) => n.id === conn)) continue;
+      const failed = props.utterances.some(
+        (v) => v.utterance.utter === "failed" && v.seq >= u.seq && sameSpeaker(v, u),
+      );
+      if (failed) continue;
+      out.push({ key: `${conn}:${u.seq}`, connectorId: conn, seq: u.seq, remaining });
+    }
+    return out;
+  };
+
   // ── Canvas dimensions (reactive via ResizeObserver) ────
   // Per React Flow pattern: use ResizeObserver to track container
   // dimensions reactively. Without this, the SVG viewBox uses stale
@@ -122,6 +205,7 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
       aria-label="Colony canvas"
       tabindex={0}
       class={`relative h-full w-full ${props.underground ? "colony-underground" : ""}`}
+      data-overlay={props.overlay ?? "none"}
       // Keyboard navigation handled at the document level in App.tsx;
       // this hook satisfies useKeyWithClickEvents without re-handling.
       onKeyDown={() => {}}
@@ -153,7 +237,13 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
           const pctX = ((e.clientX - rect.left) / rect.width) * 100;
           const pctY = ((e.clientY - rect.top) / rect.height) * 100;
           for (const f of props.formations) {
-            const b = getFormationBounds(f, props.agents, props.nodes, props.connectorPositions);
+            const b = getFormationBounds(
+              f,
+              props.agents,
+              props.nodes,
+              props.connectorPositions,
+              actOf,
+            );
             if (
               pctX >= b.cx - b.rx &&
               pctX <= b.cx + b.rx &&
@@ -254,7 +344,9 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                   ? "var(--color-mycelium-warning)"
                   : "var(--color-mycelium)";
               const opacity = props.underground ? (hasActive ? 0.8 : 0.45) : hasActive ? 0.45 : 0.2;
-              const strokeWidth = props.underground ? 2.5 : 1.5;
+              // Plan 3.5 — the strand thickens with the live firing count on
+              // this exact path (1.5 base, +0.5 per firing agent).
+              const strokeWidth = () => (props.underground ? 2.5 : 1.5) + 0.5 * firingOnPath(conn);
 
               return (
                 <>
@@ -263,7 +355,7 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                     stroke={strokeColor}
                     class={`mycelium-path ${hasActive ? "is-active" : ""}`}
                     opacity={opacity}
-                    stroke-width={strokeWidth}
+                    stroke-width={strokeWidth()}
                   />
                   <For each={conn.pipes.filter((p) => p.status === "active")}>
                     {(pipe) => (
@@ -293,7 +385,13 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
       <For each={props.formations}>
         {(formation) => {
           const bounds = () =>
-            getFormationBounds(formation, props.agents, props.nodes, props.connectorPositions);
+            getFormationBounds(
+              formation,
+              props.agents,
+              props.nodes,
+              props.connectorPositions,
+              actOf,
+            );
           const isSelected = () =>
             props.selection.id === formation.id && props.selection.type === "formation";
           return (
@@ -453,7 +551,7 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
           return (
             <button
               type="button"
-              class={`colony-tree ${props.selection.id === node.id && props.selection.type === "connector" ? "is-selected" : ""}`}
+              class={`colony-tree ${props.selection.id === node.id && props.selection.type === "connector" ? "is-selected" : ""} ${pulsingTrees().has(node.id) ? "is-pulsing" : ""}`}
               aria-label={`Connector ${node.label}`}
               style={{
                 left: `calc(${pos().x}% - ${size.width / 2}px)`,
@@ -483,26 +581,26 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
         }}
       </For>
 
-      {/* Output indicators near active nodes */}
-      <For each={props.nodes.filter((n) => n.status === "active")}>
-        {(node) => {
-          const connectorPos = () => getConnectorPos(node.id);
+      {/* Mushrooms — one per successful `working` utterance, at the tree
+          whose connector did the work. Fades out on the colony tick clock
+          (plan 3.6); nothing here is decorative. */}
+      <For each={mushrooms()}>
+        {(m) => {
+          const connectorPos = () => getConnectorPos(m.connectorId);
+          const spriteClass = MUSHROOM_SPRITES[seeded(`${m.key}mt`, 0, 3)];
+          const ox = seeded(`${m.key}mx`, -4, 5);
+          const oy = seeded(`${m.key}my`, 5, 12);
           return (
-            <For each={Array.from({ length: seeded(`${node.id}mushcount`, 1, 3) }, (_, i) => i)}>
-              {(i) => {
-                const spriteClass = MUSHROOM_SPRITES[seeded(`${node.id}mt${i}`, 0, 3)];
-                const ox = seeded(`${node.id}mx${i}`, -4, 5);
-                const oy = seeded(`${node.id}my${i}`, 5, 12);
-                return (
-                  <div
-                    class="colony-mushroom"
-                    style={{ left: `${connectorPos().x + ox}%`, top: `${connectorPos().y + oy}%` }}
-                  >
-                    <div class={`pixel-sprite ${spriteClass ?? "sprite-mushroom-gold"}`} />
-                  </div>
-                );
+            <div
+              class="colony-mushroom"
+              style={{
+                left: `${connectorPos().x + ox}%`,
+                top: `${connectorPos().y + oy}%`,
+                "--colony-opacity": `${Math.min(1, m.remaining / MUSHROOM_TTL_TICKS)}`,
               }}
-            </For>
+            >
+              <div class={`pixel-sprite ${spriteClass ?? "sprite-mushroom-gold"}`} />
+            </div>
           );
         }}
       </For>
@@ -512,8 +610,10 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
         {(agent) => {
           const pos = () => agentPos(agent);
           const spriteClass = ROLE_SPRITES[agent.role];
-          const act = () =>
-            activityOf(agent, props.utterances, props.colonyNow, props.agentToConnector);
+          const act = () => actOf(agent);
+          // Plan 3.6 — under an overlay the sprite is recoloured from that
+          // one field; an agent the field says nothing about is dimmed.
+          const tint = () => overlayColor(props.overlay ?? "none", agent, props.formations);
           const isSelected = () =>
             props.selection.id === agent.id && props.selection.type === "agent";
 
@@ -521,6 +621,8 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
             <button
               type="button"
               class={`colony-agent is-${act()} ${walkingAgents().has(agent.id) ? "is-walking" : ""} ${isSelected() ? "is-selected" : ""} ${agent.healthState !== "healthy" ? `is-health-${agent.healthState}` : ""}`}
+              data-overlay={props.overlay ?? "none"}
+              data-overlay-read={tint() ? "yes" : "no"}
               aria-label={`${agent.name} ${act()}`}
               aria-pressed={isSelected()}
               style={{
@@ -528,6 +630,7 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                 top: `calc(${pos().y}% - 10px)`,
                 "--colony-opacity":
                   agent.liveness < 1 ? `${0.3 + agent.liveness * 0.7}` : undefined,
+                "--colony-overlay": tint(),
               }}
               data-agent-id={agent.id}
             >
