@@ -1,7 +1,8 @@
 //! HTTP routes for the D1 external-workspace directory and the
 //! Track D one-click Onboard stream — the same
 //! `operations::workspaces` calls the desktop IPC commands make
-//! (plan 2.5). `onboard` is SSE under the stream-ticket layer.
+//! (plan 2.5). `onboard` answers with SSE but is a bearer-authenticated
+//! POST like every other mutating route.
 
 use std::convert::Infallible;
 use std::sync::Arc;
@@ -191,9 +192,17 @@ impl Drop for CancelOnDrop {
     }
 }
 
-/// POST /workspaces/onboard?ticket=.. — SSE of `chat-discovered`
-/// frames (same payload as the desktop `ChatDiscovered` event) until
-/// the first match, the 60 s window, or client disconnect.
+/// POST /workspaces/onboard — SSE of `chat-discovered` frames (same
+/// payload as the desktop `ChatDiscovered` event) until the first
+/// match, the 60 s window, or client disconnect.
+///
+/// This mutates (it deploys a probe through the connector), so it sits
+/// in the bearer + CSRF `authenticated` router, not in the stream-ticket
+/// router. The ticket exists for `EventSource`, which cannot send an
+/// `Authorization` header — but `EventSource` only issues GETs and this
+/// route needs its connector config in a POST body, so its client was
+/// always `fetch`, which can send the header. Streaming the response is
+/// unaffected: axum's `Sse` does not care how the request authenticated.
 #[utoipa::path(
     post, operation_id = "workspaces_onboard",
     path = "/workspaces/onboard",
