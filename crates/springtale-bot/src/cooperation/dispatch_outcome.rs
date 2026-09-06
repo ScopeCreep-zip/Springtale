@@ -37,6 +37,27 @@ pub struct ExecuteOutcome {
     /// Present only when a connector actually ran — what `post` writes
     /// back (result row, audit write, stigmergy deposit).
     pub dispatched: Option<Dispatched>,
+    /// The sentinel throttled this dispatch (`Verdict::Throttle`). Feeds
+    /// the pacing stress sample (plan 1.5).
+    pub throttled: bool,
+    /// The sentinel stopped this dispatch (`Verdict::Quarantine` /
+    /// `Verdict::Pause` — the approval gate's denials).
+    pub denied: bool,
+}
+
+/// Sentinel outcomes this beat, summed for the pacing stress sample
+/// (plan 1.5). Reset when `check_pacing` takes the sample.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct TickStress {
+    pub throttles: u32,
+    pub denials: u32,
+}
+
+impl TickStress {
+    pub fn absorb(&mut self, outcome: &ExecuteOutcome) {
+        self.throttles += u32::from(outcome.throttled);
+        self.denials += u32::from(outcome.denied);
+    }
 }
 
 impl ExecuteOutcome {
@@ -50,6 +71,8 @@ impl ExecuteOutcome {
             state: ActionState::Init,
             duration_ms: 0,
             dispatched: None,
+            throttled: false,
+            denied: false,
         }
     }
 
@@ -62,6 +85,8 @@ impl ExecuteOutcome {
             state: ActionState::Requested,
             duration_ms: 0,
             dispatched: None,
+            throttled: false,
+            denied: false,
         }
     }
 }

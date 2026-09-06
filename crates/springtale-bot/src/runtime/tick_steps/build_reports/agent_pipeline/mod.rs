@@ -139,6 +139,7 @@ pub async fn run(
     let mut proposals = Vec::new();
     let mut reports = Vec::new();
     for (agent, mut outcome) in outcomes {
+        formation.tick_stress.absorb(&outcome);
         if let Some(task) = outcome.consensus_task.take() {
             proposals.push(task);
         }

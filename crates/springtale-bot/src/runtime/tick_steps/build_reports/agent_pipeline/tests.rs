@@ -19,7 +19,7 @@ use crate::cooperation::dispatch_outcome::REQUESTED_ALIGNMENT;
 use crate::cooperation::formation::{Formation, FormationMember};
 
 use super::super::executor::test_support::{
-    CONNECTOR, Runtime, earn_fever_and_peak, make_tick, runtime, wipe_task,
+    CONNECTOR, Runtime, earn_fever, make_tick, runtime, wipe_task,
 };
 
 struct Beat {
@@ -47,7 +47,7 @@ fn beat(members: usize, delay: Duration, cap: usize) -> Beat {
             ..FormationConstraints::default()
         },
     );
-    formation.pacing = earn_fever_and_peak(&mut formation);
+    formation.pacing = earn_fever(&mut formation);
     let tasks: Vec<SubTask> = formation
         .members
         .iter()

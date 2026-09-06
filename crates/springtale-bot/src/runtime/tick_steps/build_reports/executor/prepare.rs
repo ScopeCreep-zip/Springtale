@@ -162,13 +162,17 @@ pub async fn prepare(mut ctx: ExecuteCtx<'_>) -> Prepared {
         return settled(ExecuteOutcome::settled(ctx.tick_action, 1.0));
     }
 
-    // Approve / Autonomous: pacing gate first.
-    if !ctx.pacing.allow_action() {
+    // Approve / Autonomous: pacing gate first. Booth: at peak, back off —
+    // in `Relax` the formation senses (read-only actions) but does not
+    // act. A task whose action is unknown to the registry is not read-only.
+    let hints = ctx.action_hints_for(&task).await;
+    let read_only = hints.as_ref().is_some_and(|h| h.read_only);
+    if !ctx.pacing.allows(read_only) {
         tracing::debug!(
             formation = %ctx.formation_id,
             agent = %ctx.member.agent_id.0,
             phase = ctx.pacing.phase_name(),
-            "claim deferred — pacing rate limit hit"
+            "claim deferred — pacing phase backs off mutating actions"
         );
         return settled(ExecuteOutcome::settled(None, 0.7));
     }
@@ -201,10 +205,8 @@ pub async fn prepare(mut ctx: ExecuteCtx<'_>) -> Prepared {
     // switches the vote off. The vote is a formation decision, so the
     // member's autonomy level does not gate it either.
     // A task whose action is unknown to the registry is destructive.
-    let destructive = ctx
-        .action_hints_for(&task)
-        .await
-        .is_none_or(|hints| !hints.read_only && hints.destructive != Some(false));
+    let destructive =
+        hints.is_none_or(|hints| !hints.read_only && hints.destructive != Some(false));
     let needs_consensus =
         destructive && matches!(ctx.destructive_policy, ApprovalPolicy::RequireConsensus);
     if needs_consensus && !ctx.consensus_approved.remove(&task.id) {

@@ -74,7 +74,12 @@ pub async fn dispatch_one(job: DispatchJob) -> ExecuteOutcome {
         ),
         Err(err) => (false, serde_json::json!({"error": err.to_string()})),
     };
+    // The sentinel's `Throttle` sleeps inside `dispatch_action` and then
+    // proceeds; the chain counts it. A throttled step that then failed
+    // is reported as the failure.
+    let throttled = exec_result.as_ref().is_ok_and(|chain| chain.throttles > 0);
     let error = exec_result.err().map(|e| e.to_string());
+    let denied = sentinel_denied(error.as_deref());
     let state = if success {
         ActionState::Success
     } else {
@@ -94,5 +99,14 @@ pub async fn dispatch_one(job: DispatchJob) -> ExecuteOutcome {
             output,
             error,
         }),
+        throttled,
+        denied,
     }
+}
+
+/// The sentinel's `Quarantine` / `Pause` verdicts reach the executor only
+/// as a failed chain step whose message `dispatch_action` prefixes with
+/// the verdict name.
+fn sentinel_denied(error: Option<&str>) -> bool {
+    error.is_some_and(|e| e.contains("sentinel quarantined:") || e.contains("sentinel paused:"))
 }
