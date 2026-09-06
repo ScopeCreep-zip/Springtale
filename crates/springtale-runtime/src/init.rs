@@ -1004,11 +1004,15 @@ fn init_sentinel(
 ///      ORIGINAL signing key — which they don't have. TUF §4
 ///      trust-anchor separation.
 ///
-/// Legacy rows (pre-v8 migration) carry empty `author_pubkey_hex`;
-/// these are treated as "TOFU-grandfathered" and logged at WARN. We
-/// don't fail closed on them so an existing deployment isn't bricked
-/// by the audit fix; the operator sees the warning and can re-install
-/// the connector to repopulate the pin.
+/// There is no grandfather clause. Every install path signs and pins
+/// (`operations::connectors::install` rejects an unsigned or
+/// unknown-author manifest before it ever calls `store_wasm_binary`,
+/// and writes `author_pubkey_hex` + `manifest_sig_hex` from that
+/// verified install), so a row with an empty pin is either a
+/// pre-pinning row or a row an attacker blanked to skip step 2.
+/// Both are refused: SECURITY.md's rule is "verify signature before
+/// load", and a row we cannot verify does not load. The operator
+/// re-installs the connector to repopulate the pin.
 fn reverify_persisted_wasm(
     name: &str,
     wasm_bytes: &[u8],
@@ -1035,15 +1039,14 @@ fn reverify_persisted_wasm(
 
     // 2. Signature re-verify against the pinned trust anchor.
     if pinned_pubkey_hex.is_empty() || pinned_sig_hex.is_empty() {
-        // Legacy install (pre-v8) — log + accept. Operators re-install
-        // to upgrade the row to a pinned-pubkey one.
-        tracing::warn!(
-            connector = %name,
-            "WASM connector loaded without pinned author pubkey — \
-             legacy pre-v8 install. Re-install to enable boot-time \
-             signature re-verification (Phase-7 audit Finding #1)."
-        );
-        return Ok(());
+        // Fail closed. An empty pin means the row carries nothing to
+        // verify against, so this load would be unverified — exactly
+        // what SECURITY.md forbids. No override flag by design.
+        return Err(OperationError::Validation(format!(
+            "WASM connector {name} has no pinned author pubkey/signature — \
+             refusing to load an unverifiable connector. Re-install {name} \
+             to repin its signature."
+        )));
     }
 
     let pubkey_bytes = hex::decode(pinned_pubkey_hex).map_err(|e| {
@@ -1087,6 +1090,48 @@ fn reverify_persisted_wasm(
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
+
+    /// A persisted row whose trust-anchor columns were never written
+    /// (or were blanked by an attacker to skip signature checking)
+    /// must not load. There is no grandfather path.
+    #[test]
+    fn test_reverify_persisted_wasm_empty_pins_refuses_to_load() {
+        use sha2::Digest;
+
+        let wasm_bytes = b"\0asm\x01\0\0\0".to_vec();
+        let hash = hex::encode(sha2::Sha256::digest(&wasm_bytes));
+        let manifest: springtale_connector::ConnectorManifest =
+            serde_json::from_value(serde_json::json!({
+                "name": "connector-unpinned",
+                "version": "1.0.0",
+                "author": "nobody",
+                "description": "row with no pinned signature",
+                "capabilities": [],
+                "wasm_hash": hash,
+            }))
+            .expect("manifest fixture parses");
+
+        for (pubkey, sig) in [("", ""), ("", "aa"), ("bb", "")] {
+            let err = reverify_persisted_wasm(
+                "connector-unpinned",
+                &wasm_bytes,
+                &hash,
+                &manifest,
+                pubkey,
+                sig,
+            )
+            .expect_err("a row with an empty pin must be refused");
+            let msg = err.to_string();
+            assert!(
+                msg.contains("connector-unpinned"),
+                "refusal names the connector: {msg}"
+            );
+            assert!(
+                msg.contains("Re-install"),
+                "refusal tells the operator to reinstall: {msg}"
+            );
+        }
+    }
 
     #[test]
     fn test_acquire_runtime_lock_second_holder_rejected_until_first_drops() {

@@ -11,7 +11,9 @@
 //!    no longer verifies against the new canonical bytes).
 //! 3. Tampered manifest WITH a fresh attacker-signed signature: the
 //!    pinned-sig-vs-manifest-sig check at the verifier must reject.
-//! 4. Tampered pinned pubkey row WITH a fresh attacker-signed
+//! 4. A row with an empty pinned pubkey/signature — unverifiable, so
+//!    refused rather than grandfathered.
+//! 5. Tampered pinned pubkey row WITH a fresh attacker-signed
 //!    manifest: signature verifies against the attacker key but the
 //!    sig pin still matches. (This case requires the attacker to
 //!    have write access to BOTH the manifest_json + the pinned
@@ -143,27 +145,31 @@ async fn tampered_manifest_with_original_sig_rejected_at_boot() {
 }
 
 #[tokio::test]
-async fn legacy_pre_v8_row_loads_with_warning() {
-    // Empty pinned pubkey + empty pinned sig = legacy install. Should
-    // NOT fail closed (so existing deployments aren't bricked) but
-    // should log + load. The function returns Ok(()) on this path.
+async fn unpinned_row_is_refused() {
+    // Empty pinned pubkey and/or empty pinned sig: nothing to verify
+    // against, so the load would be unverified. SECURITY.md requires a
+    // signature check before every load, so this fails closed. There is
+    // no grandfather path — every install signs and pins, so an empty
+    // pin is either pre-pinning or an attacker blanking the column.
     let wasm_bytes = b"legacy-wasm".to_vec();
     let mut manifest = fresh_manifest();
     manifest.wasm_hash = Some(sha256_hex(&wasm_bytes));
     // No signature, no pinned pubkey, no pinned sig.
 
-    let result = call_reverify(
-        "connector-legacy",
-        &wasm_bytes,
-        manifest.wasm_hash.as_deref().unwrap(),
-        &manifest,
-        "",
-        "",
-    );
-    assert!(
-        result.is_ok(),
-        "legacy row must load without failing: {result:?}"
-    );
+    for (pubkey, sig) in [("", ""), ("", "aa"), ("bb", "")] {
+        let result = call_reverify(
+            "connector-legacy",
+            &wasm_bytes,
+            manifest.wasm_hash.as_deref().unwrap(),
+            &manifest,
+            pubkey,
+            sig,
+        );
+        assert!(
+            result.is_err(),
+            "an unpinned row must be refused (pubkey={pubkey:?} sig={sig:?}): {result:?}"
+        );
+    }
 }
 
 #[tokio::test]
@@ -213,7 +219,9 @@ fn call_reverify(
     }
     // 2. signature
     if pinned_pubkey_hex.is_empty() || pinned_sig_hex.is_empty() {
-        return Ok(()); // legacy
+        // No grandfather clause: an unpinned row is unverifiable and
+        // must not load. Mirrors init.rs::reverify_persisted_wasm.
+        return Err(format!("no pinned author pubkey/signature for {name}"));
     }
     let pubkey_bytes =
         hex::decode(pinned_pubkey_hex).map_err(|e| format!("hex decode pubkey: {e}"))?;
