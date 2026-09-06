@@ -92,7 +92,7 @@ epoch ticker (1Hz). Total: <1% on a single core.
 
 ### Per-tick cooperation cost
 
-A 14-step formation tick takes 1–10 ms on a typical machine. The
+A 25-step formation tick takes 1–10 ms on a typical machine. The
 expensive steps are:
 
 | Step | Typical cost |

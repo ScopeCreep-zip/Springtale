@@ -98,6 +98,7 @@ run throughout.
 - [consensus.md](consensus.md) — the vote layer destructive actions
   pass through.
 - [`docs/intended-arch/COOPERATION.md §22`](../intended-arch/COOPERATION.md)
-  — the original pacing spec (its "intensity = work done" reading was
-  inverted; see `docs/ALIGNMENT-PLAN.md` §1.5).
+  — the original pacing spec. Read it with the erratum at the head of §22:
+  its "intensity = work done" reading is inverted relative to Booth and
+  relative to the code.
 - `crates/springtale-cooperation/src/pacing/` — implementation.

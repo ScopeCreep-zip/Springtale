@@ -140,9 +140,13 @@ become free; members in multiple formations keep running.
 
 ## Persistence
 
-Formations persist. Membership, intent, guard state, and momentum are
-written to the store and restored when the daemon restarts — a
-formation only goes away when it is dissolved. Autonomy is keyed by
+Formation *state* persists — membership, intent, guard state, momentum,
+rally tokens and the shared mental model are written to the store — but a
+formation is **not restored when the daemon restarts**. `springtaled`'s
+init restores cron triggers, path watches, connector handlers and WASM
+trust anchors; it has no formation deploy loop. A row that still says
+`status = "active"` sits there until someone redeploys it, and only that
+redeploy reads the persisted state back in (`lifecycle::spawn_formation`). Autonomy is keyed by
 rule id (or set for a whole formation), never by name; a member without
 an explicit setting runs at act-autonomously.
 
@@ -212,9 +216,10 @@ on), it triggers rally. The choreography:
 
 1. **Burn a token.** `rally_tokens` decrements by one. UI updates the
    pip count.
-2. **Reassign attention.** The attention broker (Army of Two aggro
-   model) shifts load away from the weakest agent toward operational
-   peers.
+2. **Reassign attention.** `attention.release(agent, 0.2)` shifts 0.2 of
+   the failing agent's share of the zero-sum attention economy (Army of
+   Two aggro model) out to every other member, so peers absorb the load.
+   Momentum takes a recorded failure at the same time.
 3. **Retry.** The next tick runs with the new attention distribution.
 4. **Repeat or escalate.** If rally tokens reach zero, the formation
    escalates to the orchestrator. The orchestrator can `change_intent`,
@@ -224,6 +229,13 @@ on), it triggers rally. The choreography:
 Manual rally (`POST /formations/{id}/rally` or the canvas RALLY button)
 runs the same choreography but skips the cascade detector — useful when
 an operator sees trouble the supervisor hasn't classified yet.
+
+**Known defect.** The manual path picks its target with `min_by` on
+attention load (`tick_steps/handle_command.rs`), i.e. the *least* loaded
+operational member, and then shifts 0.2 further away from it. The cascade
+path passes the actually-failing agent. So a manual rally moves load off
+whichever member is already doing the least, which is the opposite of what
+the choreography above is for.
 
 ### Custom roles
 
@@ -245,11 +257,20 @@ attention rules.
 
 Every formation has a guard toggle. When guard is **engaged**, the
 formation refuses destructive actions even if the autonomy level would
-otherwise permit them — dissolve, intent change, member removal, and
-rally are each refused with an error while the guard is on, and nothing
-changes; disengage the guard first. Guard surfaces in the
-canvas as a badge on the formation detail card and is toggled via
+otherwise permit them — dissolve, intent change, member removal, recruit
+and rally are each refused with an error while the guard is on, and
+nothing changes; disengage the guard first. A guarded formation also
+refuses synthesized actions classified `Destructive`
+(`operations/formation_synthesis.rs`). Guard surfaces in the canvas as a
+badge on the formation detail card and is toggled via
 `POST /formations/{id}/toggle-guard`.
+
+**Known defect.** The toggle writes a `guard:{formation_id}` config row,
+but live enforcement reads `formation.constraints.guard_mode`, which is
+set once at deploy and never refreshed. Toggling guard on an
+already-running formation updates the API and the badge but does **not**
+change what the running formation refuses until it is redeployed. The
+divergence is noted in `crates/springtale-runtime/src/operations/formations.rs`.
 
 The intent is to make accidental destruction harder: a formation that
 just hit Fever and is producing useful output is exactly the one you

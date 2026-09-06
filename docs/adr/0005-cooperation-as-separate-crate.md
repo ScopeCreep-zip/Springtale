@@ -34,11 +34,11 @@ cooperation crate holds:
 - Traits (`DynamicRole`, `Awareness`, etc.)
 - Algorithms (interference detection, rally cascade, momentum
   transitions, mental-model learning)
-- Per-agent loop steps (`sense`, `scan`, `react`, `respond_cfp`, `inbox`)
+- Per-agent loop steps (`sense`, `inbox`, `react`, `scan` (plus `respond_cfp`, fired reactively))
 - Stigmergy surfaces, contract net protocol, consensus voting
 
 `springtale-bot::runtime::event_loop::handle_cadence_tick` is the
-14-step tick that calls into the cooperation crate per step. The bot
+25-step tick that calls into the cooperation crate per step. The bot
 crate owns runtime state; the cooperation crate owns pure logic.
 
 ## Consequences
@@ -76,7 +76,7 @@ Locks in:
 - The cooperation crate's public API is now the API the cross-language
   bindings depend on. Breaking changes ripple to Python and WIT
   consumers.
-- The 14-step tick is the canonical execution path. Adding a new
+- The 25-step tick is the canonical execution path. Adding a new
   per-tick concern means adding a step module under
   `bot/src/runtime/tick_steps/` and possibly a new cooperation
   primitive — not just inlining code somewhere.
@@ -119,7 +119,7 @@ Why we didn't pick it: too much process for too little payoff.
 
 - `crates/springtale-cooperation/` — the crate itself
 - `crates/springtale-bot/src/cooperation/` — runtime glue
-- `crates/springtale-bot/src/runtime/event_loop.rs` — 14-step tick
+- `crates/springtale-bot/src/runtime/event_loop.rs` — 25-step tick
 - `docs/guide/cooperation.md` — user-facing tour
 - `docs/intended-arch/COOPERATION.md` — the design spec
 - `docs/intended-arch/COOPERATION_IMPLEMENTATION_PLAN.md` — the

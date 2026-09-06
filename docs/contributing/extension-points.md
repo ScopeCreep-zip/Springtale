@@ -199,7 +199,7 @@ Security checklist:
 
 ## Adding a tick step
 
-The 14-step formation tick lives in
+The 25-step formation tick lives in
 `crates/springtale-bot/src/runtime/tick_steps/`. Each step is a
 module.
 
@@ -277,7 +277,7 @@ review carefully.
 ## Adding a cooperation primitive
 
 This is the hardest extension point because cooperation primitives
-need to compose with the existing 14-step tick.
+need to compose with the existing 25-step tick.
 
 If you have a new pattern — say, "deferred consensus" or "cross-
 formation attention sharing" — the right path is:

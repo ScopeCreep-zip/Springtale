@@ -2304,25 +2304,53 @@ lifecycle, rule evaluation, scheduler, and the management HTTP API.
 
 ### 8.2 `springtale-cli`
 
-Local CLI runner. Uses `clap` derive with subcommands. Output in table
-format (default) or JSON (`--json` flag) via `tabled` + `serde_json`.
+Mostly a **client of `springtaled`**, not a second runtime. `clap` derive,
+29 top-level command families, output in table format (default) or JSON
+(`--json`, a global flag) via `tabled` + `serde_json`.
+
+Most families build an HTTP client and a bearer token and talk to the
+daemon; if it is unreachable they fail rather than falling back to the
+store. A small set is genuinely offline — it touches only the vault, the
+local encrypted store, or local files:
 
 ```
-springtale connector install <path-to-manifest>
-springtale connector list
-springtale connector remove <name>
-springtale connector enable <name>
-springtale connector disable <name>
-springtale rule add --trigger cron --schedule "0 9 * * *" --action notify --title "Morning"
-springtale rule list
-springtale rule toggle <id>
-springtale rule run <id>
+# offline (daemon may be stopped)
+springtale init
+springtale new <template>
+springtale doctor
+springtale fix <error-id>
+springtale vault duress-setup
+springtale crypto rotate-vault-key
+springtale travel prepare --backup-to <path>
+springtale panic
+springtale cooperation ...
+springtale author add|list|remove
+springtale connector sign <manifest.toml>
+springtale bot pair-init
+springtale bot panic-unpair        # opens the encrypted DB directly, by design
+
+# daemon clients
+springtale connector install|list|enable|disable|remove
+springtale rule add|list|toggle|update|delete|run
 springtale events --limit 50 --connector kick
-springtale server start          # starts springtaled inline (dev mode)
-springtale memory audit           # inspect + purge memory entries
-springtale memory compact         # force context compaction
-springtale registry migrate --to-dht  # Phase 3: PostgreSQL → Veilid DHT
+springtale agent|config|formation|recipe|approval|chat|session|safety|canvas
+springtale memory audit|compact
+springtale data export|import|purge
+springtale bot settings get|set    # persona, context window, tool policy
+springtale trace
+
+# these are the daemon
+springtale server start
+springtale run
+
+# probe: unauthenticated GET /health, needs a running daemon
+springtale healthcheck [--url BASE_URL]
 ```
+
+There is no `springtale mcp serve`. `crates/springtale-mcp` can expose a
+single connector over stdio, but no CLI subcommand and no daemon route
+reaches it. See [reference/cli.md §1.1](../reference/cli.md) for the full
+family map and for which commands accept `--json` but ignore it.
 
 **Security audit for `springtale-cli`:**
 

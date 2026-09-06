@@ -67,7 +67,7 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
 
 **Conversational task setup** — Deterministic plain-language intent → recipe deploy engine (`crates/springtale-bot/src/conversation/`): catalog projection, deterministic NLU, slot-filling dialogue persisted in the session, varied NLG, deploy port. ZERO AI in the base path (NoopAdapter parity); a configured adapter only augments ranking and extraction.
 
-**Cooperation framework** — The 40-module crate `crates/springtale-cooperation/` (extracted from `springtale-bot` in April 2026) that implements non-hierarchical multi-agent coordination: cadence, momentum, formations, shared environment, orchestrator gating, attention economy, rally, sacrifice, recovery, supervision, stigmergy, contract net, routing, mental model, role dynamics, handoff, pacing, consensus, commit barriers, interference, transformation, and more. Wired into `springtale-bot` through a 14-step formation tick in `springtale-bot::runtime::event_loop::handle_cadence_tick`. Designed against the spec in [`docs/intended-arch/COOPERATION.md`](intended-arch/COOPERATION.md); user-facing tour in [`docs/guide/cooperation.md`](guide/cooperation.md).
+**Cooperation framework** — The 42-module crate `crates/springtale-cooperation/` (extracted from `springtale-bot` in April 2026) that implements non-hierarchical multi-agent coordination: cadence, momentum, formations, shared environment, orchestrator gating, attention economy, rally, sacrifice, recovery, supervision, stigmergy, contract net, routing, mental model, role dynamics, handoff, pacing, consensus, commit barriers, interference, transformation, and more. Wired into `springtale-bot` through a 25-step formation tick in `springtale-bot::runtime::event_loop::handle_cadence_tick`. Designed against the spec in [`docs/intended-arch/COOPERATION.md`](intended-arch/COOPERATION.md); user-facing tour in [`docs/guide/cooperation.md`](guide/cooperation.md).
 
 **Cooperation crate (`springtale-cooperation`)** — Standalone crate with zero internal Springtale dependencies. Depended on by `springtale-bot`, `springtale-runtime`, and `springtale-store`. Holds all cooperation types, traits, and algorithms. Game-informed — draws directly from Spring RTS, RimWorld ThinkTree, Erlang OTP supervision, Kubernetes liveness probes, L4D AI Director, Monster Hunter rally mechanics, Overcooked implicit signalling, Microsoft AGT momentum, 0 A.D. stance systems. See [guide/cooperation.md](guide/cooperation.md).
 
@@ -215,7 +215,7 @@ Terms used throughout Springtale's codebase and documentation. Each entry links 
 
 **RuleEngine** — Evaluates incoming trigger events against all enabled rules, returning matches with their actions. Pure evaluation — no side effects. Defined in `crates/springtale-core/src/rule/`.
 
-**rmcp** — The Rust SDK for Model Context Protocol. Springtale pins `rmcp` 1.x and uses its stdio transport for the MCP bridge.
+**rmcp** — The Rust SDK for Model Context Protocol. Springtale pins `rmcp` 1.x and `crates/springtale-mcp` uses its stdio transport. The bridge is not wired up: no daemon route and no CLI subcommand constructs a `ConnectorMcpServer`.
 
 **rustls** — A TLS implementation written in pure Rust. Springtale uses rustls exclusively — `native-tls` and OpenSSL are banned at compile time via `deny.toml` and a vendor stub at `vendor/native-tls-stub/`.
 

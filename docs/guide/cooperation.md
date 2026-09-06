@@ -1,7 +1,7 @@
 # Cooperation
 
 Springtale is an RTS game engine that happens to run bots. The
-`springtale-cooperation` crate is where that framing lives: 40 pub modules
+`springtale-cooperation` crate is where that framing lives: 42 pub modules
 modelling how peer agents coordinate on a shared intent without a central
 controller. This page is a user-facing tour.
 
@@ -13,7 +13,7 @@ wiring into the bot runtime is in [architecture.md §6](architecture.md).
 
 ```
 crates/
-├── springtale-cooperation/     the crate — 40 pub modules, zero internal deps
+├── springtale-cooperation/     the crate — 42 pub modules, zero internal deps
 │   └── src/
 │       ├── cadence.rs          tick bus
 │       ├── momentum.rs         tier state machine
@@ -55,7 +55,7 @@ crates/
     ├── src/cooperation/        the glue — live Formation, Blackboard,
     │                           FormationMember (owns runtime fields
     │                           like active_task, fuel, capabilities)
-    └── src/runtime/event_loop  the 14-step tick handler
+    └── src/runtime/tick_steps  the 25-step tick pipeline
 ```
 
 The crate itself has zero dependencies on other Springtale crates. The live
@@ -67,19 +67,23 @@ the types that mutate per-tick.
 
 Cooperation happens at two scales:
 
-**Per-agent loop (5 steps).** Every formation member runs this each tick:
+**Per-agent loop (4 steps).** Every formation member runs this each tick,
+in this order (`springtale-cooperation::agent::loop_`):
 
 ```
-  sense  →  scan  →  react  →  respond_cfp  →  inbox
+  sense  →  inbox  →  react  →  scan
 ```
 
-- `sense` — read local awareness and neighbour snapshots
+- `sense` — read local awareness and neighbour snapshots (L0)
+- `inbox` — process direct messages and handoffs (L3)
+- `react` — react to stigmergy surfaces, awareness only (L2)
 - `scan` — pull from the task router (L1 routing) and blackboard
-- `react` — react to stigmergy surfaces (L0 ambient signals)
-- `respond_cfp` — bid on any open Contract Net Protocols (L4)
-- `inbox` — process direct messages and handoffs
 
-**Per-formation tick (14 steps).** The bot event loop runs this for each
+`respond_cfp` is *not* a fifth step in this loop. Bidding on an open
+Contract Net Protocol (L4) fires reactively from the runner when a call
+for proposals arrives, not on a fixed position in the tick.
+
+**Per-formation tick (25 steps).** The bot event loop runs this for each
 active, non-paused formation when the cadence bus fires. See
 [architecture.md §6](architecture.md#6-the-cooperation-tick) for the full
 map.
@@ -99,7 +103,9 @@ Tier transitions are driven by consecutive successes and interference
 events. An idle tick does not count as a success. An interference resets
 the combo and the formation climbs again from there. Inactivity decays
 the tier one step per decay interval. Momentum is persisted to the
-`formation_momentum` table every tick and survives a daemon restart.
+`formation_momentum` table every tick. The row survives a daemon restart, but
+the formation is not restored at boot — the row is read back only when someone
+redeploys the formation.
 
 Promotion and demotion are decided by rates over the current clean run,
 not by how many ticks have passed. Each tick adds its counts (actions,
@@ -217,7 +223,7 @@ vocabulary.
 
 ## 11. Modules at a glance
 
-The 40 pub modules of `springtale-cooperation` group cleanly into seven concerns. Use this as a map when reading the crate.
+The 42 pub modules of `springtale-cooperation` group cleanly into seven concerns. Use this as a map when reading the crate.
 
 **Lifecycle and timing.**
 
@@ -300,27 +306,34 @@ The bot crate's `cooperation` module owns the live runtime: `Formation`, `Format
 
 ## 12. The tick pipeline
 
-The 14-step tick is laid out in [architecture.md §6](architecture.md#6-the-cooperation-tick). For each step, the canonical site is:
+The pipeline is `springtale-bot::runtime::tick_steps::run_tick`, laid out
+step by step in [architecture.md §6](architecture.md#6-the-cooperation-tick).
+`springtale-bot::runtime::event_loop::handle_cadence_tick` is the driver: it
+takes the locks, calls `run_tick` per formation, then runs the tail passes
+(`tail::reclaim_dead`, `drain_member_subs`, `drain_rally_events`,
+`retain_viable`). Each step is one named module under
+`crates/springtale-bot/src/runtime/tick_steps/`, and most delegate to
+`springtale-cooperation`:
 
-| Step | Where it runs |
+| Step module | What it delegates to |
 |---|---|
-| 1 — per-agent loop | `springtale-cooperation::agent::step::*`, dispatched by `springtale-bot::runtime::event_loop::run_agent_loops` |
-| 2 — interference detection | `springtale-cooperation::tick_processor`, log split via `last_tick_write_count` |
-| 3 — momentum decay | `springtale-cooperation::momentum::decay` |
-| 4 — momentum update | `springtale-cooperation::momentum::update` (success / interference paths) |
-| 5 — momentum persistence | `springtale-bot::cooperation::persistence` → `formation_momentum` table |
-| 6 — context broadcast | `springtale-cooperation::dissemination` |
-| 7 — awareness gossip | `springtale-cooperation::awareness` (Warming+) |
-| 8 — pacing transition | `springtale-cooperation::pacing::evaluate` |
-| 9 — cascade + self-rally | `springtale-cooperation::rally::supervise` |
-| 9b — recovery | `springtale-cooperation::recovery::evaluate` |
-| 10 — role transformation | `springtale-cooperation::transformation` |
-| 11 — consensus deadlines | `springtale-cooperation::consensus` |
-| 12 — commit barriers | `springtale-cooperation::commit::expire` |
-| 13 — mental model | `springtale-cooperation::mental_model::learning::update_model` |
-| 14 — orchestrate | `springtale-bot::orchestrator` (Fever tier only) |
-
-`springtale-bot::runtime::event_loop::handle_cadence_tick` is the single entry point that calls all of these in order.
+| `build_reports` | per-member agent loop, `springtale-cooperation::agent::step::*` |
+| `update_momentum` | `springtale-cooperation::momentum` (decay is `formation.momentum.check_decay()` immediately before) |
+| `liveness`, `supervision`, `fuel` | `springtale-cooperation::supervision`, member fuel state |
+| `implicit_signals`, `state_broadcast` | `springtale-cooperation::comms` |
+| `persist_momentum` | `springtale-store` → `formation_momentum` table |
+| `publish_context`, `gossip_awareness` | `springtale-cooperation::dissemination`, `::awareness` (Warming+) |
+| `log_interference` | `springtale-cooperation::interference` |
+| `check_pacing` | `springtale-cooperation::pacing` — folds the tick's `StressSample` |
+| `check_cascade`, `recovery` | `springtale-cooperation::rally`, `::recovery` |
+| `check_interventions` | L6 commander override |
+| `transformation` | `springtale-cooperation::transformation` |
+| `replan_cbba` | `springtale-cooperation::replan::cbba` |
+| `resolve_consensus`, `tick_commits`, `expire_commits` | `springtale-cooperation::consensus`, `::commit` |
+| `update_mental_model` | `springtale-cooperation::mental_model::learning::update_model` |
+| `orchestrate_step` | `springtale-bot::orchestrator` (Fever tier only) |
+| `publish_formation_view` | cross-formation gossip bus |
+| `emit_canvas_update` | `runtime.canvas_tx`; skipped when no sender is wired |
 
 ## 13. Mental model lifecycle
 
@@ -335,7 +348,9 @@ The mental model is the formation's long-term memory. Unlike the blackboard (per
 
 **Persistence.** On `Dissolve`, the bot crate writes the mental model to the `mental_model_*` family of tables (`crates/springtale-store/src/schema/sql/cooperation.sql`) keyed by `formation_id`. The dissolve runs one final tick to ensure the latest accumulated state is captured.
 
-**Warm start.** When `POST /formations` reuses an existing `formation_id`, the bot loader hydrates the mental model from those tables before the first tick. The formation begins at Cold momentum but with the prior model populated.
+**Warm start.** When a formation is *deployed* against an existing `formation_id`, `lifecycle::spawn_formation` hydrates the mental model (and the persisted momentum row and rally tokens) before the first tick. The formation begins at Cold momentum but with the prior model populated.
+
+**No boot restore.** `spawn_formation` is reached from exactly one place — the `FormationCommand::Deploy` arm, which an operator triggers. `springtaled`'s init restores cron triggers, path watches, connector handlers and WASM trust anchors, but it has no formation deploy loop. After a daemon restart, formations must be redeployed by hand; until then their persisted state sits on disk untouched.
 
 **Inspection.** `GET /formations/{id}` includes a summary of the mental model in the response. Full schema lives in `crates/springtale-cooperation/src/mental_model/types.rs`.
 

@@ -45,13 +45,13 @@ Springtale/
 │   ├── springtale-ai/              #   AiAdapter + Anthropic/Ollama/OpenAI-compat/Noop + tool-calling
 │   ├── springtale-mcp/             #   rmcp 1.x bridge (stdio), split handler modules
 │   ├── springtale-sentinel/        #   behavioural monitor, toxic-pair detection
-│   ├── springtale-cooperation/     #   cooperation framework (40 pub modules, zero internal deps)
+│   ├── springtale-cooperation/     #   cooperation framework (42 pub modules, zero internal deps)
 │   ├── springtale-runtime/         #   shared init, dispatch, operations, approval gate,
 │   │                              #   token quota, trigger lifecycle, extraction, embedded
 │   │                              #   runtime, LiveFormationReader
 │   ├── springtale-bot/             #   runtime, router, conversation engine, colony commander,
 │   │                              #   cooperation glue, orchestrator, handler, identity,
-│   │                              #   memory, tool_runner, 14-step formation tick
+│   │                              #   memory, tool_runner, 25-step formation tick
 │   ├── springtale-wit/             #   WIT world for WASM Component Model embedding (G3)
 │   ├── springtale-py/              #   pyo3 Python bindings — cdylib + rlib (G3)
 │   └── libsqlite3-sys-mc/          #   vendored sqlite shim (SQLite3MultipleCiphers)
@@ -413,7 +413,7 @@ All 15 are native Rust. Matrix is workspace-excluded (deferred).
 
 The cooperation architecture has two parts:
 
-- `crates/springtale-cooperation/` — the crate with 40 pub modules, zero
+- `crates/springtale-cooperation/` — the crate with 42 pub modules, zero
   internal Springtale deps. Types, traits, and algorithms.
 - `crates/springtale-bot/src/cooperation/` — the glue. Holds the live
   `Formation` struct (mutable runtime fields like `active_task`,
@@ -436,7 +436,7 @@ The cooperation architecture has two parts:
          │                │                │                  │
    handle_incoming   handle_trigger   handle_cadence_tick  handle_formation_
          │                │                │                  │  command
-   router dispatch   engine evaluate   14-step tick        deploy/pause/
+   router dispatch   engine evaluate   25-step tick        deploy/pause/
          │                │              pipeline          resume/dissolve/
          └──────┬─────────┴─────────────┬──┘                 rally/intent/
                 ▼                       ▼                    members
@@ -494,40 +494,47 @@ springtale-cooperation/src/         ── zero internal Springtale deps
 └── error/                          typed errors per concern
 ```
 
-### 6.3 The 14-step tick pipeline
+### 6.3 The 25-step tick pipeline
 
-`springtale-bot::runtime::event_loop::handle_cadence_tick`:
+`springtale-bot::runtime::event_loop::handle_cadence_tick` takes the locks
+and loops; the pipeline itself is
+`springtale-bot::runtime::tick_steps::run_tick`, one named module per step:
 
 ```
- 1.  per-agent loop (sense / scan / react / respond_cfp / inbox)
- 1b. drain async tick reports from cadence reports channel
- 2.  tick_processor (action records, interference)
- 2b. rally::supervise::drain (member outcomes → rally events)
- 3.  momentum.check_decay (inactivity)
- 4.  momentum update (success / interference / failure)
- 4a. record_activity (only when real actions happened)
- 4b. consecutive_failures per member
- 4c. liveness (Alive / Suspect / Down)
- 4d. supervisor.check_member → SupervisionAction
- 4e. per-member fuel consumption
- 4f. publish ImplicitSignal (Overcooked — peers watch bus)
- 4g. broadcast_state on health threshold (L4D "I'm hurt")
- 4h. signal_cohesion on momentum tier change (Rock-and-Stone)
- 5.  persist momentum row → SQLite
- 6.  formation.broadcast_context (FormationContext watchers)
- 7.  update_member_awareness (gossip publish + snapshot)
- 7b. log interference events
- 8.  pacing.evaluate_transition (phase change)
- 9.  cascade::detect_cascade + attempt_self_rally
- 9b. recovery::evaluate_recovery per distress signal
- 10. role transformation for failing members
- 11. consensus.check_deadlines
- 12. expire completed / timed-out commit barriers
- 13. mental_model::learning::update_model
- 14. orchestrate_formation (Fever tier + can_orchestrate())
+ gate. pacing divider — skip this bus tick unless the phase admits it
+ 1.  build_reports          per-member agent loop (sense → inbox → react → scan)
+ 2.  momentum.check_decay   inactivity
+ 3.  update_momentum        success / interference / failure
+ 4.  liveness               Alive / Suspect / Down
+ 5.  supervision            supervisor.check_member → SupervisionAction, rally events
+ 6.  fuel                   per-member fuel consumption
+ 7.  implicit_signals       publish ImplicitSignal (Overcooked — peers watch bus)
+ 8.  state_broadcast        broadcast_state on health threshold (L4D "I'm hurt")
+ 9.  persist_momentum       momentum row → SQLite
+ 10. publish_context        FormationContext watchers
+ 11. gossip_awareness       gossip publish + snapshot (Warming+)
+ 12. log_interference       interference events
+ 13. check_pacing           phase transition from the tick's StressSample
+ 14. check_cascade          detect_cascade + attempt_self_rally
+ 15. check_interventions    L6 commander override
+ 16. recovery               evaluate_recovery per distress signal
+ 17. transformation         role transformation for failing members
+ 18. replan_cbba            global task reallocation
+ 19. resolve_consensus      vote deadlines
+ 20. tick_commits           advance commit barriers
+ 21. expire_commits         completed / timed-out barriers
+ 22. update_mental_model    mental_model::learning::update_model
+ 23. orchestrate_step       Fever tier + can_orchestrate()
+ 24. publish_formation_view cross-formation gossip bus
+ 25. emit_canvas_update     only when a canvas sender is wired
 ```
 
-Step 14 decomposes intent into sub-tasks, posts them to the blackboard
+`respond_cfp` is not a step in the agent loop — it fires reactively when a
+call for proposals arrives. After the loop over formations,
+`handle_cadence_tick` runs the tail passes (`tail::reclaim_dead`,
+`drain_member_subs`, `drain_rally_events`, `retain_viable`).
+
+Step 23 decomposes intent into sub-tasks, posts them to the blackboard
 under `task:*` keys; members pull via step 1's `scan` phase. Then
 `remove_dead_members()` reclaims slots and `formations.retain(is_viable)`
 prunes exhausted formations.

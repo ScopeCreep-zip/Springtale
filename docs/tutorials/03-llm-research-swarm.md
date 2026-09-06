@@ -166,7 +166,7 @@ springtale-cli trace --formation research-swarm
 ```
 
 You'll see real-time output of each agent's 5-step loop (sense, scan,
-react, respond_cfp, inbox) and the 14-step formation tick.
+react, scan; respond_cfp fires reactively) and the 25-step formation tick.
 
 The colony canvas at `http://127.0.0.1:8080/dashboard` shows the
 formation as a dashed zone with three members. Click the zone to see
@@ -238,7 +238,7 @@ learned (vocabulary, successful patterns, observed conventions). See
 | Formation deployment from template | Step 4 |
 | Blackboard as the coordination medium | Step 5 — `task:*` keys |
 | Per-agent 5-step loop | Step 6 — `trace` output |
-| 14-step formation tick | Step 6 — `trace` output |
+| 25-step formation tick | Step 6 — `trace` output |
 | Momentum tier progression | Step 5 — Cold → Warming → Hot → Fever |
 | Rally / recovery / supervision | Step 8 — failure path |
 | Mental model persistence across dissolves | Step 9 |

@@ -56,7 +56,7 @@ end-to-end. SDK dispatch example in `sdk/connector-sdk/src/lib.rs:9-24`.
 ## 3. Cooperation framework fully wired ◆
 
 **Where:** `crates/springtale-cooperation/` (crate),
-`crates/springtale-bot/src/runtime/event_loop.rs` (14-step tick),
+`crates/springtale-bot/src/runtime/tick_steps/mod.rs` (25-step tick),
 `crates/springtale-bot/src/cooperation/` (glue).
 
 **State update (April 2026):** What this section previously described as
@@ -81,7 +81,7 @@ the FormationContext watch channel through the
 `COOPERATION.md §25.1` for the full as-built record.
 
 ```
-  event_loop.rs::handle_cadence_tick() — 14 steps
+  tick_steps/mod.rs::run_tick() — 25 steps
   ─────────────────────────────────────────────────
    1.  per-agent loop   (sense / scan / react / respond_cfp / inbox)
    2.  tick_processor   (action records, interference detection)

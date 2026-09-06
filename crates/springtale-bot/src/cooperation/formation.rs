@@ -170,7 +170,8 @@ impl FormationMember {
 /// (same `AiAdapter` trait as per-agent). When present AND momentum
 /// is at Fever tier, the orchestrator decomposes the formation's
 /// intent into subtasks posted to the blackboard for members to pull
-/// (CrewAI/AutoGen manager pattern, gated by Patapon Fever mechanic).
+/// — COOPERATION.pdf's own wording for this, not CrewAI's or AutoGen's.
+/// Gated by the Patapon Fever mechanic.
 ///
 /// Per-member breakdown of bus messages consumed by a single call to
 /// `Formation::drain_member_subs`. Emitted so observability surfaces

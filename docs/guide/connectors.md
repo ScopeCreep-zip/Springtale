@@ -177,7 +177,19 @@ For full details on each connector — config fields, trigger payloads, action i
 
 ## 6. MCP Bridge
 
-Every connector automatically becomes an MCP (Model Context Protocol) server via `springtale-mcp`. You don't write a separate MCP server — the bridge adapts the `Connector` trait to MCP's tool interface.
+> **Not wired up.** `springtale-mcp` builds — `ConnectorMcpServer::new(connector,
+> capability_checker)` adapts the `Connector` trait to MCP's tool interface, and
+> `transport/stdio.rs` serves it on stdin/stdout — but nothing reaches it.
+> `springtaled` lists `springtale-mcp` as a dependency and never uses it; there
+> is no `/mcp` route. The CLI has no `mcp` subcommand, so the
+> `springtale-cli mcp serve` entry point named in `stdio.rs`'s own doc comment
+> does not exist. `start_stdio_server` has no caller outside the crate. Read
+> this section as the design, not as something you can run today.
+
+The bridge is **per connector**, not registry-wide: one `ConnectorMcpServer`
+wraps exactly one `Arc<dyn Connector>`. It adapts the `Connector` trait to
+MCP's tool interface, so you would not write a separate MCP server per
+connector.
 
 ```
   AI Client                springtale-mcp              Connector
@@ -203,7 +215,7 @@ Every connector automatically becomes an MCP (Model Context Protocol) server via
        │<───────────────────────┤                         │
 ```
 
-*Fig. 4. MCP bridge. Any connector is automatically exposed as an MCP server. One framework, not N hand-written MCP servers.*
+*Fig. 4. MCP bridge, as designed. One `ConnectorMcpServer` per connector, over stdio. Nothing in the daemon or the CLI currently constructs one.*
 
 This means:
 - 15 connectors = 15 MCP servers, automatically
