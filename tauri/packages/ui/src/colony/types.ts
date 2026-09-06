@@ -29,7 +29,7 @@ export interface ColonyAgent {
   task: string;
   status: "ok" | "warn" | "idle" | "error";
   pipeline: string | null;
-  /** Activity state from backend: "firing" | "error" | "active" | "waiting" | "idle". */
+  /** Backend's fetch-time `compute_activity`; seeds `activityOf` only until the agent's first utterance. */
   activity?: string;
   /** Attention load from cooperation layer (0.0-1.0). */
   attentionLoad: number;

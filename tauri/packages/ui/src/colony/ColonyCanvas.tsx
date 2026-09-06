@@ -2,11 +2,12 @@ import { createElementSize } from "@solid-primitives/resize-observer";
 import type { AvailableConnector, ConnectorSchema } from "@springtale/types";
 import type { Component } from "solid-js";
 import { createEffect, createSignal, For, Show } from "solid-js";
+import { activityOf } from "../dashboard/activity";
 import type { EventItem } from "../dashboard/model";
 import type { Utterance } from "../dashboard/types";
 import type { Locale } from "../i18n/types";
 import { getAgentPosition, getConnectorPosition, getFormationBounds } from "./geometry";
-import { activityOf, MoteStack } from "./MoteStack";
+import { MoteStack } from "./MoteStack";
 import type {
   ColonyAgent,
   ColonyConnection,

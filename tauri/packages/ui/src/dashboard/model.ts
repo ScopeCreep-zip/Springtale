@@ -35,8 +35,17 @@ export interface EventItem {
   triggerType: string;
   timestamp: string;
   actionTaken: string;
-  /** Severity from backend: "ok" | "error". */
+  /** Derived from `actionTaken` by `eventSeverity` — the `agent.rs` rule. */
   severity: "ok" | "error";
+}
+
+/**
+ * The one severity rule, shared with `operations/agent.rs` (`compute_activity`):
+ * an action that reports `error`, `fail`, or `block` is an error; all else ok.
+ */
+export function eventSeverity(actionTaken: string): EventItem["severity"] {
+  const a = actionTaken.toLowerCase();
+  return a.includes("error") || a.includes("fail") || a.includes("block") ? "error" : "ok";
 }
 
 export interface SwarmInfo {

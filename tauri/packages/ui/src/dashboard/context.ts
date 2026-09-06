@@ -29,6 +29,7 @@ import {
   useContext,
 } from "solid-js";
 import type { ConditionDef } from "../ConditionEditor";
+import type { ColonyAgent } from "../colony/types";
 import type {
   ConnectorStatus,
   EventItem,
@@ -36,7 +37,9 @@ import type {
   RuleItem,
   SwarmInfo,
 } from "../dashboard/model";
+import { eventSeverity } from "../dashboard/model";
 import type { Locale } from "../i18n/types";
+import { activityOf as deriveActivity, agentMatches as matchesAgent } from "./activity";
 import type {
   ApprovalInfo,
   CooperationEventEnvelope,
@@ -80,6 +83,18 @@ function applyCanvasUpdate(current: CanvasState | null, update: CanvasUpdate): C
 }
 
 // ── Factory ──────────────────────────────────────────────
+
+/** One `EventItem` per runtime `EventEntry`; severity derives from `action_taken`. */
+function toEventItem(event: EventEntry): EventItem {
+  return {
+    id: event.id,
+    connectorName: event.connector_name,
+    triggerType: event.trigger_type,
+    timestamp: event.timestamp,
+    actionTaken: event.action_taken,
+    severity: eventSeverity(event.action_taken),
+  };
+}
 
 export function createDashboardState(provider: DataProvider): DashboardState {
   // Wrap the entire factory body in `createRoot` so every reactive
@@ -145,6 +160,17 @@ export function createDashboardState(provider: DataProvider): DashboardState {
       formationDetails()
         .flatMap((d) => d.member_details)
         .find((m) => m.agent_id === id)?.role;
+    /** Plan 3.2 — formation members match by `agent_id → connector`, solo agents by `rule_id`. */
+    const agentMatches = (u: Utterance, agent: ColonyAgent): boolean =>
+      matchesAgent(u, agent, agentToConnector());
+    /**
+     * Plan 3.2 — derived, not stored: an agent's activity is its newest
+     * unexpired utterance on the tick timeline. No activity event, no decay
+     * timer; the fetched `AgentState.activity` only seeds it until the agent
+     * first speaks.
+     */
+    const activityOf = (agent: ColonyAgent): string =>
+      deriveActivity(agent, utterances(), colonyNow(), agentToConnector());
     /** Frames for this utterance in the current locale: def override, else the event's default. */
     const framesFor = (u: Utterance, locale: Locale): string[] =>
       utteranceDefs()[u.utterance.utter]?.locales[locale] ?? u.glyph_frames;
@@ -185,22 +211,7 @@ export function createDashboardState(provider: DataProvider): DashboardState {
     // ── SSE subscriptions ──
     let unsubEvents = provider.subscribeToEvents((event: EventEntry) => {
       if (event.trigger_type === "approval_required") void refreshApprovals();
-      setEvents((prev: EventItem[]) =>
-        [
-          {
-            id: event.id,
-            connectorName: event.connector_name,
-            triggerType: event.trigger_type,
-            timestamp: event.timestamp,
-            actionTaken: event.action_taken,
-            severity:
-              (event as EventEntry & { severity?: string }).severity === "error"
-                ? ("error" as const)
-                : ("ok" as const),
-          },
-          ...prev,
-        ].slice(0, 500),
-      );
+      setEvents((prev: EventItem[]) => [toEventItem(event), ...prev].slice(0, 500));
     });
 
     let unsubCanvas = provider.subscribeToCanvasUpdates((update: CanvasUpdate) => {
@@ -222,22 +233,7 @@ export function createDashboardState(provider: DataProvider): DashboardState {
       unsubCooperation();
       unsubEvents = provider.subscribeToEvents((event: EventEntry) => {
         if (event.trigger_type === "approval_required") void refreshApprovals();
-        setEvents((prev: EventItem[]) =>
-          [
-            {
-              id: event.id,
-              connectorName: event.connector_name,
-              triggerType: event.trigger_type,
-              timestamp: event.timestamp,
-              actionTaken: event.action_taken,
-              severity:
-                (event as EventEntry & { severity?: string }).severity === "error"
-                  ? ("error" as const)
-                  : ("ok" as const),
-            },
-            ...prev,
-          ].slice(0, 500),
-        );
+        setEvents((prev: EventItem[]) => [toEventItem(event), ...prev].slice(0, 500));
       });
       unsubCanvas = provider.subscribeToCanvasUpdates((update: CanvasUpdate) => {
         setCanvasState((prev: CanvasState | null) => applyCanvasUpdate(prev, update));
@@ -281,19 +277,7 @@ export function createDashboardState(provider: DataProvider): DashboardState {
           })),
         );
 
-        setEvents(
-          e.map((x) => {
-            const severity = (x as EventEntry & { severity?: string }).severity;
-            return {
-              id: x.id,
-              connectorName: x.connector_name,
-              triggerType: x.trigger_type,
-              timestamp: x.timestamp,
-              actionTaken: x.action_taken,
-              severity: severity === "error" ? ("error" as const) : ("ok" as const),
-            };
-          }),
-        );
+        setEvents(e.map(toEventItem));
 
         // Keep every FormationInfo field — rally, guard, momentum counters
         // and operational_count all feed real UI signals.
@@ -484,6 +468,8 @@ export function createDashboardState(provider: DataProvider): DashboardState {
       formationDetails,
       agentToConnector,
       roleOf,
+      agentMatches,
+      activityOf,
       framesFor,
       pendingApprovals,
       refreshApprovals,
