@@ -28,6 +28,7 @@ pub mod panic;
 pub mod quick_hide;
 pub mod recipes;
 pub mod rules;
+pub mod bot_settings;
 pub mod safety;
 pub mod selector_picker;
 pub mod send;

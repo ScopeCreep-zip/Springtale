@@ -402,6 +402,37 @@ pub enum BotAction {
     /// Revoke ALL paired users and invalidate ALL outstanding codes.
     /// For emergencies — no chat access needed.
     PanicUnpair,
+    /// Bot settings — persona, context window, AI tool allow-list.
+    Settings {
+        #[command(subcommand)]
+        action: BotSettingsAction,
+    },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum BotSettingsAction {
+    /// Show the current bot settings.
+    Get,
+    /// Update bot settings. Only the flags you pass are changed.
+    Set {
+        /// Bot display name.
+        #[arg(long)]
+        name: Option<String>,
+        /// Response tone hint (e.g. "neutral", "warm").
+        #[arg(long)]
+        tone: Option<String>,
+        /// Command prefix character.
+        #[arg(long)]
+        prefix: Option<char>,
+        /// Conversation context window size.
+        #[arg(long)]
+        context_window: Option<usize>,
+        /// AI tool allow-list entry, `connector__action` (repeatable).
+        /// Passing any `--allow` REPLACES the whole list; pass none to
+        /// leave it untouched, `--allow ""` to clear it.
+        #[arg(long)]
+        allow: Vec<String>,
+    },
 }
 
 #[derive(Subcommand, Debug)]

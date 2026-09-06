@@ -40,7 +40,6 @@ pub async fn boot(
         transport: transport_config,
         api: api_config,
         heartbeat_interval_secs,
-        bot: bot_config,
         telegram: telegram_config,
         sentinel,
         nostr: nostr_config,
@@ -143,7 +142,6 @@ pub async fn boot(
     let (bot_handle, connector_shutdowns) = bot::init_bot(
         &runtime,
         embedded_scheduler.clone(),
-        bot_config,
         &connector_wiring,
         bot::BotChannels {
             bot_msg_tx,

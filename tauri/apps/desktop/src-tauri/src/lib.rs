@@ -131,6 +131,8 @@ pub fn run() {
             commands::vault::unlock_vault,
             commands::vault::lock_vault,
             commands::vault::get_vault_status,
+            commands::bot_settings::get_bot_settings,
+            commands::bot_settings::save_bot_settings,
             commands::safety::get_safety_config,
             commands::safety::save_safety_config,
             commands::safety::set_disguise_active,

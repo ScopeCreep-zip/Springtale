@@ -34,10 +34,6 @@ pub struct SpringtaleConfig {
     #[serde(default = "default_heartbeat_interval")]
     #[garde(skip)]
     pub heartbeat_interval_secs: u64,
-    /// Bot runtime configuration. If absent, bot is disabled.
-    #[serde(default)]
-    #[garde(skip)]
-    pub bot: Option<springtale_bot::BotConfig>,
     /// Telegram connector configuration. If absent, connector not loaded.
     #[serde(default)]
     #[garde(skip)]

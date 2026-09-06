@@ -27,7 +27,7 @@ pub async fn run_event_loop(bot: &mut Bot) {
             sentinel: bot.sentinel.clone(),
             adapter: bot.ai_adapter.clone(),
             response_tx: bot.response_tx.clone(),
-            policy: bot.config.tool_policy.clone(),
+            policy: bot.settings.load().tool_policy.clone(),
         };
         tokio::spawn(crate::tool_runner::resume_orphaned_loops(deps));
     }

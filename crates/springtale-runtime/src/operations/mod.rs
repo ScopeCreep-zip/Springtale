@@ -6,6 +6,7 @@
 //! desktop wraps with Tauri IPC.
 
 pub mod agent;
+pub mod bot_settings;
 pub mod canvas;
 pub mod commands;
 pub mod config;

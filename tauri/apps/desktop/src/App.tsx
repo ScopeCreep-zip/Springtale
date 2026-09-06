@@ -2,6 +2,7 @@ import {
   AiConfigPanel,
   ApprovalCard,
   AppSettingsPanel,
+  type BotSettingsValue,
   BottomPanel,
   ChatDock,
   ColonyShell,
@@ -29,6 +30,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { createEffect, createSignal, onCleanup, onMount, Show } from "solid-js";
 import { resetAutoLock } from "./ipc/autolock";
+import { getBotSettings, saveBotSettings } from "./ipc/bot_settings";
 import { panicWipe } from "./ipc/panic";
 import { createVault, getVaultStatus, unlockVault } from "./ipc/vault";
 import { TravelModePage } from "./pages/TravelMode";
@@ -51,6 +53,30 @@ export const App = () => {
   const [vaultLocked, setVaultLocked] = createSignal(true);
   const [showVault, setShowVault] = createSignal(false);
   const [showDesktopSettings, setShowDesktopSettings] = createSignal(false);
+  // Plan 6.3 — bot persona / context window / tool policy, loaded the
+  // first time the settings panel opens and refreshed after each save.
+  const [botSettings, setBotSettings] = createSignal<BotSettingsValue | null>(null);
+  let botSettingsRequested = false;
+  const loadBotSettings = async () => {
+    try {
+      setBotSettings(await getBotSettings());
+    } catch (e) {
+      console.error("failed to load bot settings", e);
+    }
+  };
+  const ensureBotSettings = () => {
+    if (botSettingsRequested) return;
+    botSettingsRequested = true;
+    void loadBotSettings();
+  };
+  // Tool names the allow-list checkboxes are drawn from — the actions the
+  // installed connectors actually declare, never free text.
+  const botTools = () =>
+    db
+      .schemas()
+      .flatMap((schema) =>
+        (schema.actions ?? []).map((action) => `${schema.name}__${action.name}`),
+      );
   const [showSafety, setShowSafety] = createSignal(false);
   const [showTravelMode, setShowTravelMode] = createSignal(false);
   // Controlled open state for the chat dock so the command-grid "ASK"
@@ -601,9 +627,16 @@ export const App = () => {
 
     // 5. App settings
     if (showDesktopSettings()) {
+      ensureBotSettings();
       return (
         <AppSettingsPanel
           isDesktop={true}
+          botSettings={botSettings()}
+          availableTools={botTools()}
+          onSaveBotSettings={async (settings) => {
+            await saveBotSettings(settings);
+            await loadBotSettings();
+          }}
           onVault={() => {
             setShowDesktopSettings(false);
             setShowVault(true);
