@@ -93,6 +93,13 @@ pub struct ChainContext {
     /// Aliased so recipes referencing `${last_shell_output}` resolve
     /// cleanly today.
     pub last_shell_output: Option<serde_json::Value>,
+
+    /// Steps the sentinel throttled (`Verdict::Throttle`) before they
+    /// ran. The dispatcher sleeps the delay and proceeds, so this is
+    /// the only trace a throttle leaves; the formation pacing stress
+    /// sample counts it (plan 1.5).
+    #[serde(default)]
+    pub throttles: u32,
 }
 
 impl ChainContext {
@@ -108,6 +115,7 @@ impl ChainContext {
             last_extract_output: None,
             last_dedupe_output: None,
             last_shell_output: None,
+            throttles: 0,
         }
     }
 

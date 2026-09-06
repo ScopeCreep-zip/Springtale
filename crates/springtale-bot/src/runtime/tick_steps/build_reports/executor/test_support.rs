@@ -21,7 +21,7 @@ use springtale_cooperation::TickId;
 use springtale_cooperation::action::SubTask;
 use springtale_cooperation::cadence::{AgentId, Tick, TickReport};
 use springtale_cooperation::momentum::MomentumTier;
-use springtale_cooperation::pacing::{PacingManager, PacingPhase};
+use springtale_cooperation::pacing::PacingManager;
 use springtale_cooperation::tick_processor::FormationTickResult;
 use springtale_runtime::CapabilityBridge;
 use springtale_sentinel::{Sentinel, SentinelConfig};
@@ -208,25 +208,12 @@ pub(crate) fn wipe_task() -> SubTask {
     }
 }
 
-/// Earn Fever momentum and Peak pacing (§7 / §22: capabilities are
-/// earned, not granted). Returns the earned pacing manager.
-pub(crate) fn earn_fever_and_peak(formation: &mut Formation) -> PacingManager {
+/// Earn Fever momentum (§7: capabilities are earned, not granted). Pacing
+/// starts in `BuildUp`, which backs nothing off (plan 1.5).
+pub(crate) fn earn_fever(formation: &mut Formation) -> PacingManager {
     for _ in 0..15 {
         formation.momentum.record_success();
     }
     assert_eq!(formation.momentum.tier, MomentumTier::Fever);
-    let driver = formation.members[0].agent_id;
-    let mut pacing = PacingManager::default();
-    for _ in 0..16 {
-        pacing.evaluate_transition(
-            &successful_tick_result(driver),
-            &formation.momentum,
-            Duration::from_millis(33),
-        );
-    }
-    assert!(
-        matches!(pacing.current_phase, PacingPhase::Peak { .. }),
-        "formation earned Peak pacing (full tick rate + 30 actions/min)"
-    );
-    pacing
+    PacingManager::default()
 }
