@@ -149,6 +149,37 @@ jobs:
       - run: pnpm -C tauri typecheck
       - run: pnpm -C tauri build
 
+  # ── API surface check (plan 2.3) ──────────────────────────────────
+  #
+  # One generated contract: the OpenAPI document springtaled derives
+  # from its own handlers must stay in step with the checked-in copy the
+  # frontend generates types from, and every route it declares must be
+  # reachable from the command line and from the web DataProvider.
+  surface:
+    name: API surface check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+      - name: Regenerate the contract and prove it matches the committed one
+        run: |
+          cargo run -q -p springtaled -- --dump-openapi > /tmp/openapi.json
+          diff -u tauri/packages/types/openapi.json /tmp/openapi.json \
+            || { echo "openapi.json is stale — run: cargo run -p springtaled -- --dump-openapi > tauri/packages/types/openapi.json"; exit 1; }
+      - name: Every route has a CLI verb and a provider method
+        run: sh scripts/check-surface.sh
+
   # ── TypeScript Lint (Biome) ───────────────────────────────────────
   #
   # Biome is the workspace's TS/JSX linter + formatter (2026 idiom for

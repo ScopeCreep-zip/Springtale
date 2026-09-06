@@ -9,6 +9,12 @@ use super::extractors::ValidatedPath;
 use super::state::AppState;
 
 /// GET /formations — list all formations.
+#[utoipa::path(
+    get, operation_id = "formations_list",
+    path = "/formations",
+    tag = "formations",
+    responses((status = 200, description = "All formations", body = Vec<Object>))
+)]
 pub async fn list(State(state): State<AppState>) -> impl IntoResponse {
     match operations::formations::list_formations(&state.runtime).await {
         Ok(formations) => (
@@ -23,6 +29,13 @@ pub async fn list(State(state): State<AppState>) -> impl IntoResponse {
 }
 
 /// GET /formations/{id} — get a single formation.
+#[utoipa::path(
+    get, operation_id = "formations_get",
+    path = "/formations/{id}",
+    tag = "formations",
+    params(("id" = String, Path, description = "Formation id")),
+    responses((status = 200, description = "One formation", body = Object))
+)]
 pub async fn get(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
@@ -36,6 +49,13 @@ pub async fn get(
 /// GET /formations/{id}/commands — backend-supplied 3×3 command grid with
 /// status-aware enable/disable. Frontend renders the list; no eligibility
 /// logic on the JS side.
+#[utoipa::path(
+    get, operation_id = "formations_commands",
+    path = "/formations/{id}/commands",
+    tag = "formations",
+    params(("id" = String, Path, description = "Formation id")),
+    responses((status = 200, description = "Command grid for the formation", body = Vec<Object>))
+)]
 pub async fn commands(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
@@ -52,6 +72,14 @@ pub async fn commands(
 /// POST /formations/{id}/run-command — generic command dispatcher. Body:
 /// `{ "command_id": "formation:rally", "params": {…}? }`. ALL command→action
 /// mapping lives in the backend so the frontend just forwards the clicked id.
+#[utoipa::path(
+    post, operation_id = "formations_run_command",
+    path = "/formations/{id}/run-command",
+    tag = "formations",
+    params(("id" = String, Path, description = "Formation id")),
+    request_body = Object,
+    responses((status = 200, description = "Command outcome", body = Object))
+)]
 pub async fn run_command(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
@@ -77,6 +105,13 @@ pub async fn run_command(
 /// GET /formations/{id}/members/eligible — eligible-removal list for the
 /// RM MBR overlay. Backend decides which members are removable; frontend
 /// renders the list.
+#[utoipa::path(
+    get, operation_id = "formations_eligible_members",
+    path = "/formations/{id}/members/eligible",
+    tag = "formations",
+    params(("id" = String, Path, description = "Formation id")),
+    responses((status = 200, description = "Agents eligible to join", body = Vec<Object>))
+)]
 pub async fn eligible_members(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
@@ -91,26 +126,22 @@ pub async fn eligible_members(
 }
 
 /// POST /formations — create a new formation.
+#[utoipa::path(
+    post, operation_id = "formations_create",
+    path = "/formations",
+    tag = "formations",
+    request_body = operations::formations::CreateFormationRequest,
+    responses((status = 200, description = "Formation created", body = Object))
+)]
 pub async fn create(
     State(state): State<AppState>,
-    Json(body): Json<serde_json::Value>,
+    Json(req): Json<operations::formations::CreateFormationRequest>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let name = body["name"].as_str().ok_or(StatusCode::BAD_REQUEST)?;
-    let intent = body["intent"].as_str().unwrap_or("Reconnoiter");
-    let connectors: Vec<String> = body["connectors"]
-        .as_array()
-        .map(|arr| {
-            arr.iter()
-                .filter_map(|v| v.as_str().map(|s| s.to_owned()))
-                .collect()
-        })
-        .unwrap_or_default();
-
     let id = operations::formations::create_formation(
         &state.runtime,
-        name.to_owned(),
-        intent.to_owned(),
-        connectors,
+        req.name,
+        req.intent,
+        req.connectors,
     )
     .await
     .map_err(|e| {
@@ -122,6 +153,13 @@ pub async fn create(
 }
 
 /// POST /formations/{id}/deploy — deploy a formation.
+#[utoipa::path(
+    post, operation_id = "formations_deploy",
+    path = "/formations/{id}/deploy",
+    tag = "formations",
+    params(("id" = String, Path, description = "Formation id")),
+    responses((status = 200, description = "Formation deployed", body = Object))
+)]
 pub async fn deploy(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
@@ -133,6 +171,13 @@ pub async fn deploy(
 }
 
 /// POST /formations/{id}/pause — pause a formation.
+#[utoipa::path(
+    post, operation_id = "formations_pause",
+    path = "/formations/{id}/pause",
+    tag = "formations",
+    params(("id" = String, Path, description = "Formation id")),
+    responses((status = 200, description = "Formation paused", body = Object))
+)]
 pub async fn pause(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
@@ -144,6 +189,13 @@ pub async fn pause(
 }
 
 /// POST /formations/{id}/resume — resume a formation.
+#[utoipa::path(
+    post, operation_id = "formations_resume",
+    path = "/formations/{id}/resume",
+    tag = "formations",
+    params(("id" = String, Path, description = "Formation id")),
+    responses((status = 200, description = "Formation resumed", body = Object))
+)]
 pub async fn resume(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
@@ -155,6 +207,14 @@ pub async fn resume(
 }
 
 /// PUT /formations/{id}/intent — update formation intent.
+#[utoipa::path(
+    put, operation_id = "formations_update_intent",
+    path = "/formations/{id}/intent",
+    tag = "formations",
+    params(("id" = String, Path, description = "Formation id")),
+    request_body = Object,
+    responses((status = 200, description = "Intent updated", body = Object))
+)]
 pub async fn update_intent(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
@@ -169,6 +229,14 @@ pub async fn update_intent(
 
 /// POST /formations/{id}/propose-intent — open a consensus vote to change
 /// the formation's intent (§5.5 formation self-governance, Fever-gated).
+#[utoipa::path(
+    post, operation_id = "formations_propose_intent",
+    path = "/formations/{id}/propose-intent",
+    tag = "formations",
+    params(("id" = String, Path, description = "Formation id")),
+    request_body = Object,
+    responses((status = 200, description = "Intent proposal opened", body = Object))
+)]
 pub async fn propose_intent(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
@@ -183,6 +251,14 @@ pub async fn propose_intent(
 
 /// POST /formations/{id}/votes/{vote_id} — cast a ballot on an open
 /// consensus vote (§11). Body: { "voter": "<agent uuid>", "approve": bool }.
+#[utoipa::path(
+    post, operation_id = "formations_cast_vote",
+    path = "/formations/{id}/votes/{vote_id}",
+    tag = "formations",
+    params(("id" = String, Path, description = "Formation id"), ("vote_id" = String, Path, description = "Vote id")),
+    request_body = Object,
+    responses((status = 200, description = "Vote recorded", body = Object))
+)]
 pub async fn cast_vote(
     State(state): State<AppState>,
     axum::extract::Path((id, vote_id)): axum::extract::Path<(String, String)>,
@@ -200,6 +276,14 @@ pub async fn cast_vote(
 }
 
 /// POST /formations/{id}/members — add a member to a formation.
+#[utoipa::path(
+    post, operation_id = "formations_add_member",
+    path = "/formations/{id}/members",
+    tag = "formations",
+    params(("id" = String, Path, description = "Formation id")),
+    request_body = Object,
+    responses((status = 200, description = "Member added", body = Object))
+)]
 pub async fn add_member(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
@@ -218,6 +302,14 @@ pub async fn add_member(
 }
 
 /// DELETE /formations/{id}/members — remove a member from a formation.
+#[utoipa::path(
+    delete, operation_id = "formations_remove_member",
+    path = "/formations/{id}/members",
+    tag = "formations",
+    params(("id" = String, Path, description = "Formation id")),
+    request_body = Object,
+    responses((status = 200, description = "Member removed", body = Object))
+)]
 pub async fn remove_member(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
@@ -236,6 +328,13 @@ pub async fn remove_member(
 }
 
 /// POST /formations/{id}/dissolve — dissolve a formation.
+#[utoipa::path(
+    post, operation_id = "formations_dissolve",
+    path = "/formations/{id}/dissolve",
+    tag = "formations",
+    params(("id" = String, Path, description = "Formation id")),
+    responses((status = 200, description = "Formation dissolved", body = Object))
+)]
 pub async fn dissolve(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
@@ -247,6 +346,13 @@ pub async fn dissolve(
 }
 
 /// POST /formations/{id}/rally — manually trigger self-rally.
+#[utoipa::path(
+    post, operation_id = "formations_rally",
+    path = "/formations/{id}/rally",
+    tag = "formations",
+    params(("id" = String, Path, description = "Formation id")),
+    responses((status = 200, description = "Formation rallied", body = Object))
+)]
 pub async fn rally(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
@@ -258,6 +364,12 @@ pub async fn rally(
 }
 
 /// GET /formations/intents — list valid formation intents.
+#[utoipa::path(
+    get, operation_id = "formations_list_intents",
+    path = "/formations/intents",
+    tag = "formations",
+    responses((status = 200, description = "Selectable intents", body = Vec<Object>))
+)]
 pub async fn list_intents() -> impl IntoResponse {
     let intents = operations::formations::list_intents();
     (
@@ -267,6 +379,13 @@ pub async fn list_intents() -> impl IntoResponse {
 }
 
 /// POST /formations/deploy-team — deploy a complete team atomically.
+#[utoipa::path(
+    post, operation_id = "formations_deploy_team",
+    path = "/formations/deploy-team",
+    tag = "formations",
+    request_body = operations::formations::TeamDeployRequest,
+    responses((status = 200, description = "Team deployed", body = Object))
+)]
 pub async fn deploy_team(
     State(state): State<AppState>,
     Json(team): Json<operations::formations::TeamDeployRequest>,
@@ -281,6 +400,13 @@ pub async fn deploy_team(
 }
 
 /// POST /formations/{id}/cycle-intent — cycle formation intent.
+#[utoipa::path(
+    post, operation_id = "formations_cycle_intent",
+    path = "/formations/{id}/cycle-intent",
+    tag = "formations",
+    params(("id" = String, Path, description = "Formation id")),
+    responses((status = 200, description = "Intent cycled", body = Object))
+)]
 pub async fn cycle_intent(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
@@ -295,6 +421,13 @@ pub async fn cycle_intent(
 }
 
 /// POST /formations/{id}/cycle-autonomy — cycle formation autonomy.
+#[utoipa::path(
+    post, operation_id = "formations_cycle_autonomy",
+    path = "/formations/{id}/cycle-autonomy",
+    tag = "formations",
+    params(("id" = String, Path, description = "Formation id")),
+    responses((status = 200, description = "Autonomy cycled", body = Object))
+)]
 pub async fn cycle_autonomy(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,

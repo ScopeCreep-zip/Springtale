@@ -11,6 +11,13 @@ use super::extractors::ValidatedPath;
 use super::state::AppState;
 
 /// GET /drift/recipe/{id} — drift window for one recipe.
+#[utoipa::path(
+    get, operation_id = "drift_recipe",
+    path = "/drift/recipe/{id}",
+    tag = "drift",
+    params(DriftFilter, ("id" = String, Path, description = "Recipe id")),
+    responses((status = 200, description = "Recipe drift report", body = DriftReport))
+)]
 pub async fn recipe(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
@@ -23,6 +30,13 @@ pub async fn recipe(
 }
 
 /// GET /drift/rule/{id} — drift window for one rule.
+#[utoipa::path(
+    get, operation_id = "drift_rule",
+    path = "/drift/rule/{id}",
+    tag = "drift",
+    params(DriftFilter, ("id" = String, Path, description = "Rule id")),
+    responses((status = 200, description = "Rule drift report", body = DriftReport))
+)]
 pub async fn rule(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,

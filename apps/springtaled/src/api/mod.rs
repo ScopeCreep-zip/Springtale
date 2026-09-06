@@ -21,6 +21,7 @@ pub mod login;
 pub mod mcp;
 pub mod memory;
 pub mod onboarding;
+pub mod openapi;
 pub mod recipes;
 pub mod rules;
 pub mod safety;
@@ -82,9 +83,13 @@ pub fn build_router(state: AppState) -> Router {
     let rate_limit = state.rate_limit_per_sec;
 
     // Public routes — no authentication
+    // Public routes — no authentication. `/openapi.json` is the machine
+    // -checkable contract: shapes only, never values, so it carries no
+    // secrets and sits beside the probes rather than behind the token.
     let public = Router::new()
         .route("/health", get(health::health))
-        .route("/ready", get(health::ready));
+        .route("/ready", get(health::ready))
+        .route("/openapi.json", get(openapi::serve));
 
     // Login — unauthenticated by definition, so it gets its own, much
     // tighter rate limit on top of the global one (plan 6.6). Five

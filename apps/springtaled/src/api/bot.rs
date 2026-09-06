@@ -6,32 +6,26 @@ use axum::response::IntoResponse;
 use super::state::AppState;
 
 /// GET /bot/status — runtime status summary.
+#[utoipa::path(
+    get, operation_id = "bot_status",
+    path = "/bot/status",
+    tag = "bot",
+    responses((status = 200, description = "Bot runtime status", body = Object))
+)]
 pub async fn status(State(state): State<AppState>) -> Result<impl IntoResponse, StatusCode> {
-    let registry = state.runtime.registry.read().await;
-    let connector_count = registry.list().len();
-    drop(registry);
-
-    let engine = state.runtime.engine.read().await;
-    let rule_count = engine.list_rules().len();
-    drop(engine);
-
-    let formation_count = state
-        .runtime
-        .store
-        .list_formations()
+    let status = springtale_runtime::operations::bot::status(&state.runtime)
         .await
-        .map(|f| f.len())
-        .unwrap_or(0);
-
-    Ok(Json(serde_json::json!({
-        "running": true,
-        "connectors": connector_count,
-        "rules": rule_count,
-        "formations": formation_count,
-    })))
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(Json(status))
 }
 
 /// GET /bot/formations — active formations with member info.
+#[utoipa::path(
+    get, operation_id = "bot_formations",
+    path = "/bot/formations",
+    tag = "bot",
+    responses((status = 200, description = "Formations the bot belongs to", body = Vec<Object>))
+)]
 pub async fn formations(State(state): State<AppState>) -> Result<impl IntoResponse, StatusCode> {
     let formations = springtale_runtime::operations::formations::list_formations(&state.runtime)
         .await
@@ -60,37 +54,26 @@ pub async fn formations(State(state): State<AppState>) -> Result<impl IntoRespon
 /// - Bitwarden: "systems have no knowledge of, way to retrieve" encrypted content
 /// - Matrix Synapse: "encrypted rooms, messages are encrypted, but not their metadata"
 /// - Signal: separates delivery metadata from encrypted contents
+#[utoipa::path(
+    get, operation_id = "bot_memory",
+    path = "/bot/memory",
+    tag = "bot",
+    responses((status = 200, description = "Session memory summary", body = Object))
+)]
 pub async fn memory(State(state): State<AppState>) -> Result<impl IntoResponse, StatusCode> {
-    // List active sessions — metadata only, no decrypted content
-    let sessions = state
-        .runtime
-        .store
-        .list_sessions()
+    let sessions = springtale_runtime::operations::bot::memory_summary(&state.runtime)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-
-    // For each session, count memory entries without reading content
-    let mut session_summaries = Vec::with_capacity(sessions.len());
-    for session in &sessions {
-        let entries = state
-            .runtime
-            .store
-            .get_memory(&session.user_id, &session.channel_id, 1)
-            .await
-            .unwrap_or_default();
-
-        session_summaries.push(serde_json::json!({
-            "user_id": session.user_id,
-            "channel_id": session.channel_id,
-            "last_active": session.updated_at.to_rfc3339(),
-            "has_entries": !entries.is_empty(),
-        }));
-    }
-
-    Ok(Json(serde_json::json!({ "sessions": session_summaries })))
+    Ok(Json(serde_json::json!({ "sessions": sessions })))
 }
 
 /// GET /bot/settings — persona, context window, tool policy (plan 6.3).
+#[utoipa::path(
+    get, operation_id = "bot_get_settings",
+    path = "/bot/settings",
+    tag = "bot",
+    responses((status = 200, description = "Current bot settings", body = springtale_runtime::operations::bot_settings::BotSettings))
+)]
 pub async fn get_settings(State(state): State<AppState>) -> impl IntoResponse {
     match springtale_runtime::operations::bot_settings::get(&*state.runtime.store).await {
         Ok(settings) => (StatusCode::OK, Json(serde_json::json!(settings))),
@@ -104,6 +87,13 @@ pub async fn get_settings(State(state): State<AppState>) -> impl IntoResponse {
 /// PUT /bot/settings — replace them. Every literal tool in the allow-list
 /// is checked against the connector registry, so a typo is a 400 rather
 /// than a silently tool-less AI.
+#[utoipa::path(
+    put, operation_id = "bot_put_settings",
+    path = "/bot/settings",
+    tag = "bot",
+    request_body = springtale_runtime::operations::bot_settings::BotSettings,
+    responses((status = 200, description = "Settings saved", body = Object))
+)]
 pub async fn put_settings(
     State(state): State<AppState>,
     Json(settings): Json<springtale_runtime::operations::bot_settings::BotSettings>,

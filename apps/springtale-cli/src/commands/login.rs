@@ -15,6 +15,7 @@ use secrecy::{ExposeSecret, SecretString};
 use springtale_runtime::client_config;
 
 use crate::client::UNREACHABLE;
+use crate::output;
 
 /// Name the CLI gives the token it creates, so `springtale auth tokens`
 /// (and the dashboard) show where it came from.
@@ -33,7 +34,7 @@ fn base_url() -> Result<String> {
 
 /// `springtale login` — prompt for the vault passphrase, exchange it for
 /// a long-lived token, save it.
-pub async fn login() -> Result<()> {
+pub async fn login(json_out: bool) -> Result<()> {
     let base = base_url()?;
     let http = springtale_transport::safe_http::client().map_err(|e| anyhow!("safe_http: {e}"))?;
 
@@ -102,16 +103,26 @@ pub async fn login() -> Result<()> {
         .send()
         .await;
 
-    println!("Logged in as {name}");
-    println!("Token saved to {} (mode 0600)", path.display());
-    Ok(())
+    // The token itself is never echoed — only where it landed.
+    let body = serde_json::json!({
+        "logged_in_as": name,
+        "token_id": id,
+        "token_path": path.display().to_string(),
+    });
+    output::emit(json_out, &body, |v| {
+        format!(
+            "Logged in as {}\nToken saved to {} (mode 0600)",
+            output::cell(v, "logged_in_as"),
+            output::cell(v, "token_path")
+        )
+    })
 }
 
 /// `springtale logout` — revoke the saved token, then delete it.
-pub async fn logout() -> Result<()> {
+pub async fn logout(json_out: bool) -> Result<()> {
     let Some(saved) = client_config::read_token_file()? else {
-        println!("Not logged in.");
-        return Ok(());
+        let body = serde_json::json!({ "logged_out": false, "reason": "not logged in" });
+        return output::emit(json_out, &body, |_| "Not logged in.".to_owned());
     };
     let base = base_url()?;
     let http = springtale_transport::safe_http::client().map_err(|e| anyhow!("safe_http: {e}"))?;
@@ -137,13 +148,15 @@ pub async fn logout() -> Result<()> {
     };
 
     client_config::delete_token_file()?;
-    println!(
-        "Logged out{}",
-        if revoked {
-            " (token revoked)"
-        } else {
-            " (local token deleted)"
-        }
-    );
-    Ok(())
+    let body = serde_json::json!({ "logged_out": true, "revoked": revoked });
+    output::emit(json_out, &body, |_| {
+        format!(
+            "Logged out{}",
+            if revoked {
+                " (token revoked)"
+            } else {
+                " (local token deleted)"
+            }
+        )
+    })
 }

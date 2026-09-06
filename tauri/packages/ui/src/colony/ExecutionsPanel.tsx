@@ -53,6 +53,17 @@ const STATUS_CLASS: Record<ExecutionStatusTag, string> = {
   timed_out: "text-status-warn",
 };
 
+// `status` is a plain string in the generated contract, not the UI's
+// narrowed union: a run whose status the frontend does not know about
+// must still render rather than crash.
+function statusClass(status: string): string {
+  return STATUS_CLASS[status as ExecutionStatusTag] ?? "text-text-dim";
+}
+
+function statusLabel(status: string): string {
+  return STATUS_LABEL[status as ExecutionStatusTag] ?? status;
+}
+
 export const ExecutionsPanel: Component<ExecutionsPanelProps> = (props) => {
   const db = useDashboard();
 
@@ -152,8 +163,8 @@ const RunRow: Component<{
       onClick={props.onSelect}
     >
       <div class="flex items-center justify-between">
-        <span class={`colony-text-xs ${STATUS_CLASS[props.run.status]}`}>
-          {STATUS_LABEL[props.run.status]}
+        <span class={`colony-text-xs ${statusClass(props.run.status)}`}>
+          {statusLabel(props.run.status)}
         </span>
         <span class="colony-text-3xs text-text-dim">
           {props.run.duration_ms != null ? `${props.run.duration_ms}ms` : "—"}

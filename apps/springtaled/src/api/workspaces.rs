@@ -30,7 +30,7 @@ pub const EVENT_NAME_CHAT_DISCOVERED: &str = "chat-discovered";
 /// Bounded per-stream buffer; the runtime stops after the first match.
 const DISCOVERY_BUFFER: usize = 16;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct ListQuery {
     pub formation_id: String,
     #[serde(default)]
@@ -38,6 +38,13 @@ pub struct ListQuery {
 }
 
 /// GET /workspaces?formation_id=..&connector=.. — directory listing.
+#[utoipa::path(
+    get, operation_id = "workspaces_list",
+    path = "/workspaces",
+    tag = "workspaces",
+    params(ListQuery),
+    responses((status = 200, description = "Known workspaces", body = Vec<WorkspaceInfo>))
+)]
 pub async fn list(
     State(state): State<AppState>,
     Query(q): Query<ListQuery>,
@@ -52,13 +59,20 @@ pub async fn list(
     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct ScanBody {
     pub formation_id: String,
     pub connector_name: String,
 }
 
 /// POST /workspaces/scan — active `discover_destinations` sweep.
+#[utoipa::path(
+    post, operation_id = "workspaces_scan",
+    path = "/workspaces/scan",
+    tag = "workspaces",
+    request_body = ScanBody,
+    responses((status = 200, description = "Discovered workspaces", body = Vec<WorkspaceInfo>))
+)]
 pub async fn scan(
     State(state): State<AppState>,
     Json(body): Json<ScanBody>,
@@ -69,13 +83,20 @@ pub async fn scan(
         .map_err(|e| (StatusCode::BAD_REQUEST, e.to_string()))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct DeleteQuery {
     pub formation_id: String,
     pub workspace_key: String,
 }
 
 /// DELETE /workspaces?formation_id=..&workspace_key=..
+#[utoipa::path(
+    delete, operation_id = "workspaces_delete",
+    path = "/workspaces",
+    tag = "workspaces",
+    params(DeleteQuery),
+    responses((status = 200, description = "Workspace removed"))
+)]
 pub async fn delete(
     State(state): State<AppState>,
     Query(q): Query<DeleteQuery>,
@@ -86,7 +107,7 @@ pub async fn delete(
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct UpsertManualBody {
     pub formation_id: String,
     pub workspace_key: String,
@@ -97,6 +118,13 @@ pub struct UpsertManualBody {
 
 /// POST /workspaces — manual-entry escape hatch. `entered_by` is a
 /// fresh `AgentId` until Phase 3 auth, same as the desktop command.
+#[utoipa::path(
+    post, operation_id = "workspaces_upsert_manual",
+    path = "/workspaces",
+    tag = "workspaces",
+    request_body = UpsertManualBody,
+    responses((status = 200, description = "Workspace stored"))
+)]
 pub async fn upsert_manual(
     State(state): State<AppState>,
     Json(body): Json<UpsertManualBody>,
@@ -118,7 +146,7 @@ pub async fn upsert_manual(
 /// Body for both onboarding routes. `config` is the not-yet-deployed
 /// connector config from the deploy form (bot token etc.) — it
 /// travels in the body, never the URL.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 pub struct OnboardBody {
     pub connector_name: String,
     pub config: serde_json::Value,
@@ -128,12 +156,19 @@ pub struct OnboardBody {
     pub session_id: Option<String>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, utoipa::ToSchema)]
 pub struct OnboardUrlResponse {
     pub url: String,
 }
 
 /// POST /workspaces/onboard-url — resolve the connector's deep link.
+#[utoipa::path(
+    post, operation_id = "workspaces_onboard_url",
+    path = "/workspaces/onboard-url",
+    tag = "workspaces",
+    request_body = OnboardBody,
+    responses((status = 200, description = "Deep link", body = OnboardUrlResponse))
+)]
 pub async fn onboard_url(
     Json(body): Json<OnboardBody>,
 ) -> Result<Json<OnboardUrlResponse>, (StatusCode, String)> {
@@ -159,6 +194,13 @@ impl Drop for CancelOnDrop {
 /// POST /workspaces/onboard?ticket=.. — SSE of `chat-discovered`
 /// frames (same payload as the desktop `ChatDiscovered` event) until
 /// the first match, the 60 s window, or client disconnect.
+#[utoipa::path(
+    post, operation_id = "workspaces_onboard",
+    path = "/workspaces/onboard",
+    tag = "workspaces",
+    request_body = OnboardBody,
+    responses((status = 200, description = "text/event-stream of onboarding progress", body = String))
+)]
 pub async fn onboard(
     Json(body): Json<OnboardBody>,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, (StatusCode, String)>

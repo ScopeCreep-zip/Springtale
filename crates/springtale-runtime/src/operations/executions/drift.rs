@@ -34,7 +34,9 @@ const DEFAULT_BASELINE_N: u32 = 30;
 const MIN_TOTAL_RUNS_FOR_DELTA: usize = 5;
 
 /// Input shape for [`recipe_drift`] / [`rule_drift`].
-#[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Default, Serialize, Deserialize, Type, utoipa::ToSchema, utoipa::IntoParams,
+)]
 pub struct DriftFilter {
     /// Filter to one bot's runs. Both this and `formation_id`
     /// can be set — they intersect.
@@ -50,7 +52,7 @@ pub struct DriftFilter {
 }
 
 /// Aggregate drift signal for a recipe / rule.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 pub struct DriftReport {
     /// How many recent runs informed the analysis.
     pub recent_runs: u32,
@@ -67,7 +69,7 @@ pub struct DriftReport {
     pub overall: DriftClass,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 pub struct LatencyDrift {
     pub recent_median_ms: Option<i64>,
     pub recent_p95_ms: Option<i64>,
@@ -78,7 +80,7 @@ pub struct LatencyDrift {
     pub class: DriftClass,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 pub struct RateDrift {
     /// 0.0..=1.0 over the recent window.
     pub recent: Option<f64>,
@@ -94,7 +96,7 @@ pub struct RateDrift {
 /// Per-signal verdict. Each signal can independently land on any
 /// of these; the aggregate `DriftReport.overall` is the worst of
 /// the three.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type, utoipa::ToSchema)]
 #[serde(rename_all = "snake_case")]
 pub enum DriftClass {
     /// Not enough runs to compute a delta (< MIN_TOTAL_RUNS_FOR_DELTA).

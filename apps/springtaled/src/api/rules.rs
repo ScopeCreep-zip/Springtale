@@ -11,17 +11,36 @@ use super::state::AppState;
 /// GET /rules/schema — return JSON schemas for trigger, condition, and action types.
 ///
 /// Used by the visual rule builder to generate input forms for each type.
+#[utoipa::path(
+    get, operation_id = "rules_schema",
+    path = "/rules/schema",
+    tag = "rules",
+    responses((status = 200, description = "Rule JSON schema", body = Object))
+)]
 pub async fn schema() -> impl IntoResponse {
     Json(operations::rules::get_rule_schema())
 }
 
 /// GET /rules — list all rules.
+#[utoipa::path(
+    get, operation_id = "rules_list",
+    path = "/rules",
+    tag = "rules",
+    responses((status = 200, description = "All rules", body = Vec<Object>))
+)]
 pub async fn list(State(state): State<AppState>) -> impl IntoResponse {
     let rules = operations::rules::list_rules(&state.runtime).await;
     Json(serde_json::json!({ "rules": rules }))
 }
 
 /// POST /rules — create a new rule.
+#[utoipa::path(
+    post, operation_id = "rules_create",
+    path = "/rules",
+    tag = "rules",
+    request_body = Object,
+    responses((status = 200, description = "Rule created", body = Object))
+)]
 pub async fn create(
     State(state): State<AppState>,
     Json(body): Json<serde_json::Value>,
@@ -53,6 +72,14 @@ pub async fn create(
 }
 
 /// PUT /rules/{id} — update a rule (replace).
+#[utoipa::path(
+    put, operation_id = "rules_update",
+    path = "/rules/{id}",
+    tag = "rules",
+    params(("id" = String, Path, description = "Rule id")),
+    request_body = Object,
+    responses((status = 200, description = "Rule updated", body = Object))
+)]
 pub async fn update(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
@@ -82,6 +109,13 @@ pub async fn update(
 }
 
 /// DELETE /rules/{id} — delete a rule.
+#[utoipa::path(
+    delete, operation_id = "rules_delete",
+    path = "/rules/{id}",
+    tag = "rules",
+    params(("id" = String, Path, description = "Rule id")),
+    responses((status = 200, description = "Rule deleted", body = Object))
+)]
 pub async fn delete(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
@@ -103,6 +137,14 @@ pub async fn delete(
 }
 
 /// POST /rules/{id}/toggle — toggle a rule's enabled/disabled status.
+#[utoipa::path(
+    post, operation_id = "rules_toggle",
+    path = "/rules/{id}/toggle",
+    tag = "rules",
+    params(("id" = String, Path, description = "Rule id")),
+    request_body = Object,
+    responses((status = 200, description = "Rule enabled/disabled", body = Object))
+)]
 pub async fn toggle(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
@@ -162,6 +204,13 @@ pub async fn toggle(
 }
 
 /// POST /rules/{id}/run — manually trigger a rule (dry-run).
+#[utoipa::path(
+    post, operation_id = "rules_run",
+    path = "/rules/{id}/run",
+    tag = "rules",
+    params(("id" = String, Path, description = "Rule id")),
+    responses((status = 200, description = "Rule run once", body = Object))
+)]
 pub async fn run(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
@@ -187,6 +236,13 @@ pub async fn run(
 ///
 /// Returns the generated Rule for preview (not persisted).
 /// The frontend shows the preview and the user calls POST /rules to save.
+#[utoipa::path(
+    post, operation_id = "rules_parse",
+    path = "/rules/parse",
+    tag = "rules",
+    request_body = Object,
+    responses((status = 200, description = "Parsed rule", body = Object))
+)]
 pub async fn parse(
     State(state): State<AppState>,
     Json(body): Json<serde_json::Value>,
@@ -209,6 +265,13 @@ pub async fn parse(
 }
 
 /// POST /rules/connector — create a connector-event rule from simple fields.
+#[utoipa::path(
+    post, operation_id = "rules_create_connector_rule",
+    path = "/rules/connector",
+    tag = "rules",
+    request_body = operations::rules::CreateConnectorRuleRequest,
+    responses((status = 200, description = "Connector rule created", body = Object))
+)]
 pub async fn create_connector_rule(
     State(state): State<AppState>,
     Json(req): Json<operations::rules::CreateConnectorRuleRequest>,
@@ -243,6 +306,13 @@ pub async fn create_connector_rule(
 }
 
 /// GET /rules/connector/{name} — list rules for a specific connector.
+#[utoipa::path(
+    get, operation_id = "rules_list_for_connector",
+    path = "/rules/connector/{name}",
+    tag = "rules",
+    params(("name" = String, Path, description = "Connector name")),
+    responses((status = 200, description = "Rules bound to one connector", body = Vec<Object>))
+)]
 pub async fn list_for_connector(
     State(state): State<AppState>,
     ValidatedPath(name): ValidatedPath,
@@ -252,6 +322,13 @@ pub async fn list_for_connector(
 }
 
 /// POST /connectors/{name}/test — test a connector by dry-running its first rule.
+#[utoipa::path(
+    post, operation_id = "rules_test_connector",
+    path = "/connectors/{name}/test",
+    tag = "rules",
+    params(("name" = String, Path, description = "Connector name")),
+    responses((status = 200, description = "Connector test outcome", body = Object))
+)]
 pub async fn test_connector(
     State(state): State<AppState>,
     ValidatedPath(name): ValidatedPath,
@@ -263,6 +340,14 @@ pub async fn test_connector(
 }
 
 /// POST /rules/{id}/reassign — reassign a rule to a new connector.
+#[utoipa::path(
+    post, operation_id = "rules_reassign",
+    path = "/rules/{id}/reassign",
+    tag = "rules",
+    params(("id" = String, Path, description = "Rule id")),
+    request_body = Object,
+    responses((status = 200, description = "Rule reassigned", body = Object))
+)]
 pub async fn reassign(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,

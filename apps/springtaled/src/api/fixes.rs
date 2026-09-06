@@ -14,11 +14,24 @@ use axum::http::StatusCode;
 use springtale_runtime::operations::error_fixes::{self, FixGuide, FixOutcome};
 
 /// GET /fixes — static guide table, stable across the session.
+#[utoipa::path(
+    get, operation_id = "fixes_list",
+    path = "/fixes",
+    tag = "fixes",
+    responses((status = 200, description = "Known fix guides", body = Vec<FixGuide>))
+)]
 pub async fn list() -> Json<Vec<&'static FixGuide>> {
     Json(error_fixes::all_guides().iter().collect())
 }
 
 /// GET /fixes/{id} — single guide lookup.
+#[utoipa::path(
+    get, operation_id = "fixes_get",
+    path = "/fixes/{id}",
+    tag = "fixes",
+    params(("id" = String, Path, description = "Fix guide id")),
+    responses((status = 200, description = "One fix guide", body = FixGuide))
+)]
 pub async fn get(Path(id): Path<String>) -> Result<Json<&'static FixGuide>, (StatusCode, String)> {
     error_fixes::lookup(&id)
         .map(Json)
@@ -26,6 +39,13 @@ pub async fn get(Path(id): Path<String>) -> Result<Json<&'static FixGuide>, (Sta
 }
 
 /// POST /fixes/{id}/apply — attempt the automated fix for this error.
+#[utoipa::path(
+    post, operation_id = "fixes_apply",
+    path = "/fixes/{id}/apply",
+    tag = "fixes",
+    params(("id" = String, Path, description = "Fix guide id")),
+    responses((status = 200, description = "Fix outcome", body = FixOutcome))
+)]
 pub async fn apply(Path(id): Path<String>) -> Json<FixOutcome> {
     Json(error_fixes::auto_fix(&id).await)
 }

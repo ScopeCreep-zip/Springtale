@@ -14,6 +14,8 @@ use anyhow::{Context, Result, anyhow};
 use springtale_cooperation::utterance::UtteranceDefs;
 use springtale_cooperation::utterance::defs::{ALL_CODEPOINT_CONSTS, NAMED_CODEPOINTS};
 
+use crate::output;
+
 /// Nerd Fonts' Material Design Icons block, `F0001–F1AF0`.
 const PUA_START: u32 = 0xE000;
 
@@ -25,15 +27,20 @@ fn all_codepoints() -> BTreeSet<char> {
     cps
 }
 
-pub fn glyphs(check: Option<&Path>) -> Result<()> {
+pub fn glyphs(check: Option<&Path>, json_out: bool) -> Result<()> {
     let cps = all_codepoints();
     if let Some(path) = check {
         check_against(path, &cps)?;
     }
-    for c in &cps {
-        println!("U+{:04X}", u32::from(*c));
-    }
-    Ok(())
+    // The plain listing is `pyftsubset --unicodes-file` input, so the
+    // human form stays one bare `U+XXXX` per line; `--json` wraps the
+    // same list in an envelope for anything that wants to parse it.
+    let listed: Vec<String> = cps
+        .iter()
+        .map(|c| format!("U+{:04X}", u32::from(*c)))
+        .collect();
+    let body = serde_json::json!({ "codepoints": &listed });
+    output::emit(json_out, &body, |_| listed.join("\n"))
 }
 
 /// `glyphnames.json` is `{ "METADATA": {...}, "<set>-<name>": { "char", "code" }, ... }`.

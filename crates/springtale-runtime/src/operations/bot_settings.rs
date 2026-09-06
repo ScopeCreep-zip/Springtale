@@ -25,7 +25,7 @@ pub const KEY: &str = "bot:settings";
 /// Moved here from `springtale-bot` (plan 6.3): the bot depends on the
 /// runtime, not the reverse, so the settings type the runtime owns and
 /// hands out has to live on this side of the dependency edge.
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, utoipa::ToSchema)]
 pub struct BotPersona {
     /// Bot display name. Default: "Springtale".
     #[serde(default = "default_name")]
@@ -77,7 +77,7 @@ impl Default for BotPersona {
 }
 
 /// The user-editable bot settings.
-#[derive(Debug, Clone, Serialize, Deserialize, specta::Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, specta::Type, utoipa::ToSchema)]
 pub struct BotSettings {
     /// Persona (name, tone, command prefix).
     #[serde(default)]
@@ -89,6 +89,7 @@ pub struct BotSettings {
     /// allow-list — the same default-mode posture as before (read-only
     /// actions only; see `springtale_ai::ToolPolicy`).
     #[serde(default)]
+    #[schema(value_type = Object)]
     pub tool_policy: springtale_ai::ToolPolicy,
     /// Management-API session idle timeout, seconds. A session with no
     /// accepted request inside this window is dropped. Default 1800.

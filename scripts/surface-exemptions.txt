@@ -1,0 +1,100 @@
+# Routes that do not yet have a command-line verb and/or a web
+# DataProvider method.
+#
+# This is a ledger of gaps, not a permission slip. `check-surface.sh`
+# fails on any NEW uncovered route, and fails on an entry naming a route
+# that no longer exists, so the file can only ever shrink.
+#
+# Columns: <route>  <cli|provider|cli provider>
+#
+/agents/states                   cli
+/agents/{}/autonomy/step         cli
+/approvals/{}                    provider
+/auth/login                      cli provider
+/auth/logout                     cli provider
+/auth/tokens                     cli provider
+/auth/tokens/{}                  cli provider
+/authors                         cli
+/authors/{}                      cli
+/bot/formations                  cli provider
+/bot/memory                      cli provider
+/bot/status                      cli provider
+/canvas                          provider
+/canvas/connections              cli
+/chat                            provider
+/chat/stream                     cli provider
+/config/ai                       cli
+/config/connector/{}             cli
+/config/heartbeat                cli provider
+/connectors/available            cli
+/connectors/install              provider
+/connectors/install-wasm         cli provider
+/connectors/schemas              cli
+/connectors/setup                cli
+/connectors/{}/cascade           cli
+/connectors/{}/config            cli
+/connectors/{}/outputs           cli provider
+/connectors/{}/reload            cli
+/connectors/{}/test              cli
+/connectors/{}/upsert-config     cli
+/cooperation/utterances          cli provider
+/cooperation/utterances/recent   cli provider
+/data/import                     provider
+/data/purge                      provider
+/diagnostics                     cli
+/drift/recipe/{}                 cli provider
+/drift/rule/{}                   cli provider
+/events                          cli provider
+/executions                      cli provider
+/executions/vacuum               cli provider
+/executions/{}/steps             cli provider
+/fixes                           cli
+/fixes/{}                        cli
+/fixes/{}/apply                  cli
+/formations/intents              cli
+/formations/{}/members/eligible  cli
+/formations/{}/propose-intent    cli provider
+/formations/{}/run-command       cli
+/formations/{}/votes/{}          cli provider
+/health                          cli provider
+/onboarding/platforms            cli
+/onboarding/{}                   cli provider
+/ready                           cli provider
+/recipes                         provider
+/recipes/categories              provider
+/recipes/import                  cli provider
+/recipes/user                    cli provider
+/recipes/user/{}                 cli provider
+/recipes/{}                      provider
+/recipes/{}/apply                provider
+/recipes/{}/export               cli provider
+/recipes/{}/favorite             cli provider
+/recipes/{}/fork                 cli provider
+/recipes/{}/pieces               cli provider
+/recipes/{}/preflight            cli provider
+/recipes/{}/preview              provider
+/recipes/{}/recent               cli provider
+/recipes/{}/render               cli provider
+/recipes/{}/test-step            cli provider
+/rules/connector                 cli
+/rules/connector/{}              cli
+/rules/parse                     cli
+/rules/schema                    cli
+/rules/{}/reassign               cli
+/safety/disguise/profile         cli
+/safety/panic-wipe               cli provider
+/send                            cli
+/sessions                        provider
+/stream                          cli provider
+/stream/ticket                   provider
+/templates                       cli
+/templates/{}                    cli provider
+/travel/prepare                  cli provider
+/travel/restore                  cli provider
+/ui                              cli provider
+/ui/{}                           cli provider
+/webhook/{}/{}                   cli provider
+/workspaces                      cli
+/workspaces/onboard              cli provider
+/workspaces/onboard-url          cli
+/workspaces/scan                 cli

@@ -13,7 +13,7 @@ use specta::Type;
 use crate::operations::diagnostics::{self, DiagnosticPaths};
 
 /// Static guidance for a single error ID.
-#[derive(Debug, Clone, Serialize, Type)]
+#[derive(Debug, Clone, Serialize, Type, utoipa::ToSchema)]
 pub struct FixGuide {
     pub id: &'static str,
     pub title: &'static str,
@@ -24,7 +24,7 @@ pub struct FixGuide {
 }
 
 /// Result of an attempted automated fix.
-#[derive(Debug, Clone, Serialize, Type)]
+#[derive(Debug, Clone, Serialize, Type, utoipa::ToSchema)]
 pub struct FixOutcome {
     pub id: &'static str,
     pub success: bool,

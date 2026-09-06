@@ -20,7 +20,7 @@ use crate::error::OperationError;
 /// no recursion — per `feedback_specta_recursive_types`. Tauri
 /// commands return `Vec<ExecutionInfo>`; the web dashboard reads
 /// the JSON form of the same shape.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 pub struct ExecutionInfo {
     pub id: String,
     pub bot_id: Option<String>,
@@ -62,7 +62,7 @@ impl From<ExecutionSummary> for ExecutionInfo {
 
 /// IPC-shaped projection of [`ExecutionStepRow`]. Flat. Sizes-only —
 /// content blob refs forwarded as opaque strings for Phase C.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 pub struct ExecutionStepInfo {
     pub execution_id: String,
     pub step_index: i64,
@@ -104,7 +104,9 @@ impl From<ExecutionStepRow> for ExecutionStepInfo {
 
 /// Mirror of [`ExecutionFilter`] for IPC. Flat, derives `Type`
 /// (the store filter doesn't because it's not crossing the boundary).
-#[derive(Debug, Clone, Default, Serialize, Deserialize, Type)]
+#[derive(
+    Debug, Clone, Default, Serialize, Deserialize, Type, utoipa::ToSchema, utoipa::IntoParams,
+)]
 pub struct ExecutionFilterIpc {
     pub bot_id: Option<String>,
     pub formation_id: Option<String>,

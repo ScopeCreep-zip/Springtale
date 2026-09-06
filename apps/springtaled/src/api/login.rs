@@ -196,7 +196,7 @@ pub fn bearer(headers: &HeaderMap) -> Option<&str> {
 }
 
 /// `POST /auth/login` body.
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct LoginRequest {
     /// The vault passphrase. Verified, never stored, zeroized here.
     pub passphrase: String,
@@ -204,6 +204,14 @@ pub struct LoginRequest {
 
 /// POST /auth/login — unauthenticated, rate-limited. Verifies the
 /// passphrase and mints a fresh session token.
+#[utoipa::path(
+    post, operation_id = "login_login",
+    path = "/auth/login",
+    tag = "auth",
+    request_body = LoginRequest,
+    security(()),
+    responses((status = 200, description = "Session token minted", body = Object))
+)]
 pub async fn login(State(state): State<AppState>, Json(req): Json<LoginRequest>) -> Response {
     let mut passphrase = req.passphrase;
     let presented = derive_api_token_hash(passphrase.as_bytes());
@@ -236,6 +244,12 @@ pub async fn login(State(state): State<AppState>, Json(req): Json<LoginRequest>)
 
 /// POST /auth/logout — drops the presented session. A long-lived token
 /// is not a session; revoke those with `DELETE /auth/tokens/{id}`.
+#[utoipa::path(
+    post, operation_id = "login_logout",
+    path = "/auth/logout",
+    tag = "auth",
+    responses((status = 200, description = "Session revoked", body = Object))
+)]
 pub async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Response {
     let Some(presented) = bearer(&headers) else {
         return StatusCode::UNAUTHORIZED.into_response();
@@ -252,7 +266,7 @@ pub async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Respon
 }
 
 /// `POST /auth/tokens` body.
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct CreateTokenRequest {
     /// User-chosen label, e.g. `springtale-cli@laptop`.
     pub name: String,
@@ -260,6 +274,13 @@ pub struct CreateTokenRequest {
 
 /// POST /auth/tokens — mint a long-lived named token. Authenticated.
 /// The token string is in the response and nowhere else, ever.
+#[utoipa::path(
+    post, operation_id = "login_create_token",
+    path = "/auth/tokens",
+    tag = "auth",
+    request_body = CreateTokenRequest,
+    responses((status = 200, description = "Long-lived token minted", body = Object))
+)]
 pub async fn create_token(
     State(state): State<AppState>,
     Json(req): Json<CreateTokenRequest>,
@@ -290,6 +311,12 @@ pub async fn create_token(
 }
 
 /// GET /auth/tokens — metadata only. The hash never crosses the wire.
+#[utoipa::path(
+    get, operation_id = "login_list_tokens",
+    path = "/auth/tokens",
+    tag = "auth",
+    responses((status = 200, description = "Named long-lived tokens", body = Vec<Object>))
+)]
 pub async fn list_tokens(State(state): State<AppState>) -> Response {
     match state.runtime.store.list_api_tokens().await {
         Ok(rows) => {
@@ -315,6 +342,13 @@ pub async fn list_tokens(State(state): State<AppState>) -> Response {
 
 /// DELETE /auth/tokens/{id} — revoke. The next request carrying that
 /// token fails its lookup, so revocation is immediate.
+#[utoipa::path(
+    delete, operation_id = "login_delete_token",
+    path = "/auth/tokens/{id}",
+    tag = "auth",
+    params(("id" = String, Path, description = "Token id")),
+    responses((status = 200, description = "Token revoked", body = Object))
+)]
 pub async fn delete_token(State(state): State<AppState>, Path(id): Path<String>) -> Response {
     if let Err(status) = super::validate_path_param(&id) {
         return status.into_response();

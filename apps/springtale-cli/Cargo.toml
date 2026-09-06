@@ -44,6 +44,13 @@ springtale-ai = { workspace = true }
 springtale-sentinel = { workspace = true }
 connector-telegram = { workspace = true }
 
+# Shell completions + man page are generated at build time from the same
+# `src/cli.rs` the binary compiles (see `build.rs` for the include! mechanism).
+[build-dependencies]
+clap = { workspace = true }
+clap_complete = { workspace = true }
+clap_mangen = { workspace = true }
+
 [dev-dependencies]
 tempfile = { workspace = true }
 # `tests/daemon_client.rs` runs the real CLI binary against a real

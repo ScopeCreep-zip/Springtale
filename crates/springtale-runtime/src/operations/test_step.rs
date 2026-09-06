@@ -56,7 +56,7 @@ pub enum TestStepError {
 }
 
 /// Result of one test-step run.
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 pub struct TestStepReport {
     pub recipe_id: String,
     pub rule_index: usize,
@@ -82,7 +82,7 @@ pub struct TestStepReport {
 /// IPC-shaped projection of [`StepOutput`]. Flat for specta;
 /// `output` is a serialized JSON value rather than a recursive
 /// type (matches the executions log pattern).
-#[derive(Debug, Clone, Serialize, Deserialize, Type)]
+#[derive(Debug, Clone, Serialize, Deserialize, Type, utoipa::ToSchema)]
 pub struct TestStepOutput {
     pub index: usize,
     pub kind: String,

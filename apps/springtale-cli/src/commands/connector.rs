@@ -15,7 +15,7 @@ pub async fn run(action: ConnectorAction, json_out: bool) -> Result<()> {
     // `sign` is a local file + vault operation with no daemon route, so
     // it must not require a reachable daemon or an API token.
     if let ConnectorAction::Sign { path } = &action {
-        return sign(path);
+        return sign(path, json_out);
     }
 
     let client = Client::from_config()?;
@@ -69,7 +69,7 @@ pub async fn run(action: ConnectorAction, json_out: bool) -> Result<()> {
 }
 
 /// Sign a connector manifest with the local identity, in place.
-fn sign(path: &std::path::Path) -> Result<()> {
+fn sign(path: &std::path::Path, json_out: bool) -> Result<()> {
     let contents = std::fs::read_to_string(path)
         .map_err(|e| anyhow::anyhow!("failed to read manifest at {}: {e}", path.display()))?;
     let mut manifest: springtale_connector::ConnectorManifest = toml::from_str(&contents)
@@ -87,13 +87,19 @@ fn sign(path: &std::path::Path) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("failed to write manifest at {}: {e}", path.display()))?;
 
     let pubkey_hex = hex::encode(keypair.verifying_key().to_bytes());
-    println!("Signed {}", path.display());
-    println!("  author:    {}", manifest.author);
-    println!("  pubkey:    {pubkey_hex}");
-    println!("  signature: {signature}");
-    println!(
-        "  Install verifies against `trusted-author:{}` — register it with `springtale author add {} --self`.",
-        manifest.author, manifest.author
-    );
-    Ok(())
+    let body = json!({
+        "path": path.display().to_string(),
+        "author": manifest.author,
+        "pubkey": pubkey_hex,
+        "signature": signature,
+    });
+    output::emit(json_out, &body, |v| {
+        let author = output::cell(v, "author");
+        format!(
+            "Signed {}\n  author:    {author}\n  pubkey:    {}\n  signature: {}\n  Install verifies against `trusted-author:{author}` — register it with `springtale author add {author} --self`.",
+            output::cell(v, "path"),
+            output::cell(v, "pubkey"),
+            output::cell(v, "signature"),
+        )
+    })
 }

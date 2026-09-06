@@ -113,6 +113,15 @@ pub async fn boot(
     // app IS springtaled with a GUI. Same runtime underneath."). Both
     // surfaces now drive identical cron/fs_watcher/queue/event-loop
     // wiring from `springtale_runtime::embedded::bootstrap`.
+    //
+    // The heartbeat interval is durable config: a `PUT /config/heartbeat`
+    // persists it, so boot reads the stored key back and only falls
+    // through to the config-file value when nothing was ever set.
+    let heartbeat_interval_secs = springtale_runtime::operations::heartbeat::boot_interval(
+        &*runtime.store,
+        heartbeat_interval_secs,
+    )
+    .await;
     let springtale_runtime::EmbeddedBootHandle {
         scheduler: embedded_scheduler,
         heartbeat_monitor,

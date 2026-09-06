@@ -27,6 +27,14 @@ pub struct Cli {
     /// `SPRINGTALE_PASSPHRASE` and the interactive TTY prompt.
     #[arg(long)]
     pub passphrase_stdin: bool,
+
+    /// Print the OpenAPI document to stdout and exit.
+    ///
+    /// Derived from the handler annotations, so it needs no vault, no
+    /// store and no bound port. CI regenerates it and diffs it against
+    /// the copy the frontend generates its TypeScript from.
+    #[arg(long)]
+    pub dump_openapi: bool,
 }
 
 impl Cli {

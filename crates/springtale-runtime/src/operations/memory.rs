@@ -47,3 +47,13 @@ pub async fn compact_memory(
     }
     Ok(total_deleted)
 }
+
+/// Request body for compacting memory.
+///
+/// `max_entries` is required: a silent default would quietly delete a
+/// different amount of history than the caller intended.
+#[derive(Debug, Clone, serde::Deserialize, utoipa::ToSchema)]
+pub struct CompactMemoryRequest {
+    /// Entries to keep per session.
+    pub max_entries: usize,
+}

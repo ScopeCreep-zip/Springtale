@@ -47,6 +47,12 @@ const STREAM_TICKET_TTL: Duration = Duration::from_secs(30);
 /// issued *against the presented session* (plan 6.6 step 4). The ticket
 /// carries the bearer's principal, so logging out or revoking the token
 /// kills every outstanding ticket with it.
+#[utoipa::path(
+    post, operation_id = "auth_issue_stream_ticket",
+    path = "/stream/ticket",
+    tag = "auth",
+    responses((status = 200, description = "One-time SSE ticket", body = Object))
+)]
 pub async fn issue_stream_ticket(
     State(state): State<AppState>,
     headers: HeaderMap,
