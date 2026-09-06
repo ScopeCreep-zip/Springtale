@@ -59,6 +59,18 @@ pub struct RuntimeState {
     /// `ArcSwap` so the chat hot path reads them lock-free and a `PUT
     /// /bot/settings` takes effect on the next message, with no restart.
     pub bot_settings: Arc<ArcSwap<crate::operations::bot_settings::BotSettings>>,
+    /// Every long-lived background task spawned for this runtime —
+    /// `init`'s sweepers and tickers, the embedded job consumer and
+    /// trigger event loop. Each of them captured an `Arc` clone of the
+    /// store or the whole state, so locking the daemon (plan 6.10) has
+    /// to `shutdown()` this before it can drop the `RuntimeState` and
+    /// have the SQLite handle actually close and the key zeroize.
+    pub tasks: crate::tasks::TaskHandles,
+    /// When this runtime last handled something a person asked for —
+    /// an authenticated API request or an inbound chat message. The
+    /// daemon's auto-lock timer (plan 6.10) reads it; the chat fan-out
+    /// and the API's request path write it.
+    pub activity: crate::activity::ActivityClock,
     /// Sentinel behavioral monitor.
     pub sentinel: Arc<springtale_sentinel::Sentinel>,
     /// Shared WASM engine for community connectors.

@@ -35,7 +35,6 @@ pub mod recipes;
 pub mod rules;
 pub mod safety;
 pub mod sessions;
-pub mod templates;
 pub mod test_step;
 pub mod travel;
 pub mod vault;

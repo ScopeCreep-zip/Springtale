@@ -155,6 +155,15 @@ impl ConnectorHost for NativeConnectorHost {
         NativeConnectorHost::verify_webhook(self, headers, body).await
     }
 
+    async fn ingest_webhook(
+        &self,
+        trigger: &str,
+        headers: &std::collections::HashMap<String, String>,
+        payload: &serde_json::Value,
+    ) -> crate::webhook::WebhookIngest {
+        self.inner.ingest_webhook(trigger, headers, payload).await
+    }
+
     fn chat_source(&self) -> Option<crate::chat::SharedChatSource> {
         self.inner.chat_source()
     }

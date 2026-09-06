@@ -28,8 +28,6 @@ import type {
   Report,
   SendOutcome,
   SendRequest,
-  Template,
-  WriteReport,
 } from "@springtale/types";
 import type { ConditionDef } from "../ConditionEditor";
 import type { BotSettingsValue } from "../colony/AppSettingsPanel";
@@ -620,10 +618,6 @@ export interface DataProvider {
   deleteUserRecipe(recipeId: string): Promise<boolean>;
   exportRecipeToml(recipeId: string): Promise<string>;
   importRecipeToml(toml: string): Promise<Recipe>;
-
-  // Templates
-  listTemplates(): Promise<Template[]>;
-  writeTemplate(name: string): Promise<WriteReport>;
 
   // Error fixes
   listFixes(): Promise<FixGuide[]>;

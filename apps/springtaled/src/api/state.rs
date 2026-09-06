@@ -55,11 +55,36 @@ pub struct AppState {
     /// auth, consumed by `require_stream_ticket`. Keeps bearer tokens out
     /// of URLs (EventSource cannot send headers; plan 0.7).
     pub stream_tickets: Arc<Mutex<HashMap<String, crate::api::login::StreamTicket>>>,
+    /// Flipped to `true` exactly once, when the daemon locks (plan
+    /// 6.10). Every SSE handler ends its stream on it.
+    ///
+    /// Without this a live `GET /stream` would hold an `AppState` clone
+    /// — and therefore the store handle and the database key — for as
+    /// long as the browser tab stayed open, which would make "locked"
+    /// a lie. Closing the streams is also what tells the canvas to
+    /// render the locked state (plan 3.6).
+    pub lock_signal: tokio::sync::watch::Sender<bool>,
 }
 
 impl AppState {
     /// Check if the daemon has completed its boot sequence.
     pub fn is_ready(&self) -> bool {
         self.ready.load(Ordering::Acquire)
+    }
+
+    /// A future that resolves when the daemon locks.
+    ///
+    /// SSE handlers pass it to `StreamExt::take_until` so their stream
+    /// ends — and releases its `AppState` clone — on lock.
+    /// `use<>` — the future owns a `watch::Receiver` and captures
+    /// nothing from `self`, so an SSE body may outlive this borrow.
+    pub fn locked(&self) -> impl std::future::Future<Output = ()> + Send + use<> {
+        let mut rx = self.lock_signal.subscribe();
+        async move {
+            // `wait_for` returns immediately when the value is already
+            // true, and `Err` only when every sender is gone — which
+            // itself means the state is being torn down.
+            let _ = rx.wait_for(|locked| *locked).await;
+        }
     }
 }

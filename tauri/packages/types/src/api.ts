@@ -2101,45 +2101,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/templates": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** GET /templates — every available starter. */
-        get: operations["templates_list"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/templates/{name}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /**
-         * POST /templates/{name} — write the named template.
-         * @description The daemon picks the destination directory and returns the path in
-         *     the response. No `dir` field accepted — the caller cannot influence
-         *     where files land (OWASP ASVS §12.3).
-         */
-        post: operations["templates_write"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/travel/prepare": {
         parameters: {
             query?: never;
@@ -2397,6 +2358,18 @@ export interface components {
         };
         /** @description The user-editable bot settings. */
         BotSettings: {
+            /**
+             * Format: int64
+             * @description Idle seconds before the daemon locks itself: drops the runtime,
+             *     closes the database and zeroizes the vault key (plan 6.10).
+             *     `0` disables auto-lock. Default: 300.
+             *
+             *     Moved here from `springtale_bot::BotConfig::vault_timeout_secs`,
+             *     which nothing read and which could only be changed by editing a
+             *     TOML file and restarting — exactly what the product model
+             *     forbids of a setting.
+             */
+            auto_lock_secs?: number;
             /** @description Conversation context window size. Default: 50. */
             context_window?: number;
             /** @description Persona (name, tone, command prefix). */
@@ -3212,17 +3185,6 @@ export interface components {
             intent: string;
             name: string;
         };
-        /** @description A static starter template. */
-        Template: {
-            description: string;
-            /** @description Relative files the template writes into the destination dir. */
-            files: components["schemas"]["TemplateFile"][];
-            name: string;
-        };
-        TemplateFile: {
-            contents: string;
-            relative_path: string;
-        };
         /** @description Body for `POST /recipes/{id}/test-step`. */
         TestStepBody: {
             inputs: components["schemas"]["RecipeInputs"];
@@ -3315,12 +3277,6 @@ export interface components {
              */
             provenance_json: string;
             workspace_key: string;
-        };
-        /** @description Outcome of writing a template to disk. */
-        WriteReport: {
-            created: string[];
-            dir: string;
-            template: string;
         };
     };
     responses: never;
@@ -6245,49 +6201,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": Record<string, never>;
-                };
-            };
-        };
-    };
-    templates_list: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Scaffolding templates */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": Record<string, never>[];
-                };
-            };
-        };
-    };
-    templates_write: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description Template name */
-                name: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Files written */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WriteReport"];
                 };
             };
         };

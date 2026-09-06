@@ -6114,6 +6114,7 @@ dependencies = [
  "connector-slack",
  "connector-telegram",
  "figment",
+ "futures-util",
  "garde",
  "hex",
  "hmac",

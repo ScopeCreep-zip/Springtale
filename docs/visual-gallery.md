@@ -203,7 +203,7 @@ If you want to contribute screenshots:
 
 1. Run the daemon + desktop in a clean state (`SPRINGTALE_DATA_DIR=
    /tmp/clean-springtale`).
-2. Scaffold a `telegram-bot` or `llm-swarm` template to populate
+2. Deploy the `telegram-bot-echo` or `llm-swarm` recipe to populate
    the canvas with real-looking data.
 3. **Use placeholder values** for connector tokens. Never include
    real tokens or real chat IDs in screenshots.

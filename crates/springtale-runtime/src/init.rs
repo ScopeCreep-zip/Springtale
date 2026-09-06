@@ -87,12 +87,19 @@ pub async fn init(
         .unwrap_or_else(|| Arc::new(crate::approval::SentinelChatGate::new(chat_gate.clone())));
     let sentinel = init_sentinel(config, &store, sentinel_gate);
 
+    // Every background task spawned from here on registers in `tasks`
+    // so `RuntimeState::shutdown_tasks` can end them. A task that
+    // outlives its runtime holds an `Arc` clone of the store, which
+    // would keep the database open and the key in memory after a lock
+    // (plan 6.10).
+    let tasks = crate::tasks::TaskHandles::new();
+
     // Start WASM epoch ticker — increments every 1s so wall-clock
     // timeouts actually fire. Without this, a malicious WASM module
     // doing blocking I/O could run forever (fuel only counts instructions).
     {
         let ticker_engine = wasm_engine.engine().clone();
-        tokio::spawn(async move {
+        tasks.spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
             loop {
                 interval.tick().await;
@@ -109,7 +116,7 @@ pub async fn init(
     // rows but never expired ones.
     {
         let store_sweeper = store.clone();
-        tokio::spawn(async move {
+        tasks.spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(5));
             loop {
                 interval.tick().await;
@@ -133,7 +140,7 @@ pub async fn init(
     // Cascades to `execution_steps` via the FK ON DELETE CASCADE.
     {
         let store_sweeper = store.clone();
-        tokio::spawn(async move {
+        tasks.spawn(async move {
             let mut interval = tokio::time::interval(std::time::Duration::from_secs(3600));
             loop {
                 interval.tick().await;
@@ -166,7 +173,7 @@ pub async fn init(
     // surfaces stale data. The identifier the sweep uses is the peer's
     // SocketAddr string — the same id chitchat stamps onto incoming
     // entries via `GossipEntry::with_peer_id`.
-    let swim_node = init_swim_node(&config.cooperation, gossip_store.clone()).await?;
+    let swim_node = init_swim_node(&config.cooperation, gossip_store.clone(), &tasks).await?;
 
     // Canvas/A2UI
     let canvas = Arc::new(tokio::sync::RwLock::new(
@@ -196,7 +203,7 @@ pub async fn init(
     {
         let canvas = canvas.clone();
         let mut rx = canvas_tx.subscribe();
-        tokio::spawn(async move {
+        tasks.spawn(async move {
             loop {
                 match rx.recv().await {
                     Ok(update) => {
@@ -217,7 +224,10 @@ pub async fn init(
     let (cooperation_tx, _) = tokio::sync::broadcast::channel(512);
     // Plan §1.15 F/G: utterance ring + def table + the bot-written tick clock.
     let utterances = crate::utterance_ring::UtteranceRing::default();
-    crate::utterance_ring::spawn_collector(utterances.clone(), cooperation_tx.subscribe());
+    tasks.push(crate::utterance_ring::spawn_collector(
+        utterances.clone(),
+        cooperation_tx.subscribe(),
+    ));
     let utterance_defs = Arc::new(config.cooperation.utterances.clone());
     let cadence_tick = Arc::new(std::sync::atomic::AtomicU64::new(0));
     // G6 — cross-formation gossip bus. In-memory default; cross-process
@@ -312,7 +322,7 @@ pub async fn init(
         let mut announcements = chat_gate.subscribe();
         let bridge = capability_bridge.clone();
         let announce_tx = event_tx.clone();
-        tokio::spawn(async move {
+        tasks.spawn(async move {
             while let Ok(req) = announcements.recv().await {
                 let expires_at = req.requested_at
                     + chrono::Duration::from_std(crate::approval::CHAT_APPROVAL_TIMEOUT)
@@ -403,6 +413,8 @@ pub async fn init(
         engine,
         ai_adapter: ai_adapter_handle,
         bot_settings,
+        tasks,
+        activity: crate::activity::ActivityClock::new(),
         sentinel,
         wasm_engine,
         wasm_tier_cache,
@@ -472,6 +484,7 @@ async fn register_persisted_manifest_roles(
 async fn init_swim_node(
     cfg: &crate::config::CooperationConfig,
     gossip_store: Arc<dyn springtale_cooperation::awareness::GossipStore>,
+    tasks: &crate::tasks::TaskHandles,
 ) -> Result<Option<Arc<springtale_cooperation::awareness::SwimNode>>, OperationError> {
     use springtale_cooperation::awareness::{SwimNode, SwimNodeConfig};
     use std::num::NonZeroU32;
@@ -526,7 +539,7 @@ async fn init_swim_node(
         use springtale_cooperation::awareness::{SwimEvent, SwimSelfState};
         let mut rx = node.subscribe();
         let sweep_gossip = gossip_store.clone();
-        tokio::spawn(async move {
+        tasks.spawn(async move {
             loop {
                 match rx.recv().await {
                     Ok(SwimEvent::MemberUp(peer)) => {

@@ -94,6 +94,40 @@ pub trait Connector: Send + Sync + 'static {
         ))
     }
 
+    /// Read an already-VERIFIED webhook payload: what chat messages and
+    /// rule-engine events does it mean?
+    ///
+    /// Called by the management API's webhook ingress immediately after
+    /// [`Connector::verify_webhook`] returns `Ok`. The ingress owns the
+    /// transport (route, signature check, event log, rate limits); the
+    /// connector owns the protocol — which field is the sender, which is
+    /// the channel, which updates are chat at all.
+    ///
+    /// Before this existed the daemon extracted those fields itself with
+    /// a `match` on one connector name, so only that connector's webhook
+    /// chat could reach the bot and every other connector's webhook was
+    /// receive-only.
+    ///
+    /// # Arguments
+    /// * `trigger` — trigger name from the webhook route
+    /// * `headers` — HTTP headers from the request (already verified)
+    /// * `payload` — parsed JSON body (already verified, depth-checked)
+    ///
+    /// The ingress dispatches the route's own `ConnectorEvent` itself, so
+    /// return an event in [`WebhookIngest::events`] only for an
+    /// *additional* rule event the same request implies.
+    ///
+    /// Default: [`WebhookIngest::empty`] — correct for connectors with no
+    /// webhooks and for gateway/polling connectors.
+    async fn ingest_webhook(
+        &self,
+        _trigger: &str,
+        _headers: &std::collections::HashMap<String, String>,
+        _payload: &serde_json::Value,
+    ) -> crate::webhook::WebhookIngest {
+        crate::webhook::WebhookIngest::empty()
+    }
+
     /// Normalize a raw provider event payload for `trigger` into this
     /// connector's declared trigger schema — the canonical flat shape
     /// recipes consume via `${trigger.*}`.

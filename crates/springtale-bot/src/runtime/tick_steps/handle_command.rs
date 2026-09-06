@@ -33,6 +33,34 @@ fn guarded(formation: &Formation, verb: &str) -> bool {
     }
 }
 
+/// Engage or disengage guard mode on a live formation and republish the
+/// formation context so members see the new constraint on their next read.
+///
+/// The `guard:{formation_id}` config row is the durable copy (read back into
+/// `constraints.guard_mode` at deploy); this is the live copy that
+/// [`guarded`] enforces. `operations::config::toggle_formation_guard` writes
+/// the row and posts `FormationCommand::SetGuard` together, so engaging guard
+/// protects the formation immediately rather than at the next redeploy.
+fn set_guard(formation: &mut Formation, engaged: bool) {
+    formation.constraints.guard_mode = engaged;
+    formation.broadcast_context();
+}
+
+/// Failures a formation recorded over its whole life, for the dissolve
+/// outcome that gossip and the knowledge store publish.
+///
+/// The momentum FSM is the only place that counts a formation's failures:
+/// `record_interference` bumps `interference_total` on every interference and
+/// never resets it, while `interference_count` and `consecutive_successes` are
+/// per-clean-run and reset on every break (Patapon combo). A dissolve is a
+/// lifetime summary, so `interference_total` is the count that matches
+/// `success_count`'s question — "how did this formation do" — and a hardcoded
+/// zero read as "nothing ever failed here", which skewed the retrieval
+/// scorer's success/total ratio in `cooperation::lifecycle`.
+fn dissolve_failure_count(momentum: &springtale_cooperation::momentum::MomentumState) -> u32 {
+    momentum.interference_total
+}
+
 pub async fn handle_formation_command(bot: &mut Bot, cmd: FormationCommand) {
     match cmd {
         FormationCommand::Deploy { formation_id } => {
@@ -85,7 +113,7 @@ pub async fn handle_formation_command(bot: &mut Bot, cmd: FormationCommand) {
                         formation_id: f.id,
                         final_intent: f.intent.clone(),
                         success_count: f.momentum.consecutive_successes,
-                        failure_count: 0,
+                        failure_count: dissolve_failure_count(&f.momentum),
                         dissolve_reason: reason.clone(),
                         at: chrono::Utc::now(),
                     };
@@ -110,7 +138,7 @@ pub async fn handle_formation_command(bot: &mut Bot, cmd: FormationCommand) {
                         peak_tier: f.momentum.tier,
                         connectors,
                         success_count: f.momentum.consecutive_successes,
-                        failure_count: 0,
+                        failure_count: dissolve_failure_count(&f.momentum),
                         dissolve_reason: reason.clone(),
                         at: chrono::Utc::now(),
                     };
@@ -134,6 +162,18 @@ pub async fn handle_formation_command(bot: &mut Bot, cmd: FormationCommand) {
                 tracing::info!(id = %formation_id, "formation paused");
             } else {
                 tracing::warn!(id = %formation_id, "formation not found for pause");
+            }
+        }
+        FormationCommand::SetGuard {
+            formation_id,
+            engaged,
+        } => {
+            let mut formations = bot.formations.write().await;
+            if let Some(formation) = formations.iter_mut().find(|f| f.id == formation_id) {
+                set_guard(formation, engaged);
+                tracing::info!(id = %formation_id, engaged, "formation guard mode set");
+            } else {
+                tracing::warn!(id = %formation_id, "formation not found for SetGuard");
             }
         }
         FormationCommand::Resume { formation_id } => {
@@ -271,8 +311,8 @@ pub async fn handle_formation_command(bot: &mut Bot, cmd: FormationCommand) {
                         tier = ?formation.momentum.tier,
                         "recruit denied — formation has not earned Fever tier"
                     );
-                } else if formation.constraints.guard_mode {
-                    tracing::info!(id = %formation_id, "recruit denied — guard mode engaged");
+                } else if guarded(formation, "recruit") {
+                    // `guarded` already logged the denial.
                 } else {
                     let member = crate::cooperation::formation::FormationMember::from_strings(
                         AgentId::new(),
@@ -416,6 +456,61 @@ mod tests {
 
     fn member(id: AgentId) -> crate::cooperation::formation::FormationMember {
         crate::cooperation::formation::FormationMember::new(id, vec!["connector-telegram".into()])
+    }
+
+    /// Toggling guard on a *live* formation blocks a guarded verb straight
+    /// away. The guard flag used to be read only at deploy, so engaging it
+    /// left the running formation unprotected until a redeploy;
+    /// `FormationCommand::SetGuard` (posted by `toggle_formation_guard`) lands
+    /// here instead.
+    #[test]
+    fn test_set_guard_blocks_guarded_verbs_without_redeploy() {
+        use springtale_cooperation::cadence::IntentPattern;
+        use springtale_cooperation::types::FormationConstraints;
+
+        // Deployed with guard off — the default every spawn used to get.
+        let mut formation = crate::cooperation::formation::Formation::new_disconnected(
+            vec![member(AgentId::new())],
+            IntentPattern::Stabilize {
+                reason: "test".into(),
+            },
+            FormationConstraints::default(),
+        );
+        assert!(!formation.constraints.guard_mode);
+        for verb in ["dissolve", "intent", "remove_member", "rally", "recruit"] {
+            assert!(!guarded(&formation, verb), "{verb} blocked before toggle");
+        }
+
+        set_guard(&mut formation, true);
+
+        assert!(formation.constraints.guard_mode);
+        for verb in ["dissolve", "intent", "remove_member", "rally", "recruit"] {
+            assert!(guarded(&formation, verb), "{verb} not blocked under guard");
+        }
+
+        set_guard(&mut formation, false);
+        assert!(!guarded(&formation, "dissolve"));
+    }
+
+    /// The dissolve outcome reports the failures the formation actually
+    /// recorded, not a hardcoded zero.
+    #[test]
+    fn test_dissolve_failure_count_matches_recorded_interferences() {
+        use springtale_cooperation::momentum::MomentumState;
+
+        let mut momentum = MomentumState::default();
+        assert_eq!(dissolve_failure_count(&momentum), 0);
+
+        momentum.record_interference();
+        momentum.record_success();
+        momentum.record_interference();
+        momentum.record_interference();
+
+        // Three interferences over the formation's life; the per-run counter
+        // reset behind each one, which is why it cannot be the source.
+        assert_eq!(momentum.interference_total, 3);
+        assert_eq!(momentum.interference_count, 0);
+        assert_eq!(dissolve_failure_count(&momentum), 3);
     }
 
     /// A rally relieves the member carrying the most attention. Picking the

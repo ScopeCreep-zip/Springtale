@@ -12,8 +12,10 @@ use rustls_pemfile::Item;
 
 use crate::error::KickError;
 
+pub mod ingest;
 pub mod replay;
 
+pub use ingest::ingest_event;
 pub use replay::{ReplayCache, check_timestamp};
 
 /// Header carrying the idempotent message id (`Kick-Event-Message-Id`).

@@ -80,5 +80,13 @@ pub async fn stream(
             Err(_) => None,
         });
 
-    Sse::new(events.merge(canvas).merge(cooperation)).keep_alive(KeepAlive::default())
+    // The stream ends when the daemon locks, so this connection stops
+    // holding an `AppState` clone (plan 6.10).
+    // Fully qualified: `tokio_stream::StreamExt` is also in scope here
+    // and has no `take_until` of its own.
+    Sse::new(futures_util::StreamExt::take_until(
+        events.merge(canvas).merge(cooperation),
+        state.locked(),
+    ))
+    .keep_alive(KeepAlive::default())
 }

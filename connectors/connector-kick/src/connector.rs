@@ -281,6 +281,18 @@ impl Connector for KickConnector {
         &self.manifest
     }
 
+    /// Read a verified Kick webhook into the chat it carries, so
+    /// `chat.message.sent` reaches the bot through the management API's
+    /// ingress. Kick has no polling gateway — this is the only route.
+    async fn ingest_webhook(
+        &self,
+        trigger: &str,
+        headers: &std::collections::HashMap<String, String>,
+        payload: &serde_json::Value,
+    ) -> springtale_connector::webhook::WebhookIngest {
+        webhook::ingest_event(trigger, headers, payload)
+    }
+
     fn chat_source(&self) -> Option<springtale_connector::chat::SharedChatSource> {
         Some(self.chat.clone())
     }

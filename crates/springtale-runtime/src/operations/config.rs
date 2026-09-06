@@ -222,22 +222,66 @@ pub async fn upsert_connector_config(
     }
 }
 
+/// Config key holding a formation's guard-mode flag. The single source of
+/// truth for the durable copy — every reader goes through
+/// [`formation_guard_engaged`] and the only writer is
+/// [`toggle_formation_guard`].
+fn guard_key(formation_id: &str) -> String {
+    format!("guard:{formation_id}")
+}
+
+/// Whether guard mode is engaged for a formation, read from the durable
+/// config row. Deploy copies this into the live formation's
+/// `constraints.guard_mode`, and [`toggle_formation_guard`] keeps the live
+/// copy in step afterward, so the two agree.
+pub async fn formation_guard_engaged(
+    store: &dyn springtale_store::backend::StorageBackend,
+    formation_id: &str,
+) -> bool {
+    !get_config(store, &guard_key(formation_id))
+        .await
+        .unwrap_or(Value::Null)
+        .is_null()
+}
+
 /// Toggle guard mode for a formation.
 ///
 /// Replaces the frontend read-modify-write pattern on guard config.
+///
+/// Writes the durable config row AND posts `FormationCommand::SetGuard` so the
+/// live `Formation` in the bot tick loop picks the change up on its next
+/// command drain. Without the command the live `constraints.guard_mode` would
+/// keep whatever value deploy gave it, and engaging guard would protect
+/// nothing until the formation was redeployed.
 pub async fn toggle_formation_guard(
     state: &RuntimeState,
     formation_id: &str,
 ) -> Result<bool, OperationError> {
-    let key = format!("guard:{formation_id}");
-    let current = get_config(&*state.store, &key).await?;
-    let is_enabled = !current.is_null();
+    let key = guard_key(formation_id);
+    let is_enabled = formation_guard_engaged(&*state.store, formation_id).await;
     if is_enabled {
         set_config(&*state.store, &key, Value::Null).await?;
     } else {
         set_config(&*state.store, &key, serde_json::json!({ "enabled": true })).await?;
     }
-    Ok(!is_enabled) // returns new state
+    let engaged = !is_enabled;
+    if let Ok(fid) = springtale_cooperation::types::FormationId::parse(formation_id) {
+        let _ = state
+            .formation_cmd_tx
+            .send(
+                springtale_cooperation::command::FormationCommand::SetGuard {
+                    formation_id: fid,
+                    engaged,
+                },
+            )
+            .await;
+    } else {
+        tracing::warn!(
+            formation = %formation_id,
+            "guard toggled on an unparseable formation id — live formation not updated"
+        );
+    }
+    Ok(engaged) // returns new state
 }
 
 #[cfg(test)]

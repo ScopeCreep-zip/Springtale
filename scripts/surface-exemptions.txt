@@ -87,8 +87,6 @@
 /sessions                        provider
 /stream                          cli provider
 /stream/ticket                   provider
-/templates                       cli
-/templates/{}                    cli provider
 /travel/prepare                  cli provider
 /travel/restore                  cli provider
 /ui                              cli provider

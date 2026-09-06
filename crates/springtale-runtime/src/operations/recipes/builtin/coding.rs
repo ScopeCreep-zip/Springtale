@@ -20,6 +20,7 @@ use super::super::types::{
 pub fn all() -> Vec<Recipe> {
     vec![
         github_pr_watcher(),
+        github_monitor(),
         code_review(),
         github_push_discord(),
         github_issue_telegram(),
@@ -92,6 +93,96 @@ text = "New PR in ${repo}: ${trigger.title} (#${trigger.number})"
             ai_config: None,
             summary: Some(
                 "Watches a GitHub repository and posts a notification when a PR is opened.".into(),
+            ),
+            derived_inputs: vec![],
+        },
+    }
+}
+
+// ── GitHub monitor → Telegram ──────────────────────────────────
+
+fn github_monitor() -> Recipe {
+    Recipe {
+        id: "github-monitor".into(),
+        name: "GitHub Monitor".into(),
+        description: "Push notifications from a GitHub repository land in a Telegram chat.".into(),
+        icon_id: "github".into(),
+        category: RecipeCategory::Coding,
+        tags: vec!["github".into(), "telegram".into(), "notification".into()],
+        connectors_used: vec!["connector-github".into(), "connector-telegram".into()],
+        ai_required: false,
+        difficulty: Difficulty::Standard,
+        source: RecipeSource::Builtin,
+        inputs: vec![
+            InputField {
+                id: "github_token".into(),
+                label: "GitHub personal access token".into(),
+                kind: FieldKind::Secret,
+                visibility: FieldVisibility::Required,
+                default: None,
+                hint: Some("Create at github.com/settings/tokens with repo scope.".into()),
+            },
+            InputField {
+                id: "repo".into(),
+                label: "Repository (owner/name)".into(),
+                kind: FieldKind::Text,
+                visibility: FieldVisibility::Required,
+                default: None,
+                hint: Some("e.g. octocat/hello-world".into()),
+            },
+            InputField {
+                id: "telegram_token".into(),
+                label: "Telegram bot token".into(),
+                kind: FieldKind::Secret,
+                visibility: FieldVisibility::Required,
+                default: None,
+                hint: Some("From @BotFather.".into()),
+            },
+            InputField {
+                id: "chat_id".into(),
+                label: "Telegram chat ID".into(),
+                kind: FieldKind::Text,
+                visibility: FieldVisibility::Required,
+                default: None,
+                hint: Some("The chat the notifications are posted to.".into()),
+            },
+        ],
+        blueprint: RecipeBlueprint {
+            connector_configs: vec![
+                ConnectorConfigStep {
+                    connector_name: "connector-github".into(),
+                    config: json!({
+                        "access_token": "${github_token}",
+                        "watched_repos": ["${repo}"]
+                    }),
+                },
+                ConnectorConfigStep {
+                    connector_name: "connector-telegram".into(),
+                    config: json!({ "bot_token": "${telegram_token}" }),
+                },
+            ],
+            rules: vec![RuleStep {
+                toml: r#"name = "github-push-notify"
+
+[trigger]
+type = "ConnectorEvent"
+connector = "connector-github"
+event = "push"
+
+[[actions]]
+type = "RunConnector"
+connector = "connector-telegram"
+action = "send_message"
+
+[actions.params]
+chat_id = "${chat_id}"
+text = "Push to ${repo} by ${trigger.pusher}: ${trigger.head_commit_message}"
+"#
+                .into(),
+            }],
+            ai_config: None,
+            summary: Some(
+                "Watches a GitHub repository and posts every push to a Telegram chat.".into(),
             ),
             derived_inputs: vec![],
         },

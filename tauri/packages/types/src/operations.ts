@@ -73,30 +73,6 @@ export interface ApplyReport {
   fields_stored: string[];
 }
 
-// --- Templates (templates.rs) ---
-
-/** A file within a starter template. Matches `TemplateFile` struct. */
-export interface TemplateFile {
-  relative_path: string;
-  contents: string;
-}
-
-/** A static starter template. Matches `Template` struct. */
-export interface Template {
-  name: string;
-  description: string;
-  files: TemplateFile[];
-}
-
-/** Outcome of writing a template to disk. Matches `WriteReport` struct. */
-export interface WriteReport {
-  template: string;
-  /** Absolute path to the directory created. */
-  dir: string;
-  /** Absolute paths to all files created. */
-  created: string[];
-}
-
 // --- Cross-channel (cross_channel.rs) ---
 
 /** Request to send a message through a specific connector. Matches `SendRequest` struct. */

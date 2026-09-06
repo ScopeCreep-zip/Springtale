@@ -2316,7 +2316,6 @@ local encrypted store, or local files:
 ```
 # offline (daemon may be stopped)
 springtale init
-springtale new <template>
 springtale doctor
 springtale fix <error-id>
 springtale vault duress-setup

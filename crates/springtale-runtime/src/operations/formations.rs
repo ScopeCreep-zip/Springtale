@@ -138,24 +138,16 @@ pub struct FormationInfo {
     /// Guard badge label derived from `guard_engaged`: "GUARD" when the
     /// guard toggle is engaged, "--" otherwise.
     pub guard_status: String,
-    /// True when guard mode is engaged for this formation. Read from the
-    /// `guard:{formation_id}` config row — the same key `toggle_formation_guard`
-    /// writes (finding 78 / plan 1.12). Gates Dissolve, ChangeIntent,
-    /// RemoveMember, and Rally in `commands.rs::is_enabled_for`.
+    /// True when guard mode is engaged for this formation. Read through
+    /// `config::formation_guard_engaged`, the single accessor for the
+    /// `guard:{formation_id}` config row that `toggle_formation_guard` writes
+    /// (finding 78 / plan 1.12). Gates Dissolve, ChangeIntent, RemoveMember,
+    /// and Rally in `commands.rs::is_enabled_for`.
     ///
-    /// KNOWN DIVERGENCE: this reads the config row, not the live formation's
-    /// `constraints.guard_mode`. The `formation:guard` toggle writes only the
-    /// config row; the live `Formation` in the bot tick loop (which
-    /// `tick_steps/handle_command.rs::guarded` checks) reads
-    /// `constraints.guard_mode`, set once at deploy/spawn time and never
-    /// refreshed from the config row afterward. `LiveFormationReader` has no
-    /// accessor for a live formation's `constraints.guard_mode` today, so
-    /// there is no way to source this field from the live formation without
-    /// extending that trait — out of scope for this change. The two can
-    /// therefore disagree: toggling guard on a formation whose bot process
-    /// already has it live-loaded updates the UI eligibility (this field)
-    /// immediately, but the live enforcement in `handle_command.rs` will not
-    /// see the change until the formation is redeployed.
+    /// The row and the live formation's `constraints.guard_mode` cannot
+    /// disagree: `toggle_formation_guard` writes the row and posts
+    /// `FormationCommand::SetGuard` in the same call, so live enforcement in
+    /// `handle_command.rs::guarded` sees a toggle without a redeploy.
     pub guard_engaged: bool,
     /// Rally tokens remaining (Monster Hunter carts, §15).
     pub rally_tokens: i64,
@@ -582,11 +574,8 @@ pub async fn list_formations(state: &RuntimeState) -> Result<Vec<FormationInfo>,
 
         let momentum_label = tier_label(&momentum_tier);
         let capabilities = tier_capabilities(&momentum_tier);
-        // See `guard_engaged` doc comment for the live-vs-config divergence.
-        let guard_engaged = !config::get_config(&*state.store, &format!("guard:{}", f.id))
-            .await
-            .unwrap_or(serde_json::Value::Null)
-            .is_null();
+        // Single accessor for the guard row — see `guard_engaged`.
+        let guard_engaged = config::formation_guard_engaged(&*state.store, &f.id).await;
         let guard_status = guard_status_label(guard_engaged).to_owned();
 
         // Operational count: prefer the live reader (accurate — reads

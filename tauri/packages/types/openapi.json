@@ -4169,63 +4169,6 @@
         }
       }
     },
-    "/templates": {
-      "get": {
-        "tags": [
-          "templates"
-        ],
-        "summary": "GET /templates — every available starter.",
-        "operationId": "templates_list",
-        "responses": {
-          "200": {
-            "description": "Scaffolding templates",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {
-                    "type": "object"
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/templates/{name}": {
-      "post": {
-        "tags": [
-          "templates"
-        ],
-        "summary": "POST /templates/{name} — write the named template.",
-        "description": "The daemon picks the destination directory and returns the path in\nthe response. No `dir` field accepted — the caller cannot influence\nwhere files land (OWASP ASVS §12.3).",
-        "operationId": "templates_write",
-        "parameters": [
-          {
-            "name": "name",
-            "in": "path",
-            "description": "Template name",
-            "required": true,
-            "schema": {
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "Files written",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/WriteReport"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
     "/travel/prepare": {
       "post": {
         "tags": [
@@ -4770,6 +4713,12 @@
         "type": "object",
         "description": "The user-editable bot settings.",
         "properties": {
+          "auto_lock_secs": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Idle seconds before the daemon locks itself: drops the runtime,\ncloses the database and zeroizes the vault key (plan 6.10).\n`0` disables auto-lock. Default: 300.\n\nMoved here from `springtale_bot::BotConfig::vault_timeout_secs`,\nwhich nothing read and which could only be changed by editing a\nTOML file and restarting — exactly what the product model\nforbids of a setting.",
+            "minimum": 0
+          },
           "context_window": {
             "type": "integer",
             "description": "Conversation context window size. Default: 50.",
@@ -6741,45 +6690,6 @@
         },
         "additionalProperties": false
       },
-      "Template": {
-        "type": "object",
-        "description": "A static starter template.",
-        "required": [
-          "name",
-          "description",
-          "files"
-        ],
-        "properties": {
-          "description": {
-            "type": "string"
-          },
-          "files": {
-            "type": "array",
-            "items": {
-              "$ref": "#/components/schemas/TemplateFile"
-            },
-            "description": "Relative files the template writes into the destination dir."
-          },
-          "name": {
-            "type": "string"
-          }
-        }
-      },
-      "TemplateFile": {
-        "type": "object",
-        "required": [
-          "relative_path",
-          "contents"
-        ],
-        "properties": {
-          "contents": {
-            "type": "string"
-          },
-          "relative_path": {
-            "type": "string"
-          }
-        }
-      },
       "TestStepBody": {
         "type": "object",
         "description": "Body for `POST /recipes/{id}/test-step`.",
@@ -6998,29 +6908,6 @@
             "type": "string"
           }
         }
-      },
-      "WriteReport": {
-        "type": "object",
-        "description": "Outcome of writing a template to disk.",
-        "required": [
-          "template",
-          "dir",
-          "created"
-        ],
-        "properties": {
-          "created": {
-            "type": "array",
-            "items": {
-              "type": "string"
-            }
-          },
-          "dir": {
-            "type": "string"
-          },
-          "template": {
-            "type": "string"
-          }
-        }
       }
     }
   },
@@ -7105,9 +6992,6 @@
     },
     {
       "name": "stream"
-    },
-    {
-      "name": "templates"
     },
     {
       "name": "utterances"

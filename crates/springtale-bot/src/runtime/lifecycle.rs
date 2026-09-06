@@ -2,7 +2,6 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use arc_swap::ArcSwap;
-use serde::Deserialize;
 use tokio::sync::{RwLock, broadcast, mpsc};
 
 use springtale_connector::registry::store::ConnectorRegistry;
@@ -29,31 +28,6 @@ pub struct OutgoingResponse {
     pub connector: String,
 }
 
-/// Configuration for the bot runtime.
-///
-/// Persona, context window and tool policy are NOT here — plan 6.3 moved
-/// them to `springtale_runtime::operations::bot_settings`, so they can be
-/// changed from the UI/CLI at runtime instead of by editing a TOML file
-/// and restarting the daemon.
-#[derive(Debug, Clone, Deserialize)]
-pub struct BotConfig {
-    /// Vault auto-lock timeout in seconds. Default: 300 (5 min).
-    #[serde(default = "default_vault_timeout")]
-    pub vault_timeout_secs: u64,
-}
-
-fn default_vault_timeout() -> u64 {
-    300
-}
-
-impl Default for BotConfig {
-    fn default() -> Self {
-        Self {
-            vault_timeout_secs: default_vault_timeout(),
-        }
-    }
-}
-
 /// The bot runtime. Owns all bot subsystems.
 pub struct Bot {
     pub(crate) router: Router,
@@ -61,12 +35,6 @@ pub struct Bot {
     pub(crate) store: Arc<dyn StorageBackend>,
     pub(crate) registry: Arc<RwLock<ConnectorRegistry>>,
     pub(crate) engine: Arc<RwLock<RuleEngine>>,
-    /// Boot-time config. Only `vault_timeout_secs` remains here and no
-    /// bot subsystem reads it yet — plan 6.10 moves it to the vault
-    /// settings that own it. Held so the builder API stays stable until
-    /// then.
-    #[allow(dead_code)]
-    pub(crate) config: BotConfig,
     /// Live bot settings (persona, context window, tool policy) shared
     /// with `RuntimeState::bot_settings`. Read per message so a settings
     /// change lands without restarting the event loop (plan 6.3).
@@ -173,7 +141,6 @@ pub struct BotBuilder {
     store: Option<Arc<dyn StorageBackend>>,
     registry: Option<Arc<RwLock<ConnectorRegistry>>>,
     engine: Option<Arc<RwLock<RuleEngine>>>,
-    config: BotConfig,
     /// Shared settings handle — the daemon/desktop pass
     /// `RuntimeState::bot_settings`; tests and CLI runs get defaults.
     settings: Option<Arc<ArcSwap<BotSettings>>>,
@@ -235,7 +202,6 @@ impl BotBuilder {
             store: None,
             registry: None,
             engine: None,
-            config: BotConfig::default(),
             settings: None,
             ai_adapter: None,
             sentinel: None,
@@ -400,11 +366,6 @@ impl BotBuilder {
     /// defaults, which is what headless/CLI builds want.
     pub fn settings(mut self, settings: Arc<ArcSwap<BotSettings>>) -> Self {
         self.settings = Some(settings);
-        self
-    }
-
-    pub fn config(mut self, config: BotConfig) -> Self {
-        self.config = config;
         self
     }
 
@@ -588,7 +549,6 @@ impl BotBuilder {
             store,
             registry,
             engine,
-            config: self.config,
             settings,
             context,
             ai_adapter,

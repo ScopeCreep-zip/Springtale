@@ -256,6 +256,14 @@ export const ROLE_COLORS: Record<string, string> = {
 /** The four levels the backend actually has (`AutonomyLevel`): observe →
  *  suggest → approve → autonomous. No fifth level exists. */
 export const AUTONOMY_LABELS = ["OBSERVE", "SUGGEST", "APPROVE", "AUTONOMOUS"];
+/** Pip colour per autonomy level — one entry per `AUTONOMY_LABELS` entry,
+ *  indexed by the backend's `AutonomyLevel` ordinal. */
+export const AUTONOMY_COLORS = [
+  "var(--color-status-ok)",
+  "var(--color-role-scout)",
+  "var(--color-status-warn)",
+  "var(--color-status-error)",
+];
 export const MOMENTUM_NAMES = ["COLD", "WARM", "HOT", "FEVER"];
 export const MOMENTUM_COLORS = [
   "var(--color-momentum-cold)",

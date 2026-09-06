@@ -20,6 +20,7 @@ pub mod registry;
 pub mod tier;
 #[cfg(feature = "wasm-sandbox")]
 pub mod wasm;
+pub mod webhook;
 pub mod workspace_key;
 
 pub use chat::{ChatMessage, ChatSource, SharedChatSource};
@@ -31,3 +32,4 @@ pub use host::ConnectorHost;
 pub use manifest::types::{ActionDecl, Capability, ConnectorManifest, TriggerDecl};
 pub use registry::store::ConnectorRegistry;
 pub use tier::WasmTier;
+pub use webhook::{WebhookEvent, WebhookIngest};

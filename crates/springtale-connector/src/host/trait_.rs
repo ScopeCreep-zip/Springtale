@@ -57,6 +57,23 @@ pub trait ConnectorHost: Send + Sync + 'static {
         body: &[u8],
     ) -> Result<(), ConnectorError>;
 
+    /// Read an already-verified webhook payload into the chat messages
+    /// and rule events it means — see
+    /// [`crate::connector::trait_::Connector::ingest_webhook`]. Exposed
+    /// through the host so the daemon's webhook ingress can ask the
+    /// connector what a payload means instead of hardcoding one
+    /// connector's field names. Native hosts delegate to the inner
+    /// connector; WASM hosts return nothing (a sandbox-side hook can
+    /// follow, like `mention_extractor`).
+    async fn ingest_webhook(
+        &self,
+        _trigger: &str,
+        _headers: &std::collections::HashMap<String, String>,
+        _payload: &serde_json::Value,
+    ) -> crate::webhook::WebhookIngest {
+        crate::webhook::WebhookIngest::empty()
+    }
+
     /// The connector's chat ingestion half (see
     /// [`crate::chat::ChatSource`]), exposed through the host so the
     /// runtime can start and stop the loop without downcasting.

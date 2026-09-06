@@ -5,23 +5,19 @@ bot. Pick one from the library, fill in the required inputs, hit
 Deploy, get a running automation. No TOML editing, no connector
 setup wizards, no LLM-adapter plumbing.
 
-If templates ([`templates.md`](templates.md)) are "start from a
-working scaffold and edit it", recipes are "fill in 3 fields and run".
+Recipes are the only starter system. There is one way to start a
+Springtale install — `springtale init` — and everything past the bare
+project comes from a recipe. There is no second scaffold generator and
+no `springtale new`.
 
-## When to use a recipe vs. a template
-
-| Recipe | Template |
+| Recipe | |
 |---|---|
-| Browseable library, filterable by category / tags / difficulty | One-shot scaffold per `springtale new <name>` |
-| Backend decides which fields are required vs optional vs advanced | All fields exposed in the generated TOML |
-| Deployed via UI (or `POST /recipes/{id}/apply`); no shell needed | Generated on disk; you edit and run |
-| Best for first-time deploys + non-technical users | Best for power users + heavy customisation |
-| Survives daemon restarts as a tracked deploy | Decoupled from the daemon after scaffold |
+| Browseable library, filterable by category / tags / difficulty | Backend declares which fields are required vs optional vs advanced |
+| Deployed via UI (or `POST /recipes/{id}/apply`); no shell needed | Survives daemon restarts as a tracked deploy |
 
 A recipe is a wrapper around the same primitives (connectors,
 rules, AI config) — internally it composes the existing
-`upsert_connector_config`, `create_rule`, and AI-config ops. Use
-either; they coexist.
+`upsert_connector_config`, `create_rule`, and AI-config ops.
 
 ## Anatomy of a recipe
 

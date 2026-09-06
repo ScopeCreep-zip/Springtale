@@ -6,7 +6,6 @@
    springtale
      │
      ├── init                         create vault + DB, optional onboarding
-     ├── new TEMPLATE                 scaffold from starter template
      ├── server start                 run springtaled inline
      ├── run                          alias for `server start`
      ├── healthcheck [--url]          probe /health, exit 0 on healthy
@@ -153,40 +152,6 @@ HEALTHCHECK --interval=30s --timeout=5s CMD ["/usr/local/bin/springtale", "healt
 
 ---
 
-## 3.1. `springtale new <template>`
-
-Scaffold a project from a starter template. 14 templates ship; pick whichever is closest to what you need and edit from there. Definitions live in `crates/springtale-runtime/src/operations/templates.rs`.
-
-**TABLE I. STARTER TEMPLATES**
-
-| Template | Description |
-|---|---|
-| `telegram-bot` | Telegram bot with a `/start` welcome rule |
-| `github-monitor` | GitHub webhook → Telegram push notifications |
-| `cron-runner` | Scheduled task automation (no chat connector) |
-| `llm-assistant` | AI-powered chat assistant (Ollama / OpenAI / Anthropic) |
-| `blank-bot` | Empty skeleton for experts — no connectors, no rules |
-| `cli-runner` | Headless CLI task runner — spawns a formation per task |
-| `llm-swarm` | 3-agent LLM swarm (researcher / writer / critic) on a single prompt |
-| `discord-bot` | Discord bot with a `!start` welcome rule |
-| `matrix-bot` | Matrix / Element chatbot skeleton — ready for `connector-matrix` |
-| `webhook-receiver` | HTTP webhook → cooperation formation fan-out |
-| `file-watcher` | Filesystem event → cooperation formation |
-| `research-assistant` | Multi-source research LLM swarm with cited output |
-| `code-review-swarm` | Git diff → 3-agent code review (readability / correctness / security) |
-| `meeting-summarizer` | Audio / transcript → structured summary LLM swarm |
-
-```
-$ springtale new telegram-bot
-Scaffolded telegram-bot project.
-  rules/     — starter rules
-  config/    — connector config skeleton
-Next: edit config/connector-telegram.toml with your bot token.
-```
-
-See [`../guide/templates.md`](../guide/templates.md) for worked walkthroughs and prerequisites per template.
-
----
 
 ## 3.2. `springtale doctor`
 

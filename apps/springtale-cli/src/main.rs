@@ -8,8 +8,8 @@ use anyhow::Result;
 use clap::Parser;
 
 use cli::{
-    BotAction, Cli, Command, CooperationAction, CryptoAction, ServerAction, TravelAction,
-    VaultAction,
+    BotAction, Cli, Command, CooperationAction, CryptoAction, McpAction, ServerAction,
+    TravelAction, VaultAction,
 };
 
 #[tokio::main]
@@ -29,16 +29,8 @@ async fn main() -> Result<()> {
     };
 
     match cli.command {
-        Command::Init { template } => {
-            if let Some(tpl) = template.as_deref() {
-                // Plan §16.4: `springtale init cli-runner && springtale run`.
-                // Scaffold first, then run the vault/DB wizard.
-                commands::new::run(tpl, cli.json)?;
-            }
+        Command::Init => {
             commands::init::run().await?;
-        }
-        Command::New { template } => {
-            commands::new::run(&template, cli.json)?;
         }
         Command::Login => {
             commands::login::login(cli.json).await?;
@@ -171,6 +163,11 @@ async fn main() -> Result<()> {
         Command::Safety { action } => {
             commands::safety::run(action, cli.json).await?;
         }
+        Command::Mcp { action } => match action {
+            McpAction::Serve => {
+                commands::mcp::serve().await?;
+            }
+        },
         Command::Canvas { stream } => {
             commands::canvas::run(stream, cli.json).await?;
         }

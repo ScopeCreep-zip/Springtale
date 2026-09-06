@@ -138,6 +138,13 @@ dissolve runs through the cadence tick loop once more to persist final
 state, then drops. Members that were exclusively in this formation
 become free; members in multiple formations keep running.
 
+The dissolve also publishes a terminal outcome — on the formation gossip
+bus and, when one is wired, into the cross-formation knowledge store. Both
+carry `success_count` (the momentum FSM's `consecutive_successes`) and
+`failure_count`, which is the momentum FSM's lifetime `interference_total`.
+Retrieval scores priors on `success_count / (success_count + failure_count)`,
+so the failure side has to be the real count.
+
 ## Persistence
 
 Formation *state* persists — membership, intent, guard state, momentum,
@@ -168,9 +175,9 @@ three concrete formation shapes:
 - **Telegram bot** (§7.3) — responder + memory-keeper + moderator,
   formation per incoming message. Showcases consensus gating.
 
-Each ships as a `springtale new <template>` starter: `cli-runner`,
-`llm-swarm`, `telegram-bot`. See [`templates.md`](templates.md) for the
-full 14-template menu.
+Each ships as a recipe: browse the library in the colony UI or see
+[`recipes.md`](recipes.md). `springtale init` gives you the bare
+project; a recipe fills it in.
 
 ## Advanced topics
 
@@ -270,12 +277,15 @@ refuses synthesized actions classified `Destructive`
 badge on the formation detail card and is toggled via
 `POST /formations/{id}/toggle-guard`.
 
-**Known defect.** The toggle writes a `guard:{formation_id}` config row,
-but live enforcement reads `formation.constraints.guard_mode`, which is
-set once at deploy and never refreshed. Toggling guard on an
-already-running formation updates the API and the badge but does **not**
-change what the running formation refuses until it is redeployed. The
-divergence is noted in `crates/springtale-runtime/src/operations/formations.rs`.
+The toggle is live. `operations::config::toggle_formation_guard` writes
+the durable `guard:{formation_id}` config row *and* posts
+`FormationCommand::SetGuard`, which the bot applies to the running
+formation's `constraints.guard_mode` on its next command drain — the same
+channel dissolve, pause and intent change ride. Deploy seeds the live flag
+from the same row (`lifecycle::spawn_formation`), and every reader of the
+row goes through `config::formation_guard_engaged`, so the badge, the API
+and what the running formation actually refuses cannot disagree, with or
+without a redeploy.
 
 The intent is to make accidental destruction harder: a formation that
 just hit Fever and is producing useful output is exactly the one you
