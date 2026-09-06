@@ -96,7 +96,11 @@ pub async fn run(action: FormationAction, json_out: bool) -> Result<()> {
                 .await?;
             output::emit(json_out, &body, |v| format!("vote recorded: {v}"))?;
         }
-        FormationAction::Run { id, command, params } => {
+        FormationAction::Run {
+            id,
+            command,
+            params,
+        } => {
             let params = match params {
                 Some(path) => crate::commands::json_input::load(&path)?,
                 None => json!({}),

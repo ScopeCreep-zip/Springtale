@@ -726,7 +726,10 @@ pub enum RuleAction {
         name: String,
     },
     /// Move a rule onto a different connector.
-    Reassign {
+    ///
+    /// Named `move`, not `reassign`: the drum rule bans an assign verb
+    /// anywhere in the tree, and a rule is re-homed, never handed out.
+    Move {
         /// Rule id.
         id: String,
         /// Connector to move it to.
@@ -952,11 +955,15 @@ mod tests {
             // read-only inspection
             "list",
             "get",
-            "commands", // composition
+            "commands",
+            "intents",
+            "eligible", // composition
             "add-member",
             "rm-member",
             "deploy-team", // intent
-            "intent",      // constraints
+            "intent",
+            "propose-intent",
+            "vote",   // constraints
             "guard",
             "autonomy", // intervention
             "deploy",
@@ -964,6 +971,9 @@ mod tests {
             "resume",
             "dissolve",
             "rally",
+            // `run` is the execution half of `commands`, not a fifth
+            // group: it runs a command the formation already declares.
+            "run",
         ];
         let cmd = Cli::command();
         let formation = cmd

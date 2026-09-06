@@ -36,7 +36,10 @@ pub async fn run(action: AgentAction, json_out: bool) -> Result<()> {
                 )
                 .await?;
             output::emit(json_out, &body, |v| {
-                format!("Agent '{name}' autonomy is now: {}", output::cell(v, "level"))
+                format!(
+                    "Agent '{name}' autonomy is now: {}",
+                    output::cell(v, "level")
+                )
             })?;
         }
         AgentAction::SetAutonomy { name, level } => {

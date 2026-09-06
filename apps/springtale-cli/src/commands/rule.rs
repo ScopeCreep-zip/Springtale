@@ -95,7 +95,7 @@ pub async fn run(action: RuleAction, json_out: bool) -> Result<()> {
                 output::rows_table(&["ID", "NAME", "STATUS"], rows)
             })?;
         }
-        RuleAction::Reassign { id, connector } => {
+        RuleAction::Move { id, connector } => {
             let body: Value = client
                 .post(
                     &format!("/rules/{id}/reassign"),

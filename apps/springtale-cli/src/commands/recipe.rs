@@ -117,8 +117,13 @@ pub async fn run(action: RecipeAction, json_out: bool) -> Result<()> {
         }
         RecipeAction::Export { id } => {
             // The route answers TOML text, not JSON.
-            let toml = text(&client, reqwest::Method::GET, &format!("/recipes/{id}/export"), None)
-                .await?;
+            let toml = text(
+                &client,
+                reqwest::Method::GET,
+                &format!("/recipes/{id}/export"),
+                None,
+            )
+            .await?;
             println!("{toml}");
         }
         RecipeAction::Render { id, inputs } => {

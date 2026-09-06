@@ -101,7 +101,9 @@ pub async fn run(action: ConnectorAction, json_out: bool) -> Result<()> {
             install_wasm(&client, &manifest, &wasm, json_out).await?;
         }
         ConnectorAction::Cascade { name } => {
-            let body: Value = client.delete(&format!("/connectors/{name}/cascade")).await?;
+            let body: Value = client
+                .delete(&format!("/connectors/{name}/cascade"))
+                .await?;
             output::emit_status(json_out, &body, |v| {
                 format!(
                     "Removed {name} and {} rule(s).",
@@ -182,7 +184,10 @@ async fn install_wasm(
     json_out: bool,
 ) -> Result<()> {
     let manifest_text = std::fs::read_to_string(manifest_path).map_err(|e| {
-        anyhow::anyhow!("failed to read manifest at {}: {e}", manifest_path.display())
+        anyhow::anyhow!(
+            "failed to read manifest at {}: {e}",
+            manifest_path.display()
+        )
     })?;
     // The route parses the `manifest` part as JSON; a TOML manifest is
     // converted here so both forms work from the command line.

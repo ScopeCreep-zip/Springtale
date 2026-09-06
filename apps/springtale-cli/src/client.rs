@@ -109,7 +109,11 @@ impl Client {
     /// POST `path` and hand back the undecoded response — the shape the
     /// SSE-over-POST routes need (`/workspaces/onboard` streams progress
     /// frames rather than answering with one JSON body).
-    pub async fn post_stream<B: Serialize>(&self, path: &str, body: &B) -> Result<reqwest::Response> {
+    pub async fn post_stream<B: Serialize>(
+        &self,
+        path: &str,
+        body: &B,
+    ) -> Result<reqwest::Response> {
         // SECURITY: expose needed to set the bearer header.
         let resp = self
             .http

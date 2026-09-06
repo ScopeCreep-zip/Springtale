@@ -7,12 +7,7 @@ use crate::client::Client;
 use crate::output;
 
 /// Send one message on `connector`/`target`.
-pub async fn run(
-    connector: String,
-    target: String,
-    text: String,
-    json_out: bool,
-) -> Result<()> {
+pub async fn run(connector: String, target: String, text: String, json_out: bool) -> Result<()> {
     let client = Client::from_config()?;
     let body: Value = client
         .post(

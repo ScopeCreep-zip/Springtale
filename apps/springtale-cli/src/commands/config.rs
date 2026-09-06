@@ -26,7 +26,10 @@ pub async fn run(action: ConfigAction, json_out: bool) -> Result<()> {
         }
         ConfigAction::Connector { name, file } => {
             let body: Value = client
-                .post(&format!("/config/connector/{name}"), &json_input::load(&file)?)
+                .post(
+                    &format!("/config/connector/{name}"),
+                    &json_input::load(&file)?,
+                )
                 .await?;
             output::emit_status(json_out, &body, |_| {
                 format!("Connector config saved for '{name}'.")
@@ -34,7 +37,11 @@ pub async fn run(action: ConfigAction, json_out: bool) -> Result<()> {
         }
         ConfigAction::Heartbeat { file } => {
             let body: Value = match file {
-                Some(file) => client.put("/config/heartbeat", &json_input::load(&file)?).await?,
+                Some(file) => {
+                    client
+                        .put("/config/heartbeat", &json_input::load(&file)?)
+                        .await?
+                }
                 None => client.get("/config/heartbeat").await?,
             };
             output::emit(json_out, &body, |v| {
