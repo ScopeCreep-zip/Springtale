@@ -11,6 +11,9 @@ export interface AgentState {
   status: string;
   trigger_type: string;
   connector_name: string | null;
+  /** Connector this agent acts on — the first `RunConnector` action target in
+   *  its rule, or `null` when the rule only sends messages / writes files. */
+  action_connector: string | null;
   /** Agent role — inferred from trigger type by backend. */
   role: "scout" | "worker" | "guard" | "analyst";
   /** Fuel: 100 when enabled, 0 when disabled. */

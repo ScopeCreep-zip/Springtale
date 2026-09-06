@@ -118,12 +118,66 @@
       opacity 0.5s;
   }
 
+  /* Plan 3.5 — a tree pulses for one cycle when one of its agents speaks. */
+  .colony-tree.is-pulsing {
+    animation: tree-pulse 0.6s ease-out;
+  }
+  @keyframes tree-pulse {
+    0% {
+      filter: brightness(1);
+    }
+    35% {
+      filter: brightness(1.5) drop-shadow(0 0 5px var(--color-status-ok));
+    }
+    100% {
+      filter: brightness(1);
+    }
+  }
+
+  /* Plan 3.5 — pan/zoom wrapper. Percentage layout inside is untouched;
+     only the wrapper is transformed, from its top-left corner. */
+  .colony-viewport-transform {
+    transform-origin: 0 0;
+    will-change: transform;
+  }
+
+  /* Plan 3.6 — overlays. The chosen field recolours the springtails and
+     everything the field does not describe recedes (ONI convention). */
+  .colony-overlay-chip {
+    padding: 1px 4px;
+    border: 1px solid var(--color-status-ok);
+    background: var(--color-soil-deep);
+    color: var(--color-status-ok);
+    font-size: 7px;
+    letter-spacing: 0.08em;
+    pointer-events: none;
+  }
+  [data-overlay]:not([data-overlay="none"]) .colony-tree,
+  [data-overlay]:not([data-overlay="none"]) .colony-mushroom,
+  [data-overlay]:not([data-overlay="none"]) .colony-litter,
+  [data-overlay]:not([data-overlay="none"]) .colony-formation {
+    opacity: 0.25;
+    filter: saturate(0.15);
+  }
+  .colony-agent[data-overlay]:not([data-overlay="none"])[data-overlay-read="yes"] {
+    filter: drop-shadow(0 0 4px var(--colony-overlay))
+      drop-shadow(0 0 8px var(--colony-overlay));
+  }
+  .colony-agent[data-overlay]:not([data-overlay="none"])[data-overlay-read="no"] {
+    opacity: 0.25;
+    filter: saturate(0.1);
+  }
+
   /* Mushroom outputs */
   .colony-mushroom {
     position: absolute;
     z-index: 3;
     pointer-events: none;
     animation: mushroom-grow 0.3s ease-out;
+    /* Fades on the colony tick clock — the caller sets --colony-opacity from
+       the utterance's remaining ticks, never from a wall-clock timer. */
+    opacity: var(--colony-opacity, 1);
+    transition: opacity 0.5s linear;
   }
 
   /* Litter dots */
@@ -450,8 +504,7 @@
 
   /* Phase H — cooperation event toast ribbon */
   .colony-event-toast {
-    display: grid;
-    grid-template-columns: auto 1fr auto;
+    display: flex;
     align-items: center;
     gap: 6px;
     padding: 4px 8px;
@@ -470,7 +523,60 @@
   .colony-event-toast[data-severity="ok"] {
     border-left-color: var(--color-status-ok);
   }
+  /* Plan 3.6 — the whole body is the jump target (RimWorld: the alert is
+     the way to its subject). */
+  .colony-event-toast-jump {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: 0;
+    padding: 0;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+  }
+  .colony-event-toast-jump:disabled {
+    cursor: default;
+  }
+  .colony-event-toast-jump:hover:not(:disabled) {
+    filter: brightness(1.25);
+  }
+  .colony-event-toast-action {
+    flex: 0 0 auto;
+    padding: 0 4px;
+    border: 1px solid var(--color-bark);
+    background: var(--color-soil-deep);
+    font-size: 8px;
+    font-weight: 700;
+    cursor: pointer;
+  }
+  .colony-event-toast-action[data-tone="ok"] {
+    color: var(--color-status-ok);
+    border-color: var(--color-status-ok);
+  }
+  .colony-event-toast-action[data-tone="deny"] {
+    color: var(--color-status-error);
+    border-color: var(--color-status-error);
+  }
+  /* Critical alerts pulse, as RimWorld's do. */
+  .colony-event-toast[data-severity="error"] {
+    animation: colony-alert-pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes colony-alert-pulse {
+    0%,
+    100% {
+      border-left-color: var(--color-status-error);
+    }
+    50% {
+      border-left-color: color-mix(in srgb, var(--color-status-error) 35%, transparent);
+    }
+  }
   .colony-event-toast-title {
+    flex: 0 0 auto;
     font-weight: 700;
     letter-spacing: 0.5px;
   }

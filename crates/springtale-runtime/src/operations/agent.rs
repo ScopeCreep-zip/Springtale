@@ -12,6 +12,8 @@
 use serde::Serialize;
 use specta::Type;
 use springtale_cooperation::AutonomyLevel;
+use springtale_core::rule::action::Action;
+use springtale_core::rule::types::Rule;
 use springtale_store::StorageBackend;
 use springtale_store::schema::events::{EventEntry, EventFilter};
 
@@ -197,6 +199,11 @@ pub struct AgentState {
     pub status: String,
     pub trigger_type: String,
     pub connector_name: Option<String>,
+    /// Connector this agent *acts on* — the first [`Action::RunConnector`]
+    /// target in its rule, or `None` when the rule only sends messages /
+    /// writes files. Plan 3.5: the canvas walks the springtail part-way
+    /// along the mycelium toward this tree while the rule is firing.
+    pub action_connector: Option<String>,
     /// Agent role — inferred from trigger type semantics.
     pub role: String,
     /// Fuel: 100 when enabled, 0 when disabled.
@@ -217,6 +224,17 @@ pub struct AgentState {
     pub liveness: f32,
     /// Health state: "healthy", "degraded", "incapacitated", "dead".
     pub health_state: String,
+}
+
+/// The connector a rule acts on — the first [`Action::RunConnector`] target.
+///
+/// A rule may chain several actions; the first connector call is the one the
+/// springtail visibly walks toward, so that is the one reported.
+fn action_connector(rule: &Rule) -> Option<String> {
+    rule.actions.iter().find_map(|a| match a {
+        Action::RunConnector { connector, .. } => Some(connector.clone()),
+        _ => None,
+    })
 }
 
 /// Infer an agent's role from its trigger type.
@@ -334,6 +352,18 @@ pub async fn list_agent_states(state: &RuntimeState) -> Result<Vec<AgentState>, 
     // Gather rules from engine
     let rules = super::rules::list_rules(state).await;
 
+    // Action targets: rule id → the connector its first `RunConnector` action
+    // calls. Read from the engine (the authoritative rule set) because
+    // `RuleSummary` carries only trigger-side data.
+    let action_targets: std::collections::HashMap<String, String> = {
+        let engine = state.engine.read().await;
+        engine
+            .list_rules()
+            .iter()
+            .filter_map(|r| action_connector(r).map(|c| (r.id.to_string(), c)))
+            .collect()
+    };
+
     // Fetch recent events (last 200) for activity computation
     let events = state
         .store
@@ -425,6 +455,7 @@ pub async fn list_agent_states(state: &RuntimeState) -> Result<Vec<AgentState>, 
                 status: r.status.clone(),
                 trigger_type: r.trigger_type.clone(),
                 connector_name: r.connector_name.clone(),
+                action_connector: action_targets.get(&r.id).cloned(),
                 role: infer_role(&r.trigger_type).to_owned(),
                 fuel,
                 activity: activity.to_owned(),
