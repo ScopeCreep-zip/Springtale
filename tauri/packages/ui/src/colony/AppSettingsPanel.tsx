@@ -1,6 +1,21 @@
 import type { Component } from "solid-js";
-import { createSignal, Show } from "solid-js";
+import { createSignal, For, Show } from "solid-js";
 import { useI18n } from "../i18n/context";
+
+/**
+ * Bot settings (plan 6.3) — persona, context window and the AI tool
+ * allow-list. Mirrors `springtale_runtime::operations::bot_settings::BotSettings`.
+ */
+export interface BotSettingsValue {
+  persona: { name: string; tone: string; prefix: string };
+  context_window: number;
+  tool_policy: {
+    allow: string[];
+    deny: string[];
+    max_iterations?: number;
+    writes_with_approval?: boolean;
+  };
+}
 
 export interface AppSettingsPanelProps {
   /** Open vault lock/unlock dialog */
@@ -25,6 +40,20 @@ export interface AppSettingsPanelProps {
   theme?: string;
   /** Called when user changes theme */
   onThemeChange?: (theme: string) => void;
+  /**
+   * Plan 6.3 — current bot settings. `null` while loading; omit the prop
+   * entirely (with `onSaveBotSettings`) to hide the Bot section.
+   */
+  botSettings?: BotSettingsValue | null;
+  /**
+   * Tool names (`connector__action`) the AI may be allowed to call,
+   * built from the installed connectors' declared actions. The
+   * allow-list is a checkbox set over exactly these — no free text, so a
+   * typo can't silently leave the bot tool-less.
+   */
+  availableTools?: string[];
+  /** Persist the edited bot settings. */
+  onSaveBotSettings?: (settings: BotSettingsValue) => Promise<void>;
 }
 
 /**
@@ -38,6 +67,53 @@ export const AppSettingsPanel: Component<AppSettingsPanelProps> = (props) => {
   const [exporting, setExporting] = createSignal(false);
   const [compacting, setCompacting] = createSignal(false);
   const [error, setError] = createSignal("");
+
+  // Bot settings edits: `null` = untouched, so the stored value shows
+  // through until the user actually changes that field.
+  const [botName, setBotName] = createSignal<string | null>(null);
+  const [botPrefix, setBotPrefix] = createSignal<string | null>(null);
+  const [botWindow, setBotWindow] = createSignal<number | null>(null);
+  const [botAllow, setBotAllow] = createSignal<string[] | null>(null);
+  const [savingBot, setSavingBot] = createSignal(false);
+
+  const currentName = () => botName() ?? props.botSettings?.persona.name ?? "";
+  const currentPrefix = () => botPrefix() ?? props.botSettings?.persona.prefix ?? "/";
+  const currentWindow = () => botWindow() ?? props.botSettings?.context_window ?? 50;
+  const currentAllow = () => botAllow() ?? props.botSettings?.tool_policy.allow ?? [];
+
+  const toggleTool = (tool: string) => {
+    const next = currentAllow().includes(tool)
+      ? currentAllow().filter((t) => t !== tool)
+      : [...currentAllow(), tool];
+    setBotAllow(next);
+  };
+
+  const saveBot = async () => {
+    const save = props.onSaveBotSettings;
+    const existing = props.botSettings;
+    if (!save || !existing) return;
+    setSavingBot(true);
+    setError("");
+    try {
+      await save({
+        persona: {
+          name: currentName(),
+          tone: existing.persona.tone,
+          prefix: currentPrefix().slice(0, 1) || "/",
+        },
+        context_window: currentWindow(),
+        tool_policy: { ...existing.tool_policy, allow: currentAllow() },
+      });
+      setBotName(null);
+      setBotPrefix(null);
+      setBotWindow(null);
+      setBotAllow(null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSavingBot(false);
+    }
+  };
 
   return (
     <div class="colony-modal mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6">
@@ -55,6 +131,81 @@ export const AppSettingsPanel: Component<AppSettingsPanelProps> = (props) => {
       )}
 
       <div class="space-y-4">
+        {/* Bot — persona, context window, AI tool allow-list (plan 6.3) */}
+        <Show when={props.botSettings && props.onSaveBotSettings}>
+          <section>
+            <h3 class="colony-text-xs mb-2 font-bold text-text-secondary">Bot</h3>
+            <div class="space-y-2">
+              <label class="colony-text-2xs block text-text-secondary">
+                Name
+                <input
+                  type="text"
+                  class="colony-input mt-1 w-full"
+                  value={currentName()}
+                  onInput={(e) => setBotName(e.currentTarget.value)}
+                />
+              </label>
+              <label class="colony-text-2xs block text-text-secondary">
+                Command prefix
+                <input
+                  type="text"
+                  maxLength={1}
+                  class="colony-input mt-1 w-16"
+                  value={currentPrefix()}
+                  onInput={(e) => setBotPrefix(e.currentTarget.value)}
+                />
+              </label>
+              <label class="colony-text-2xs block text-text-secondary">
+                Context window (messages remembered)
+                <input
+                  type="number"
+                  min="1"
+                  class="colony-input mt-1 w-24"
+                  value={currentWindow()}
+                  onInput={(e) => setBotWindow(Number(e.currentTarget.value) || 1)}
+                />
+              </label>
+              <div class="colony-text-2xs text-text-secondary">
+                AI tools
+                <Show
+                  when={(props.availableTools ?? []).length > 0}
+                  fallback={
+                    <p class="colony-text-2xs mt-1 text-text-muted">
+                      No connector actions installed yet.
+                    </p>
+                  }
+                >
+                  <p class="colony-text-2xs mt-1 text-text-muted">
+                    None checked = read-only actions only.
+                  </p>
+                  <div class="mt-1 max-h-40 space-y-1 overflow-y-auto border border-bark p-2">
+                    <For each={props.availableTools ?? []}>
+                      {(tool) => (
+                        <label class="flex items-center gap-2 text-text-primary">
+                          <input
+                            type="checkbox"
+                            checked={currentAllow().includes(tool)}
+                            onChange={() => toggleTool(tool)}
+                          />
+                          {tool}
+                        </label>
+                      )}
+                    </For>
+                  </div>
+                </Show>
+              </div>
+              <button
+                type="button"
+                class="colony-btn"
+                disabled={savingBot()}
+                onClick={() => void saveBot()}
+              >
+                {savingBot() ? "SAVING…" : "SAVE BOT"}
+              </button>
+            </div>
+          </section>
+        </Show>
+
         {/* Security — desktop only */}
         <Show when={props.isDesktop}>
           <section>

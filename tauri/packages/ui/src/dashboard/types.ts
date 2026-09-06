@@ -25,6 +25,7 @@ import type {
   WriteReport,
 } from "@springtale/types";
 import type { ConditionDef } from "../ConditionEditor";
+import type { BotSettingsValue } from "../colony/AppSettingsPanel";
 import type { Locale } from "../i18n/types";
 import type { ConnectorStatus, EventItem, RuleDetail, RuleItem, SwarmInfo } from "./model";
 
@@ -623,6 +624,14 @@ export interface DataProvider {
   // Save actually takes effect at runtime.
   getSafetyConfig(): Promise<SafetyConfig>;
   saveSafetyConfig(config: SafetyConfig): Promise<void>;
+
+  // Bot settings (plan 6.3) — persona, context window, AI tool policy.
+  // Same reasoning as safety: do NOT route these through `setConfig`.
+  // The dedicated endpoint validates the tool allow-list against the
+  // connector registry and hot-swaps the runtime's live copy, so a save
+  // takes effect on the next message instead of the next restart.
+  getBotSettings(): Promise<BotSettingsValue>;
+  saveBotSettings(settings: BotSettingsValue): Promise<void>;
 
   // Config (generic key/value, NOT for safety — see above).
   getConfig(key: string): Promise<unknown>;

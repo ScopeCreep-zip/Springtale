@@ -456,6 +456,15 @@ export function createWebProvider(): DataProvider {
       await put("/safety", config);
     },
 
+    // Bot settings (plan 6.3) — one code path for desktop and web; the
+    // desktop shell reaches the same daemon through the sidecar.
+    async getBotSettings() {
+      return await get<import("../colony/AppSettingsPanel").BotSettingsValue>("/bot/settings");
+    },
+    async saveBotSettings(settings) {
+      await put("/bot/settings", settings);
+    },
+
     // G5d — IPV duress surface (web).
     async setDisguiseActive(active: boolean) {
       const data = await post<{ disguise_active: boolean }>("/safety/disguise/active", { active });

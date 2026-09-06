@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use arc_swap::ArcSwap;
 use serde::Deserialize;
 use tokio::sync::{RwLock, broadcast, mpsc};
 
@@ -9,6 +10,7 @@ use springtale_core::rule::engine::{RuleEngine, TriggerEvent};
 use springtale_store::StorageBackend;
 
 use springtale_cooperation::command::FormationCommand;
+use springtale_runtime::operations::bot_settings::BotSettings;
 
 use crate::cooperation::cadence::{CadenceBus, Tick, TickReport};
 use crate::cooperation::formation::Formation;
@@ -16,7 +18,6 @@ use crate::error::BotError;
 use crate::handler::HandlerRegistry;
 use crate::memory::ConversationContext;
 use crate::router::Router;
-use crate::state::persona::BotPersona;
 
 /// Incoming message from any chat connector.
 #[derive(Debug, Clone)]
@@ -39,25 +40,16 @@ pub struct OutgoingResponse {
 }
 
 /// Configuration for the bot runtime.
+///
+/// Persona, context window and tool policy are NOT here — plan 6.3 moved
+/// them to `springtale_runtime::operations::bot_settings`, so they can be
+/// changed from the UI/CLI at runtime instead of by editing a TOML file
+/// and restarting the daemon.
 #[derive(Debug, Clone, Deserialize)]
 pub struct BotConfig {
-    /// Conversation context window size. Default: 50.
-    #[serde(default = "default_context_window")]
-    pub context_window: usize,
-    /// Bot persona configuration.
-    #[serde(default)]
-    pub persona: BotPersona,
     /// Vault auto-lock timeout in seconds. Default: 300 (5 min).
     #[serde(default = "default_vault_timeout")]
     pub vault_timeout_secs: u64,
-    /// Controls which connector actions the AI can call as tools.
-    /// Default: empty allow list = AI has zero tools (OWASP LLM06).
-    #[serde(default)]
-    pub tool_policy: springtale_ai::ToolPolicy,
-}
-
-fn default_context_window() -> usize {
-    50
 }
 
 fn default_vault_timeout() -> u64 {
@@ -67,10 +59,7 @@ fn default_vault_timeout() -> u64 {
 impl Default for BotConfig {
     fn default() -> Self {
         Self {
-            context_window: default_context_window(),
-            persona: BotPersona::default(),
             vault_timeout_secs: default_vault_timeout(),
-            tool_policy: springtale_ai::ToolPolicy::default(),
         }
     }
 }
@@ -82,7 +71,16 @@ pub struct Bot {
     pub(crate) store: Arc<dyn StorageBackend>,
     pub(crate) registry: Arc<RwLock<ConnectorRegistry>>,
     pub(crate) engine: Arc<RwLock<RuleEngine>>,
+    /// Boot-time config. Only `vault_timeout_secs` remains here and no
+    /// bot subsystem reads it yet — plan 6.10 moves it to the vault
+    /// settings that own it. Held so the builder API stays stable until
+    /// then.
+    #[allow(dead_code)]
     pub(crate) config: BotConfig,
+    /// Live bot settings (persona, context window, tool policy) shared
+    /// with `RuntimeState::bot_settings`. Read per message so a settings
+    /// change lands without restarting the event loop (plan 6.3).
+    pub(crate) settings: Arc<ArcSwap<BotSettings>>,
     pub(crate) context: ConversationContext,
     pub(crate) ai_adapter: Arc<dyn springtale_ai::AiAdapter>,
     pub(crate) sentinel: Arc<springtale_sentinel::Sentinel>,
@@ -181,6 +179,9 @@ pub struct BotBuilder {
     registry: Option<Arc<RwLock<ConnectorRegistry>>>,
     engine: Option<Arc<RwLock<RuleEngine>>>,
     config: BotConfig,
+    /// Shared settings handle — the daemon/desktop pass
+    /// `RuntimeState::bot_settings`; tests and CLI runs get defaults.
+    settings: Option<Arc<ArcSwap<BotSettings>>>,
     ai_adapter: Option<Arc<dyn springtale_ai::AiAdapter>>,
     sentinel: Option<Arc<springtale_sentinel::Sentinel>>,
     connector_rx: Option<mpsc::Receiver<IncomingMessage>>,
@@ -236,6 +237,7 @@ impl BotBuilder {
             registry: None,
             engine: None,
             config: BotConfig::default(),
+            settings: None,
             ai_adapter: None,
             sentinel: None,
             connector_rx: None,
@@ -386,6 +388,13 @@ impl BotBuilder {
         self
     }
 
+    /// Inject the shared live settings handle (plan 6.3). Omitted =
+    /// defaults, which is what headless/CLI builds want.
+    pub fn settings(mut self, settings: Arc<ArcSwap<BotSettings>>) -> Self {
+        self.settings = Some(settings);
+        self
+    }
+
     pub fn config(mut self, config: BotConfig) -> Self {
         self.config = config;
         self
@@ -509,9 +518,13 @@ impl BotBuilder {
             }
         };
 
+        let settings = self
+            .settings
+            .unwrap_or_else(|| Arc::new(ArcSwap::from_pointee(BotSettings::default())));
+
         let context = ConversationContext::new(
             store.clone(),
-            self.config.context_window,
+            settings.load().context_window,
             ai_adapter.clone(),
             encryption_key,
         );
@@ -568,6 +581,7 @@ impl BotBuilder {
             registry,
             engine,
             config: self.config,
+            settings,
             context,
             ai_adapter,
             sentinel: self

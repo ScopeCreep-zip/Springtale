@@ -34,11 +34,38 @@ impl HeadlessBot {
         Self::with_config_and_deployer(config, None).await
     }
 
+    /// Create a headless bot with custom bot settings (persona, context
+    /// window, tool policy — plan 6.3).
+    pub async fn with_settings(
+        settings: springtale_runtime::operations::bot_settings::BotSettings,
+    ) -> Result<Self, BotError> {
+        Self::build(
+            BotConfig::default(),
+            None,
+            Some(std::sync::Arc::new(arc_swap::ArcSwap::from_pointee(
+                settings,
+            ))),
+        )
+        .await
+    }
+
     /// Create a headless bot, optionally wiring a conversational-setup
     /// deploy port (tests use a mock to observe what would be deployed).
     pub async fn with_config_and_deployer(
         config: BotConfig,
         deployer: Option<crate::conversation::deploy::SharedDeployer>,
+    ) -> Result<Self, BotError> {
+        Self::build(config, deployer, None).await
+    }
+
+    async fn build(
+        config: BotConfig,
+        deployer: Option<crate::conversation::deploy::SharedDeployer>,
+        settings: Option<
+            std::sync::Arc<
+                arc_swap::ArcSwap<springtale_runtime::operations::bot_settings::BotSettings>,
+            >,
+        >,
     ) -> Result<Self, BotError> {
         let store: Arc<dyn springtale_store::StorageBackend> = Arc::new(
             SqliteBackend::open_in_memory().map_err(|e| BotError::NotInitialized(e.to_string()))?,
@@ -75,7 +102,11 @@ impl HeadlessBot {
             std::sync::Arc::new(springtale_cooperation::role::RoleRegistry::with_builtins());
         let capability_bridge = springtale_runtime::CapabilityBridge::new(registry.clone());
 
-        let mut builder = BotBuilder::new()
+        let mut builder = BotBuilder::new();
+        if let Some(settings) = settings {
+            builder = builder.settings(settings);
+        }
+        let mut builder = builder
             .store(store.clone())
             .registry(registry)
             .engine(engine)
@@ -523,12 +554,13 @@ mod tests {
     async fn test_memory_compaction_drops_oldest() {
         // phase-1b.md line 94: "Memory compaction test: fill to N+1,
         // verify oldest dropped"
-        let mut bot = HeadlessBot::with_config(BotConfig {
-            context_window: 3,
-            ..BotConfig::default()
-        })
-        .await
-        .unwrap();
+        let mut bot =
+            HeadlessBot::with_settings(springtale_runtime::operations::bot_settings::BotSettings {
+                context_window: 3,
+                ..Default::default()
+            })
+            .await
+            .unwrap();
 
         // Send 5 messages (exceeds context_window of 3)
         for i in 0..5 {

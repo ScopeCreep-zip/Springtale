@@ -275,7 +275,9 @@ pub(super) async fn handle_incoming_message(
     }
 
     // Route the message
-    let route = bot.router.route(&msg.text, bot.config.persona.prefix);
+    let route = bot
+        .router
+        .route(&msg.text, bot.settings.load().persona.prefix);
 
     match route {
         crate::router::RouteResult::Command { name, args } => {
@@ -346,7 +348,10 @@ pub(super) async fn handle_incoming_message(
             // An explicit but unknown `/command` is a typo, not a setup
             // request — keep the router's "unknown command" suggestion.
             // PLAIN text flows through the conversational engine instead.
-            let is_command_attempt = msg.text.trim_start().starts_with(bot.config.persona.prefix);
+            let is_command_attempt = msg
+                .text
+                .trim_start()
+                .starts_with(bot.settings.load().persona.prefix);
 
             let response = if is_command_attempt {
                 suggestion
@@ -413,6 +418,11 @@ async fn ai_fallback(
         return None;
     }
 
+    // Plan 6.3: persona + tool policy are live settings, read once per
+    // fallback so an edit lands on the next message with no restart.
+    let settings = bot.settings.load();
+    let persona_name = settings.persona.name.clone();
+
     // Gather recent conversation context
     let recent = bot.context.recent(session_key, 10).await.ok()?;
 
@@ -441,7 +451,7 @@ async fn ai_fallback(
              get tool (https://api.open-meteo.com/v1/forecast?latitude=..&longitude=..\
              &current=temperature_2m,weather_code — no API key needed).\n\n\
              Available commands:\n{}",
-            bot.config.persona.name, command_list
+            persona_name, command_list
         ),
     )];
 
@@ -482,7 +492,7 @@ async fn ai_fallback(
     };
     let tool_call = crate::tool_runner::ToolRunnerCall {
         options,
-        policy: &bot.config.tool_policy,
+        policy: &settings.tool_policy,
         // Chat-fallback path is not formation-scoped.
         formation_tier: None,
         // W2 durable resume: thread id + origin so a loop paused behind an

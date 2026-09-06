@@ -1,6 +1,7 @@
 import {
   AiConfigPanel,
   AppSettingsPanel,
+  type BotSettingsValue,
   BottomPanel,
   ChatDock,
   ColonyShell,
@@ -49,6 +50,30 @@ export const Colony = (props: { onLock: () => void }) => {
 
   // ── Desktop-only settings state ─────────────────────────
   const [showDesktopSettings, setShowDesktopSettings] = createSignal(false);
+  // Plan 6.3 — bot persona / context window / tool policy, read from the
+  // daemon the first time the settings panel opens and refreshed on save.
+  const [botSettings, setBotSettings] = createSignal<BotSettingsValue | null>(null);
+  let botSettingsRequested = false;
+  const loadBotSettings = async () => {
+    try {
+      setBotSettings(await db.provider.getBotSettings());
+    } catch (e) {
+      console.error("failed to load bot settings", e);
+    }
+  };
+  const ensureBotSettings = () => {
+    if (botSettingsRequested) return;
+    botSettingsRequested = true;
+    void loadBotSettings();
+  };
+  // The allow-list checkboxes are drawn from the actions the installed
+  // connectors actually declare — never free text.
+  const botTools = () =>
+    db
+      .schemas()
+      .flatMap((schema) =>
+        (schema.actions ?? []).map((action) => `${schema.name}__${action.name}`),
+      );
   const [showSafety, setShowSafety] = createSignal(false);
   const [showTravelMode, setShowTravelMode] = createSignal(false);
   // Controlled open state for the chat dock so the command-grid "ASK"
@@ -408,9 +433,16 @@ export const Colony = (props: { onLock: () => void }) => {
 
     // 4. App settings
     if (showDesktopSettings()) {
+      ensureBotSettings();
       return (
         <AppSettingsPanel
           isDesktop={true}
+          botSettings={botSettings()}
+          availableTools={botTools()}
+          onSaveBotSettings={async (settings) => {
+            await db.provider.saveBotSettings(settings);
+            await loadBotSettings();
+          }}
           onVault={() => {
             setShowDesktopSettings(false);
             props.onLock();

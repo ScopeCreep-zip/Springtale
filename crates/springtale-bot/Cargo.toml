@@ -17,6 +17,8 @@ springtale-runtime   = { workspace = true }
 springtale-sentinel     = { workspace = true }
 springtale-cooperation  = { workspace = true }
 
+arc-swap = { workspace = true }
+
 async-trait = { workspace = true }
 tokio       = { workspace = true }
 serde       = { workspace = true }

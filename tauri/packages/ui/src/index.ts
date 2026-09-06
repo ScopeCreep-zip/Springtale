@@ -23,6 +23,7 @@ export type { AiSchemaEditorProps } from "./colony/AiSchemaEditor";
 export { AiSchemaEditor } from "./colony/AiSchemaEditor";
 export type { ApprovalCardProps } from "./colony/ApprovalCard";
 export { ApprovalCard } from "./colony/ApprovalCard";
+export type { BotSettingsValue } from "./colony/AppSettingsPanel";
 export { AppSettingsPanel } from "./colony/AppSettingsPanel";
 export type { ChatDockProps } from "./colony/ChatDock";
 export { ChatDock } from "./colony/ChatDock";

@@ -108,6 +108,7 @@ impl TestApp {
             registry,
             engine,
             ai_adapter,
+            bot_settings: Arc::new(arc_swap::ArcSwap::from_pointee(Default::default())),
             sentinel,
             wasm_engine,
             wasm_tier_cache,

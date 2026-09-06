@@ -55,6 +55,10 @@ pub struct RuntimeState {
     /// Reads: `state.ai_adapter.load()` — zero contention.
     /// Writes: `state.ai_adapter.store(new_adapter)` — atomic swap.
     pub ai_adapter: Arc<ArcSwap<Arc<dyn springtale_ai::AiAdapter>>>,
+    /// Bot settings (persona, context window, tool policy) — plan 6.3.
+    /// `ArcSwap` so the chat hot path reads them lock-free and a `PUT
+    /// /bot/settings` takes effect on the next message, with no restart.
+    pub bot_settings: Arc<ArcSwap<crate::operations::bot_settings::BotSettings>>,
     /// Sentinel behavioral monitor.
     pub sentinel: Arc<springtale_sentinel::Sentinel>,
     /// Shared WASM engine for community connectors.

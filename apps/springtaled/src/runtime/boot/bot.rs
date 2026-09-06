@@ -101,7 +101,6 @@ pub(super) struct BotChannels {
 pub(super) async fn init_bot(
     runtime: &springtale_runtime::RuntimeState,
     scheduler: springtale_runtime::EmbeddedScheduler,
-    bot_config: Option<springtale_bot::BotConfig>,
     connectors: &ConnectorWiring,
     channels: BotChannels,
     formation_cmd_rx: tokio::sync::mpsc::Receiver<
@@ -127,8 +126,6 @@ pub(super) async fn init_bot(
     let (_bot_rule_tx, bot_rule_rx) =
         mpsc::channel::<springtale_core::rule::engine::TriggerEvent>(256);
 
-    let bot_config = bot_config.unwrap_or_default();
-
     // Conversational task-setup deploy port: lets the chat bot apply +
     // schedule a recipe a user configured by chatting (no AI needed).
     let recipe_deployer = Arc::new(
@@ -145,7 +142,7 @@ pub(super) async fn init_bot(
         .engine(runtime.engine.clone())
         .ai_adapter((**runtime.ai_adapter.load()).clone())
         .sentinel(runtime.sentinel.clone())
-        .config(bot_config)
+        .settings(runtime.bot_settings.clone())
         .connector_rx(bot_msg_rx)
         .rule_rx(bot_rule_rx)
         .response_tx(bot_response_tx)
