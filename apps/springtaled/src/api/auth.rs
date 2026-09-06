@@ -131,3 +131,117 @@ pub async fn require_csrf_protection(
 
     Ok(next.run(request).await)
 }
+
+/// Origin validation for the MCP endpoint (MCP transports spec).
+///
+/// The spec is explicit: "Servers MUST validate the `Origin` header on
+/// all incoming connections to prevent DNS rebinding attacks." A browser
+/// on `https://evil.example` can reach `http://127.0.0.1:9000` and — with
+/// a rebound DNS name — send authenticated-looking requests. The Origin
+/// header is the one thing the page cannot forge, so it is the check.
+///
+/// Accepted: no Origin header at all (non-browser clients — curl, an MCP
+/// SDK, the stdio bridge — do not send one), or a loopback origin.
+/// Everything else is `403`.
+///
+/// This is *in addition to* [`require_auth`]; it never replaces it, and
+/// the `Mcp-Session-Id` header is never authentication ("MCP Servers MUST
+/// NOT use sessions for authentication").
+pub async fn require_local_origin(
+    request: Request<axum::body::Body>,
+    next: Next,
+) -> Result<Response, StatusCode> {
+    match request.headers().get("origin") {
+        None => Ok(next.run(request).await),
+        Some(value) => {
+            let origin = value.to_str().map_err(|_| StatusCode::FORBIDDEN)?;
+            if is_loopback_origin(origin) {
+                Ok(next.run(request).await)
+            } else {
+                tracing::warn!(
+                    origin = %origin,
+                    "MCP request rejected: non-loopback Origin (DNS rebinding guard)"
+                );
+                Err(StatusCode::FORBIDDEN)
+            }
+        }
+    }
+}
+
+/// Whether an `Origin` header value names a loopback host.
+///
+/// An origin is `scheme://host[:port]` with no path, so anything with a
+/// path component, a userinfo section, or a non-http(s) scheme is
+/// rejected outright rather than parsed leniently.
+pub(crate) fn is_loopback_origin(origin: &str) -> bool {
+    let rest = match origin.split_once("://") {
+        Some(("http", rest)) | Some(("https", rest)) => rest,
+        _ => return false,
+    };
+    // No path, query, fragment or userinfo in a well-formed origin.
+    if rest.contains(['/', '?', '#', '@']) || rest.is_empty() {
+        return false;
+    }
+
+    let host = if let Some(stripped) = rest.strip_prefix('[') {
+        // IPv6 literal: `[::1]:9000`
+        match stripped.split_once(']') {
+            Some((host, "")) => host,
+            Some((host, port)) if port.starts_with(':') => host,
+            _ => return false,
+        }
+    } else {
+        match rest.split(':').next() {
+            Some(host) => host,
+            None => return false,
+        }
+    };
+
+    if host.eq_ignore_ascii_case("localhost") {
+        return true;
+    }
+    match host.parse::<std::net::IpAddr>() {
+        Ok(addr) => addr.is_loopback(),
+        Err(_) => false,
+    }
+}
+
+#[cfg(test)]
+mod origin_tests {
+    use super::is_loopback_origin;
+
+    #[test]
+    fn test_loopback_origins_accepted() {
+        for origin in [
+            "http://localhost",
+            "http://localhost:9000",
+            "http://127.0.0.1:9000",
+            "https://127.0.0.1",
+            "http://127.5.5.5:1",
+            "http://[::1]:9000",
+            "http://[::1]",
+        ] {
+            assert!(is_loopback_origin(origin), "{origin} should be loopback");
+        }
+    }
+
+    #[test]
+    fn test_remote_origins_rejected() {
+        for origin in [
+            "https://evil.example.com",
+            "http://192.168.1.10:9000",
+            "http://localhost.evil.com",
+            "http://127.0.0.1.evil.com",
+            "file://",
+            "null",
+            "http://user@127.0.0.1",
+            "http://127.0.0.1/path",
+            "http://[::1",
+        ] {
+            assert!(
+                !is_loopback_origin(origin),
+                "{origin} should not be loopback"
+            );
+        }
+    }
+}

@@ -853,3 +853,49 @@ async fn test_list_workspaces_returns_ok() {
     assert_eq!(status, StatusCode::OK);
     assert!(body.is_array());
 }
+
+// ────────────────────────────────────────────────────────────────────────────────
+// MCP endpoint (plan 6.5)
+// ────────────────────────────────────────────────────────────────────────────────
+
+/// MCP transports spec: "Servers MUST validate the `Origin` header on all
+/// incoming connections to prevent DNS rebinding attacks." A page on a
+/// remote origin must not be able to drive the local daemon's MCP
+/// endpoint, even if it somehow holds a token.
+#[tokio::test]
+async fn test_mcp_rejects_non_loopback_origin() {
+    let (router, token) = build_test_app(true);
+    let req = Request::post("/mcp")
+        .header("authorization", format!("Bearer {token}"))
+        .header("origin", "https://evil.example.com")
+        .header("content-type", "application/json")
+        .header("accept", "application/json, text/event-stream")
+        .body(Body::from(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#,
+        ))
+        .unwrap();
+    let (status, _body) = send(router, req).await;
+
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}
+
+/// The Origin check is not the authentication check: a loopback origin
+/// with no bearer token is still rejected, and the `Mcp-Session-Id`
+/// header never substitutes for one ("MCP Servers MUST NOT use sessions
+/// for authentication").
+#[tokio::test]
+async fn test_mcp_requires_bearer_even_from_loopback() {
+    let (router, _token) = build_test_app(true);
+    let req = Request::post("/mcp")
+        .header("origin", "http://127.0.0.1:9000")
+        .header("mcp-session-id", "pretend-this-is-auth")
+        .header("content-type", "application/json")
+        .header("accept", "application/json, text/event-stream")
+        .body(Body::from(
+            r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#,
+        ))
+        .unwrap();
+    let (status, _body) = send(router, req).await;
+
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+}

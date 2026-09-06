@@ -15,6 +15,8 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 springtale-core = { workspace = true }
 springtale-connector = { workspace = true }
+springtale-cooperation = { workspace = true }
+springtale-runtime = { workspace = true }
 
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }

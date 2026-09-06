@@ -17,6 +17,7 @@ pub mod extractors;
 pub mod fixes;
 pub mod formations;
 pub mod health;
+pub mod mcp;
 pub mod memory;
 pub mod onboarding;
 pub mod recipes;
@@ -320,11 +321,17 @@ pub fn build_router(state: AppState) -> Router {
         ));
 
     // Every other route sits under the 1 MiB request body limit.
+    // `/mcp` — the daemon IS the MCP server (Streamable HTTP). Bearer
+    // auth on every request plus an Origin check; the session id is
+    // never authentication. See `api::mcp`.
+    let mcp_endpoint = mcp::router(state.clone());
+
     let limited = Router::new()
         .merge(public)
         .merge(authenticated)
         .merge(streams)
         .merge(dashboard)
+        .merge(mcp_endpoint)
         .layer(RequestBodyLimitLayer::new(1024 * 1024));
 
     Router::new()
