@@ -27,7 +27,23 @@ use springtale_runtime::CapabilityBridge;
 use springtale_runtime::operations::recipes::apply::substitute_template_public;
 use springtale_runtime::operations::recipes::builtin;
 use springtale_runtime::operations::recipes::types::{FieldKind, RecipeInputs};
-use springtale_sentinel::{AutoAllowApprovalGate, Sentinel, SentinelConfig};
+use springtale_sentinel::{ApprovalGate, ApprovalRequest, Sentinel, SentinelConfig};
+
+/// Local auto-allow gate for this e2e harness.
+///
+/// `springtale_sentinel::approval::AutoAllowApprovalGate` is
+/// `#[cfg(test)]`-only inside its own crate so a production build cannot
+/// disable the human approval gate. Tests that genuinely want the gate
+/// out of the path declare their own, as here — the exemption stays
+/// visible in the test that takes it.
+struct AutoAllowApprovalGate;
+
+#[async_trait::async_trait]
+impl ApprovalGate for AutoAllowApprovalGate {
+    async fn request_approval(&self, _request: ApprovalRequest) -> bool {
+        true
+    }
+}
 use springtale_store::SqliteBackend;
 use tokio::sync::RwLock;
 
