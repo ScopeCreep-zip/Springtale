@@ -1,29 +1,17 @@
-import type {
-  ColonySelection,
-  ConnectorOutput,
-  CreateMode,
-  Recipe,
-  RecipeApplyReport,
-  RecipeLibraryVariant,
-  TeamBuilderSeed,
-  TeamConfig,
-} from "@springtale/ui";
 import {
   AiConfigPanel,
   ApprovalCard,
   AppSettingsPanel,
   BottomPanel,
   ChatDock,
-  COMMANDS,
   ColonyShell,
   ConnectorConfigPanel,
+  createColonyController,
   MemberPickerOverlay,
   ModeSelectOverlay,
-  mapAgents,
-  mapFormations,
-  mapNodes,
   PendingApprovals,
   ProofOfLifePanel,
+  type Recipe,
   RecipeAuthorPanel,
   RecipeDeployPanel,
   RecipeLibraryOverlay,
@@ -31,6 +19,7 @@ import {
   RuleBuilderOverlay,
   SafetyPanel,
   TeamBuilder,
+  type TeamConfig,
   TopBar,
   useDashboard,
   useI18n,
@@ -47,12 +36,16 @@ import { TravelModePage } from "./pages/TravelMode";
 /**
  * Springtale Desktop — colony ecosystem dashboard.
  *
- * Trees=connectors, springtails=agents, mycelium=pipelines.
- * Full RTS-style command interface with pixel-art visualization.
+ * Layout only. Every shared behaviour — the keyboard handler, the
+ * `handleCommand` switch, selection → detail wiring, drag persistence
+ * and the theme/locale effects — lives in `createColonyController`,
+ * shared with the web dashboard. What differs here is the layout plus
+ * the desktop-only safety surfaces: vault, disguise, travel mode,
+ * panic-tap, auto-lock and the floating chat dock.
  */
 export const App = () => {
   const db = useDashboard();
-  const { t, locale, setLocale } = useI18n();
+  const { t } = useI18n();
 
   // ── Desktop-only: vault + settings state ────────────────
   const [vaultLocked, setVaultLocked] = createSignal(true);
@@ -60,154 +53,29 @@ export const App = () => {
   const [showDesktopSettings, setShowDesktopSettings] = createSignal(false);
   const [showSafety, setShowSafety] = createSignal(false);
   const [showTravelMode, setShowTravelMode] = createSignal(false);
-  const [showRuleBuilder, setShowRuleBuilder] = createSignal(false);
   // Controlled open state for the chat dock so the command-grid "ASK"
   // action can open it (the dock's own tab toggle still works too).
   const [chatOpen, setChatOpen] = createSignal(false);
-  const [showTeamBuilder, setShowTeamBuilder] = createSignal(false);
-  // W1.A — ModeSelectOverlay is the entry hub before any compose flow.
-  // Triggered from the empty-canvas hint, top-bar "+ NEW", or `N` key.
-  // Per feedback_multi_path_oobe this is a hub, not a linear funnel:
-  // each card opens its own flow independently.
-  const [showModeSelect, setShowModeSelect] = createSignal(false);
-  // F5 — member-picker overlay state. When set to a formation id, the
-  // ColonyShell overlay slot renders MemberPickerOverlay for that
-  // formation. Cleared on remove or cancel.
-  const [memberPickerFor, setMemberPickerFor] = createSignal<string | null>(null);
   const [passphrase, setPassphrase] = createSignal("");
   const [vaultError, setVaultError] = createSignal("");
 
-  // ── Theme ────────────────────────────────────────────────
-  const [theme, setTheme] = createSignal("springtale");
-  const applyTheme = (t: string) => {
-    document.documentElement.dataset.theme = t;
-  };
-
-  // ── Colony state ────────────────────────────────────────
-  const [selection, setSelection] = createSignal<ColonySelection>({ id: null, type: null });
-  const [connectorPositions, setConnectorPositions] = createSignal<
-    Record<string, { x: number; y: number }>
-  >({});
-  const [confirmAction, setConfirmAction] = createSignal<{
-    title: string;
-    message: string;
-    label: string;
-    action: () => Promise<void>;
-  } | null>(null);
-  const [aiConfigAgent, setAiConfigAgent] = createSignal<{
-    id: string;
-    name: string;
-    scope: "agent" | "formation";
-  } | null>(null);
-  const [detailView, setDetailView] = createSignal<import("@springtale/ui").DetailView>({
-    mode: "colony",
+  const ctl = createColonyController(db, {
+    onOpenSettings: () => setShowDesktopSettings(true),
+    onOpenChat: () => setChatOpen(true),
+    appOverlayOpen: () => showVault() || showDesktopSettings() || showSafety() || showTravelMode(),
+    onEscape: () => setShowDesktopSettings(false),
+    onKeyDown: (e) => {
+      // Quick-exit: Ctrl+Shift+Q — instant hide + auto-lock.
+      // For IPV survivors who need to hide the app immediately.
+      if (e.key.toLowerCase() === "q" && e.ctrlKey && e.shiftKey) {
+        e.preventDefault();
+        invoke("lock_vault").catch(() => {});
+        invoke("plugin:window|hide").catch(() => {});
+        return true;
+      }
+      return false;
+    },
   });
-  const [pendingAddToFormation, setPendingAddToFormation] = createSignal<string | null>(null);
-  const [pendingRecruitToFormation, setPendingRecruitToFormation] = createSignal<string | null>(
-    null,
-  );
-  const [pendingReassignAgent, setPendingReassignAgent] = createSignal<string | null>(null);
-  const [connectorConfigData, setConnectorConfigData] = createSignal<{
-    id: string;
-    config: unknown;
-    configSchema?: import("@springtale/types").ConfigSchema;
-  } | null>(null);
-  const [notification, setNotification] = createSignal<{
-    message: string;
-    type: "ok" | "warn";
-  } | null>(null);
-  const [connectorOutputs, setConnectorOutputs] = createSignal<ConnectorOutput[]>([]);
-  const [availableConnectors, setAvailableConnectors] = createSignal<
-    import("@springtale/types").AvailableConnector[]
-  >([]);
-  const [intents, setIntents] = createSignal<Array<{ value: string; label: string }>>([]);
-  const [conditionTypes, setConditionTypes] = createSignal<string[]>([]);
-
-  let connectorDragTimer: ReturnType<typeof setTimeout> | undefined;
-  const handleConnectorDrag = (id: string, x: number, y: number) => {
-    setConnectorPositions((prev) => ({ ...prev, [id]: { x, y } }));
-    // Debounced persistence — save to config store after drag settles
-    clearTimeout(connectorDragTimer);
-    connectorDragTimer = setTimeout(() => {
-      db.provider.setConfig("canvas:connector_positions", connectorPositions()).catch(() => {});
-    }, 500);
-  };
-
-  // ── Persist locale changes to config store ──────────────
-  let localeInitialized = false;
-  createEffect(() => {
-    const loc = locale();
-    if (!localeInitialized) {
-      localeInitialized = true;
-      return;
-    }
-    db.provider.setConfig("locale", loc).catch(() => {});
-  });
-
-  // ── Persist theme changes to config store ───────────────
-  let themeInitialized = false;
-  createEffect(() => {
-    const t = theme();
-    applyTheme(t);
-    if (!themeInitialized) {
-      themeInitialized = true;
-      return;
-    }
-    db.provider.setConfig("theme", t).catch(() => {});
-  });
-
-  // ── Data loading (deferred until vault unlocked) ────────
-  const loadColonyData = async () => {
-    try {
-      await db.refresh();
-      // Re-establish the live SSE/Channel streams (canvas, cooperation,
-      // events). The initial subscriptions in `createDashboardState` fire at
-      // app start — before the vault is unlocked — and fail with "Vault is
-      // locked"; this reconnects them now that the runtime is open, so the
-      // canvas gets live updates instead of only the one-shot `refresh()`.
-      db.resubscribe();
-      setAvailableConnectors(await db.provider.listAvailableConnectors());
-      setIntents(await db.provider.listIntents());
-      const schema = (await db.provider.getRuleSchema()) as Record<string, Record<string, unknown>>;
-      if (schema.conditions) {
-        setConditionTypes(Object.keys(schema.conditions));
-      }
-      setConnections(
-        (await db.provider.getConnections()) as import("@springtale/ui").ColonyConnection[],
-      );
-
-      try {
-        const saved = await db.provider.getConfig("canvas:connector_positions");
-        if (saved && typeof saved === "object") {
-          setConnectorPositions(saved as Record<string, { x: number; y: number }>);
-        }
-      } catch {
-        /* No saved positions — seeded defaults */
-      }
-
-      // Restore persisted locale
-      try {
-        const savedLocale = await db.provider.getConfig("locale");
-        if (savedLocale && typeof savedLocale === "string") {
-          setLocale(savedLocale as "en");
-        }
-      } catch {
-        /* Default locale is fine */
-      }
-
-      // Restore persisted theme
-      try {
-        const savedTheme = await db.provider.getConfig("theme");
-        if (savedTheme && typeof savedTheme === "string") {
-          setTheme(savedTheme);
-        }
-      } catch {
-        /* Default theme is fine */
-      }
-    } catch (e) {
-      console.warn("loadColonyData:", e);
-    }
-  };
 
   // ── Auto-lock (Rust backend) ───────────────────────────
   const resetTimer = () => {
@@ -251,7 +119,7 @@ export const App = () => {
         const onTap = (e: MouseEvent) => {
           if (e.clientY > TITLE_BAR_HEIGHT_PX) return;
           const now = performance.now();
-          taps = taps.filter((t) => now - t < PANIC_TAP_WINDOW_MS);
+          taps = taps.filter((tap) => now - tap < PANIC_TAP_WINDOW_MS);
           taps.push(now);
           if (taps.length >= cfg.panic_tap_count) {
             taps = [];
@@ -268,156 +136,6 @@ export const App = () => {
       // Re-applied after vault unlock in the auto-lock flow.
     }
 
-    // Keyboard shortcuts
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (
-        e.target instanceof HTMLInputElement ||
-        e.target instanceof HTMLTextAreaElement ||
-        e.target instanceof HTMLSelectElement
-      )
-        return;
-      const key = e.key.toLowerCase();
-
-      // Quick-exit: Ctrl+Shift+Q — instant hide + auto-lock
-      // For IPV survivors who need to hide the app immediately
-      if (key === "q" && e.ctrlKey && e.shiftKey) {
-        e.preventDefault();
-        invoke("lock_vault").catch(() => {});
-        invoke("plugin:window|hide").catch(() => {});
-        return;
-      }
-
-      // 1-9: select agent by index
-      if (key >= "1" && key <= "9") {
-        const idx = parseInt(key, 10) - 1;
-        const a = agents();
-        const agent = a[idx];
-        if (agent) {
-          setSelection({ id: agent.id, type: "agent" });
-          // Plan 3.7: number keys select AND move focus to the sprite.
-          document
-            .querySelector<HTMLElement>(
-              `button.colony-agent[data-agent-id="${CSS.escape(agent.id)}"]`,
-            )
-            ?.focus();
-        }
-        return;
-      }
-
-      // Escape: clear selection and close overlays
-      if (key === "escape") {
-        setSelection({ id: null, type: null });
-        setConfirmAction(null);
-        setShowDesktopSettings(false);
-        setShowTeamBuilder(false);
-        setShowModeSelect(false);
-        setAiConfigAgent(null);
-        setConnectorConfigData(null);
-        return;
-      }
-
-      // W2.E — `O` toggles the canvas (OUTPUT) view in the bottom
-      // panel. Lets the user reach the A2UI surface without hunting
-      // through nested menus.
-      if (
-        key === "o" &&
-        !e.ctrlKey &&
-        !e.metaKey &&
-        !e.shiftKey &&
-        !showVault() &&
-        !showDesktopSettings() &&
-        !showSafety() &&
-        !showTravelMode() &&
-        !showRuleBuilder() &&
-        !showTeamBuilder() &&
-        !showModeSelect() &&
-        recipeLibraryVariant() === null &&
-        recipeDeploy() === null &&
-        proofOfLife() === null &&
-        !confirmAction() &&
-        !aiConfigAgent() &&
-        !connectorConfigData() &&
-        !memberPickerFor()
-      ) {
-        e.preventDefault();
-        setDetailView({ mode: "canvas" });
-        return;
-      }
-
-      // W1.A — `N` opens the mode-select hub (Nintendo-style entry to
-      // every compose flow). Skipped when any other modal is open per
-      // the guard below.
-      if (
-        key === "n" &&
-        !e.ctrlKey &&
-        !e.metaKey &&
-        !e.shiftKey &&
-        !showVault() &&
-        !showDesktopSettings() &&
-        !showSafety() &&
-        !showTravelMode() &&
-        !showRuleBuilder() &&
-        !showTeamBuilder() &&
-        !showModeSelect() &&
-        recipeLibraryVariant() === null &&
-        recipeDeploy() === null &&
-        !confirmAction() &&
-        !aiConfigAgent() &&
-        !connectorConfigData() &&
-        !memberPickerFor()
-      ) {
-        e.preventDefault();
-        setShowModeSelect(true);
-        return;
-      }
-
-      // Skip command shortcuts when any modal is open
-      if (
-        showVault() ||
-        showDesktopSettings() ||
-        showSafety() ||
-        showTravelMode() ||
-        showRuleBuilder() ||
-        showTeamBuilder() ||
-        showModeSelect() ||
-        recipeLibraryVariant() !== null ||
-        recipeDeploy() !== null ||
-        proofOfLife() !== null ||
-        recipeAuthorDraft() !== null ||
-        confirmAction() ||
-        aiConfigAgent() ||
-        connectorConfigData() ||
-        memberPickerFor()
-      )
-        return;
-
-      // Command grid shortcuts: match key to current selection context.
-      // F1: formation hotkeys come exclusively from the backend
-      // (`provider.formationAvailableCommands(id)`); there is no
-      // hardcoded fallback. If the resource hasn't resolved yet, short-
-      // circuit so global hotkeys don't fire while a formation is
-      // selected (a stray "R" press shouldn't trigger REFRESH when the
-      // user expected RALLY).
-      const context = selection().type ?? "none";
-      if (context === "formation") {
-        const fmCmds = db.formationCommands();
-        if (!fmCmds) return;
-        const fc = fmCmds.find((c) => c.enabled && c.hotkey.toLowerCase() === key);
-        if (fc) {
-          e.preventDefault();
-          handleCommand(fc.id);
-        }
-        return;
-      }
-      const commandList = COMMANDS[context] ?? COMMANDS.none ?? [];
-      const cmd = commandList.find((c) => c?.key.toLowerCase() === key);
-      if (cmd) {
-        e.preventDefault();
-        handleCommand(cmd.action);
-      }
-    };
-    document.addEventListener("keydown", handleKeyDown);
-
     await listen("vault-locked", () => {
       setVaultLocked(true);
       setShowVault(true);
@@ -426,11 +144,11 @@ export const App = () => {
     await listen("vault-unlocked", async () => {
       setVaultLocked(false);
       setShowVault(false);
-      await loadColonyData();
+      await ctl.loadColonyData();
       // G5g — once the runtime is live we can register the
       // persisted global hotkey. Before unlock the in-window
-      // listener below is the only handler; after unlock it
-      // becomes the fallback for when the window is focused.
+      // listener is the only handler; after unlock it becomes the
+      // fallback for when the window is focused.
       // Best-effort: the backend tries the configured combo then fallbacks
       // and never errors on conflict (a global shortcut is a convenience, not
       // a requirement). The in-window listener covers focus regardless, so a
@@ -479,7 +197,7 @@ export const App = () => {
     // On fresh start the vault is locked — data loading happens
     // when the "vault-unlocked" event fires (see listener above).
     if (!vaultLocked()) {
-      await loadColonyData();
+      await ctl.loadColonyData();
       try {
         const { applyQuickHideShortcut } = await import("./ipc/safety");
         await applyQuickHideShortcut();
@@ -523,312 +241,6 @@ export const App = () => {
     }
   };
 
-  // ── Data → Colony visual model (real data, no fakes) ───
-  const nodes = () => mapNodes(db.connectors());
-  const agents = () => mapAgents(db.rules(), db.agentStates());
-  const [connections, setConnections] = createSignal<import("@springtale/ui").ColonyConnection[]>(
-    [],
-  );
-  const formations = () => mapFormations(db.swarms(), db.cooperationEvents());
-
-  // ── Command dispatch — context:action pattern ───────────
-  // Each command has a unique action ID (e.g. "connector:enable", "agent:pause")
-  // so there's no ambiguity between contexts. Every case maps to a real
-  // backend operation or opens a real UI panel.
-  const handleCommand = async (action: string) => {
-    const sel = selection();
-    try {
-      switch (action) {
-        // ── Global ──
-        case "global:new_rule":
-          // G5e — open the visual rule builder. TeamBuilder is the
-          // formation-spawning wizard, available via a different
-          // entry point; this command targets the rule-composition
-          // surface specifically.
-          setShowRuleBuilder(true);
-          break;
-        case "global:make_bot":
-          // Canvas is live so a refresh command is redundant — this slot
-          // now routes the user back to the bot/team selection hub
-          // (ModeSelectOverlay) so they can add another bot after the
-          // canvas already has some. Same overlay the cold-boot "NEW"
-          // path opens; ModeSelectOverlay branches into RecipeLibraryOverlay
-          // (Make a Bot) or TeamBuilder (Make a Team) from there.
-          setSelection({ id: null, type: null });
-          setShowModeSelect(true);
-          break;
-        case "global:connectors":
-          setSelection({ id: null, type: null });
-          setDetailView({ mode: "connectors" });
-          setAvailableConnectors(await db.provider.listAvailableConnectors());
-          await db.refresh();
-          break;
-        case "global:events":
-          setSelection({ id: null, type: null });
-          setDetailView({ mode: "events" });
-          break;
-        case "global:bots":
-          setSelection({ id: null, type: null });
-          setDetailView({ mode: "bots" });
-          break;
-        case "global:settings":
-          setShowDesktopSettings(true);
-          break;
-        case "global:chat":
-          // W5 — open the in-app chat dock (the "ASK" primary action).
-          setChatOpen(true);
-          break;
-
-        // ── Tree (connector selected) ──
-        case "connector:enable":
-          if (sel.id) {
-            await db.provider.enableConnector(sel.id);
-            await db.refresh();
-          }
-          break;
-        case "connector:disable":
-          if (sel.id) {
-            await db.provider.disableConnector(sel.id);
-            await db.refresh();
-          }
-          break;
-        case "connector:config":
-          if (sel.id) {
-            const config = await db.provider.getConnectorConfig(sel.id);
-            const avail = availableConnectors().find((a) => a.name === sel.id);
-            setConnectorConfigData({ id: sel.id, config, configSchema: avail?.config_schema });
-          }
-          break;
-        case "connector:remove":
-          if (sel.id) {
-            const targetId = sel.id;
-            const deps = await db.provider.listRulesForConnector(targetId);
-            setConfirmAction({
-              title: "Remove Connector",
-              message: `Remove ${targetId} and ${deps.length} dependent rule(s)?`,
-              label: "Remove",
-              action: async () => {
-                await db.provider.removeConnectorCascade(targetId);
-                setSelection({ id: null, type: null });
-                await db.refresh();
-              },
-            });
-          }
-          break;
-        case "connector:events":
-          if (sel.id) {
-            setDetailView({ mode: "events", filterConnector: sel.id });
-          }
-          break;
-        case "connector:test":
-          if (sel.id) {
-            try {
-              const result = await db.provider.testConnector(sel.id);
-              setNotification({
-                message: result.matched
-                  ? `Test passed: "${result.rule_name}"`
-                  : `No match: "${result.rule_name}"`,
-                type: result.matched ? "ok" : "warn",
-              });
-            } catch {
-              setNotification({ message: `No rules for ${sel.id}`, type: "warn" });
-            }
-            setTimeout(() => setNotification(null), 4000);
-          }
-          break;
-        case "connector:outputs":
-          if (sel.id) {
-            const outputs = await db.provider.listConnectorOutputs(sel.id);
-            setConnectorOutputs(outputs);
-            setDetailView({ mode: "outputs", connectorId: sel.id });
-          }
-          break;
-
-        // ── Agent (bot selected) ──
-        case "agent:ai_config":
-          if (sel.id) {
-            const agent = agents().find((a) => a.id === sel.id);
-            setAiConfigAgent({ id: sel.id, name: agent?.name ?? sel.id, scope: "agent" });
-          }
-          break;
-        case "agent:pause":
-          if (sel.id) {
-            await db.handleToggle(sel.id, true);
-            await db.refresh();
-          }
-          break;
-        case "agent:recall":
-          // Recall = disable + clear selection (agent goes idle, returns to tree)
-          if (sel.id) {
-            await db.handleToggle(sel.id, true);
-            setSelection({ id: null, type: null });
-            await db.refresh();
-          }
-          break;
-        case "agent:detach":
-          if (sel.id) {
-            const targetId = sel.id;
-            setConfirmAction({
-              title: "Detach Agent",
-              message: "This will delete the rule. The agent will be removed from the colony.",
-              label: "Detach",
-              action: async () => {
-                await db.handleDelete(targetId);
-                setSelection({ id: null, type: null });
-                await db.refresh();
-              },
-            });
-          }
-          break;
-        case "agent:inspect":
-          setDetailView({ mode: "entity" });
-          break;
-        case "agent:group":
-          if (sel.id) {
-            setDetailView({ mode: "formations", addAgentId: sel.id });
-          }
-          break;
-        case "agent:reassign":
-          if (sel.id) {
-            setPendingReassignAgent(sel.id);
-            setDetailView({ mode: "connectors" });
-          }
-          break;
-        case "agent:autonomy_up":
-          if (sel.id) {
-            await db.provider.stepAutonomy(sel.id, "up");
-            await db.refresh();
-          }
-          break;
-        case "agent:autonomy_down":
-          if (sel.id) {
-            await db.provider.stepAutonomy(sel.id, "down");
-            await db.refresh();
-          }
-          break;
-
-        // ── Formation (swarm selected) ──
-        // Parameterless lifecycle/capability commands → backend generic
-        // dispatcher (`run_formation_command`). The frontend forwards the
-        // clicked id; ALL command→action mapping lives in Rust.
-        case "formation:deploy":
-        case "formation:pause":
-        case "formation:resume":
-          if (sel.id) {
-            await db.provider.runFormationCommand(sel.id, action);
-            await db.refresh();
-          }
-          break;
-        case "formation:dissolve":
-          if (sel.id) {
-            const targetId = sel.id;
-            setConfirmAction({
-              title: "Dissolve Formation",
-              message: "All agents will be released from this formation.",
-              label: "Dissolve",
-              action: async () => {
-                await db.provider.runFormationCommand(targetId, "formation:dissolve");
-                setSelection({ id: null, type: null });
-                await db.refresh();
-              },
-            });
-          }
-          break;
-        case "formation:remove_member":
-          // F5 — open the member-picker overlay scoped to this formation.
-          // The overlay fetches the eligible-removal list (B11
-          // `formation_eligible_members`) and renders one button per member.
-          if (sel.id) {
-            setMemberPickerFor(sel.id);
-          }
-          break;
-        case "formation:rally":
-          if (sel.id) {
-            await db.provider.runFormationCommand(sel.id, action);
-            await db.refresh();
-          }
-          break;
-        case "formation:recruit":
-          // §7 Fever recruit — pick a connector; the backend gates on momentum
-          // tier (Fever) + guard mode before adding the member.
-          if (sel.id) {
-            setPendingRecruitToFormation(sel.id);
-            setDetailView({ mode: "connectors" });
-          }
-          break;
-        case "formation:ai_config":
-        case "formation:ai_adapter":
-          // G7 — open the per-formation AI override panel. Uses the
-          // shared AiConfigPanel scoped to a formation; on save the
-          // config persists at `ai:formation:{id}` and the next
-          // Fever-tier orchestrate call picks it up via `resolve_ai_config`.
-          if (sel.id) {
-            const fm = db.swarms().find((s) => s.id === sel.id);
-            setAiConfigAgent({ id: sel.id, name: fm?.name ?? sel.id, scope: "formation" });
-          }
-          break;
-        case "formation:autonomy":
-          if (sel.id) {
-            await db.provider.cycleFormationAutonomy(sel.id);
-            await db.refresh();
-          }
-          break;
-        case "formation:intent":
-          if (sel.id) {
-            await db.provider.runFormationCommand(sel.id, action);
-            await db.refresh();
-          }
-          break;
-        case "formation:add":
-          if (sel.id) {
-            setPendingAddToFormation(sel.id);
-            setDetailView({ mode: "connectors" });
-          }
-          break;
-        case "formation:fuel":
-          // Show entity detail with fuel info
-          setDetailView({ mode: "entity" });
-          break;
-        case "formation:guard":
-          if (sel.id) {
-            await db.provider.runFormationCommand(sel.id, action);
-            await db.refresh();
-          }
-          break;
-      }
-    } catch (e) {
-      db.setError(String(e));
-    }
-  };
-
-  // W1.A — Mode-select hub handler. Each card opens its own flow.
-  // Per `feedback_multi_path_oobe`, the hub doesn't carry state across
-  // modes — picking a mode dismisses the hub and opens that mode's
-  // entry surface. Returning to the hub re-enters from scratch.
-  const [recipeLibraryVariant, setRecipeLibraryVariant] = createSignal<RecipeLibraryVariant | null>(
-    null,
-  );
-  const handleModeSelect = (mode: CreateMode) => {
-    setShowModeSelect(false);
-    switch (mode) {
-      case "bot":
-        setRecipeLibraryVariant("bot");
-        break;
-      case "team":
-        // W1.B's library covers single-bot recipes today; team recipes
-        // arrive in a later wave. Open the team-aware variant of the
-        // library so the user sees what's there and can fall through
-        // to TeamBuilder for from-scratch composition.
-        setRecipeLibraryVariant("team");
-        break;
-      case "addToTeam":
-        // Until we ship the "pick a team" picker, open the library so
-        // the user can clone a recipe into a new agent.
-        setRecipeLibraryVariant("all");
-        break;
-    }
-  };
-
   // W1.B-quickview — `RecipeQuickView` is mounted by App.tsx (not
   // by RecipeLibraryOverlay internally) so the library stays
   // structurally flat (Show siblings only, mirroring
@@ -858,24 +270,12 @@ export const App = () => {
   // `recipeFavorites()` so the cards render the heart correctly for
   // recipes the user has previously starred.
   createEffect(() => {
-    if (recipeLibraryVariant() === null) return;
+    if (ctl.recipeLibraryVariant() === null) return;
     void db.provider
       .listRecipes({ favorites_only: true })
       .then((rs) => setRecipeFavorites(new Set(rs.map((r) => r.id))))
       .catch(() => {});
   });
-  // W1.C — recipe deploy panel (the layered required → optional →
-  // advanced → code form). When set, the panel replaces the library
-  // overlay until the user either deploys or backs out.
-  const [recipeDeploy, setRecipeDeploy] = createSignal<Recipe | null>(null);
-  // W2.A — seed for TeamBuilder when the user picks CUSTOMIZE on a
-  // recipe instead of USE. Reset to `null` after TeamBuilder closes.
-  const [teamBuilderSeed, setTeamBuilderSeed] = createSignal<TeamBuilderSeed | null>(null);
-  // W2.B — recipe authoring panel. Holds the draft recipe being saved.
-  const [recipeAuthorDraft, setRecipeAuthorDraft] = createSignal<Recipe | null>(null);
-  // W1.E — post-deploy proof-of-life panel. Set immediately after a
-  // successful Deploy so the user sees confirmation + test affordances.
-  const [proofOfLife, setProofOfLife] = createSignal<RecipeApplyReport | null>(null);
   // W1.F — pending destructive-action approval request. Set when the
   // backend emits an `approval-required` event; cleared after the
   // user clicks Approve/Deny and the response IPC call completes.
@@ -885,10 +285,6 @@ export const App = () => {
     action_type: string;
     rationale: string;
   } | null>(null);
-  const handleUseRecipe = (recipe: Recipe) => {
-    setRecipeLibraryVariant(null);
-    setRecipeDeploy(recipe);
-  };
 
   // W1.F — approval response handler. Forwards the user's decision
   // back to the backend dispatcher, then clears the pending state so
@@ -903,6 +299,18 @@ export const App = () => {
       db.setError(`approval response failed: ${String(e)}`);
     } finally {
       setPendingApproval(null);
+    }
+  };
+
+  const confirmPanicWipe = async () => {
+    try {
+      const { ask } = await import("@tauri-apps/plugin-dialog");
+      const ok = await ask("This will irreversibly wipe all data. Are you sure?", {
+        kind: "warning",
+      });
+      if (ok) await panicWipe();
+    } catch (e) {
+      db.setError(String(e));
     }
   };
 
@@ -929,7 +337,7 @@ export const App = () => {
     }
     // F5 — member-picker for RM MBR. Renders before settings/AI panels
     // so a destructive action gets focus once requested.
-    const pickerFor = memberPickerFor();
+    const pickerFor = ctl.memberPickerFor();
     if (pickerFor) {
       return (
         <MemberPickerOverlay
@@ -937,18 +345,18 @@ export const App = () => {
           onRemoved={async () => {
             await db.refresh();
           }}
-          onCancel={() => setMemberPickerFor(null)}
+          onCancel={() => ctl.setMemberPickerFor(null)}
         />
       );
     }
     // W1.A — ModeSelectOverlay sits below the destructive member-picker
     // but above the rest so first-action discoverability is high.
-    if (showModeSelect()) {
+    if (ctl.showModeSelect()) {
       return (
         <ModeSelectOverlay
           hasExistingTeams={(db.swarms()?.length ?? 0) > 0}
-          onSelectMode={handleModeSelect}
-          onCancel={() => setShowModeSelect(false)}
+          onSelectMode={ctl.handleModeSelect}
+          onCancel={() => ctl.setShowModeSelect(false)}
         />
       );
     }
@@ -965,23 +373,23 @@ export const App = () => {
           isFavorite={recipeFavorites().has(quick.id)}
           onUse={() => {
             setRecipeQuickView(null);
-            handleUseRecipe(quick);
+            ctl.handleUseRecipe(quick);
           }}
           onCustomize={() => {
             setRecipeQuickView(null);
-            setRecipeLibraryVariant(null);
-            setTeamBuilderSeed({
+            ctl.setRecipeLibraryVariant(null);
+            ctl.setTeamBuilderSeed({
               name: quick.name,
               connectorsUsed: quick.connectors_used,
             });
-            setShowTeamBuilder(true);
+            ctl.setShowTeamBuilder(true);
           }}
           onFork={async () => {
             try {
               const forked = await db.provider.forkRecipe(quick.id, `My ${quick.name}`);
               setRecipeQuickView(null);
-              setRecipeLibraryVariant(null);
-              setRecipeAuthorDraft(forked);
+              ctl.setRecipeLibraryVariant(null);
+              ctl.setRecipeAuthorDraft(forked);
             } catch (e) {
               db.setError(String(e));
             }
@@ -994,55 +402,55 @@ export const App = () => {
     // W1.B — recipe library opens from any mode-select card. Closes
     // back to the mode-select hub when dismissed; "Build from scratch"
     // falls through to TeamBuilder.
-    if (recipeLibraryVariant() !== null) {
+    if (ctl.recipeLibraryVariant() !== null) {
       return (
         <RecipeLibraryOverlay
-          variant={recipeLibraryVariant() ?? "all"}
+          variant={ctl.recipeLibraryVariant() ?? "all"}
           favorites={recipeFavorites()}
           onSelectRecipe={(recipe) => setRecipeQuickView(recipe)}
           onToggleFavorite={handleToggleRecipeFavorite}
           onBuildFromScratch={() => {
-            setRecipeLibraryVariant(null);
-            setTeamBuilderSeed(null);
-            setShowTeamBuilder(true);
+            ctl.setRecipeLibraryVariant(null);
+            ctl.setTeamBuilderSeed(null);
+            ctl.setShowTeamBuilder(true);
           }}
-          onCancel={() => setRecipeLibraryVariant(null)}
+          onCancel={() => ctl.setRecipeLibraryVariant(null)}
         />
       );
     }
     // W1.C — recipe deploy panel (progressive-disclosure form).
-    const deployRecipe = recipeDeploy();
+    const deployRecipe = ctl.recipeDeploy();
     if (deployRecipe) {
       return (
         <RecipeDeployPanel
           recipe={deployRecipe}
           onDeployed={async (report) => {
-            setRecipeDeploy(null);
+            ctl.setRecipeDeploy(null);
             await db.refresh();
-            setProofOfLife(report);
+            ctl.setProofOfLife(report);
           }}
-          onCancel={() => setRecipeDeploy(null)}
+          onCancel={() => ctl.setRecipeDeploy(null)}
         />
       );
     }
     // W1.E — proof-of-life panel runs after Deploy: test trigger,
     // celebration sprite, dismissal.
-    const polReport = proofOfLife();
+    const polReport = ctl.proofOfLife();
     if (polReport) {
-      return <ProofOfLifePanel report={polReport} onDismiss={() => setProofOfLife(null)} />;
+      return <ProofOfLifePanel report={polReport} onDismiss={() => ctl.setProofOfLife(null)} />;
     }
     // W2.B — recipe author panel (save / fork / build-as-recipe).
-    const authorDraft = recipeAuthorDraft();
+    const authorDraft = ctl.recipeAuthorDraft();
     if (authorDraft) {
       return (
         <RecipeAuthorPanel
           draft={authorDraft}
           onSaved={async () => {
-            setRecipeAuthorDraft(null);
+            ctl.setRecipeAuthorDraft(null);
             await db.refresh();
             db.setError("Recipe saved to your library.");
           }}
-          onCancel={() => setRecipeAuthorDraft(null)}
+          onCancel={() => ctl.setRecipeAuthorDraft(null)}
         />
       );
     }
@@ -1098,7 +506,7 @@ export const App = () => {
     }
 
     // 2. Confirm dialog (destructive actions)
-    const ca = confirmAction();
+    const ca = ctl.confirmAction();
     if (ca) {
       return (
         <div class="mx-auto max-w-lg rounded border-2 border-bark bg-soil-mid p-6 text-center">
@@ -1112,10 +520,10 @@ export const App = () => {
               onClick={async () => {
                 try {
                   await ca.action();
-                  setConfirmAction(null);
+                  ctl.setConfirmAction(null);
                 } catch (e) {
                   db.setError(String(e));
-                  setConfirmAction(null);
+                  ctl.setConfirmAction(null);
                 }
               }}
             >
@@ -1124,7 +532,7 @@ export const App = () => {
             <button
               type="button"
               class="colony-command-btn colony-text-2xs px-4 py-2"
-              onClick={() => setConfirmAction(null)}
+              onClick={() => ctl.setConfirmAction(null)}
             >
               Cancel
             </button>
@@ -1134,7 +542,7 @@ export const App = () => {
     }
 
     // 3. Per-bot AI config (agent:ai_config command)
-    const aca = aiConfigAgent();
+    const aca = ctl.aiConfigAgent();
     if (aca) {
       return (
         <AiConfigPanel
@@ -1149,25 +557,25 @@ export const App = () => {
             await db.provider.configureAiAdapter(target, config);
             await db.refresh();
           }}
-          onClose={() => setAiConfigAgent(null)}
+          onClose={() => ctl.setAiConfigAgent(null)}
         />
       );
     }
 
     // 4. Connector config — full management panel
-    const ccd = connectorConfigData();
+    const ccd = ctl.connectorConfigData();
     if (ccd) {
       return (
         <ConnectorConfigPanel
           connectorId={ccd.id}
           schemas={db.schemas()}
-          conditionTypes={conditionTypes()}
+          conditionTypes={ctl.conditionTypes()}
           rules={db.rules().filter((r) => (r.connector ?? r.triggerType) === ccd.id)}
           currentConfig={ccd.config}
           configSchema={ccd.configSchema}
           onSave={async (id, config) => {
             await db.provider.upsertConnectorConfig(id, config);
-            setAvailableConnectors(await db.provider.listAvailableConnectors());
+            ctl.setAvailableConnectors(await db.provider.listAvailableConnectors());
             await db.refresh();
           }}
           onToggleRule={async (ruleId, enabled) => {
@@ -1186,7 +594,7 @@ export const App = () => {
             const result = await db.provider.testConnector(id);
             if (!result.matched) throw new Error("Rule did not match");
           }}
-          onClose={() => setConnectorConfigData(null)}
+          onClose={() => ctl.setConnectorConfigData(null)}
         />
       );
     }
@@ -1200,17 +608,7 @@ export const App = () => {
             setShowDesktopSettings(false);
             setShowVault(true);
           }}
-          onPanicWipe={async () => {
-            try {
-              const { ask } = await import("@tauri-apps/plugin-dialog");
-              const ok = await ask("This will irreversibly wipe all data. Are you sure?", {
-                kind: "warning",
-              });
-              if (ok) await panicWipe();
-            } catch (e) {
-              db.setError(String(e));
-            }
-          }}
+          onPanicWipe={confirmPanicWipe}
           onOpenSafety={() => {
             setShowDesktopSettings(false);
             setShowSafety(true);
@@ -1222,8 +620,8 @@ export const App = () => {
             await db.provider.compactMemory(1000);
           }}
           onClose={() => setShowDesktopSettings(false)}
-          theme={theme()}
-          onThemeChange={(t) => setTheme(t)}
+          theme={ctl.theme()}
+          onThemeChange={(next) => ctl.setTheme(next)}
         />
       );
     }
@@ -1233,17 +631,7 @@ export const App = () => {
       return (
         <SafetyPanel
           onClose={() => setShowSafety(false)}
-          onPanicWipe={async () => {
-            try {
-              const { ask } = await import("@tauri-apps/plugin-dialog");
-              const ok = await ask("This will irreversibly wipe all data. Are you sure?", {
-                kind: "warning",
-              });
-              if (ok) await panicWipe();
-            } catch (e) {
-              db.setError(String(e));
-            }
-          }}
+          onPanicWipe={confirmPanicWipe}
           onSafetyChanged={async () => {
             // F — every panel save (disguise focused-updates AND the
             // full-form Save button) routes here so the running
@@ -1259,7 +647,7 @@ export const App = () => {
                 applyDisguiseToTray,
                 applyQuickHideShortcut,
               } = await import("./ipc/safety");
-              const { resetAutoLock } = await import("./ipc/autolock");
+              const { resetAutoLock: resetAutoLockNow } = await import("./ipc/autolock");
               await applyDisguiseToShell();
               await applyDisguiseToTray();
               await applyContentProtection();
@@ -1268,7 +656,7 @@ export const App = () => {
               // `auto_lock_minutes` from the persisted safety config
               // and reschedules `AppState.auto_lock` accordingly, so
               // a panel change to the timer takes effect now.
-              await resetAutoLock();
+              await resetAutoLockNow();
             } catch (e) {
               db.setError(String(e));
             }
@@ -1297,10 +685,10 @@ export const App = () => {
     }
 
     // 5c. G5e — visual rule builder (global:new_rule command).
-    if (showRuleBuilder()) {
+    if (ctl.showRuleBuilder()) {
       return (
         <RuleBuilderOverlay
-          onCancel={() => setShowRuleBuilder(false)}
+          onCancel={() => ctl.setShowRuleBuilder(false)}
           onSaved={async () => {
             await db.refresh();
           }}
@@ -1309,18 +697,15 @@ export const App = () => {
     }
 
     // 6. TeamBuilder OOBE — full-panel overlay like settings
-    if (showTeamBuilder()) {
+    if (ctl.showTeamBuilder()) {
       return (
         <div class="colony-modal mx-auto max-w-lg overflow-y-auto rounded border-2 border-bark bg-soil-mid p-6">
           <TeamBuilder
-            availableConnectors={availableConnectors()}
+            availableConnectors={ctl.availableConnectors()}
             connectors={db.schemas()}
-            intents={intents()}
-            initialTemplate={teamBuilderSeed() ?? undefined}
-            onSetupConnector={(name) => {
-              const avail = availableConnectors().find((a) => a.name === name);
-              setConnectorConfigData({ id: name, config: {}, configSchema: avail?.config_schema });
-            }}
+            intents={ctl.intents()}
+            initialTemplate={ctl.teamBuilderSeed() ?? undefined}
+            onSetupConnector={ctl.setupConnector}
             onParseRule={async (intent) => db.provider.parseRuleFromIntent(intent)}
             onSaveAiConfig={async (config) => {
               await db.provider.configureAiAdapter({ scope: "colony" }, config);
@@ -1337,14 +722,14 @@ export const App = () => {
                   action_name: a.actionName,
                 })),
               });
-              setShowTeamBuilder(false);
-              setTeamBuilderSeed(null);
+              ctl.setShowTeamBuilder(false);
+              ctl.setTeamBuilderSeed(null);
               await db.refresh();
-              setAvailableConnectors(await db.provider.listAvailableConnectors());
+              ctl.setAvailableConnectors(await db.provider.listAvailableConnectors());
             }}
             onCancel={() => {
-              setShowTeamBuilder(false);
-              setTeamBuilderSeed(null);
+              ctl.setShowTeamBuilder(false);
+              ctl.setTeamBuilderSeed(null);
             }}
           />
         </div>
@@ -1359,57 +744,39 @@ export const App = () => {
     <ColonyShell
       topBar={
         <TopBar
-          agents={agents()}
-          nodes={nodes()}
-          formations={formations()}
+          agents={ctl.agents()}
+          nodes={ctl.nodes()}
+          formations={ctl.formations()}
           events={db.events()}
-          selection={selection()}
-          onSelectAgent={(id) => {
-            setSelection({ id, type: "agent" });
-            setDetailView({ mode: "entity" });
-          }}
-          onSelectFormation={(id) => {
-            setSelection({ id, type: "formation" });
-            setDetailView({ mode: "entity" });
-          }}
+          selection={ctl.selection()}
+          onSelectAgent={ctl.selectAgent}
+          onSelectFormation={ctl.selectFormation}
         />
       }
       viewport={
         <div class="relative h-full w-full">
           <Viewport
-            nodes={nodes()}
-            agents={agents()}
-            connections={connections()}
-            formations={formations()}
+            nodes={ctl.nodes()}
+            agents={ctl.agents()}
+            connections={ctl.connections()}
+            formations={ctl.formations()}
             utterances={db.utterances()}
             colonyNow={db.colonyNow()}
             agentToConnector={db.agentToConnector()}
             framesFor={db.framesFor}
             roleOf={db.roleOf}
             events={db.events()}
-            selection={selection()}
-            onSelectConnector={(id) => {
-              setSelection({ id, type: "connector" });
-              setDetailView({ mode: "entity" });
-            }}
-            onSelectAgent={(id) => {
-              setSelection({ id, type: "agent" });
-              setDetailView({ mode: "entity" });
-            }}
-            onSelectFormation={(id) => {
-              setSelection({ id, type: "formation" });
-              setDetailView({ mode: "entity" });
-            }}
-            onClearSelection={() => setSelection({ id: null, type: null })}
-            connectorPositions={connectorPositions()}
-            onConnectorDrag={handleConnectorDrag}
-            onHatch={() => setShowModeSelect(true)}
-            availableConnectors={availableConnectors()}
+            selection={ctl.selection()}
+            onSelectConnector={ctl.selectConnector}
+            onSelectAgent={ctl.selectAgent}
+            onSelectFormation={ctl.selectFormation}
+            onClearSelection={ctl.clearSelection}
+            connectorPositions={ctl.connectorPositions()}
+            onConnectorDrag={ctl.handleConnectorDrag}
+            onHatch={() => ctl.setShowModeSelect(true)}
+            availableConnectors={ctl.availableConnectors()}
             connectorSchemas={db.schemas()}
-            onSetupConnector={(name) => {
-              const avail = availableConnectors().find((a) => a.name === name);
-              setConnectorConfigData({ id: name, config: {}, configSchema: avail?.config_schema });
-            }}
+            onSetupConnector={ctl.setupConnector}
             onParseRule={async (intent) => db.provider.parseRuleFromIntent(intent)}
           />
           {/* Floating chat dock — bottom-left, above the minimap. */}
@@ -1418,63 +785,27 @@ export const App = () => {
       }
       bottomPanel={
         <BottomPanel
-          nodes={nodes()}
-          agents={agents()}
-          connections={connections()}
-          formations={formations()}
-          connectorPositions={connectorPositions()}
-          outputs={connectorOutputs()}
-          availableConnectors={availableConnectors()}
+          nodes={ctl.nodes()}
+          agents={ctl.agents()}
+          connections={ctl.connections()}
+          formations={ctl.formations()}
+          connectorPositions={ctl.connectorPositions()}
+          outputs={ctl.connectorOutputs()}
+          availableConnectors={ctl.availableConnectors()}
           events={db.events()}
-          selection={selection()}
-          detailView={detailView()}
+          selection={ctl.selection()}
+          detailView={ctl.detailView()}
           formationCommands={db.formationCommands()}
-          onCommand={handleCommand}
-          onSelectAgent={(id) => {
-            setSelection({ id, type: "agent" });
-            setDetailView({ mode: "entity" });
-          }}
-          onSelectConnector={async (id) => {
-            const reassignId = pendingReassignAgent();
-            const formationId = pendingAddToFormation();
-            const recruitId = pendingRecruitToFormation();
-            if (reassignId) {
-              await db.provider.reassignRuleConnector(reassignId, id);
-              setPendingReassignAgent(null);
-              setDetailView({ mode: "entity" });
-              await db.refresh();
-            } else if (recruitId) {
-              // §7 Fever recruit — backend gates on momentum tier + guard.
-              await db.provider.runFormationCommand(recruitId, "formation:recruit", {
-                connector_name: id,
-              });
-              setPendingRecruitToFormation(null);
-              setDetailView({ mode: "entity" });
-              await db.refresh();
-            } else if (formationId) {
-              await db.provider.addFormationMember(formationId, id);
-              setPendingAddToFormation(null);
-              setDetailView({ mode: "entity" });
-              await db.refresh();
-            } else {
-              setSelection({ id, type: "connector" });
-              setDetailView({ mode: "entity" });
-            }
-          }}
-          onAddToFormation={async (fId, cName) => {
-            await db.provider.addFormationMember(fId, cName);
-            setDetailView({ mode: "entity" });
-            await db.refresh();
-          }}
-          onSetupConnector={(name) => {
-            const avail = availableConnectors().find((a) => a.name === name);
-            setConnectorConfigData({ id: name, config: {}, configSchema: avail?.config_schema });
-          }}
-          onCreateBot={() => setShowModeSelect(true)}
+          onCommand={ctl.handleCommand}
+          onSelectAgent={ctl.selectAgent}
+          onSelectConnector={ctl.handleSelectConnectorFromPanel}
+          onAddToFormation={ctl.handleAddToFormation}
+          onSetupConnector={ctl.setupConnector}
+          onCreateBot={() => ctl.setShowModeSelect(true)}
         />
       }
       overlay={shellOverlay()}
-      notification={notification() ?? undefined}
+      notification={ctl.notification() ?? undefined}
     />
   );
 };

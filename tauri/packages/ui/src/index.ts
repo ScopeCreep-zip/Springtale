@@ -24,7 +24,6 @@ export { AiSchemaEditor } from "./colony/AiSchemaEditor";
 export type { ApprovalCardProps } from "./colony/ApprovalCard";
 export { ApprovalCard } from "./colony/ApprovalCard";
 export { AppSettingsPanel } from "./colony/AppSettingsPanel";
-export { BottomPanel } from "./colony/BottomPanel";
 export type { ChatDockProps } from "./colony/ChatDock";
 export { ChatDock } from "./colony/ChatDock";
 export type { ChatPanelProps } from "./colony/ChatPanel";
@@ -35,6 +34,15 @@ export { ColonyShell } from "./colony/ColonyShell";
 export { ConnectorConfigPanel } from "./colony/ConnectorConfigPanel";
 export type { CronFrequencyChipProps } from "./colony/CronFrequencyChip";
 export { CronFrequencyChip } from "./colony/CronFrequencyChip";
+export type {
+  AiConfigTarget,
+  ColonyControllerOptions,
+  ColonyDb,
+  ColonyNotification,
+  ConfirmAction,
+  ConnectorConfigData,
+} from "./colony/controller";
+export { createColonyController } from "./colony/controller";
 export type { DeploySummaryModalProps } from "./colony/DeploySummaryModal";
 export { DeploySummaryModal } from "./colony/DeploySummaryModal";
 export type { DriftBadgeProps } from "./colony/DriftBadge";
@@ -64,6 +72,8 @@ export type { PreviewPanelProps } from "./colony/PreviewPanel";
 export { PreviewPanel } from "./colony/PreviewPanel";
 export type { ProofOfLifePanelProps } from "./colony/ProofOfLifePanel";
 export { ProofOfLifePanel } from "./colony/ProofOfLifePanel";
+export type { BottomPanelProps } from "./colony/panel";
+export { BottomPanel } from "./colony/panel";
 export type { RecipeAuthorPanelProps } from "./colony/RecipeAuthorPanel";
 export { RecipeAuthorPanel } from "./colony/RecipeAuthorPanel";
 export type { RecipeCardProps } from "./colony/RecipeCard";
