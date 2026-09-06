@@ -107,7 +107,7 @@ export const RecipeQuickView: Component<RecipeQuickViewProps> = (props) => {
         <button
           type="button"
           class="colony-command-btn colony-text-2xs px-4 py-2"
-          style={{ "border-color": "var(--color-status-ok)" }}
+          data-tone="ok"
           onClick={() => props.onUse()}
         >
           USE THIS

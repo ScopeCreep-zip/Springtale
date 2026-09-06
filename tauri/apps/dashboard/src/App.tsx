@@ -196,7 +196,15 @@ export const App = () => {
         const idx = parseInt(key, 10) - 1;
         const a = agents();
         const agent = a[idx];
-        if (agent) setSelection({ id: agent.id, type: "agent" });
+        if (agent) {
+          setSelection({ id: agent.id, type: "agent" });
+          // Plan 3.7: number keys select AND move focus to the sprite.
+          document
+            .querySelector<HTMLElement>(
+              `button.colony-agent[data-agent-id="${CSS.escape(agent.id)}"]`,
+            )
+            ?.focus();
+        }
         return;
       }
 

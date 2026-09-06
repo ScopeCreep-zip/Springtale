@@ -49,7 +49,7 @@ export const TopBar: Component<TopBarProps> = (props) => {
       {/* Cadence waveform */}
       <div class="mr-1.5 flex h-4 shrink-0 items-end gap-px">
         <For each={bars()}>
-          {(h) => <div class="colony-cadence-bar" style={{ height: `${h}px` }} />}
+          {(h) => <div class="colony-cadence-bar" style={{ "--colony-h": `${h}px` }} />}
         </For>
       </div>
 
@@ -62,7 +62,10 @@ export const TopBar: Component<TopBarProps> = (props) => {
               class="mx-0.5 flex items-center gap-0 border border-bark-light px-0.5 py-px"
               onClick={() => props.onSelectFormation(formation.id)}
             >
-              <span class="colony-vertical-label mr-0.5" style={{ color: formation.color }}>
+              <span
+                class="colony-vertical-label colony-tinted mr-0.5"
+                style={{ "--colony-color": formation.color }}
+              >
                 {formation.name.split(" ")[0]}
               </span>
               <For

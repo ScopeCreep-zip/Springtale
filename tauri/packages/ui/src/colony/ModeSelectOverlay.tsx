@@ -55,8 +55,8 @@ const ModeCard: Component<ModeCardProps> = (props) => (
     classList={{
       "is-disabled": props.disabled,
       "border-status-ok": props.recommended && !props.disabled,
+      "min-h-[180px]": true,
     }}
-    style={{ "min-height": "180px" }}
     disabled={props.disabled}
     title={props.disabled ? props.disabledReason : undefined}
     onClick={() => props.onClick()}

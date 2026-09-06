@@ -309,7 +309,7 @@ export const RecipeDeployPanel: Component<RecipeDeployPanelProps> = (props) => {
         <button
           type="button"
           class="colony-command-btn colony-text-2xs px-5 py-2"
-          style={{ "border-color": "var(--color-status-ok)" }}
+          data-tone="ok"
           disabled={deploying() || deployBlocked()}
           onClick={handleDeploy}
         >

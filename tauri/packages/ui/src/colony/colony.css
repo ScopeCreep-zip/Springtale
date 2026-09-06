@@ -638,7 +638,9 @@
     gap: 2px 4px;
   }
 
-  /* Tiny text below the text-4xs tier */
+  /* Tiny text below the text-4xs tier — LABEL-ONLY (Silkscreen glyph
+     labels on the canvas). Body copy never goes below 10px
+     (.colony-text-xs); see docs/ALIGNMENT-PLAN.md §3.7. */
   .colony-text-5xs {
     font-size: 6px;
   }
@@ -1041,4 +1043,194 @@
   box-shadow:
     2px 2px 0 rgba(0, 0, 0, 0.2),
     0 0 6px var(--color-status-ok);
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Plan 3.8 — inline-style rule. Only `width`, `left`, `top`, `transform`
+   and `--colony-*` custom properties may be set inline; everything else
+   lives here. Dynamic values (backend colours, computed sizes) flow in
+   through the custom properties below.
+   ══════════════════════════════════════════════════════════════════ */
+@layer components {
+  .colony-tinted {
+    color: var(--colony-color);
+  }
+  .colony-indent {
+    padding-left: var(--colony-indent);
+  }
+  .colony-command-btn[data-tone="ok"] {
+    border-color: var(--color-status-ok);
+  }
+  .colony-command-btn[data-tone="warn"] {
+    border-color: var(--color-status-warn);
+  }
+  .colony-command-btn[data-tone="error"] {
+    border-color: var(--color-status-error);
+  }
+
+  /* Canvas — OOBE, litter, trees, formations */
+  .colony-oobe-sprite {
+    position: relative;
+    width: 42px;
+    height: 30px;
+  }
+  .colony-litter {
+    height: var(--colony-h);
+    background: var(--colony-bg);
+    opacity: var(--colony-opacity);
+  }
+  .colony-tree {
+    height: var(--colony-h);
+    cursor: grab;
+  }
+  .colony-tree-status {
+    position: absolute;
+    bottom: -4px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 5px;
+    height: 5px;
+    background: var(--color-status-idle);
+  }
+  .colony-tree-status[data-status="active"] {
+    background: var(--color-status-ok);
+  }
+  .colony-tree-status[data-status="paused"] {
+    background: var(--color-status-warn);
+  }
+  .colony-tree-label {
+    bottom: -18px;
+    left: 50%;
+    transform: translateX(-50%);
+  }
+  .colony-formation {
+    height: var(--colony-h);
+    overflow: visible;
+  }
+  .colony-formation ellipse.is-cascading {
+    filter: drop-shadow(0 0 3px var(--colony-glow)) drop-shadow(0 0 6px var(--colony-glow));
+  }
+  .colony-formation-label {
+    font-size: 6px; /* Silkscreen label tier, not body copy */
+    pointer-events: auto;
+    cursor: pointer;
+    color: var(--colony-color);
+  }
+  .colony-formation-chip {
+    font-size: 5px; /* Silkscreen label tier, not body copy */
+    background: var(--colony-color);
+    color: var(--color-soil-deep);
+    cursor: pointer;
+  }
+  .colony-formation-chip.is-cascade {
+    background: var(--color-status-warn);
+  }
+  .colony-rally-pip {
+    width: 4px;
+    height: 4px;
+    border-radius: 1px;
+    background: transparent;
+    border: 1px solid var(--colony-color);
+  }
+  .colony-rally-pip.is-filled {
+    background: var(--color-status-warn);
+  }
+
+  /* Canvas — agents are real <button>s (plan 3.7) */
+  .colony-agent {
+    appearance: none;
+    background: none;
+    border: 0;
+    padding: 0;
+    margin: 0;
+    font: inherit;
+    color: inherit;
+    text-align: center;
+    opacity: var(--colony-opacity, 1);
+  }
+  .colony-agent:focus-visible {
+    outline: 2px solid var(--color-status-ok);
+    outline-offset: 2px;
+  }
+  .colony-agent-overhead {
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    margin-bottom: 2px;
+  }
+  .colony-agent-glyph {
+    filter: drop-shadow(0 0 2px var(--color-shadow-deep));
+  }
+  .colony-agent-attention {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 5px;
+    height: 5px;
+    background: var(--color-status-warn);
+    border-radius: 50%;
+    pointer-events: none;
+  }
+
+  /* Top bar */
+  .colony-cadence-bar {
+    height: var(--colony-h);
+  }
+
+  /* Bottom panel — minimap */
+  .colony-minimap-formation {
+    height: var(--colony-h);
+    border: 1px solid var(--colony-color);
+  }
+  .colony-minimap-tree {
+    width: 4px;
+    height: 4px;
+    background: var(--color-minimap-idle);
+  }
+  .colony-minimap-tree[data-status="active"] {
+    background: var(--color-canopy);
+  }
+  .colony-minimap-tree[data-status="paused"] {
+    background: var(--color-canopy-degraded);
+  }
+  .colony-minimap-line {
+    transform-origin: 0 0;
+    background: var(--color-mycelium);
+  }
+  .colony-minimap-line.is-active {
+    background: var(--color-mycelium-active);
+  }
+  .colony-minimap-dot {
+    background: var(--colony-bg);
+  }
+  .colony-minimap-dot.is-selected {
+    width: 5px;
+    height: 5px;
+  }
+
+  /* Bottom panel — detail + cards */
+  .colony-stat-fill {
+    background: var(--colony-bg, var(--color-status-ok));
+  }
+  .colony-autonomy-pip.is-active {
+    border-color: var(--colony-color);
+    background: var(--colony-color);
+    color: var(--color-soil-deep);
+  }
+  .colony-momentum-seg,
+  .colony-attn-seg {
+    background: var(--colony-bg);
+  }
+  .colony-panel-pip {
+    background: var(--color-soil-darker);
+    border: 1px solid var(--color-bark);
+  }
+  .colony-panel-pip.is-filled {
+    background: var(--color-status-warn);
+  }
+  .colony-card-sprite-frame {
+    position: relative;
+    height: 26px;
+    flex-shrink: 0;
+  }
 }

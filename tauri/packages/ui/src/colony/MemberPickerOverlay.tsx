@@ -108,7 +108,7 @@ export const MemberPickerOverlay: Component<MemberPickerOverlayProps> = (props) 
             <button
               type="button"
               class="colony-command-btn colony-text-2xs px-4 py-2"
-              style={{ "border-color": "var(--color-status-error)" }}
+              data-tone="error"
               disabled={working()}
               onClick={confirmRemoval}
             >

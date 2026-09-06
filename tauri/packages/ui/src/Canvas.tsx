@@ -21,19 +21,19 @@ export interface CanvasProps {
 }
 
 const STATUS_BORDER: Record<StatusState, string> = {
-  Info: "border-blue-500/40",
-  Success: "border-green-500/40",
-  Warning: "border-yellow-500/40",
-  Error: "border-red-500/40",
-  Loading: "border-gray-500/40",
+  Info: "border-status-ok/40",
+  Success: "border-status-ok/40",
+  Warning: "border-status-warn/40",
+  Error: "border-status-error/40",
+  Loading: "border-bark-light/40",
 };
 
 const STATUS_TEXT: Record<StatusState, string> = {
-  Info: "text-blue-300",
-  Success: "text-green-300",
-  Warning: "text-yellow-300",
-  Error: "text-red-300",
-  Loading: "text-gray-300",
+  Info: "text-status-ok",
+  Success: "text-status-ok",
+  Warning: "text-status-warn",
+  Error: "text-status-error",
+  Loading: "text-text-secondary",
 };
 
 export const Canvas: Component<CanvasProps> = (props) => {
@@ -41,7 +41,7 @@ export const Canvas: Component<CanvasProps> = (props) => {
     <Show
       when={props.state && props.state.blocks.length > 0}
       fallback={
-        <p class="text-sm text-gray-400 italic">
+        <p class="text-sm text-text-dim italic">
           No content. The bot will push blocks here when it has something to show.
         </p>
       }
@@ -59,7 +59,7 @@ const CanvasBlockView: Component<{ block: CanvasBlock }> = (props) => (
       {(() => {
         const b = props.block as Extract<CanvasBlock, { type: "Text" }>;
         return (
-          <div class="rounded border border-gray-700 bg-gray-800/50 p-3 text-sm text-gray-200">
+          <div class="rounded border border-bark bg-soil-mid/50 p-3 text-sm text-text-primary">
             {b.content}
           </div>
         );
@@ -71,10 +71,10 @@ const CanvasBlockView: Component<{ block: CanvasBlock }> = (props) => (
         return (
           <table class="w-full border-collapse text-sm">
             <thead>
-              <tr class="border-b border-gray-700">
+              <tr class="border-b border-bark">
                 <For each={b.headers}>
                   {(header) => (
-                    <th class="px-3 py-2 text-left font-medium text-gray-300">{header}</th>
+                    <th class="px-3 py-2 text-left font-medium text-text-secondary">{header}</th>
                   )}
                 </For>
               </tr>
@@ -82,9 +82,9 @@ const CanvasBlockView: Component<{ block: CanvasBlock }> = (props) => (
             <tbody>
               <For each={b.rows}>
                 {(row) => (
-                  <tr class="border-b border-gray-800">
+                  <tr class="border-b border-bark">
                     <For each={row}>
-                      {(cell) => <td class="px-3 py-2 text-gray-200">{cell}</td>}
+                      {(cell) => <td class="px-3 py-2 text-text-primary">{cell}</td>}
                     </For>
                   </tr>
                 )}
@@ -102,8 +102,8 @@ const CanvasBlockView: Component<{ block: CanvasBlock }> = (props) => (
             <For each={b.pairs}>
               {([key, value]) => (
                 <>
-                  <dt class="font-medium text-gray-400">{key}</dt>
-                  <dd class="text-gray-200">{value}</dd>
+                  <dt class="font-medium text-text-dim">{key}</dt>
+                  <dd class="text-text-primary">{value}</dd>
                 </>
               )}
             </For>
@@ -116,13 +116,13 @@ const CanvasBlockView: Component<{ block: CanvasBlock }> = (props) => (
         const b = props.block as Extract<CanvasBlock, { type: "Status" }>;
         return (
           <div
-            class={`rounded border-l-4 bg-gray-800/50 px-3 py-2 ${STATUS_BORDER[b.state]}`}
+            class={`rounded border-l-4 bg-soil-mid/50 px-3 py-2 ${STATUS_BORDER[b.state]}`}
             role={b.state === "Error" || b.state === "Warning" ? "alert" : "status"}
             aria-live={b.state === "Error" ? "assertive" : "polite"}
           >
             <p class={`text-sm font-medium ${STATUS_TEXT[b.state]}`}>{b.label}</p>
             <Show when={b.message}>
-              <p class="mt-1 text-xs text-gray-400">{b.message}</p>
+              <p class="mt-1 text-xs text-text-dim">{b.message}</p>
             </Show>
           </div>
         );

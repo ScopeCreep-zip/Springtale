@@ -118,9 +118,7 @@ export const Viewport: Component<ViewportProps> = (props) => {
           <For each={props.agents.filter((a) => a.status === "ok").slice(0, 4)}>
             {(agent) => (
               <div class="colony-ticket">
-                <span class="colony-text-2xs" style={{ color: "var(--color-status-ok)" }}>
-                  {agent.pipeline ?? agent.name}
-                </span>
+                <span class="colony-text-2xs text-status-ok">{agent.pipeline ?? agent.name}</span>
                 <div class="colony-ticket-timer">
                   <div class="h-full bg-status-ok" style={{ width: `${agent.fuel}%` }} />
                 </div>
