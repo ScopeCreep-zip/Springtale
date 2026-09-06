@@ -707,6 +707,74 @@ export interface DataProvider {
   /** Track D — subscribe to `chat-discovered` events. Returns the
    *  unlisten function (no-op on web). */
   subscribeToChatDiscovered(callback: (event: ChatDiscoveredEvent) => void): Promise<() => void>;
+
+  // ── Session and API tokens ────────────────────────────────────────
+  /** Revoke the session token server-side (`POST /auth/logout`). */
+  endSession(): Promise<void>;
+  /** The long-lived API tokens the daemon has issued. */
+  listApiTokens(): Promise<ApiTokenInfo[]>;
+  /** Revoke one issued token by id. */
+  revokeApiToken(id: string): Promise<void>;
+
+  // ── Bot runtime views ─────────────────────────────────────────────
+  /** What the bot runtime is doing right now. */
+  getBotStatus(): Promise<Record<string, unknown>>;
+  /** The formations the bot runtime is running. */
+  listBotFormations(): Promise<Record<string, unknown>>;
+  /** The session memory the bot runtime is holding. */
+  getBotMemory(): Promise<Record<string, unknown>>;
+
+  // ── Heartbeat ─────────────────────────────────────────────────────
+  /** The heartbeat config the daemon is running on. */
+  getHeartbeatConfig(): Promise<Record<string, unknown>>;
+  /** Replace the heartbeat config. */
+  setHeartbeatConfig(config: Record<string, unknown>): Promise<void>;
+
+  // ── Connector installation ────────────────────────────────────────
+  /** Install a first-party connector from its manifest document. */
+  installConnector(manifest: Record<string, unknown>): Promise<string>;
+  /** Install a sandboxed WASM connector: manifest plus module bytes. */
+  installWasmConnector(manifest: Record<string, unknown>, wasm: Blob): Promise<string>;
+
+  // ── Cooperation ───────────────────────────────────────────────────
+  /** Utterances the colony has spoken recently. */
+  listRecentUtterances(limit?: number): Promise<Record<string, unknown>[]>;
+
+  // ── Data ──────────────────────────────────────────────────────────
+  /** Import a previously exported archive. */
+  importData(archive: Record<string, unknown>): Promise<Record<string, unknown>>;
+  /** Purge local data the daemon holds. */
+  purgeData(): Promise<Record<string, unknown>>;
+
+  // ── Drift and executions ──────────────────────────────────────────
+  /** Drift for one rule, the sibling of `getRecipeDrift`. */
+  getRuleDrift(ruleId: string, filter?: DriftFilter): Promise<DriftReport>;
+  /** Trim the execution log to the last `keepDays` days. */
+  vacuumExecutions(keepDays: number): Promise<number>;
+
+  // ── Formation votes ───────────────────────────────────────────────
+  /** Propose an intent change for the formation to vote on. */
+  proposeFormationIntent(id: string, intent: string): Promise<Record<string, unknown>>;
+  /** Cast a vote on an open proposal. */
+  castFormationVote(id: string, voteId: string, choice: string): Promise<Record<string, unknown>>;
+
+  // ── Chat sessions ─────────────────────────────────────────────────
+  /** The chat sessions the daemon is holding. */
+  listSessions(): Promise<Record<string, unknown>[]>;
+}
+
+/** One API token the daemon has issued (`GET /auth/tokens`). */
+export interface ApiTokenInfo {
+  id: string;
+  name: string;
+  created_at: string;
+  last_used_at?: string | null;
+}
+
+/** Query filter shared by the two drift routes. */
+export interface DriftFilter {
+  since?: string;
+  limit?: number;
 }
 
 /** Payload of the `chat-discovered` Tauri event (Track D). */
