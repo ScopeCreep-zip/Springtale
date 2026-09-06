@@ -2349,28 +2349,35 @@ springtale registry migrate --to-dht  # Phase 3: PostgreSQL → Veilid DHT
 **Phase 2 scope.** Mirrors Rekindle's four-layer stack exactly.
 Targets: macOS, Windows, Linux, iOS, Android — one codebase, five platforms.
 
+The shell does not host the runtime. springtaled owns all state, and the
+desktop app is one of its clients, launched as a Tauri sidecar on unlock.
+
 ```
 SolidJS + TypeScript Frontend
   Rendering, state display, user input
   No business logic. No secrets. No crypto.
-  ipc/ module: typed invoke() wrappers only — no raw tauri.invoke strings
+  Talks to springtaled over HTTP on loopback, through the same web
+  provider the dashboard uses
 ──────────────────────────────────────────
 Tauri 2 IPC Bridge
-  Commands: Frontend → Rust (user actions)
-  Events:   Rust → Frontend (state updates)
-  Window management, system tray, plugins
+  Only what the operating system owns: vault unlock, tray, quick hide,
+  content protection, window title, auto-lock, selector picker
   Mobile: Swift (iOS) + Kotlin (Android) plugin bindings
 ──────────────────────────────────────────
-Tauri Commands (src-tauri/commands/)
-  Thin layer. Validates inputs. Delegates to crates.
-  Never contains business logic directly.
+springtaled, spawned as a sidecar
+  `--bind 127.0.0.1:0 --passphrase-stdin`, prints `READY {port}`
+  The passphrase goes over stdin, never argv or env
+  On mobile, where a bundled binary cannot be spawned, the same daemon
+  runs in-process on a background task and serves the same API
 ──────────────────────────────────────────
-Core Crates (same as springtaled)
-  springtale-core, springtale-crypto, springtale-connector
-  springtale-scheduler, springtale-store, springtale-ai
-  All pure Rust. Zero Tauri dependency.
-  Independently testable outside desktop context.
+Core Crates (springtaled only)
+  The desktop crate depends on springtale-crypto for the vault UI and
+  springtale-transport for the rustls provider, and on nothing else.
 ```
+
+Packaging must build springtaled for each target and place it at
+`src-tauri/binaries/springtaled-{target-triple}` before the desktop crate
+is built; the Tauri build fails without it.
 
 **Mobile-specific features (Tauri 2 plugins):**
 - Camera access for QR code scanning (device pairing, connector install)
