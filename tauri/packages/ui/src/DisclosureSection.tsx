@@ -39,7 +39,10 @@ export const DisclosureSection: Component<DisclosureSectionProps> = (props) => {
     props.onToggle?.(next);
   };
   return (
-    <div class="border-l-2 border-bark/40" style={{ "padding-left": `${level() * 12 + 8}px` }}>
+    <div
+      class="colony-indent border-l-2 border-bark/40"
+      style={{ "--colony-indent": `${level() * 12 + 8}px` }}
+    >
       <button
         type="button"
         class="colony-text-2xs flex w-full items-center gap-2 py-2 text-left text-text-secondary hover:text-text-primary"

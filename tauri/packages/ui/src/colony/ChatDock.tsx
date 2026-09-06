@@ -36,7 +36,7 @@ export const ChatDock: Component<ChatDockProps> = (props) => {
   };
 
   return (
-    <div class="absolute bottom-2 left-2 z-20" style={{ "pointer-events": "auto" }}>
+    <div class="pointer-events-auto absolute bottom-2 left-2 z-20">
       <Show
         when={open()}
         fallback={

@@ -5,7 +5,8 @@
   "scripts": {
     "dev": "pnpm -r --parallel run dev",
     "build": "pnpm -r run build",
-    "lint": "biome check .",
+    "lint": "biome check . && node scripts/check-inline-styles.mjs",
+    "lint:styles": "node scripts/check-inline-styles.mjs",
     "lint:fix": "biome check --write .",
     "format": "biome format --write .",
     "typecheck": "pnpm -r run typecheck"

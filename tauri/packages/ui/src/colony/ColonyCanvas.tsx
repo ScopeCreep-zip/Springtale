@@ -235,7 +235,7 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
           not inside the canvas. */}
       <Show when={props.nodes.length === 0 && props.agents.length === 0}>
         <div class="absolute inset-0 z-10 flex flex-col items-center justify-center text-center">
-          <div style={{ width: "42px", height: "30px", position: "relative" }}>
+          <div class="colony-oobe-sprite">
             <div class="pixel-sprite sprite-tree-shrub" style={{ transform: "scale(6)" }} />
           </div>
           <p class="colony-text-md mt-12 font-bold text-text-primary">Your network awaits</p>
@@ -244,8 +244,8 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
           </p>
           <button
             type="button"
-            class="colony-command-btn mt-6 colony-text-sm"
-            style={{ "border-color": "var(--color-status-ok)", padding: "8px 24px" }}
+            class="colony-command-btn mt-6 colony-text-sm px-6 py-2"
+            data-tone="ok"
             onClick={(e) => {
               e.stopPropagation();
               props.onHatch?.();
@@ -274,9 +274,9 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                 left: `${x}%`,
                 top: `${y}%`,
                 width: `${w}px`,
-                height: `${h}px`,
-                background: `hsl(${hue},${sat}%,${lgt}%)`,
-                opacity: `${opacity}`,
+                "--colony-h": `${h}px`,
+                "--colony-bg": `hsl(${hue},${sat}%,${lgt}%)`,
+                "--colony-opacity": `${opacity}`,
               }}
             />
           );
@@ -321,7 +321,8 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                     d={pathData()}
                     stroke={strokeColor}
                     class={`mycelium-path ${hasActive ? "is-active" : ""}`}
-                    style={{ opacity: `${opacity}`, "stroke-width": `${strokeWidth}` }}
+                    opacity={opacity}
+                    stroke-width={strokeWidth}
                   />
                   <For each={conn.pipes.filter((p) => p.status === "active")}>
                     {(pipe) => (
@@ -374,8 +375,8 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                   left: `calc(${bounds().cx}% - ${bounds().rx}% - 8px)`,
                   top: `calc(${bounds().cy}% - ${bounds().ry}% - 8px)`,
                   width: `calc(${bounds().rx * 2}% + 16px)`,
-                  height: `calc(${bounds().ry * 2}% + 16px)`,
-                  overflow: "visible",
+                  "--colony-h": `calc(${bounds().ry * 2}% + 16px)`,
+                  "--colony-glow": formation.color,
                 }}
               >
                 <title>{`Formation ${formation.name}`}</title>
@@ -392,50 +393,27 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                   cursor="pointer"
                   /* W7 — ring glows while the formation is actively
                      cascading (real `cascade_hit` event, recency-gated). */
-                  style={
-                    formation.cascadeStreak
-                      ? {
-                          filter: `drop-shadow(0 0 3px ${formation.color}) drop-shadow(0 0 6px ${formation.color})`,
-                        }
-                      : undefined
-                  }
+                  classList={{ "is-cascading": Boolean(formation.cascadeStreak) }}
                 />
               </svg>
               {/* Label — positioned above the ring */}
               <div
-                class="absolute z-[3] flex items-center gap-1 whitespace-nowrap"
+                class="colony-formation-label absolute z-[3] flex items-center gap-1 whitespace-nowrap"
                 style={{
                   left: `${bounds().cx}%`,
                   top: `calc(${bounds().cy}% - ${bounds().ry}% - 18px)`,
                   transform: "translateX(-50%)",
-                  "font-size": "6px",
-                  "pointer-events": "auto",
-                  cursor: "pointer",
+                  "--colony-color": formation.color,
                 }}
                 data-formation-id={formation.id}
               >
-                <span style={{ color: formation.color, cursor: "pointer" }}>{formation.name}</span>
-                <span
-                  class="px-1 font-bold"
-                  style={{
-                    "font-size": "5px",
-                    background: formation.color,
-                    color: "var(--color-soil-deep)",
-                    cursor: "pointer",
-                  }}
-                >
-                  {formation.momentumLabel}
-                </span>
+                <span>{formation.name}</span>
+                <span class="colony-formation-chip px-1 font-bold">{formation.momentumLabel}</span>
                 {/* W7 — live cascade streak (real `cascade_hit.streak`),
                     shown only while the cascade is current. */}
                 <Show when={formation.cascadeStreak}>
                   <span
-                    class="px-1 font-bold"
-                    style={{
-                      "font-size": "5px",
-                      background: "var(--color-status-warn)",
-                      color: "var(--color-soil-deep)",
-                    }}
+                    class="colony-formation-chip is-cascade px-1 font-bold"
                     title={`Cascade streak ${formation.cascadeStreak}`}
                   >
                     {`⚡${formation.cascadeStreak}`}
@@ -450,28 +428,22 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                   without backing state. */}
               <Show when={formation.rallyMax > 0}>
                 <div
-                  class="absolute z-[3] flex gap-0.5"
+                  class="pointer-events-none absolute z-[3] flex gap-0.5"
+                  role="img"
+                  aria-label={`Rally ${formation.rallyTokens} of ${formation.rallyMax}`}
                   style={{
                     left: `${bounds().cx}%`,
                     top: `calc(${bounds().cy}% + ${bounds().ry}% + 4px)`,
                     transform: "translateX(-50%)",
-                    "pointer-events": "none",
+                    "--colony-color": formation.color,
                   }}
                   title={`Rally ${formation.rallyTokens}/${formation.rallyMax}`}
                 >
                   <For each={Array.from({ length: formation.rallyMax })}>
                     {(_, i) => (
                       <div
-                        style={{
-                          width: "4px",
-                          height: "4px",
-                          "border-radius": "1px",
-                          background:
-                            i() < formation.rallyTokens
-                              ? "var(--color-status-warn)"
-                              : "transparent",
-                          border: `1px solid ${formation.color}`,
-                        }}
+                        class="colony-rally-pip"
+                        classList={{ "is-filled": i() < formation.rallyTokens }}
                       />
                     )}
                   </For>
@@ -532,8 +504,7 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                 left: `calc(${pos().x}% - ${size.width / 2}px)`,
                 top: `calc(${pos().y}% - ${size.height}px)`,
                 width: `${size.width}px`,
-                height: `${size.height + 16}px`,
-                cursor: "grab",
+                "--colony-h": `${size.height + 16}px`,
               }}
               data-connector-id={node.id}
               onPointerDown={onPointerDown}
@@ -548,26 +519,8 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
               }}
             >
               <div class={`pixel-sprite ${spriteClass}`} />
-              <div
-                class="absolute"
-                style={{
-                  bottom: "-4px",
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  width: "5px",
-                  height: "5px",
-                  background:
-                    node.status === "active"
-                      ? "var(--color-status-ok)"
-                      : node.status === "paused"
-                        ? "var(--color-status-warn)"
-                        : "var(--color-status-idle)",
-                }}
-              />
-              <div
-                class="colony-text-3xs absolute whitespace-nowrap text-text-dim"
-                style={{ bottom: "-18px", left: "50%", transform: "translateX(-50%)" }}
-              >
+              <div class="colony-tree-status" data-status={node.status} />
+              <div class="colony-tree-label colony-text-3xs absolute whitespace-nowrap text-text-dim">
                 {node.label}
               </div>
             </button>
@@ -609,12 +562,16 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
             props.selection.id === agent.id && props.selection.type === "agent";
 
           return (
-            <div
+            <button
+              type="button"
               class={`colony-agent is-${act()} ${walkingAgents().has(agent.id) ? "is-walking" : ""} ${isSelected() ? "is-selected" : ""} ${agent.healthState !== "healthy" ? `is-health-${agent.healthState}` : ""}`}
+              aria-label={`${agent.name} ${act()}`}
+              aria-pressed={isSelected()}
               style={{
                 left: `calc(${pos().x}% - 14px)`,
                 top: `calc(${pos().y}% - 10px)`,
-                opacity: agent.liveness < 1 ? `${0.3 + agent.liveness * 0.7}` : undefined,
+                "--colony-opacity":
+                  agent.liveness < 1 ? `${0.3 + agent.liveness * 0.7}` : undefined,
               }}
               data-agent-id={agent.id}
             >
@@ -628,19 +585,8 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
               </Show>
 
               {/* Overhead info */}
-              <div
-                class="pointer-events-none absolute flex flex-col items-center gap-px"
-                style={{
-                  bottom: "100%",
-                  left: "50%",
-                  transform: "translateX(-50%)",
-                  "margin-bottom": "2px",
-                }}
-              >
-                <span
-                  class="colony-text-sm"
-                  style={{ filter: "drop-shadow(0 0 2px var(--color-shadow-deep))" }}
-                >
+              <div class="colony-agent-overhead pointer-events-none absolute flex flex-col items-center gap-px">
+                <span class="colony-agent-glyph colony-text-sm" aria-hidden="true">
                   {act() === "error"
                     ? "!!"
                     : act() === "firing"
@@ -654,13 +600,13 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
                 {/* Fuel bars — visible when not at full */}
                 <Show when={agent.fuel < 100 || agent.hp < 100}>
                   <div class="flex gap-px">
-                    <div class="colony-fuel-bar">
+                    <div class="colony-fuel-bar" role="img" aria-label={`Fuel ${agent.fuel}%`}>
                       <div
                         class={`colony-fuel-fill ${agent.fuelStatus === "ok" ? "bg-status-ok" : agent.fuelStatus === "warn" ? "bg-status-warn" : "bg-status-error"}`}
                         style={{ width: `${agent.fuel}%` }}
                       />
                     </div>
-                    <div class="colony-fuel-bar">
+                    <div class="colony-fuel-bar" role="img" aria-label={`HP ${agent.hp}%`}>
                       <div
                         class="colony-fuel-fill bg-role-scout"
                         style={{ width: `${agent.hp}%` }}
@@ -672,22 +618,11 @@ export const ColonyCanvas: Component<ColonyCanvasProps> = (props) => {
               </div>
               {/* Attention overload dot */}
               <Show when={agent.attentionLoad > 0.7}>
-                <div
-                  class="absolute"
-                  style={{
-                    top: "-2px",
-                    right: "-2px",
-                    width: "5px",
-                    height: "5px",
-                    background: "var(--color-status-warn)",
-                    "border-radius": "50%",
-                    "pointer-events": "none",
-                  }}
-                />
+                <div class="colony-agent-attention" role="img" aria-label="Attention overload" />
               </Show>
               {/* Sprite */}
               <div class={`pixel-sprite ${spriteClass}`} />
-            </div>
+            </button>
           );
         }}
       </For>

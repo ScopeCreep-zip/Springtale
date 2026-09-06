@@ -83,7 +83,7 @@ export const ApprovalCard: Component<ApprovalCardProps> = (props) => {
         <button
           type="button"
           class="colony-command-btn colony-text-2xs px-5 py-2"
-          style={{ "border-color": "var(--color-status-warn)" }}
+          data-tone="warn"
           onClick={() => props.onDecision(true)}
         >
           Approve

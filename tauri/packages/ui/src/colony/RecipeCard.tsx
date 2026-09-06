@@ -59,8 +59,7 @@ export const RecipeCard: Component<RecipeCardProps> = (props) => {
     <article class="relative h-full">
       <button
         type="button"
-        class="colony-command-btn flex h-full w-full flex-col items-start gap-2 p-4 text-left transition"
-        style={{ "min-height": "160px" }}
+        class="colony-command-btn flex h-full min-h-[160px] w-full flex-col items-start gap-2 p-4 text-left transition"
         onClick={() => props.onClick()}
       >
         <div class="colony-text-xl">

@@ -201,13 +201,13 @@ const Minimap: Component<{
             getFormationBounds(f, props.agents, props.nodes, props.connectorPositions);
           return (
             <div
-              class="absolute rounded-[40%] opacity-30"
+              class="colony-minimap-formation absolute rounded-[40%] opacity-30"
               style={{
                 left: `${bounds().cx - bounds().rx}%`,
                 top: `${bounds().cy - bounds().ry}%`,
                 width: `${bounds().rx * 2}%`,
-                height: `${bounds().ry * 2}%`,
-                border: `1px solid ${f.color}`,
+                "--colony-h": `${bounds().ry * 2}%`,
+                "--colony-color": f.color,
               }}
             />
           );
@@ -221,17 +221,10 @@ const Minimap: Component<{
           return (
             <div
               class="colony-minimap-tree"
+              data-status={tree.status}
               style={{
                 left: `${pos().x - 1}%`,
                 top: `${pos().y - 1}%`,
-                width: "4px",
-                height: "4px",
-                background:
-                  tree.status === "active"
-                    ? "var(--color-canopy)"
-                    : tree.status === "paused"
-                      ? "var(--color-canopy-degraded)"
-                      : "var(--color-minimap-idle)",
               }}
             />
           );
@@ -256,9 +249,8 @@ const Minimap: Component<{
                 top: `${a().y}%`,
                 width: `${length()}%`,
                 transform: `rotate(${angle()}deg)`,
-                "transform-origin": "0 0",
-                background: hasActive ? "var(--color-mycelium-active)" : "var(--color-mycelium)",
               }}
+              classList={{ "is-active": hasActive }}
             />
           );
         }}
@@ -272,11 +264,11 @@ const Minimap: Component<{
           return (
             <div
               class="colony-minimap-dot"
+              classList={{ "is-selected": isSelected() }}
               style={{
                 left: `${pos().x}%`,
                 top: `${pos().y}%`,
-                background: ROLE_COLORS[agent.role] ?? "var(--color-text-secondary)",
-                ...(isSelected() ? { width: "5px", height: "5px" } : {}),
+                "--colony-bg": ROLE_COLORS[agent.role] ?? "var(--color-text-secondary)",
               }}
             />
           );
@@ -341,10 +333,7 @@ const DetailPanel: Component<{
                 </div>
                 <div class="min-w-0 flex-1">
                   <div class="colony-text-md font-bold">{a.name}</div>
-                  <div
-                    class="colony-text-2xs uppercase text-text-dim"
-                    style={{ "letter-spacing": "1px" }}
-                  >
+                  <div class="colony-text-2xs uppercase tracking-[1px] text-text-dim">
                     {a.role}
                     {a.connectorId ? ` near ${a.connectorId}` : " roaming"}
                     {formation() ? ` / ${formation()?.name}` : ""}
@@ -354,10 +343,8 @@ const DetailPanel: Component<{
                   </div>
                   {/* Health badge */}
                   <div
-                    class="colony-text-5xs mt-0.5 uppercase tracking-wider"
-                    style={{
-                      color: healthColor(a.healthState),
-                    }}
+                    class="colony-tinted colony-text-xs mt-0.5 uppercase tracking-wider"
+                    style={{ "--colony-color": healthColor(a.healthState) }}
                   >
                     {a.healthState ?? "healthy"} {(a.liveness ?? 1) < 0.5 ? `| SUSPECT` : ""}
                   </div>
@@ -367,10 +354,13 @@ const DetailPanel: Component<{
                     <div class="colony-stat-bar">
                       <div
                         class="colony-stat-fill"
-                        style={{ width: `${a.fuel}%`, background: fuelColor }}
+                        style={{ width: `${a.fuel}%`, "--colony-bg": fuelColor }}
                       />
                     </div>
-                    <span class="colony-text-5xs text-right" style={{ color: fuelColor }}>
+                    <span
+                      class="colony-tinted colony-text-xs text-right"
+                      style={{ "--colony-color": fuelColor }}
+                    >
                       {a.fuel}
                     </span>
                     <span class="colony-text-3xs text-text-dim">HP</span>
@@ -379,14 +369,14 @@ const DetailPanel: Component<{
                         class="colony-stat-fill"
                         style={{
                           width: `${a.hp}%`,
-                          background: healthColor(a.healthState, "var(--color-role-scout)"),
+                          "--colony-bg": healthColor(a.healthState, "var(--color-role-scout)"),
                         }}
                       />
                     </div>
                     <span
-                      class="colony-text-2xs text-right"
+                      class="colony-tinted colony-text-2xs text-right"
                       style={{
-                        color: healthColor(a.healthState, "var(--color-role-scout)"),
+                        "--colony-color": healthColor(a.healthState, "var(--color-role-scout)"),
                       }}
                     >
                       {a.hp}
@@ -397,7 +387,7 @@ const DetailPanel: Component<{
                         class="colony-stat-fill"
                         style={{
                           width: `${Math.round((a.attentionLoad ?? 0) * 100)}%`,
-                          background:
+                          "--colony-bg":
                             (a.attentionLoad ?? 0) > 0.8
                               ? "var(--color-status-error)"
                               : (a.attentionLoad ?? 0) > 0.5
@@ -406,7 +396,7 @@ const DetailPanel: Component<{
                         }}
                       />
                     </div>
-                    <span class="colony-text-5xs text-right text-text-dim">
+                    <span class="colony-text-xs text-right text-text-dim">
                       {Math.round((a.attentionLoad ?? 0) * 100)}%
                     </span>
                   </div>
@@ -421,28 +411,15 @@ const DetailPanel: Component<{
                       {(level) => (
                         <div
                           class={`colony-autonomy-pip ${a.autonomy === level ? "font-bold" : ""}`}
+                          classList={{ "is-active": a.autonomy === level }}
                           style={{
-                            "border-color":
-                              a.autonomy === level
-                                ? [
-                                    "var(--color-status-ok)",
-                                    "var(--color-role-scout)",
-                                    "var(--color-status-warn)",
-                                    "var(--color-status-error)",
-                                    "var(--color-role-analyst)",
-                                  ][level]
-                                : undefined,
-                            background:
-                              a.autonomy === level
-                                ? [
-                                    "var(--color-status-ok)",
-                                    "var(--color-role-scout)",
-                                    "var(--color-status-warn)",
-                                    "var(--color-status-error)",
-                                    "var(--color-role-analyst)",
-                                  ][level]
-                                : undefined,
-                            color: a.autonomy === level ? "var(--color-soil-deep)" : undefined,
+                            "--colony-color": [
+                              "var(--color-status-ok)",
+                              "var(--color-role-scout)",
+                              "var(--color-status-warn)",
+                              "var(--color-status-error)",
+                              "var(--color-role-analyst)",
+                            ][level],
                           }}
                         >
                           {level}
@@ -476,7 +453,10 @@ const DetailPanel: Component<{
             <div>
               <div class="colony-label mb-1 text-text-dim">CONNECTOR</div>
               <div class="colony-text-md font-bold">{t.label}</div>
-              <div class="colony-text-5xs uppercase tracking-wider" style={{ color: statusColor }}>
+              <div
+                class="colony-tinted colony-text-xs uppercase tracking-wider"
+                style={{ "--colony-color": statusColor }}
+              >
                 {t.status.toUpperCase()} {t.type.toUpperCase()}
               </div>
               <div class="colony-text-2xs mt-1.5 text-text-dim">CONNECTIONS</div>
@@ -492,7 +472,9 @@ const DetailPanel: Component<{
                         pipe.dir === 1 ? `${conn.a} > ${conn.b}` : `${conn.b} > ${conn.a}`;
                       return (
                         <div class="colony-text-2xs flex justify-between border-b border-bark py-0.5">
-                          <span style={{ color: pipeColor }}>{pipe.id}</span>
+                          <span class="colony-tinted" style={{ "--colony-color": pipeColor }}>
+                            {pipe.id}
+                          </span>
                           <span>{direction}</span>
                         </div>
                       );
@@ -526,23 +508,24 @@ const DetailPanel: Component<{
             <div>
               <div class="colony-label mb-1 text-text-dim">FORMATION</div>
               <div class="flex items-center gap-2">
-                <div class="font-bold" style={{ "font-size": "9px", color: f.color }}>
+                <div
+                  class="colony-tinted colony-text-2xs font-bold"
+                  style={{ "--colony-color": f.color }}
+                >
                   {f.name}
                 </div>
                 <Show when={f.status === "paused"}>
-                  <span class="colony-text-5xs rounded bg-status-warn px-1 text-soil-deep">
+                  <span class="colony-text-xs rounded bg-status-warn px-1 text-soil-deep">
                     PAUSED
                   </span>
                 </Show>
                 <Show when={f.status === "draft"}>
-                  <span class="colony-text-5xs rounded border border-bark px-1 text-text-dim">
+                  <span class="colony-text-xs rounded border border-bark px-1 text-text-dim">
                     DRAFT
                   </span>
                 </Show>
                 <Show when={f.guardStatus === "GUARD"}>
-                  <span class="colony-text-5xs rounded bg-status-ok px-1 text-soil-deep">
-                    GUARD
-                  </span>
+                  <span class="colony-text-xs rounded bg-status-ok px-1 text-soil-deep">GUARD</span>
                 </Show>
               </div>
               <div class="colony-text-2xs text-text-dim">
@@ -554,16 +537,16 @@ const DetailPanel: Component<{
                 <For each={MOMENTUM_NAMES}>
                   {(_, i) => (
                     <div
-                      class="h-[5px] flex-1"
+                      class="colony-momentum-seg h-[5px] flex-1"
                       style={{
-                        background:
+                        "--colony-bg":
                           i() <= f.momentum ? MOMENTUM_COLORS[i()] : "var(--color-soil-darker)",
                       }}
                     />
                   )}
                 </For>
               </div>
-              <div class="colony-text-5xs mb-1" style={{ color: f.color }}>
+              <div class="colony-tinted colony-text-xs mb-1" style={{ "--colony-color": f.color }}>
                 {f.momentumLabel} — {MOMENTUM_UNLOCKS[f.momentum]}
               </div>
 
@@ -575,19 +558,13 @@ const DetailPanel: Component<{
                     <For each={Array.from({ length: f.rallyMax })}>
                       {(_, i) => (
                         <div
-                          class="h-[6px] w-[6px] rounded-sm"
-                          style={{
-                            background:
-                              i() < f.rallyTokens
-                                ? "var(--color-status-warn)"
-                                : "var(--color-soil-darker)",
-                            border: "1px solid var(--color-bark)",
-                          }}
+                          class="colony-panel-pip h-[6px] w-[6px] rounded-sm"
+                          classList={{ "is-filled": i() < f.rallyTokens }}
                         />
                       )}
                     </For>
                   </div>
-                  <span class="colony-text-5xs text-text-dim">
+                  <span class="colony-text-xs text-text-dim">
                     {f.rallyTokens}/{f.rallyMax}
                   </span>
                 </div>
@@ -608,7 +585,7 @@ const DetailPanel: Component<{
                     : 0;
                 const totalFuel = members().reduce((sum, a) => sum + a.fuel, 0);
                 return (
-                  <div class="colony-text-5xs mb-1 flex gap-2 text-text-dim">
+                  <div class="colony-text-xs mb-1 flex gap-2 text-text-dim">
                     <span>
                       {operational}/{members().length} OPS
                     </span>
@@ -634,8 +611,10 @@ const DetailPanel: Component<{
                   return (
                     <div class="colony-text-2xs flex justify-between border-b border-bark py-0.5">
                       <span>
-                        <span style={{ color: memberColor }}>{livenessIcon}</span> {a.name}{" "}
-                        <span class="text-text-dim">{a.role}</span>
+                        <span class="colony-tinted" style={{ "--colony-color": memberColor }}>
+                          {livenessIcon}
+                        </span>{" "}
+                        {a.name} <span class="text-text-dim">{a.role}</span>
                       </span>
                       <span class="flex gap-1.5">
                         <Show when={(a.attentionLoad ?? 0) > 0.5}>
@@ -643,7 +622,9 @@ const DetailPanel: Component<{
                             {Math.round((a.attentionLoad ?? 0) * 100)}%
                           </span>
                         </Show>
-                        <span style={{ color: fuelColor }}>{a.fuel}</span>
+                        <span class="colony-tinted" style={{ "--colony-color": fuelColor }}>
+                          {a.fuel}
+                        </span>
                       </span>
                     </div>
                   );
@@ -659,9 +640,10 @@ const DetailPanel: Component<{
                       const share = (a.attentionLoad ?? 0) * 100;
                       return (
                         <div
+                          class="colony-attn-seg"
                           style={{
                             width: `${Math.max(share, 5)}%`,
-                            background: ROLE_COLORS[a.role] ?? "var(--color-text-dim)",
+                            "--colony-bg": ROLE_COLORS[a.role] ?? "var(--color-text-dim)",
                           }}
                           title={`${a.name}: ${Math.round(share)}%`}
                         />
@@ -676,7 +658,7 @@ const DetailPanel: Component<{
               <div class="flex flex-wrap gap-1">
                 <For each={TIER_CAPABILITIES[f.momentum] ?? []}>
                   {(cap) => (
-                    <span class="colony-text-5xs rounded border border-bark bg-soil-deep px-1.5 py-0.5 text-text-secondary">
+                    <span class="colony-text-xs rounded border border-bark bg-soil-deep px-1.5 py-0.5 text-text-secondary">
                       {cap}
                     </span>
                   )}
@@ -865,7 +847,7 @@ const FormationAiAdapterRow: Component<{
         onClick={() => props.onCommand("formation:ai_adapter")}
       >
         <span class="text-text-secondary">{label()}</span>
-        <span class="colony-text-5xs text-text-dim">click to override</span>
+        <span class="colony-text-xs text-text-dim">click to override</span>
       </button>
     </>
   );
@@ -995,20 +977,23 @@ const BotsListView: Component<{
                 <div class="colony-text-3xs font-bold text-text-primary truncate w-full">
                   {agent.name}
                 </div>
-                <div class="colony-text-5xs uppercase" style={{ color: roleColor() }}>
+                <div
+                  class="colony-tinted colony-text-xs uppercase"
+                  style={{ "--colony-color": roleColor() }}
+                >
                   {agent.role}
                 </div>
-                <div class="colony-text-5xs text-text-dim truncate w-full">
+                <div class="colony-text-xs text-text-dim truncate w-full">
                   {agent.connectorId ?? "roaming"}
                 </div>
                 {/* Fuel bar */}
                 <div class="mt-auto w-full">
-                  <div class="colony-stat-bar" style={{ height: "3px" }}>
+                  <div class="colony-stat-bar h-[3px]">
                     <div
                       class="colony-stat-fill"
                       style={{
                         width: `${agent.fuel}%`,
-                        background:
+                        "--colony-bg":
                           agent.fuelStatus === "ok"
                             ? "var(--color-status-ok)"
                             : agent.fuelStatus === "warn"
@@ -1067,21 +1052,14 @@ const ConnectorsListView: Component<{
                   class={`colony-card ${statusClass()}`}
                   onClick={() => props.onSelect?.(node.id)}
                 >
-                  <div
-                    style={{
-                      width: `${size.width / 2}px`,
-                      height: "26px",
-                      position: "relative",
-                      "flex-shrink": "0",
-                    }}
-                  >
+                  <div class="colony-card-sprite-frame" style={{ width: `${size.width / 2}px` }}>
                     <div class={`pixel-sprite ${spriteClass}`} style={{ transform: "scale(2)" }} />
                   </div>
                   <div class="colony-text-3xs font-bold text-text-primary truncate w-full">
                     {node.label.replace("connector-", "")}
                   </div>
                   <div
-                    class={`colony-text-5xs uppercase ${
+                    class={`colony-text-xs uppercase ${
                       node.status === "active"
                         ? "text-status-ok"
                         : node.status === "paused"
@@ -1116,23 +1094,16 @@ const ConnectorsListView: Component<{
                   class="colony-card is-available"
                   onClick={() => props.onSetup?.(connector.name)}
                 >
-                  <div
-                    style={{
-                      width: `${size.width / 2}px`,
-                      height: "26px",
-                      position: "relative",
-                      "flex-shrink": "0",
-                    }}
-                  >
+                  <div class="colony-card-sprite-frame" style={{ width: `${size.width / 2}px` }}>
                     <div
-                      class={`pixel-sprite ${spriteClass}`}
-                      style={{ transform: "scale(2)", opacity: 0.5 }}
+                      class={`pixel-sprite ${spriteClass} opacity-50`}
+                      style={{ transform: "scale(2)" }}
                     />
                   </div>
                   <div class="colony-text-3xs text-text-secondary truncate w-full">
                     {connector.name.replace("connector-", "")}
                   </div>
-                  <div class="colony-text-5xs text-status-ok">
+                  <div class="colony-text-xs text-status-ok">
                     {connector.requires_config ? "Configure" : "Enable"}
                   </div>
                 </button>
@@ -1236,12 +1207,18 @@ const FormationsListView: Component<{
                   }
                 }}
               >
-                <span class="colony-text-xs font-bold" style={{ color: formation.color }}>
+                <span
+                  class="colony-tinted colony-text-xs font-bold"
+                  style={{ "--colony-color": formation.color }}
+                >
                   {formation.name}
                 </span>
                 <span class="colony-text-3xs uppercase text-text-dim">{formation.intent}</span>
                 <span class="colony-text-3xs ml-auto text-text-dim">{memberCount} members</span>
-                <span class="colony-text-3xs font-bold" style={{ color: formation.color }}>
+                <span
+                  class="colony-tinted colony-text-3xs font-bold"
+                  style={{ "--colony-color": formation.color }}
+                >
                   {formation.momentumLabel}
                 </span>
               </button>
