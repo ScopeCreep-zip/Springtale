@@ -34,6 +34,13 @@ use crate::state::RuntimeState;
 /// current intent so regeneration is non-lossy.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct MemberAutomation {
+    /// The formation member row id this automation belongs to. Filled in
+    /// at synthesis time by [`regenerate_formation_rules`] (the member
+    /// rows only exist once the formation is created), and `None` for
+    /// automation configs stored before plan 1.11 — those synthesize
+    /// formation-owned rules exactly as they did before.
+    #[serde(default)]
+    pub agent_id: Option<uuid::Uuid>,
     pub connector_name: String,
     pub trigger_name: String,
     #[serde(default)]
@@ -115,8 +122,11 @@ fn observation_action(formation_name: &str, auto: &MemberAutomation) -> Action {
 ///   observation instead.
 /// - **Dissolve** / unknown → no rules.
 ///
-/// Every rule is owned by `RuleOwner::Formation { formation_id }` so it only
-/// fires in this formation's context (enforced at `RuleEngine::evaluate`).
+/// Every rule is owned by the formation so it only fires in this formation's
+/// context (enforced at `RuleEngine::evaluate`). When the automation names its
+/// member row, the rule is owned by `RuleOwner::FormationMember` so dispatch
+/// hands the execution envelope to *that* member rather than to whichever
+/// member happens to declare the connector first (plan 1.11).
 pub fn synthesize_formation_rules(
     formation_id: uuid::Uuid,
     formation_name: &str,
@@ -172,7 +182,13 @@ pub fn synthesize_formation_rules(
             trigger,
             conditions: Vec::new(),
             actions: vec![action],
-            owner: RuleOwner::Formation { formation_id },
+            owner: match auto.agent_id {
+                Some(agent_id) => RuleOwner::FormationMember {
+                    formation_id,
+                    agent_id,
+                },
+                None => RuleOwner::Formation { formation_id },
+            },
         });
     }
     out
@@ -228,7 +244,12 @@ pub async fn delete_formation_rules(
             .filter(|r| r.owner.matches(None, Some(formation_id)))
             // `Global` rules also match a formation context — exclude them; we
             // only ever delete rules this formation actually owns.
-            .filter(|r| matches!(r.owner, RuleOwner::Formation { .. }))
+            .filter(|r| {
+                matches!(
+                    r.owner,
+                    RuleOwner::Formation { .. } | RuleOwner::FormationMember { .. }
+                )
+            })
             .map(|r| r.id)
             .collect()
     };
@@ -254,7 +275,23 @@ pub async fn regenerate_formation_rules(
 
     delete_formation_rules(state, fid).await?;
 
-    let automations = load_formation_automation(state, formation_id).await?;
+    let mut automations = load_formation_automation(state, formation_id).await?;
+    // Bind each automation to the formation member row that owns it, so the
+    // synthesized rule carries its member (plan 1.11). Member rows are keyed
+    // by connector, which is how the automation names its member.
+    let member_rows = state
+        .store
+        .list_formation_members(formation_id)
+        .await
+        .map_err(OperationError::Store)?;
+    for auto in automations.iter_mut() {
+        if auto.agent_id.is_none() {
+            auto.agent_id = member_rows
+                .iter()
+                .find(|m| m.connector_name == auto.connector_name)
+                .and_then(|m| uuid::Uuid::parse_str(&m.id).ok());
+        }
+    }
     let hints = {
         let registry = state.registry.read().await;
         collect_action_hints(&registry, &automations)
@@ -281,6 +318,7 @@ mod tests {
 
     fn auto(conn: &str, trig: &str, action: &str) -> MemberAutomation {
         MemberAutomation {
+            agent_id: None,
             connector_name: conn.to_owned(),
             trigger_name: trig.to_owned(),
             action_connector: conn.to_owned(),
