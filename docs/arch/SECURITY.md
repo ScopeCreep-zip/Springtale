@@ -260,17 +260,36 @@ Return codes: `0` = allowed, `-1` = invalid input, `-2` = denied by capability.
 
 ### 7.1 Token scheme
 
+Tokens are **issued, never derived**. The passphrase-derived hash survives
+only as the login verifier.
+
 ```
-passphrase  ──HMAC-SHA256(key=passphrase, msg="springtale-api-token")──▶  token[32B]
-                                                                              │
-                                                                              ▼
-Request:  Authorization: Bearer <hex(token)>                              hex token
+  boot:  passphrase ──HMAC-SHA256(·, "springtale-api-token")──▶ verifier[32B]
+                                                                │
+  POST /auth/login {passphrase} ─── constant-time compare ──────┘
+                    │ match
+                    ▼
+              OsRng ──▶ token[32B] ──▶ hex-encoded, returned exactly once
+                             │
+                             └──▶ stored as sha256(token)
+                                    · session      → process memory
+                                    · long-lived   → api_tokens table
+
+  every request:  Authorization: Bearer <hex(token)>
 ```
 
-- 32 B token, hex-encoded.
-- Comparison uses `subtle::ConstantTimeEq` — timing-attack resistant.
+- 32 B (256-bit) token straight from the OS CSPRNG, hex-encoded, with no
+  structure. Returned exactly once, in the minting response.
+- Two kinds, both accepted by `require_auth`: **sessions**
+  (`POST /auth/login`, in-memory, idle + absolute timeouts, dropped on vault
+  lock or restart, revoked by `POST /auth/logout`) and **named long-lived
+  tokens** (`POST /auth/tokens`, rows in `api_tokens`, revoked by
+  `DELETE /auth/tokens/{id}`).
+- Neither is ever stored in the clear — both live as `sha256(token)`.
+- Comparison uses `subtle::ConstantTimeEq` — timing-attack resistant. A token
+  never issued, one expired, and one revoked are all the same `401`.
 - **SSE tickets**: `EventSource` cannot set custom headers, and the token never goes in a URL. `POST /stream/ticket` (bearer-authenticated) returns `{ "ticket": "<64 hex chars>", "ttl_secs": 30 }`; the client opens the single multiplexed `GET /stream?ticket=…` with it. Tickets are single-use and expire after 30 seconds.
-- There is no separate API key. Rotating the API token requires rotating the vault passphrase.
+- Rotating the vault passphrase rotates no token. It changes only what a future `POST /auth/login` must present, and a running daemon keeps the old verifier in memory until it restarts.
 
 ### 7.2 Middleware stack
 
@@ -448,7 +467,7 @@ Sentinel checks run in this order per action:
 
 The gate sees an `ApprovalRequest` with the action, target, and reason. Its async decision is one of `Approved` / `Denied` / `Escalated` (route to another surface, e.g. push notification).
 
-`ShellExec` is gated harder still: `crates/springtale-runtime/src/approval/` parks every ShellExec grant in a pending queue regardless of capability policy. The requestor blocks until a decision lands via `GET /approvals` + `POST /approvals/{id}` (HMAC bearer auth), the desktop approval card, or the in-app chat panel (`ChatApprovalGate`); the deny-fallback timeout (default 60s) means a dropped connection never silently grants. Decisions are recorded as `ApprovalRequested` / `ApprovalResolved` audit rows, and tool loops paused behind an approval are checkpointed (`approvals.sql`: `tool_loop_checkpoints`) and resumed after the verdict — replaying exactly the persisted bound calls, never a re-derived action.
+`ShellExec` is gated harder still: `crates/springtale-runtime/src/approval/` parks every ShellExec grant in a pending queue regardless of capability policy. The requestor blocks until a decision lands via `GET /approvals` + `POST /approvals/{id}` (bearer auth), the desktop approval card, or the in-app chat panel (`ChatApprovalGate`); the deny-fallback timeout (default 60s) means a dropped connection never silently grants. Decisions are recorded as `ApprovalRequested` / `ApprovalResolved` audit rows, and tool loops paused behind an approval are checkpointed (`approvals.sql`: `tool_loop_checkpoints`) and resumed after the verdict — replaying exactly the persisted bound calls, never a re-derived action.
 
 When a bot has an AI adapter configured, the adapter is additionally wrapped in `GuardrailAdapter` (`crates/springtale-ai/src/guardrail/`): wall-clock timeout, output size cap, refusal-rate counters, and a per-bot daily token quota (`[sentinel] daily_token_limit`, persisted in `ai_token_usage`). The tool surface defaults to a zero-tool allow-list (`[bot] tool_policy`, OWASP LLM06).
 

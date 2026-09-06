@@ -15,8 +15,8 @@ in [`docs/current-arch/SECURITY.md`](../current-arch/SECURITY.md) §2.7.
 ```
 $SPRINGTALE_DATA_DIR/
 ├── vault.bin          ← Ed25519 identity + connector credentials + duress region
-├── springtale.db      ← rules, events, formations, mental_model, audit_trail
-├── api_token          ← HMAC bearer token (regenerate-able)
+├── springtale.db      ← rules, events, formations, mental_model, audit_trail,
+│                        api_tokens (hashes only — see below)
 ├── connectors/        ← installed connector manifests + WASM binaries
 └── audit.log          ← rolling audit log (mirrored to DB)
 ```
@@ -24,6 +24,36 @@ $SPRINGTALE_DATA_DIR/
 Plus the **passphrase** itself, which is *not* in the data directory.
 You can back up the data and have nothing useful if you don't remember
 the passphrase. Write it down somewhere offline.
+
+### API credentials are not in the backup
+
+There is no `api_token` file, and no `api_token` vault entry. Bearer tokens
+are minted by the daemon from the OS CSPRNG at login — never derived from the
+passphrase, never written to disk in recoverable form. So a backup carries no
+usable credential:
+
+- **Sessions** (`POST /auth/login`) live in process memory only, as
+  `sha256(token)`. Nothing to back up; nothing survives a restore, or even a
+  daemon restart.
+- **Named long-lived tokens** (`POST /auth/tokens`) are rows in
+  `springtale.db` (`api_tokens`), but again only as `sha256(token)`. The rows
+  come back with the database, so an old token string still authenticates
+  *if you kept it* — the backup cannot give it back to you.
+
+After a restore, an operator holding the passphrase gets a working credential
+by logging in:
+
+```bash
+curl -sX POST http://127.0.0.1:8080/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"passphrase":"..."}'
+# → {"token":"<hex>","expires_in":<idle secs>}
+```
+
+If the old long-lived token strings were lost with the machine, mint
+replacements with `POST /auth/tokens` and revoke the stale rows with
+`DELETE /auth/tokens/{id}` — the restored hashes are still live credentials
+for anyone who has the matching string.
 
 ## What's NOT in scope
 
