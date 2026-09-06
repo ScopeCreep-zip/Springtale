@@ -327,22 +327,19 @@ pub async fn handle_formation_command(bot: &mut Bot, cmd: FormationCommand) {
                 if guarded(formation, "rally") {
                     return;
                 }
-                // Manual rally — find the lowest-attention agent and rally
-                // around them. Mirrors the cascade-driven path
-                // (`tick_steps/check_cascade.rs`) but is operator-initiated.
+                // Manual rally — rally around the member carrying the most
+                // attention, which is the one a rally can relieve.
+                // `attempt_self_rally` calls `attention.release(agent, 0.2)`
+                // so the others absorb that load (Army of Two aggro shift),
+                // so releasing the least-loaded member's load does nothing.
+                // The cascade-driven path (`tick_steps/check_cascade.rs`)
+                // picks the member whose report missed the intent; the
+                // operator-initiated path has no reports to hand, and load is
+                // the standing measure of who is struggling.
                 let attn = formation.attention_broker.current();
-                let weakest = formation
-                    .members
-                    .iter()
-                    .filter(|m| m.is_operational())
-                    .min_by(|a, b| {
-                        let la = attn.load(&a.agent_id);
-                        let lb = attn.load(&b.agent_id);
-                        la.partial_cmp(&lb).unwrap_or(std::cmp::Ordering::Equal)
-                    })
-                    .map(|m| m.agent_id);
+                let target = rally_target(&formation.members, &attn);
 
-                if let Some(agent) = weakest {
+                if let Some(agent) = target {
                     let rally_result = cascade::attempt_self_rally(
                         &formation.rally,
                         &formation.attention_broker,
@@ -383,5 +380,57 @@ pub async fn handle_formation_command(bot: &mut Bot, cmd: FormationCommand) {
                 tracing::warn!(id = %formation_id, "formation not found for rally");
             }
         }
+    }
+}
+
+/// The member a manual rally should relieve: the operational member
+/// carrying the most attention.
+///
+/// `cascade::attempt_self_rally` releases a fifth of the target's attention
+/// so the rest of the formation absorbs it, the aggro shift from Army of
+/// Two that COOPERATION.md cites. Releasing load from the member that has
+/// the least of it moves nothing, which is what this path used to do. The
+/// cascade-driven path picks the member whose report missed the intent; an
+/// operator-initiated rally has no reports to hand, so standing load is the
+/// measure of who is struggling.
+fn rally_target(
+    members: &[crate::cooperation::formation::FormationMember],
+    attn: &springtale_cooperation::attention::AttentionEconomy,
+) -> Option<AgentId> {
+    members
+        .iter()
+        .filter(|m| m.is_operational())
+        .max_by(|a, b| {
+            let la = attn.load(&a.agent_id);
+            let lb = attn.load(&b.agent_id);
+            la.partial_cmp(&lb).unwrap_or(std::cmp::Ordering::Equal)
+        })
+        .map(|m| m.agent_id)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+    use springtale_cooperation::attention::AttentionEconomy;
+
+    fn member(id: AgentId) -> crate::cooperation::formation::FormationMember {
+        crate::cooperation::formation::FormationMember::new(id, vec!["connector-telegram".into()])
+    }
+
+    /// A rally relieves the member carrying the most attention. Picking the
+    /// least-loaded member, as this path once did, releases load that was
+    /// never there.
+    #[test]
+    fn test_rally_target_is_the_most_loaded_member() {
+        let busy = AgentId::new();
+        let idle = AgentId::new();
+        let members = vec![member(busy), member(idle)];
+
+        // Equal shares, then push attention onto one member.
+        let mut economy = AttentionEconomy::new(&[busy, idle]);
+        economy.shift_toward(&busy, 0.4);
+
+        assert_eq!(rally_target(&members, &economy), Some(busy));
     }
 }
