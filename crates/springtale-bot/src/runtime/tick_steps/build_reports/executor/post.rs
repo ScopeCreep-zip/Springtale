@@ -191,5 +191,11 @@ pub fn post_member(
         latency: Duration::from_millis(outcome.duration_ms),
         intent_alignment: outcome.alignment,
         interference_with: vec![],
+        // 0.3 — the beat's momentum signal. `Requested` (a dispatch
+        // carried past its beat) and `Init` (a claim, an observe/suggest
+        // surface reaction, a yield) are not work done, whatever their
+        // alignment; only `Success`/`Failure` say the beat finished
+        // something.
+        state: outcome.state,
     }
 }

@@ -39,6 +39,7 @@ fn synthetic_report(i: usize, tick: u64) -> TickReport {
         latency: Duration::from_millis(5),
         intent_alignment: 0.95,
         interference_with: Vec::new(),
+        state: springtale_cooperation::action_state::ActionState::Success,
     }
 }
 

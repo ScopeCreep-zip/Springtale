@@ -97,6 +97,7 @@ impl From<&ReportRecord> for TickReport {
             latency: Duration::from_millis(r.latency_ms),
             intent_alignment: r.intent_alignment,
             interference_with: Vec::new(),
+            state: springtale_cooperation::action_state::ActionState::Success,
         }
     }
 }
@@ -116,6 +117,7 @@ fn synth_reports(tick: u64, n: usize) -> Vec<TickReport> {
             latency: Duration::from_millis(5),
             intent_alignment: 0.95,
             interference_with: Vec::new(),
+            state: springtale_cooperation::action_state::ActionState::Success,
         })
         .collect()
 }

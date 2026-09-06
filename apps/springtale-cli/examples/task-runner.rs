@@ -134,6 +134,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             latency: Duration::from_millis(5),
                             intent_alignment: 1.0,
                             interference_with: Vec::new(),
+                            state: springtale_cooperation::action_state::ActionState::Success,
                         };
                         let _ = reports_tx.send(report).await;
                     }

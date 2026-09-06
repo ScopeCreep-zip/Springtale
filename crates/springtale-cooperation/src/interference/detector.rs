@@ -391,6 +391,7 @@ mod tests {
                 latency: Duration::from_millis(0),
                 intent_alignment: 1.0,
                 interference_with: vec![b],
+                state: crate::action_state::ActionState::Success,
             },
             TickReport {
                 agent_id: b,
@@ -399,6 +400,7 @@ mod tests {
                 latency: Duration::from_millis(0),
                 intent_alignment: 1.0,
                 interference_with: vec![a],
+                state: crate::action_state::ActionState::Success,
             },
         ];
         let events = detect(&reports);

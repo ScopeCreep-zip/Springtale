@@ -55,6 +55,7 @@ mod tests {
             latency: Duration::from_millis(1),
             intent_alignment: 0.9,
             interference_with: vec![],
+            state: springtale_cooperation::action_state::ActionState::Success,
         }
     }
 
