@@ -12,6 +12,8 @@ use crate::dissemination::StateMessage;
 use crate::dissemination::trait_::StateSubscriber;
 use crate::layer::LayerId;
 use crate::momentum::MomentumTier;
+use crate::supervision::Liveness;
+use crate::utterance::UtteranceKind;
 
 pub fn run(bus: &mut dyn StateSubscriber, awareness: &mut LocalAwareness, tier: MomentumTier) {
     if !authority::allows(tier, LayerId::L2State) {
@@ -34,6 +36,21 @@ fn apply(awareness: &mut LocalAwareness, msg: StateMessage) {
         }
         StateMessage::AgentLeft { agent } => {
             awareness.neighbor_states.remove(&agent);
+        }
+        // Cohn (2013): speech and burst are heard by others in the scene;
+        // a thought bubble is private to the speaker and the observer.
+        StateMessage::Utterance(u) if u.carrier.heard_by_peers() => {
+            let Some(agent) = u.agent else { return };
+            if let Some(n) = awareness.neighbor_states.get_mut(&agent) {
+                match u.utterance {
+                    UtteranceKind::Failed => n.last_action_success = false,
+                    UtteranceKind::Working
+                    | UtteranceKind::Firing
+                    | UtteranceKind::Claimed { .. } => n.last_action_success = true,
+                    UtteranceKind::Down => n.liveness = Liveness::Down { since_tick: u.seq },
+                    _ => {}
+                }
+            }
         }
         _ => {}
     }
@@ -96,5 +113,75 @@ mod tests {
         let mut a = awareness_with_neighbor(agent);
         run(&mut bus, &mut a, MomentumTier::Cold);
         assert!(a.neighbor_states.contains_key(&agent));
+    }
+
+    fn utterance(
+        agent: AgentId,
+        kind: UtteranceKind,
+        carrier: crate::utterance::Carrier,
+    ) -> StateMessage {
+        StateMessage::Utterance(crate::utterance::Utterance {
+            formation_id: None,
+            agent: Some(agent),
+            rule_id: None,
+            utterance: kind,
+            carrier,
+            shape: crate::utterance::Shape::Circle,
+            tone: crate::utterance::Tone::Urgent,
+            seq: crate::tick::TickId(7),
+            ttl_ticks: 3,
+            glyph_frames: vec!["@#!?".to_owned()],
+            mirror_rtl: false,
+            label_key: "utter.failed".to_owned(),
+        })
+    }
+
+    #[test]
+    fn test_apply_speech_utterance_from_a_lands_in_b_snapshot() {
+        let a = AgentId(uuid::Uuid::new_v4());
+        let mut awareness = awareness_with_neighbor(a);
+        let mut bus = VecBus {
+            msgs: vec![utterance(
+                a,
+                UtteranceKind::Failed,
+                crate::utterance::Carrier::Burst,
+            )]
+            .into(),
+        };
+        run(&mut bus, &mut awareness, MomentumTier::Warming);
+        assert!(!awareness.neighbor_states[&a].last_action_success);
+
+        let mut bus = VecBus {
+            msgs: vec![utterance(
+                a,
+                UtteranceKind::Down,
+                crate::utterance::Carrier::Speech,
+            )]
+            .into(),
+        };
+        run(&mut bus, &mut awareness, MomentumTier::Warming);
+        assert!(matches!(
+            awareness.neighbor_states[&a].liveness,
+            Liveness::Down { since_tick } if since_tick == crate::tick::TickId(7)
+        ));
+    }
+
+    #[test]
+    fn test_apply_thought_utterance_is_private_and_ignored() {
+        let a = AgentId(uuid::Uuid::new_v4());
+        let mut awareness = awareness_with_neighbor(a);
+        let mut bus = VecBus {
+            msgs: vec![
+                utterance(a, UtteranceKind::Failed, crate::utterance::Carrier::Thought),
+                utterance(a, UtteranceKind::Down, crate::utterance::Carrier::None),
+            ]
+            .into(),
+        };
+        run(&mut bus, &mut awareness, MomentumTier::Warming);
+        assert!(awareness.neighbor_states[&a].last_action_success);
+        assert!(matches!(
+            awareness.neighbor_states[&a].liveness,
+            Liveness::Alive
+        ));
     }
 }

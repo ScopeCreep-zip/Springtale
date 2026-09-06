@@ -55,6 +55,8 @@ pub struct ExecuteCtx<'a> {
     pub cooperation_tx: Option<
         &'a tokio::sync::broadcast::Sender<springtale_cooperation::CooperationEventEnvelope>,
     >,
+    /// Utterance sink for this member's claim / yield (plan §1.15).
+    pub utter: springtale_cooperation::utterance::UtterCtx<'a>,
 }
 
 impl ExecuteCtx<'_> {
@@ -94,7 +96,7 @@ fn settled(outcome: ExecuteOutcome) -> Prepared {
     Prepared::Settled(Box::new(outcome))
 }
 
-pub async fn prepare(ctx: ExecuteCtx<'_>) -> Prepared {
+pub async fn prepare(mut ctx: ExecuteCtx<'_>) -> Prepared {
     // B9 short-circuit: a voluntary yield reports a yield-shaped
     // descriptor and skips claim/dispatch. `chosen_task` was already
     // cleared by the decide phase when the sacrifice fired.
@@ -119,6 +121,11 @@ pub async fn prepare(ctx: ExecuteCtx<'_>) -> Prepared {
                 beneficiary,
                 utility,
             },
+        );
+        springtale_cooperation::utterance::utter(
+            &mut ctx.utter,
+            Some(sacrificer),
+            springtale_cooperation::UtteranceKind::Yield { beneficiary },
         );
         return settled(ExecuteOutcome::settled(
             Some(ActionDescriptor {
@@ -174,6 +181,11 @@ pub async fn prepare(ctx: ExecuteCtx<'_>) -> Prepared {
     {
         return settled(ExecuteOutcome::settled(None, 0.5));
     }
+    springtale_cooperation::utterance::utter(
+        &mut ctx.utter,
+        Some(ctx.member.agent_id),
+        springtale_cooperation::UtteranceKind::Claimed { task: task.id },
+    );
 
     let descriptor = crate::cooperation::task_dispatch::subtask_to_descriptor(&task);
     ctx.member.active_task = Some(ActiveTask::new(

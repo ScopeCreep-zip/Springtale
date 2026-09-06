@@ -34,6 +34,8 @@ pub enum StateMessage {
     AgentLeft {
         agent: AgentId,
     },
+    /// A peer spoke (`Speech`/`Burst`); folded into its `NeighborSnapshot`.
+    Utterance(crate::utterance::Utterance),
 }
 
 #[cfg(test)]

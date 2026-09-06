@@ -33,7 +33,7 @@ pub fn run(
 
     let snapshot = build_snapshot(formation);
     let decisions = collect_decisions(formation, &distress_signals, &snapshot, cooperation_tx);
-    apply_recovery_decisions(formation, decisions);
+    apply_recovery_decisions(formation, decisions, cooperation_tx);
 }
 
 fn build_distress_signals(formation: &Formation) -> Vec<DistressSignal> {
@@ -78,7 +78,7 @@ fn collect_decisions(
     distress_signals: &[DistressSignal],
     snapshot: &FormationSnapshot,
     cooperation_tx: Option<&broadcast::Sender<CooperationEventEnvelope>>,
-) -> Vec<(AgentId, RecoveryAction)> {
+) -> Vec<(AgentId, AgentId, RecoveryAction)> {
     let mut decisions = Vec::new();
     for signal in distress_signals {
         for member in &formation.members {
@@ -120,7 +120,7 @@ fn collect_decisions(
                             action: format!("{:?}", recovery_action.kind()),
                         },
                     );
-                    decisions.push((target_id, recovery_action));
+                    decisions.push((member.agent_id, target_id, recovery_action));
                 }
                 break; // first willing helper takes it
             }
@@ -132,12 +132,20 @@ fn collect_decisions(
 /// Apply the collected recovery decisions. Extracted so the §18.2 fragility
 /// FSM can be unit-tested without spinning up a full `Bot` (see the test
 /// module at the bottom).
+/// Apply `(helper, target, action)` decisions. The helper says `Helping`
+/// (plan §1.15) so peers and the canvas see who is reviving whom.
 pub fn apply_recovery_decisions(
     formation: &mut Formation,
-    decisions: Vec<(AgentId, RecoveryAction)>,
+    decisions: Vec<(AgentId, AgentId, RecoveryAction)>,
+    cooperation_tx: Option<&broadcast::Sender<CooperationEventEnvelope>>,
 ) {
     let formation_id_str = formation.id.0.to_string();
-    for (target_id, action) in decisions {
+    for (helper, target_id, action) in decisions {
+        springtale_cooperation::utterance::utter(
+            &mut formation.utter_ctx(cooperation_tx),
+            Some(helper),
+            springtale_cooperation::UtteranceKind::Helping { target: target_id },
+        );
         let transition = {
             let Some(target) = formation.member_mut(&target_id) else {
                 continue;
@@ -215,7 +223,7 @@ mod tests {
             duration: Duration::from_secs(5),
             healer_vulnerability: 0.5,
         };
-        apply_recovery_decisions(&mut formation, vec![(target_id, action)]);
+        apply_recovery_decisions(&mut formation, vec![(target_id, target_id, action)], None);
         let after = &formation.member(&target_id).unwrap().health;
         assert!(
             matches!(after, AgentHealth::Degraded { recovery_count: 2 }),
@@ -235,12 +243,20 @@ mod tests {
             duration: Duration::from_secs(5),
             healer_vulnerability: 0.5,
         };
-        apply_recovery_decisions(&mut formation, vec![(target_id, action)]);
+        apply_recovery_decisions(&mut formation, vec![(helper, target_id, action)], None);
         let after = &formation.member(&target_id).unwrap().health;
         assert!(
             matches!(after, AgentHealth::Dead { recoverable: true }),
             "expected Dead{{recoverable:true}}, got {after:?}"
         );
+        // Plan §1.15: the helper says `Helping` first (Speech carrier).
+        let said = state_rx.try_recv().expect("Helping utterance");
+        assert!(matches!(
+            said.trigger,
+            BroadcastTrigger::Utterance(ref u)
+                if u.agent == Some(helper)
+                    && u.utterance == springtale_cooperation::UtteranceKind::Helping { target: target_id }
+        ));
         let msg = state_rx.try_recv().expect("AgentDown broadcast");
         assert!(matches!(
             msg.trigger,
@@ -258,14 +274,26 @@ mod tests {
             beneficiary: target_id,
             depletes_resource: false,
         };
-        apply_recovery_decisions(&mut formation, vec![(target_id, action)]);
+        apply_recovery_decisions(&mut formation, vec![(target_id, target_id, action)], None);
         assert!(matches!(
             formation.member(&target_id).unwrap().health,
             AgentHealth::Operational
         ));
+        let mut heard = Vec::new();
+        while let Ok(msg) = state_rx.try_recv() {
+            heard.push(msg.trigger);
+        }
         assert!(
-            state_rx.try_recv().is_err(),
-            "proper recovery should not broadcast AgentDown"
+            !heard
+                .iter()
+                .any(|t| matches!(t, BroadcastTrigger::AgentDown(_))),
+            "proper recovery should not broadcast AgentDown, got {heard:?}"
+        );
+        assert!(
+            heard
+                .iter()
+                .any(|t| matches!(t, BroadcastTrigger::Utterance(_))),
+            "the helper says Helping"
         );
     }
 
@@ -279,7 +307,7 @@ mod tests {
             duration: Duration::from_secs(5),
             healer_vulnerability: 0.5,
         };
-        apply_recovery_decisions(&mut formation, vec![(ghost_id, action)]);
+        apply_recovery_decisions(&mut formation, vec![(ghost_id, ghost_id, action)], None);
         assert!(matches!(
             formation.member(&target_id).unwrap().health,
             AgentHealth::Operational

@@ -7,8 +7,10 @@ use std::time::Duration;
 use tokio::sync::broadcast;
 
 use springtale_cooperation::CooperationEventEnvelope;
+use springtale_cooperation::action_state::ActionState;
 use springtale_cooperation::cadence::{AgentId, Tick, TickReport};
 use springtale_cooperation::stigmergy::types::SurfaceType;
+use springtale_cooperation::utterance::{UtteranceKind, utter};
 
 use crate::cooperation::blackboard::cooperative::CooperativeBlackboard;
 use crate::cooperation::blackboard::trait_::Blackboard;
@@ -48,6 +50,7 @@ pub fn post(
         cooperation_tx,
     };
     let duration_ms = outcome.duration_ms;
+    let said = utterance_for(&outcome.state, outcome.action_descriptor.is_some());
     let member = formation.members.iter_mut().find(|m| m.agent_id == agent)?;
     let report = post_member(member, &env, outcome, tick);
 
@@ -57,7 +60,28 @@ pub fn post(
     let busy = member.active_task.is_some() || member.pending.is_some();
     let sample = if busy { 0.5 } else { 0.0 } + (duration_ms as f32 / 1000.0).min(0.3);
     formation.attention_broker.observe(agent, sample, 0.3);
+    // Plan §1.15: the beat's outcome is the member's utterance — raised
+    // where the state actually changes, heard by peers and the canvas.
+    if let Some(kind) = said {
+        utter(
+            &mut formation.utter_ctx_at(tick.sequence, cooperation_tx),
+            Some(agent),
+            kind,
+        );
+    }
     Some(report)
+}
+
+/// Map a settled `ActionState` to what the member says about it.
+/// `Cancelled`, and a carried-over `Init` with an action, say nothing.
+fn utterance_for(state: &ActionState, action_taken: bool) -> Option<UtteranceKind> {
+    match state {
+        ActionState::Failure(_) => Some(UtteranceKind::Failed),
+        ActionState::Success => Some(UtteranceKind::Firing),
+        ActionState::Requested | ActionState::Executing => Some(UtteranceKind::Working),
+        ActionState::Init if !action_taken => Some(UtteranceKind::Idle),
+        ActionState::Init | ActionState::Cancelled => None,
+    }
 }
 
 /// The member's own write-back: active-task state, result row, W3 push

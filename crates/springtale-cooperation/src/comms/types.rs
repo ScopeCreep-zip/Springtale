@@ -77,6 +77,9 @@ pub enum BroadcastTrigger {
     AgentDown(AgentId),
     /// "I'm out of ammo"
     CapabilityExhausted(CapabilityDecl),
+    /// A member said something the formation can hear (`Speech` or `Burst`
+    /// carrier). Thoughts never reach the bus.
+    Utterance(crate::utterance::Utterance),
 }
 
 /// Target for a protocol message.

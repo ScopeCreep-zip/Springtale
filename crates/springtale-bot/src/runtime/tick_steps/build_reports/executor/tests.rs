@@ -78,6 +78,14 @@ async fn run_executor(
         awaiting_consensus: &formation.awaiting_consensus,
         consensus_approved: &mut formation.consensus_approved,
         cooperation_tx: None,
+        utter: springtale_cooperation::utterance::UtterCtx {
+            formation_id: formation.id,
+            bus: &formation.bus,
+            defs: &formation.utterance_defs,
+            last_uttered: &mut formation.last_uttered,
+            tick: tick.sequence,
+            tx: None,
+        },
     })
     .await;
     let mut outcome = match prepared {
@@ -250,4 +258,70 @@ async fn test_execute_cold_read_only_require_consensus_dispatches_without_vote()
         "read-only manifest hint: nothing to vote on"
     );
     assert_eq!(rt.probe.executions(), 1, "dispatched immediately");
+}
+
+/// Plan §1.15 test (c): a failed beat says `Failed` — heard on the
+/// formation bus (Burst carrier) and on the observer stream.
+#[tokio::test]
+async fn test_post_failed_outcome_utters_failed_on_bus_and_observer() {
+    use springtale_cooperation::action_state::ActionState;
+    use springtale_cooperation::comms::BroadcastTrigger;
+    use springtale_cooperation::events::CooperationEvent;
+    use springtale_cooperation::utterance::{Carrier, UtteranceKind};
+
+    let mut formation = consensus_formation();
+    let agent = formation.members[0].agent_id;
+    let peer = formation.members[1].agent_id;
+    let mut peer_sub = formation.bus.subscribe(peer);
+    let (tx, mut observer) = tokio::sync::broadcast::channel(8);
+    let tick = make_tick(3, Duration::from_millis(33));
+    let outcome = super::ExecuteOutcome {
+        action_descriptor: None,
+        alignment: 0.5,
+        consensus_task: None,
+        state: ActionState::Failure("connector refused".to_owned()),
+        duration_ms: 5,
+        dispatched: None,
+    };
+
+    let report = super::post(&mut formation, agent, outcome, &tick, Some(&tx));
+    assert!(report.is_some());
+
+    let heard = peer_sub.state_rx.try_recv().expect("peer hears the burst");
+    assert_eq!(heard.source, agent);
+    match heard.trigger {
+        BroadcastTrigger::Utterance(u) => {
+            assert_eq!(u.utterance, UtteranceKind::Failed);
+            assert_eq!(u.agent, Some(agent));
+            assert_eq!(u.carrier, Carrier::Burst);
+            assert_eq!(u.seq, tick.sequence);
+            assert_eq!(u.formation_id, Some(formation.id));
+        }
+        other => panic!("expected utterance on bus, got {other:?}"),
+    }
+
+    let envelope = observer.try_recv().expect("observer sees the utterance");
+    assert!(matches!(
+        envelope.event,
+        CooperationEvent::Utterance {
+            utterance: UtteranceKind::Failed,
+            agent: Some(a),
+            ..
+        } if a == agent
+    ));
+
+    // Same beat, same kind: blocked by `block_ticks` (Stardew's interval).
+    let again = super::ExecuteOutcome {
+        action_descriptor: None,
+        alignment: 0.5,
+        consensus_task: None,
+        state: ActionState::Failure("again".to_owned()),
+        duration_ms: 5,
+        dispatched: None,
+    };
+    super::post(&mut formation, agent, again, &tick, Some(&tx));
+    assert!(
+        peer_sub.state_rx.try_recv().is_err(),
+        "blocked repeat must not reach the bus"
+    );
 }

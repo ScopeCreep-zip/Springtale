@@ -291,6 +291,13 @@ pub struct Formation {
     /// an `mpsc::Receiver` which is `Send` but not `Clone` — removal
     /// must be atomic w.r.t. concurrent member churn.
     pub member_subs: std::sync::Mutex<std::collections::HashMap<AgentId, FormationBusSubscription>>,
+    /// Tick the formation is currently processing (set by `run_tick`);
+    /// utterances raised outside the executor are stamped with it.
+    pub current_tick: springtale_cooperation::TickId,
+    /// Stardew `blockedIntervalBeforeEmote` bookkeeping per `(agent, kind)`.
+    pub last_uttered: springtale_cooperation::utterance::emit::LastUttered,
+    /// Utterance def table (plan §1.15) — default until config overrides land.
+    pub utterance_defs: Arc<springtale_cooperation::utterance::UtteranceDefs>,
 
     /// Wall-clock instant of the last PROCESSED tick (after the §22
     /// pacing divider). `None` until the first processed tick. Used to
@@ -507,6 +514,9 @@ impl Formation {
             flex_chain_pool: deps.flex_chain_pool,
             direct_inbox,
             member_subs: std::sync::Mutex::new(initial_subs),
+            current_tick: springtale_cooperation::TickId::ZERO,
+            last_uttered: springtale_cooperation::utterance::emit::LastUttered::new(),
+            utterance_defs: Arc::new(springtale_cooperation::utterance::UtteranceDefs::default()),
             last_tick_at: None,
             last_tick_write_count: 0,
             last_broadcast_tier: MomentumTier::Cold,
@@ -777,6 +787,31 @@ impl Formation {
     /// Returns per-member counts `{ state, cohesion, protocol }` for
     /// observability: the formation UI surface can render "heard N
     /// state callouts this tick" without a separate audit table.
+    /// Borrow the disjoint fields `utterance::utter` needs, stamped with
+    /// `current_tick`. Callers with a live `Tick` use [`Self::utter_ctx_at`].
+    pub fn utter_ctx<'a>(
+        &'a mut self,
+        tx: Option<&'a broadcast::Sender<springtale_cooperation::CooperationEventEnvelope>>,
+    ) -> springtale_cooperation::utterance::UtterCtx<'a> {
+        let tick = self.current_tick;
+        self.utter_ctx_at(tick, tx)
+    }
+
+    pub fn utter_ctx_at<'a>(
+        &'a mut self,
+        tick: springtale_cooperation::TickId,
+        tx: Option<&'a broadcast::Sender<springtale_cooperation::CooperationEventEnvelope>>,
+    ) -> springtale_cooperation::utterance::UtterCtx<'a> {
+        springtale_cooperation::utterance::UtterCtx {
+            formation_id: self.id,
+            bus: &self.bus,
+            defs: &self.utterance_defs,
+            last_uttered: &mut self.last_uttered,
+            tick,
+            tx,
+        }
+    }
+
     pub fn drain_member_subs(&self) -> Vec<MemberDrainCounts> {
         use tokio::sync::broadcast::error::TryRecvError as BroadcastTry;
         use tokio::sync::mpsc::error::TryRecvError as MpscTry;

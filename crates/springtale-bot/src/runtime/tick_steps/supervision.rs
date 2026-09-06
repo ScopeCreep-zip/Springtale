@@ -111,6 +111,11 @@ fn execute(
             if let Some(member) = formation.member_mut(&agent) {
                 member.liveness = Liveness::Down { since_tick };
             }
+            springtale_cooperation::utterance::utter(
+                &mut formation.utter_ctx(cooperation_tx),
+                Some(agent),
+                springtale_cooperation::UtteranceKind::Down,
+            );
             formation.bus.broadcast_state(StateBroadcastMsg {
                 source: agent,
                 trigger: BroadcastTrigger::AgentDown(agent),

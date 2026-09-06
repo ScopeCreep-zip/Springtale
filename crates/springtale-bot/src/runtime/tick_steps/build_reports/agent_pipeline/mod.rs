@@ -114,6 +114,14 @@ pub async fn run(
             awaiting_consensus: &formation.awaiting_consensus,
             consensus_approved: &mut formation.consensus_approved,
             cooperation_tx,
+            utter: springtale_cooperation::utterance::UtterCtx {
+                formation_id: formation.id,
+                bus: &formation.bus,
+                defs: &formation.utterance_defs,
+                last_uttered: &mut formation.last_uttered,
+                tick: tick.sequence,
+                tx: cooperation_tx,
+            },
         })
         .await;
         match prepared {
