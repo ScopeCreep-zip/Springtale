@@ -105,6 +105,18 @@ impl Client {
         Ok(resp)
     }
 
+    /// Start a request against `path` with the bearer header already
+    /// applied, for callers that need the raw `reqwest` response rather
+    /// than a decoded JSON body. The MCP stdio bridge uses it: it needs
+    /// the response headers (`Mcp-Session-Id`) and an SSE body, and it
+    /// must not hold a second copy of the API token.
+    pub fn request(&self, method: reqwest::Method, path: &str) -> reqwest::RequestBuilder {
+        // SECURITY: expose needed to set the bearer header.
+        self.http
+            .request(method, self.url(path))
+            .bearer_auth(self.token.expose_secret())
+    }
+
     fn url(&self, p: &str) -> String {
         format!("{}{p}", self.base)
     }

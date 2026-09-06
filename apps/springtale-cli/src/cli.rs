@@ -180,6 +180,11 @@ pub enum Command {
         #[command(subcommand)]
         action: SafetyAction,
     },
+    /// Model Context Protocol — bridge an MCP client onto the daemon.
+    Mcp {
+        #[command(subcommand)]
+        action: McpAction,
+    },
     /// Colony canvas — trees, agents, formations as the UI sees them.
     Canvas {
         /// Follow live canvas updates instead of printing a snapshot.
@@ -507,6 +512,15 @@ pub enum RuleAction {
         /// Path to the updated rule definition file.
         file: std::path::PathBuf,
     },
+}
+
+#[derive(Subcommand, Debug)]
+pub enum McpAction {
+    /// Speak the MCP stdio transport on stdin/stdout, forwarding every
+    /// message to the running daemon's `/mcp` endpoint. For editors that
+    /// can only launch a subprocess. Set `SPRINGTALE_API_TOKEN` so the
+    /// bridge never has to prompt for a token.
+    Serve,
 }
 
 #[derive(Subcommand, Debug)]

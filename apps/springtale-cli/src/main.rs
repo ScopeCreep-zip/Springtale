@@ -8,8 +8,8 @@ use anyhow::Result;
 use clap::Parser;
 
 use cli::{
-    BotAction, Cli, Command, CooperationAction, CryptoAction, ServerAction, TravelAction,
-    VaultAction,
+    BotAction, Cli, Command, CooperationAction, CryptoAction, McpAction, ServerAction,
+    TravelAction, VaultAction,
 };
 
 #[tokio::main]
@@ -150,6 +150,11 @@ async fn main() -> Result<()> {
         Command::Safety { action } => {
             commands::safety::run(action, cli.json).await?;
         }
+        Command::Mcp { action } => match action {
+            McpAction::Serve => {
+                commands::mcp::serve().await?;
+            }
+        },
         Command::Canvas { stream } => {
             commands::canvas::run(stream, cli.json).await?;
         }
