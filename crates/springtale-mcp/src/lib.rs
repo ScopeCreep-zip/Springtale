@@ -7,8 +7,8 @@
 pub mod adapter;
 pub mod error;
 pub mod server;
-pub mod transport;
+pub mod service;
 
 pub use error::McpError;
-pub use server::ConnectorMcpServer;
-pub use transport::start_stdio_server;
+pub use server::{SpringtaleMcp, TOOL_NAME_SEPARATOR};
+pub use service::{SpringtaleHttpMcpService, streamable_http};

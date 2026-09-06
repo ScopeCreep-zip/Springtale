@@ -30,6 +30,9 @@ pub struct TestApp {
     /// Receiver for formation commands the API enqueues. Kept alive by
     /// the caller — dropping it makes `formation_cmd_tx.send` fail.
     pub formation_cmd_rx: mpsc::Receiver<FormationCommand>,
+    /// The same state the router was built over — lets a test reach the
+    /// registry, the sentinel and the capability bridge directly.
+    pub state: AppState,
 }
 
 impl TestApp {
@@ -161,9 +164,10 @@ impl TestApp {
         };
 
         Self {
-            router: build_router(state),
+            router: build_router(state.clone()),
             token_hex,
             formation_cmd_rx,
+            state,
         }
     }
 }
