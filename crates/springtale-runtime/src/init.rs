@@ -215,6 +215,11 @@ pub async fn init(
     // headroom at 4 formations × 30Hz × ~5 events/tick. Lagged readers
     // drop silently per the events_stream.rs precedent.
     let (cooperation_tx, _) = tokio::sync::broadcast::channel(512);
+    // Plan §1.15 F/G: utterance ring + def table + the bot-written tick clock.
+    let utterances = crate::utterance_ring::UtteranceRing::default();
+    crate::utterance_ring::spawn_collector(utterances.clone(), cooperation_tx.subscribe());
+    let utterance_defs = Arc::new(config.cooperation.utterances.clone());
+    let cadence_tick = Arc::new(std::sync::atomic::AtomicU64::new(0));
     // G6 — cross-formation gossip bus. In-memory default; cross-process
     // deployments can swap in a chitchat-backed impl in a follow-up.
     let formation_gossip: Arc<dyn springtale_cooperation::gossip::FormationGossipBus> =
@@ -395,6 +400,9 @@ pub async fn init(
         event_tx,
         trigger_registry: Arc::new(std::sync::OnceLock::new()),
         cooperation_tx,
+        utterances,
+        utterance_defs,
+        cadence_tick,
         formation_cmd_tx,
         live_formations,
         gossip_store,

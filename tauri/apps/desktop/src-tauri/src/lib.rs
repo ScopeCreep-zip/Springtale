@@ -148,6 +148,7 @@ pub fn run() {
             commands::canvas::get_canvas_state,
             commands::canvas::subscribe_canvas,
             commands::cooperation::subscribe_cooperation,
+            commands::cooperation::utterance_defs,
             commands::safety::reset_auto_lock,
             commands::formations::create_formation,
             commands::formations::deploy_formation,

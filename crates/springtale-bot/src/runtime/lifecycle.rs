@@ -132,6 +132,12 @@ pub struct Bot {
     /// reference to the process-wide registry and bakes in the tier
     /// scoping that `dispatch_action_with_tier` uses.
     pub(crate) capability_bridge: springtale_runtime::CapabilityBridge,
+    /// Def table for standalone-rule utterances (`utterance::emit_solo`).
+    /// Shared with `RuntimeState::utterance_defs`; formations carry their own.
+    pub(crate) utterance_defs: Arc<springtale_cooperation::utterance::UtteranceDefs>,
+    /// Latest cadence tick, mirrored into `RuntimeState::cadence_tick` so
+    /// runtime operations (rule toggle-off) can stamp solo utterances.
+    pub(crate) cadence_tick: Arc<std::sync::atomic::AtomicU64>,
     /// L6 commander-override evaluator (`COOPERATION.md §3.4`). Pure rule
     /// table — runs every tick over `InterventionSignals` and decides
     /// whether to fire `ChangeIntent / InjectFuel / ForcedDissolve /
@@ -209,6 +215,8 @@ pub struct BotBuilder {
     /// duplication even though both wrap the same `Arc`. Enforce one
     /// shared instance.
     capability_bridge: Option<springtale_runtime::CapabilityBridge>,
+    utterance_defs: Option<Arc<springtale_cooperation::utterance::UtteranceDefs>>,
+    cadence_tick: Option<Arc<std::sync::atomic::AtomicU64>>,
     /// F4: optional canvas broadcast sender. The daemon plumbs in
     /// `RuntimeState::canvas_tx`; tests + headless leave None.
     canvas_tx: Option<tokio::sync::broadcast::Sender<springtale_core::canvas::CanvasUpdate>>,
@@ -242,6 +250,8 @@ impl BotBuilder {
             capability_bridge: None,
             canvas_tx: None,
             cooperation_tx: None,
+            utterance_defs: None,
+            cadence_tick: None,
             recipe_deployer: None,
         }
     }
@@ -276,6 +286,23 @@ impl BotBuilder {
         tx: tokio::sync::broadcast::Sender<springtale_cooperation::CooperationEventEnvelope>,
     ) -> Self {
         self.cooperation_tx = Some(tx);
+        self
+    }
+
+    /// Plan §1.15: share the runtime's utterance def table so solo-rule
+    /// utterances resolve against the same (possibly overridden) defs.
+    pub fn utterance_defs(
+        mut self,
+        defs: Arc<springtale_cooperation::utterance::UtteranceDefs>,
+    ) -> Self {
+        self.utterance_defs = Some(defs);
+        self
+    }
+
+    /// Plan §1.15: share `RuntimeState::cadence_tick`; the event loop
+    /// stores every cadence tick into it.
+    pub fn cadence_tick(mut self, tick: Arc<std::sync::atomic::AtomicU64>) -> Self {
+        self.cadence_tick = Some(tick);
         self
     }
 
@@ -567,6 +594,8 @@ impl BotBuilder {
                 crate::orchestrator::intervention::action::DefaultInterventionAction,
             canvas_tx: self.canvas_tx,
             cooperation_tx: self.cooperation_tx,
+            utterance_defs: self.utterance_defs.unwrap_or_default(),
+            cadence_tick: self.cadence_tick.unwrap_or_default(),
             formation_gossip: self.formation_gossip,
             knowledge_store: self.knowledge_store,
             recipe_deployer: self.recipe_deployer,

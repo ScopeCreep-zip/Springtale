@@ -81,7 +81,7 @@ pub async fn run_tick(formation: &mut Formation, tick: &Tick, deps: &mut TickDep
 
     let result = build_reports::run(formation, tick, deps).await;
     formation.momentum.check_decay();
-    update_momentum::run(formation, &result);
+    update_momentum::run(formation, &result, deps.cooperation_tx);
     liveness::run(formation, tick, &result);
     supervision::run(formation, &result, deps.cooperation_tx);
     fuel::run(formation);

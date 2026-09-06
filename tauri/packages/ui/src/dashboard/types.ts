@@ -202,12 +202,76 @@ export type CooperationEvent =
     }
   | { kind: "cfp_round_started"; formation_id: string; cfp_id: string; capability: string }
   | { kind: "cfp_round_resolved"; formation_id: string; cfp_id: string; winner: string | null }
+  | ({ kind: "utterance" } & Utterance)
   | { kind: "cbba_replan_requested"; formation_id: string; reason: string }
   | {
       kind: "cbba_replan_resolved";
       formation_id: string;
       outcome: { status: string; sweeps: number; assigned: number; unassigned: number };
     };
+
+/**
+ * Plan §1.15 — what was said. Mirrors `springtale_cooperation::utterance::UtteranceKind`
+ * (`#[serde(tag = "utter")]`).
+ */
+export type UtteranceKind =
+  | { utter: "firing" }
+  | { utter: "working" }
+  | { utter: "listening" }
+  | { utter: "idle" }
+  | { utter: "failed" }
+  | { utter: "down" }
+  | { utter: "claimed"; task: string }
+  | { utter: "yield"; beneficiary: string }
+  | { utter: "helping"; target: string }
+  | { utter: "rally" }
+  | { utter: "cascade"; streak: number };
+
+export type UtteranceCarrier = "speech" | "burst" | "thought" | "none";
+export type UtteranceShape = "triangle" | "circle" | "square";
+export type UtteranceTone = "calm" | "alert" | "urgent";
+
+/**
+ * One utterance, resolved against the def table at the event site.
+ * Mirrors `springtale_cooperation::utterance::Utterance`; the same fields
+ * appear flat on the `kind: "utterance"` cooperation event.
+ */
+export interface Utterance {
+  /** `null` for standalone rules (then `rule_id` is set). */
+  formation_id: string | null;
+  /** `null` for solo rules and formation-level kinds. */
+  agent: string | null;
+  rule_id: string | null;
+  utterance: UtteranceKind;
+  carrier: UtteranceCarrier;
+  shape: UtteranceShape;
+  tone: UtteranceTone;
+  /** Tick it was said on — expire against the colony timeline, not wall-clock. */
+  seq: number;
+  ttl_ticks: number;
+  glyph_frames: string[];
+  mirror_rtl: boolean;
+  label_key: string;
+}
+
+/**
+ * One def from the table (`GET /cooperation/utterances`, desktop
+ * `utterance_defs`). Mirrors `springtale_cooperation::utterance::UtteranceDef`.
+ */
+export interface UtteranceDef {
+  carrier: UtteranceCarrier;
+  shape: UtteranceShape;
+  tone: UtteranceTone;
+  frames: string[];
+  locales: Record<string, string[]>;
+  mirror_rtl: boolean;
+  label_key: string;
+  ttl_ticks: number;
+  block_ticks: number;
+}
+
+/** Def table keyed by utterance name (`firing`, `working`, …). */
+export type UtteranceDefs = Record<string, UtteranceDef>;
 
 /**
  * Wire envelope wrapping every cooperation event — adds monotonic seq +
@@ -475,6 +539,11 @@ export interface DataProvider {
    * `subscribe_cooperation` Channel<CooperationEventEnvelope>.
    */
   subscribeToCooperationEvents(callback: (envelope: CooperationEventEnvelope) => void): () => void;
+  /**
+   * Plan §1.15 G — the utterance def table this daemon speaks with. Web:
+   * `GET /cooperation/utterances`; desktop: Tauri `utterance_defs`.
+   */
+  getUtteranceDefs(): Promise<UtteranceDefs>;
 
   // Formations (swarms)
   getFormation(id: string): Promise<FormationDetail>;

@@ -114,6 +114,15 @@ pub struct RuntimeState {
     /// `canvas_tx` pattern. Capacity 512 — covers ~30s headroom at 4
     /// formations × 30Hz cadence.
     pub cooperation_tx: broadcast::Sender<springtale_cooperation::CooperationEventEnvelope>,
+    /// Plan §1.15 F: newest-first ring of utterances (cap 1000) for
+    /// polling frontends. Filled by `utterance_ring::spawn_collector`.
+    pub utterances: crate::utterance_ring::UtteranceRing,
+    /// Plan §1.15 G: the utterance def table — built-in, or the
+    /// `[cooperation.utterances]` override. Shared with the bot for solo rules.
+    pub utterance_defs: Arc<springtale_cooperation::utterance::UtteranceDefs>,
+    /// Latest cadence tick, written by the bot event loop. The runtime's
+    /// only clock; rule toggle-off stamps its `Idle` utterance with it.
+    pub cadence_tick: Arc<std::sync::atomic::AtomicU64>,
     /// Formation command sender — runtime operations deploy/dissolve/pause
     /// formations by sending commands to the bot event loop.
     pub formation_cmd_tx: mpsc::Sender<springtale_cooperation::command::FormationCommand>,

@@ -67,6 +67,21 @@ pub async fn toggle_rule(
         let _ = engine.add_rule(rule);
     }
 
+    // Plan §1.15 E: a toggled-off rule says `Idle` (observer only, by rule id).
+    if !enabled {
+        springtale_cooperation::utterance::emit_solo(
+            Some(&state.cooperation_tx),
+            &state.utterance_defs,
+            *id,
+            springtale_cooperation::TickId(
+                state
+                    .cadence_tick
+                    .load(std::sync::atomic::Ordering::Relaxed),
+            ),
+            springtale_cooperation::utterance::UtteranceKind::Idle,
+        );
+    }
+
     Ok(())
 }
 

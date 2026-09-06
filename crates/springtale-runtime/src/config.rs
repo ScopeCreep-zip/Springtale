@@ -56,6 +56,12 @@ pub struct CooperationConfig {
     #[serde(default)]
     pub chitchat_seeds: Vec<String>,
 
+    /// Plan §1.15 G: utterance def table. Defaults to the built-in table;
+    /// a `[cooperation.utterances.<name>]` block replaces that one def
+    /// (all fields required — see `springtale.toml.example`).
+    #[serde(default)]
+    pub utterances: springtale_cooperation::utterance::UtteranceDefs,
+
     /// Chitchat cluster identifier. Two nodes with different cluster
     /// ids won't peer with each other. Ignored when `cross_process = false`.
     #[serde(default = "default_cluster_id")]

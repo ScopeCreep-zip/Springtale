@@ -14,6 +14,7 @@ use tauri::State;
 use tauri::ipc::Channel;
 
 use springtale_cooperation::CooperationEventEnvelope;
+use springtale_cooperation::utterance::UtteranceDefs;
 
 use crate::runtime_guard::require_runtime;
 use crate::state::AppState;
@@ -55,4 +56,14 @@ pub async fn subscribe_cooperation(
         }
     });
     Ok(())
+}
+
+/// Plan §1.15 G: the utterance def table (built-in, or the
+/// `[cooperation.utterances]` override). Mirrors `GET /cooperation/utterances`.
+#[tauri::command]
+#[specta::specta]
+pub async fn utterance_defs(state: State<'_, AppState>) -> Result<UtteranceDefs, String> {
+    let guard = require_runtime(&state.runtime).await?;
+    let rt = guard.as_ref().unwrap();
+    Ok((*rt.utterance_defs).clone())
 }

@@ -6,7 +6,7 @@
  */
 
 import type { CanvasUpdate, EventEntry } from "@springtale/types";
-import type { CooperationEventEnvelope, DataProvider } from "@springtale/ui";
+import type { CooperationEventEnvelope, DataProvider, UtteranceDefs } from "@springtale/ui";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getAutonomy, listAgentStates, setAutonomy, stepAutonomy } from "./ipc/agents";
@@ -253,6 +253,9 @@ export function createDesktopProvider(): DataProvider {
     // Canvas
     getConnections,
     getCanvasState,
+    async getUtteranceDefs() {
+      return invoke<UtteranceDefs>("utterance_defs");
+    },
     subscribeToCanvasUpdates(callback) {
       // F4 + E10: Tauri 2 `Channel<T>` is the right primitive for streaming
       // — purpose-built for high-rate events vs broadcast `emit()`. The

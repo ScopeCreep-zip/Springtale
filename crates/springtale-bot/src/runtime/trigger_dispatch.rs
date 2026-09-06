@@ -244,6 +244,14 @@ async fn dispatch_rule_match(
         actions = rule_match.actions.len(),
         "bot: rule matched trigger — dispatching actions"
     );
+    let scope = (execution.formation_id, execution.agent_id);
+    utter_rule(
+        bot,
+        scope,
+        rule_match.rule_id,
+        springtale_cooperation::utterance::UtteranceKind::Firing,
+    )
+    .await;
     let trigger_payload = (*rule_match.payload).clone();
     match springtale_runtime::dispatch::dispatch_actions(
         &rule_match.actions,
@@ -259,12 +267,55 @@ async fn dispatch_rule_match(
             summary = %chain.brief(),
             "bot: rule actions dispatched"
         ),
-        Err(e) => tracing::error!(
-            rule = %rule_match.rule_name,
-            error = %e,
-            "bot: rule actions dispatch failed"
-        ),
+        Err(e) => {
+            tracing::error!(
+                rule = %rule_match.rule_name,
+                error = %e,
+                "bot: rule actions dispatch failed"
+            );
+            utter_rule(
+                bot,
+                scope,
+                rule_match.rule_id,
+                springtale_cooperation::utterance::UtteranceKind::Failed,
+            )
+            .await;
+        }
     }
+}
+
+/// Plan §1.15 E: say `kind` for a rule fire. Formation-scoped fires speak
+/// as the member through the formation's `UtterCtx` (bus + observer);
+/// standalone rules are observer-only, addressed by rule id.
+async fn utter_rule(
+    bot: &crate::runtime::lifecycle::Bot,
+    scope: (
+        Option<springtale_cooperation::types::FormationId>,
+        Option<springtale_cooperation::cadence::AgentId>,
+    ),
+    rule_id: springtale_core::rule::RuleId,
+    kind: springtale_cooperation::utterance::UtteranceKind,
+) {
+    let tick = springtale_cooperation::TickId(bot.cadence.tick_count());
+    if let (Some(fid), Some(agent)) = scope {
+        let mut formations = bot.formations.write().await;
+        if let Some(f) = formations.iter_mut().find(|f| f.id == fid) {
+            f.current_tick = tick;
+            springtale_cooperation::utterance::utter(
+                &mut f.utter_ctx(bot.cooperation_tx.as_ref()),
+                Some(agent),
+                kind,
+            );
+            return;
+        }
+    }
+    springtale_cooperation::utterance::emit_solo(
+        bot.cooperation_tx.as_ref(),
+        &bot.utterance_defs,
+        rule_id,
+        tick,
+        kind,
+    );
 }
 
 /// Record an `observed` / `suggested` row so the canvas and event log show

@@ -53,6 +53,8 @@ pub async fn run_event_loop(bot: &mut Bot) {
             // Source 3: cadence ticks from the cooperation module (§5).
             result = bot.cadence_rx.recv() => match result {
                 Ok(tick) => {
+                    bot.cadence_tick
+                        .store(tick.sequence.0, std::sync::atomic::Ordering::Relaxed);
                     handle_cadence_tick(bot, &tick).await;
                     // Strategic (colony) layer: review the whole colony every
                     // COLONY_INTERVAL ticks. Runs AFTER the per-formation tick so
