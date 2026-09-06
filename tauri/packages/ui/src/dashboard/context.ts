@@ -30,13 +30,7 @@ import {
 } from "solid-js";
 import type { ConditionDef } from "../ConditionEditor";
 import type { ColonyAgent } from "../colony/types";
-import type {
-  ConnectorStatus,
-  EventItem,
-  RuleDetail,
-  RuleItem,
-  FormationInfo,
-} from "../dashboard/model";
+import type { ConnectorStatus, EventItem, RuleDetail, RuleItem } from "../dashboard/model";
 import { eventSeverity } from "../dashboard/model";
 import type { Locale } from "../i18n/types";
 import { activityOf as deriveActivity, agentMatches as matchesAgent } from "./activity";
@@ -46,6 +40,7 @@ import type {
   DashboardState,
   DataProvider,
   FormationDetail,
+  FormationInfo,
   Utterance,
   UtteranceDefs,
 } from "./types";

@@ -6,8 +6,8 @@
  * comes from the backend via AgentState — no frontend inference.
  */
 import type { AgentState } from "@springtale/types";
-import type { ConnectorStatus, RuleItem, FormationInfo } from "../dashboard/model";
-import type { CooperationEventEnvelope } from "../dashboard/types";
+import type { ConnectorStatus, RuleItem } from "../dashboard/model";
+import type { CooperationEventEnvelope, FormationInfo } from "../dashboard/types";
 import type { ColonyAgent, ColonyFormation, ColonyNode } from "./types";
 import { MOMENTUM_COLORS, seeded } from "./types";
 

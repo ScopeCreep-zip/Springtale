@@ -27,7 +27,7 @@ import type {
 import type { ConditionDef } from "../ConditionEditor";
 import type { BotSettingsValue } from "../colony/AppSettingsPanel";
 import type { Locale } from "../i18n/types";
-import type { ConnectorStatus, EventItem, RuleDetail, RuleItem, FormationInfo } from "./model";
+import type { ConnectorStatus, EventItem, RuleDetail, RuleItem } from "./model";
 
 // Re-export types that originated in @springtale/types but are consumed
 // by components that import from @springtale/ui
