@@ -8,8 +8,8 @@
 //! backend independent of the frontend's build artefacts.
 
 fn main() {
-    let dist = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../tauri/apps/dashboard/dist");
+    let dist =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tauri/apps/dashboard/dist");
     if let Err(e) = std::fs::create_dir_all(&dist) {
         println!("cargo:warning=could not create {}: {e}", dist.display());
     }
