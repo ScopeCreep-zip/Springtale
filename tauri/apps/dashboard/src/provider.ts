@@ -29,7 +29,7 @@ import type {
 import { getCanvasState, subscribeToCanvasUpdates } from "./api/canvas";
 import { sendChatMessage, subscribeToChat } from "./api/chat";
 import { del, get, getBaseUrl, getToken, post, put } from "./api/client";
-import { subscribeToCooperationEvents } from "./api/cooperation";
+import { getUtteranceDefs, subscribeToCooperationEvents } from "./api/cooperation";
 import { subscribeToEvents } from "./api/events";
 import {
   applyRecipe,
@@ -432,6 +432,9 @@ export function createWebProvider(): DataProvider {
     // Canvas
     async getCanvasState() {
       return getCanvasState();
+    },
+    async getUtteranceDefs() {
+      return getUtteranceDefs();
     },
     subscribeToCanvasUpdates(callback) {
       const token = getToken();

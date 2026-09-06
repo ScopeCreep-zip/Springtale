@@ -18,6 +18,10 @@
 use crate::cooperation::formation::Formation;
 use springtale_cooperation::momentum::{MomentumEvent, TickCounts};
 use springtale_cooperation::tick_processor::FormationTickResult;
+use springtale_cooperation::utterance::{UtteranceKind, utter};
+
+/// Idle ticks before a member says `Listening` (plan §1.15 E).
+pub const LISTENING_AFTER_TICKS: u32 = 5;
 use std::collections::HashSet;
 
 /// Classify a tick result into the single `MomentumEvent` it represents.
@@ -75,7 +79,13 @@ fn count(result: &FormationTickResult) -> TickCounts {
     counts
 }
 
-pub fn run(formation: &mut Formation, result: &FormationTickResult) {
+pub fn run(
+    formation: &mut Formation,
+    result: &FormationTickResult,
+    cooperation_tx: Option<
+        &tokio::sync::broadcast::Sender<springtale_cooperation::CooperationEventEnvelope>,
+    >,
+) {
     // Step 4 — momentum update from actual results. A `TickSuccess` with a
     // real action also refreshes the activity clock inside `apply_event`.
     formation.momentum.apply_event(&classify(result));
@@ -84,12 +94,26 @@ pub fn run(formation: &mut Formation, result: &FormationTickResult) {
     // (§14). Idle and aligned reports reset the counter; a member that
     // acted and misaligned increments it.
     for report in &result.reports {
+        let mut now_listening = false;
         if let Some(member) = formation.member_mut(&report.agent_id) {
+            if report.action_taken.is_none() {
+                member.consecutive_idle_ticks = member.consecutive_idle_ticks.saturating_add(1);
+                now_listening = member.consecutive_idle_ticks == LISTENING_AFTER_TICKS;
+            } else {
+                member.consecutive_idle_ticks = 0;
+            }
             if report.action_taken.is_none() || report.intent_alignment > 0.5 {
                 member.consecutive_failures = 0;
             } else {
                 member.consecutive_failures += 1;
             }
+        }
+        if now_listening {
+            utter(
+                &mut formation.utter_ctx(cooperation_tx),
+                Some(report.agent_id),
+                UtteranceKind::Listening,
+            );
         }
     }
 }

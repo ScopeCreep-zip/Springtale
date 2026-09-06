@@ -698,6 +698,7 @@ const EVENT_LABELS: Record<CooperationEvent["kind"], string> = {
   cfp_round_resolved: "CFP END",
   cbba_replan_requested: "REPLAN",
   cbba_replan_resolved: "REPLAN END",
+  utterance: "UTTER",
 };
 
 function severityFor(kind: CooperationEvent["kind"]): "error" | "warn" | "ok" | "idle" {
@@ -763,6 +764,11 @@ function detailFor(event: CooperationEvent): string {
       return event.reason;
     case "cbba_replan_resolved":
       return `${event.outcome.status} ${event.outcome.sweeps}s ${event.outcome.assigned}/${event.outcome.assigned + event.outcome.unassigned}`;
+    case "utterance": {
+      // Plan §1.15: name + who said it (member, or the standalone rule).
+      const who = event.agent ?? event.rule_id ?? "formation";
+      return `${event.utterance.utter} ${who.slice(0, 8)}`;
+    }
   }
 }
 

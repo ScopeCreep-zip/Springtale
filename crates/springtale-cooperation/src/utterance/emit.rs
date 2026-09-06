@@ -12,6 +12,7 @@ use crate::comms::{BroadcastTrigger, FormationBus, StateBroadcastMsg, StateMessa
 use crate::events::{self, CooperationEvent, CooperationEventEnvelope};
 use crate::tick::TickId;
 use crate::types::FormationId;
+use springtale_core::rule::RuleId;
 
 use super::defs::UtteranceDefs;
 use super::types::{Utterance, UtteranceKind};
@@ -75,5 +76,34 @@ pub fn utter(
     }
     // Audience 2: the observer. Every utterance, thoughts included.
     events::emit(ctx.tx, CooperationEvent::from(u.clone()));
+    Some(u)
+}
+
+/// Say `kind` for a standalone rule (no formation). Observer only,
+/// addressed by rule id: same def table, no bus, no block interval
+/// (a solo rule has no per-agent state to rate-limit against).
+pub fn emit_solo(
+    tx: Option<&broadcast::Sender<CooperationEventEnvelope>>,
+    defs: &UtteranceDefs,
+    rule_id: RuleId,
+    tick: TickId,
+    kind: UtteranceKind,
+) -> Option<Utterance> {
+    let def = defs.get(kind.name())?;
+    let u = Utterance {
+        formation_id: None,
+        agent: None,
+        rule_id: Some(rule_id),
+        utterance: kind,
+        carrier: def.carrier,
+        shape: def.shape,
+        tone: def.tone,
+        seq: tick,
+        ttl_ticks: def.ttl_ticks,
+        glyph_frames: def.frames.clone(),
+        mirror_rtl: def.mirror_rtl,
+        label_key: def.label_key.clone(),
+    };
+    events::emit(tx, CooperationEvent::from(u.clone()));
     Some(u)
 }

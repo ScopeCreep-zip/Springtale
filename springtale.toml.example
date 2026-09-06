@@ -28,3 +28,20 @@ bind = "127.0.0.1:8080"
 # Maximum requests per second (rate limiting).
 # Default: 100
 rate_limit_per_sec = 100
+
+# Plan §1.15 G — utterance def overrides. Keys are utterance names
+# (firing, working, listening, idle, failed, down, claimed, yield, helping,
+# rally, cascade). A block replaces that one def, so every field is
+# required; omitted names keep the built-in def. `locales` maps a locale
+# to its own glyph frames (the default `frames` stay the fallback).
+#
+# [cooperation.utterances.firing]
+# carrier = "burst"          # speech | burst | thought | none
+# shape = "triangle"         # triangle | circle | square
+# tone = "alert"             # calm | alert | urgent
+# frames = ["!"]
+# locales = { ja = ["！"] }
+# mirror_rtl = false
+# label_key = "utter.firing"
+# ttl_ticks = 2
+# block_ticks = 3

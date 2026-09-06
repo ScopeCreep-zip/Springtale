@@ -49,6 +49,7 @@ pub mod operations;
 pub mod quota;
 pub mod state;
 pub mod triggers;
+pub mod utterance_ring;
 
 pub use approval::{
     ApprovalDecision, ApprovalError, ApprovalGate, ApprovalRequest, ApprovalRequestId,

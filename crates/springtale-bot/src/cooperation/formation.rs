@@ -55,6 +55,9 @@ pub struct FormationMember {
     /// Consecutive tick failures for this member. Used by transformation
     /// trigger (§14) — 5+ failures → ToSupportAgent.
     pub consecutive_failures: usize,
+    /// Consecutive ticks with no action. Hits `LISTENING_AFTER_TICKS`
+    /// exactly once per idle stretch → `UtteranceKind::Listening`.
+    pub consecutive_idle_ticks: u32,
     /// The agent's current task with lifecycle tracking.
     /// Per Spring engine: command queue front = current task.
     /// None when agent is idle (monitoring connector).
@@ -96,6 +99,7 @@ impl FormationMember {
             fuel_remaining: FuelBudget::new(1000),
             last_report_tick: springtale_cooperation::TickId::ZERO,
             consecutive_failures: 0,
+            consecutive_idle_ticks: 0,
             active_task: None,
             pending: crate::cooperation::dispatch_outcome::PendingSlot::default(),
             ai_adapter: None,

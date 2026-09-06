@@ -242,6 +242,47 @@ impl From<Utterance> for CooperationEvent {
     }
 }
 
+/// `TryFrom<CooperationEvent>` error: the event was not an `Utterance`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NotAnUtterance;
+
+impl TryFrom<CooperationEvent> for Utterance {
+    type Error = NotAnUtterance;
+
+    fn try_from(event: CooperationEvent) -> Result<Self, Self::Error> {
+        match event {
+            CooperationEvent::Utterance {
+                formation_id,
+                agent,
+                rule_id,
+                utterance,
+                carrier,
+                shape,
+                tone,
+                seq,
+                ttl_ticks,
+                glyph_frames,
+                mirror_rtl,
+                label_key,
+            } => Ok(Self {
+                formation_id,
+                agent,
+                rule_id,
+                utterance,
+                carrier,
+                shape,
+                tone,
+                seq,
+                ttl_ticks,
+                glyph_frames,
+                mirror_rtl,
+                label_key,
+            }),
+            _ => Err(NotAnUtterance),
+        }
+    }
+}
+
 /// Wire envelope for cooperation events — adds monotonic sequence + UTC
 /// timestamp to every emitted event.
 ///

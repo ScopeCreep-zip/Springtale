@@ -25,6 +25,7 @@ pub mod sessions;
 pub mod state;
 pub mod stream;
 pub mod templates;
+pub mod utterances;
 pub mod webhooks;
 
 /// Maximum length for API path parameters. Prevents DoS via oversized route strings.
@@ -227,6 +228,8 @@ pub fn build_router(state: AppState) -> Router {
         // Bot admin
         .route("/bot/status", get(bot::status))
         .route("/bot/formations", get(bot::formations))
+        .route("/cooperation/utterances", get(utterances::utterance_defs))
+        .route("/cooperation/utterances/recent", get(utterances::recent))
         .route("/bot/memory", get(bot::memory))
         // Data management
         .route("/data/export", post(data::export_data))

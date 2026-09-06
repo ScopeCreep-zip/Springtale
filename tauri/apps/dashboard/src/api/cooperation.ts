@@ -1,5 +1,11 @@
-import type { CooperationEventEnvelope } from "@springtale/ui";
+import type { CooperationEventEnvelope, UtteranceDefs } from "@springtale/ui";
+import { get } from "./client";
 import { type SseState, subscribeSse } from "./sse";
+
+/** Plan §1.15 G — the utterance def table (`GET /cooperation/utterances`). */
+export async function getUtteranceDefs(): Promise<UtteranceDefs> {
+  return get<UtteranceDefs>("/cooperation/utterances");
+}
 
 /**
  * Phase H — cooperation lifecycle events: the `cooperation` frames of the

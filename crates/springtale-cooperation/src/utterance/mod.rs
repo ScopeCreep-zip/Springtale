@@ -12,5 +12,5 @@ pub mod emit;
 pub mod types;
 
 pub use defs::{UtteranceDef, UtteranceDefs};
-pub use emit::{UtterCtx, utter};
+pub use emit::{UtterCtx, emit_solo, utter};
 pub use types::{Carrier, Shape, Tone, Utterance, UtteranceKind};

@@ -163,6 +163,10 @@ export type {
   RuleSummary,
   SafetyConfig,
   SelectOption,
+  Utterance,
+  UtteranceDef,
+  UtteranceDefs,
+  UtteranceKind,
 } from "./dashboard/types";
 export { createI18n, I18nProvider, useI18n } from "./i18n/context";
 export type { Locale, RawDictionary } from "./i18n/types";
