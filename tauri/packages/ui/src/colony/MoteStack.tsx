@@ -12,6 +12,7 @@
  */
 
 import { type Component, createMemo, For, Show } from "solid-js";
+import { agentMatches } from "../dashboard/activity";
 import type { Utterance } from "../dashboard/types";
 import { useI18n } from "../i18n/context";
 import type { Locale } from "../i18n/types";
@@ -27,31 +28,6 @@ const MAX_PER_AGENT = 3;
 const SCALE_MAX = 1.25;
 /** RimWorld Bubbles `AltitudeMax`, as the view scale below which motes hide. */
 const ALTITUDE_MIN_SCALE = 0.4;
-
-export function utteranceMatches(
-  u: Utterance,
-  agent: ColonyAgent,
-  agentToConnector: Record<string, string>,
-): boolean {
-  if (u.rule_id && u.rule_id === agent.id) return true;
-  // Formation-level utterance rendered on a synthetic agent whose id is the formation's.
-  if (!u.agent && !u.rule_id && u.formation_id === agent.id) return true;
-  return !!u.agent && !!agent.connectorId && agentToConnector[u.agent] === agent.connectorId;
-}
-
-/** The newest unexpired utterance's kind for this agent; `listening` when silent. */
-export function activityOf(
-  agent: ColonyAgent,
-  utterances: Utterance[],
-  now: number,
-  agentToConnector: Record<string, string>,
-): string {
-  return (
-    utterances.find(
-      (u) => utteranceMatches(u, agent, agentToConnector) && u.seq + u.ttl_ticks > now,
-    )?.utterance.utter ?? "listening"
-  );
-}
 
 export interface MoteStackProps {
   agent: ColonyAgent;
@@ -69,9 +45,7 @@ export const MoteStack: Component<MoteStackProps> = (p) => {
   // Newest three, unexpired on the colony timeline.
   const live = createMemo(() =>
     p.utterances
-      .filter(
-        (u) => utteranceMatches(u, p.agent, p.agentToConnector) && u.seq + u.ttl_ticks > p.now,
-      )
+      .filter((u) => agentMatches(u, p.agent, p.agentToConnector) && u.seq + u.ttl_ticks > p.now)
       .sort((a, b) => b.seq - a.seq)
       .slice(0, MAX_PER_AGENT),
   );

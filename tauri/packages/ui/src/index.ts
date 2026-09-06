@@ -54,7 +54,7 @@ export type { MemberPickerOverlayProps } from "./colony/MemberPickerOverlay";
 export { MemberPickerOverlay } from "./colony/MemberPickerOverlay";
 export type { CreateMode, ModeSelectOverlayProps } from "./colony/ModeSelectOverlay";
 export { ModeSelectOverlay } from "./colony/ModeSelectOverlay";
-export { activityOf, MoteStack, TICK_MS, utteranceMatches } from "./colony/MoteStack";
+export { MoteStack, TICK_MS } from "./colony/MoteStack";
 // Colony data mappers (DashboardState → colony visual model)
 export { mapAgents, mapFormations, mapNodes } from "./colony/mappers";
 export { PendingApprovals } from "./colony/PendingApprovals";
@@ -112,6 +112,7 @@ export type { WorkspaceTargetPickerProps } from "./colony/WorkspaceTargetPicker"
 export { WorkspaceTargetPicker } from "./colony/WorkspaceTargetPicker";
 export type { DisclosureSectionProps } from "./DisclosureSection";
 export { DisclosureSection } from "./DisclosureSection";
+export { activityOf, agentMatches, SILENT_ACTIVITY } from "./dashboard/activity";
 // Dashboard state (data layer — platform-agnostic)
 export { createDashboardState, DashboardProvider, useDashboard } from "./dashboard/context";
 // Dashboard data model types
