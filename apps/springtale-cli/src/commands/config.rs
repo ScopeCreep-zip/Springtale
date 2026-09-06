@@ -1,18 +1,29 @@
+//! `springtale config` — runtime configuration, over the daemon.
+//!
+//! Writes go through `POST /config/ai/configure`, which persists *and*
+//! hot-swaps the adapter, so a change takes effect without a restart.
+
 use std::io::Read;
 
 use anyhow::{Context, Result, bail};
-use serde_json::{Map, Value};
-use springtale_runtime::operations::config::{self as config_ops, AI_COLONY_KEY, AiTarget};
-use springtale_store::backend::sqlite::SqliteBackend;
+use serde_json::{Map, Value, json};
+use springtale_runtime::operations::config::{AI_COLONY_KEY, AiTarget};
 
 use crate::cli::{AiConfigAction, ConfigAction};
+use crate::client::Client;
+use crate::output;
 
-/// Handle `config` subcommands. Store-direct: writes the same JSON shape
-/// under the same key the daemon's `configure_ai_adapter` uses, so a
-/// headless setup is picked up at the next boot / dispatch.
-pub async fn run(action: ConfigAction, store: &SqliteBackend) -> Result<()> {
+/// Handle `config` subcommands.
+pub async fn run(action: ConfigAction, json_out: bool) -> Result<()> {
+    let client = Client::from_config()?;
     match action {
-        ConfigAction::Ai { action } => run_ai(action, store).await,
+        ConfigAction::List => {
+            let body: Value = client.get("/config").await?;
+            output::emit(json_out, &body, |v| {
+                serde_json::to_string_pretty(v).unwrap_or_default()
+            })
+        }
+        ConfigAction::Ai { action } => run_ai(action, &client, json_out).await,
     }
 }
 
@@ -31,24 +42,20 @@ fn parse_target(scope: &str, id: Option<String>) -> Result<AiTarget> {
     }
 }
 
-async fn run_ai(action: AiConfigAction, store: &SqliteBackend) -> Result<()> {
+async fn run_ai(action: AiConfigAction, client: &Client, json_out: bool) -> Result<()> {
     match action {
         AiConfigAction::Get { scope, id } => {
             let target = parse_target(&scope, id)?;
-            let resolved = match &target {
-                AiTarget::Agent { rule_id } => {
-                    config_ops::resolve_ai_config(store, rule_id, None).await
-                }
-                AiTarget::Formation { .. } => {
-                    match config_ops::get_config(store, &target.key()).await {
-                        Ok(Value::Null) => config_ops::get_config(store, AI_COLONY_KEY).await,
-                        other => other,
-                    }
-                }
-                AiTarget::Colony => config_ops::get_config(store, AI_COLONY_KEY).await,
+            let mut body: Value = client.get(&format!("/config/{}", target.key())).await?;
+            // Levels inherit: an unset formation/agent falls back to the
+            // colony socket, which is what the runtime resolves to.
+            if body.get("value").is_none_or(Value::is_null) && !matches!(target, AiTarget::Colony) {
+                body = client.get(&format!("/config/{AI_COLONY_KEY}")).await?;
             }
-            .map_err(|e| anyhow::anyhow!("{e}"))?;
-            println!("{}", serde_json::to_string_pretty(&redact(resolved))?);
+            let redacted = redact(body);
+            output::emit(json_out, &redacted, |v| {
+                serde_json::to_string_pretty(v).unwrap_or_default()
+            })
         }
         AiConfigAction::Set {
             scope,
@@ -78,26 +85,23 @@ async fn run_ai(action: AiConfigAction, store: &SqliteBackend) -> Result<()> {
                 }
                 cfg.insert("api_key".into(), Value::String(key));
             }
-            let config = Value::Object(cfg);
-            // Validate exactly as the runtime does before persisting.
-            config_ops::build_adapter(&config)
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
-            config_ops::set_config(store, &target.key(), config)
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
-            println!(
-                "AI config stored under '{}' (applies at next daemon start or dispatch)",
-                target.key()
-            );
+            let key = target.key();
+            let body: Value = client
+                .post(
+                    "/config/ai/configure",
+                    &json!({ "target": target, "config": Value::Object(cfg) }),
+                )
+                .await?;
+            output::emit(json_out, &body, |_| {
+                format!("AI config applied at '{key}' (live, no restart)")
+            })
         }
     }
-    Ok(())
 }
 
 /// Never echo a stored API key back to the terminal.
 fn redact(mut value: Value) -> Value {
-    if let Some(obj) = value.as_object_mut()
+    if let Some(obj) = value.get_mut("value").and_then(Value::as_object_mut)
         && obj.contains_key("api_key")
     {
         obj.insert("api_key".into(), Value::String("<redacted>".into()));

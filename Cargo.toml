@@ -274,6 +274,9 @@ springtale-bot        = { path = "crates/springtale-bot", version = "0.1.0" }
 springtale-mcp        = { path = "crates/springtale-mcp", version = "0.1.0" }
 springtale-sentinel   = { path = "crates/springtale-sentinel", version = "0.1.0" }
 springtale-runtime    = { path = "crates/springtale-runtime", version = "0.1.0" }
+# Dev-only consumer: `apps/springtale-cli/tests` boots the real daemon
+# through `springtaled/test-harness` instead of a stub HTTP server.
+springtaled           = { path = "apps/springtaled", version = "0.1.0" }
 connector-kick        = { path = "connectors/connector-kick", version = "0.1.0" }
 connector-presearch   = { path = "connectors/connector-presearch", version = "0.1.0" }
 connector-bluesky     = { path = "connectors/connector-bluesky", version = "0.1.0" }
