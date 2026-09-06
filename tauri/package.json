@@ -12,10 +12,10 @@
     "typecheck": "pnpm -r run typecheck"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.0",
+    "@biomejs/biome": "^2.5",
     "typescript": "^5.7"
   },
   "dependencies": {
-    "@solid-primitives/resize-observer": "^2.1.5"
+    "@solid-primitives/resize-observer": "^2.2.0"
   }
 }
