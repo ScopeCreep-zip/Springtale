@@ -255,6 +255,10 @@ pub fn build_router(state: AppState) -> Router {
         )
         // Bot admin
         .route("/bot/status", get(bot::status))
+        .route(
+            "/bot/settings",
+            get(bot::get_settings).put(bot::put_settings),
+        )
         .route("/bot/formations", get(bot::formations))
         .route("/cooperation/utterances", get(utterances::utterance_defs))
         .route("/cooperation/utterances/recent", get(utterances::recent))

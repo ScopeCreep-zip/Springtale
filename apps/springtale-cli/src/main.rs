@@ -106,6 +106,9 @@ async fn main() -> Result<()> {
             BotAction::PanicUnpair => {
                 commands::bot::panic_unpair(&pass_opts).await?;
             }
+            BotAction::Settings { action } => {
+                commands::bot::settings(action, cli.json).await?;
+            }
         },
         Command::Cooperation { action } => match action {
             CooperationAction::Glyphs { check } => {

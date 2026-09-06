@@ -42,6 +42,25 @@ impl ConnectorRegistry {
         self.connectors.get(name)
     }
 
+    /// Whether `tool_name` — `"<connector><TOOL_NAME_SEPARATOR><action>"`,
+    /// i.e. `connector-telegram__send_message` — names a declared action
+    /// on an installed connector. Used by bot-settings validation so a
+    /// typo'd tool allow-list entry is refused at write time instead of
+    /// silently handing the model an empty tool list.
+    pub fn has_action(&self, tool_name: &str) -> bool {
+        let Some((connector, action)) = tool_name.split_once("__") else {
+            return false;
+        };
+        self.get(connector).is_some_and(|entry| {
+            entry
+                .host
+                .manifest()
+                .actions
+                .iter()
+                .any(|a| a.name == action)
+        })
+    }
+
     /// List all installed connectors.
     pub fn list(&self) -> Vec<(&str, bool)> {
         self.connectors

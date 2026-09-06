@@ -89,3 +89,37 @@ pub async fn memory(State(state): State<AppState>) -> Result<impl IntoResponse, 
 
     Ok(Json(serde_json::json!({ "sessions": session_summaries })))
 }
+
+/// GET /bot/settings — persona, context window, tool policy (plan 6.3).
+pub async fn get_settings(State(state): State<AppState>) -> impl IntoResponse {
+    match springtale_runtime::operations::bot_settings::get(&*state.runtime.store).await {
+        Ok(settings) => (StatusCode::OK, Json(serde_json::json!(settings))),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ),
+    }
+}
+
+/// PUT /bot/settings — replace them. Every literal tool in the allow-list
+/// is checked against the connector registry, so a typo is a 400 rather
+/// than a silently tool-less AI.
+pub async fn put_settings(
+    State(state): State<AppState>,
+    Json(settings): Json<springtale_runtime::operations::bot_settings::BotSettings>,
+) -> impl IntoResponse {
+    match springtale_runtime::operations::bot_settings::set(&state.runtime, settings).await {
+        Ok(()) => (StatusCode::OK, Json(serde_json::json!({ "saved": true }))),
+        Err(e @ springtale_runtime::OperationError::Validation(_)) => (
+            StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({ "error": e.to_string() })),
+        ),
+        Err(e) => {
+            tracing::error!(error = %e, "failed to save bot settings");
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({ "error": e.to_string() })),
+            )
+        }
+    }
+}

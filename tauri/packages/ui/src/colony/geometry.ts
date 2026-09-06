@@ -23,19 +23,45 @@ export function getConnectorPosition(
   return connectorPositions[connectorId] ?? { x: node.x, y: node.y };
 }
 
-/** Get an agent's position — always near its connector node. */
+/**
+ * Get an agent's position (plan 3.5 — springtails move toward what they do).
+ *
+ * Three rules, in order:
+ *  - no connector: parked on the floor, spread by id so they never stack;
+ *  - firing at a `RunConnector` target: part-way along the mycelium toward
+ *    that tree, so the walk itself is the signal;
+ *  - otherwise: at home, standing off from the trunk by an amount that grows
+ *    with the agent's attention load, so a busy tree's agents fan out.
+ *
+ * `activity` is the live value derived from the cooperation ring
+ * (`activityOf`); it falls back to the backend's fetch-time `agent.activity`
+ * so callers with no ring (the minimap) still get a sane position.
+ */
 export function getAgentPosition(
   agent: ColonyAgent,
   nodes: ColonyNode[],
   connectorPositions: ConnectorPositions,
+  activity: string | undefined = agent.activity,
 ): { x: number; y: number } {
-  if (!agent.connectorId) return { x: 50, y: 78 };
-  const connectorPos = getConnectorPosition(agent.connectorId, nodes, connectorPositions);
-  return {
-    x: connectorPos.x + seeded(`${agent.id}tx`, -5, 6),
-    y: connectorPos.y + seeded(`${agent.id}ty`, 10, 16),
-  };
+  if (!agent.connectorId) {
+    // The plan spreads these on y alone; eight rows collide as soon as a
+    // colony has a handful of unattached agents (its own test — "two
+    // unconnected agents do not overlap" — catches it), so the spread is
+    // two-dimensional. Same seeded, deterministic scheme.
+    return { x: 50 + seeded(`${agent.id}ux`, -12, 13), y: 78 + seeded(`${agent.id}u`, 0, 8) };
+  }
+  const home = getConnectorPosition(agent.connectorId, nodes, connectorPositions);
+  const standoff = 10 + 6 * agent.attentionLoad;
+  if (activity === "firing" && agent.actionConnectorId) {
+    const to = getConnectorPosition(agent.actionConnectorId, nodes, connectorPositions);
+    const t = WALK_FRACTION;
+    return { x: home.x + (to.x - home.x) * t, y: home.y + (to.y - home.y) * t };
+  }
+  return { x: home.x + seeded(`${agent.id}tx`, -5, 6), y: home.y + standoff };
 }
+
+/** How far along the mycelium a firing agent walks toward its action target. */
+const WALK_FRACTION = 0.35;
 
 /** Get all agents that belong to a formation (matched by connector name). */
 export function getFormationAgents(
@@ -56,9 +82,15 @@ export function getFormationBounds(
   agents: ColonyAgent[],
   nodes: ColonyNode[],
   connectorPositions: ConnectorPositions,
+  activityFor?: (agent: ColonyAgent) => string,
 ): { cx: number; cy: number; rx: number; ry: number } {
   const members = getFormationAgents(formation, agents);
-  const positions = members.map((a) => getAgentPosition(a, nodes, connectorPositions));
+  // The ellipse follows the members, so it must use the same live activity
+  // the canvas draws them with — otherwise a firing agent walks out of its
+  // own zone.
+  const positions = members.map((a) =>
+    getAgentPosition(a, nodes, connectorPositions, activityFor?.(a)),
+  );
 
   if (positions.length === 0) {
     // No members — fall back to zone center with minimum size

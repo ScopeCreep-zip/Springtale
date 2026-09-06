@@ -384,11 +384,20 @@ pub async fn init(
     let role_registry = Arc::new(springtale_cooperation::role::RoleRegistry::with_builtins());
     register_persisted_manifest_roles(&store, &role_registry).await;
 
+    // Plan 6.3: bot persona / context window / tool policy are settings,
+    // read from the config store at boot and hot-swapped on write.
+    let bot_settings = Arc::new(arc_swap::ArcSwap::from_pointee(
+        crate::operations::bot_settings::get(&*store)
+            .await
+            .unwrap_or_default(),
+    ));
+
     Ok(RuntimeState {
         store,
         registry,
         engine,
         ai_adapter: ai_adapter_handle,
+        bot_settings,
         sentinel,
         wasm_engine,
         wasm_tier_cache,

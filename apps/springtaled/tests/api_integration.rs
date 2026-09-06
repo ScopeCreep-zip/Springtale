@@ -899,3 +899,67 @@ async fn test_mcp_requires_bearer_even_from_loopback() {
 
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
+
+/// Plan 6.3 — bot persona / context window / tool policy are settings:
+/// a PUT reaches the store and the following GET reads it back, with no
+/// TOML edit and no restart in between.
+#[tokio::test]
+async fn test_bot_settings_put_then_get_round_trips() {
+    let (router, token) = build_test_app(true);
+
+    let body = serde_json::json!({
+        "persona": { "name": "Mothra", "tone": "warm", "prefix": "!" },
+        "context_window": 12,
+        // Glob patterns describe connectors that need not be installed,
+        // so this stays independent of the fixture's registry contents.
+        "tool_policy": { "allow": ["connector-telegram__*"], "deny": [] },
+    });
+    let req = Request::put("/bot/settings")
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    let (status, saved) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::OK, "PUT rejected: {saved}");
+    assert_eq!(saved["saved"], true);
+
+    let req = Request::get("/bot/settings")
+        .header("Authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (status, got) = send(router, req).await;
+
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(got["persona"]["name"], "Mothra");
+    assert_eq!(got["persona"]["prefix"], "!");
+    assert_eq!(got["context_window"], 12);
+    assert_eq!(got["tool_policy"]["allow"][0], "connector-telegram__*");
+}
+
+/// A literal (non-glob) tool that names no installed action is refused at
+/// the boundary — a typo must not silently leave the AI tool-less.
+#[tokio::test]
+async fn test_bot_settings_rejects_unknown_tool() {
+    let (router, token) = build_test_app(true);
+
+    let body = serde_json::json!({
+        "persona": { "name": "Springtale", "tone": "neutral", "prefix": "/" },
+        "context_window": 50,
+        "tool_policy": { "allow": ["connector-nope__do_thing"], "deny": [] },
+    });
+    let req = Request::put("/bot/settings")
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    let (status, body) = send(router, req).await;
+
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert!(
+        body["error"]
+            .as_str()
+            .unwrap_or_default()
+            .contains("unknown tool"),
+        "expected unknown-tool error, got {body}"
+    );
+}
