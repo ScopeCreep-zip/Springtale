@@ -778,6 +778,7 @@ export const App = () => {
             connectorSchemas={db.schemas()}
             onSetupConnector={ctl.setupConnector}
             onParseRule={async (intent) => db.provider.parseRuleFromIntent(intent)}
+            canvasOverlay={ctl.overlay()}
           />
           {/* Floating chat dock — bottom-left, above the minimap. */}
           <ChatDock open={chatOpen()} onOpenChange={setChatOpen} />

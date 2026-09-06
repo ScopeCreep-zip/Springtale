@@ -47,6 +47,7 @@ export type { DeploySummaryModalProps } from "./colony/DeploySummaryModal";
 export { DeploySummaryModal } from "./colony/DeploySummaryModal";
 export type { DriftBadgeProps } from "./colony/DriftBadge";
 export { DriftBadge } from "./colony/DriftBadge";
+export type { EventRibbonProps } from "./colony/EventRibbon";
 export { EventRibbon } from "./colony/EventRibbon";
 export type { ExecutionsPanelProps } from "./colony/ExecutionsPanel";
 export { ExecutionsPanel } from "./colony/ExecutionsPanel";
@@ -65,6 +66,9 @@ export { ModeSelectOverlay } from "./colony/ModeSelectOverlay";
 export { MoteStack, TICK_MS } from "./colony/MoteStack";
 // Colony data mappers (DashboardState → colony visual model)
 export { mapAgents, mapFormations, mapNodes } from "./colony/mappers";
+// Plan 3.6 — canvas overlays
+export type { OverlayMode } from "./colony/overlay";
+export { nextOverlay, OVERLAY_MODES, overlayColor, overlayLabel } from "./colony/overlay";
 export { PendingApprovals } from "./colony/PendingApprovals";
 export type { PreflightChecklistProps } from "./colony/PreflightChecklist";
 export { PreflightChecklist } from "./colony/PreflightChecklist";
