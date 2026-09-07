@@ -204,17 +204,18 @@ impl Connector for TelegramConnector {
         crate::triggers::normalize::normalize(trigger, &raw)
     }
 
-    /// Read a verified Telegram `Update` into the chat it carries.
+    /// Read a verified Telegram `Update` into the chat it carries, and
+    /// the `answerCallbackQuery` an inline-button press owes the user.
     ///
-    /// The daemon used to do this itself, in a `match` on the connector
-    /// name — see [`crate::webhook::ingest_update`].
+    /// The daemon used to do both itself, keyed off the connector name —
+    /// see [`crate::webhook::ingest_update`].
     async fn ingest_webhook(
         &self,
-        _trigger: &str,
+        trigger: &str,
         _headers: &std::collections::HashMap<String, String>,
         payload: &serde_json::Value,
     ) -> springtale_connector::webhook::WebhookIngest {
-        crate::webhook::ingest_update(payload)
+        crate::webhook::ingest_update(trigger, payload)
     }
 
     /// Verify an incoming webhook request using the `X-Telegram-Bot-Api-Secret-Token` header.
