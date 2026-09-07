@@ -14,7 +14,6 @@ use tokio::sync::Mutex;
 use springtale_crypto::vault::store::Vault;
 
 use crate::autolock::AutoLockHandle;
-use crate::sidecar::Daemon;
 
 /// A running daemon plus the bearer token the frontend authenticates with.
 ///
@@ -31,14 +30,16 @@ pub struct DaemonHandle {
 }
 
 impl DaemonHandle {
-    /// Build a handle from a spawned daemon and the derived token.
+    /// Build a handle from a spawned daemon's port and child plus the
+    /// token the daemon issued.
+    ///
+    /// The daemon's event stream is deliberately NOT stored here: it is
+    /// handed to `sidecar::supervise` once this handle is in state, so a
+    /// daemon that dies clears the handle instead of leaving the window
+    /// with a live-looking port and token. See `sidecar::DaemonStopped`.
     #[must_use]
-    pub fn new(daemon: Daemon, token: String) -> Self {
-        Self {
-            port: daemon.port,
-            token,
-            child: daemon.child,
-        }
+    pub fn new(port: u16, child: tauri_plugin_shell::process::CommandChild, token: String) -> Self {
+        Self { port, token, child }
     }
 }
 

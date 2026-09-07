@@ -1,9 +1,48 @@
-# STUB — ar sentence templates for the platform verbs (plan 5.4).
+# Arabic sentence templates for the platform verbs (plan 5.4).
 #
-# Only `en` is populated today. This file exists so the layout is the
-# one the plan asks for (one file per locale the UI speaks) and so a
-# translator has somewhere to write. `verbs` being empty means the ar
-# chat falls back to the English phrasings; nothing breaks, but nothing
-# is translated either.
+# Modern Standard Arabic imperatives — the register a written command
+# is given in. Same verbs and slots as `en.yaml`; `{formation}` and
+# friends are filled from live state at match time. Arabic is written
+# with spaces between words, so the NLU tokenizer segments it correctly.
 locale: ar
-verbs: {}
+verbs:
+  formation.list:
+    phrases: ["اعرض التشكيلات", "ما هي التشكيلات", "قائمة التشكيلات", "اعرض المستعمرة"]
+  formation.get:
+    phrases: ["اعرض {formation}", "ما حالة {formation}", "كيف حال {formation}", "أخبرني عن {formation}"]
+  formation.deploy:
+    phrases: ["انشر {formation}", "ابدأ {formation}", "أطلق {formation}"]
+  formation.pause:
+    phrases: ["أوقف {formation} مؤقتا", "علق {formation}", "توقف عن {formation} الآن"]
+  formation.resume:
+    phrases: ["استأنف {formation}", "أكمل {formation}", "تابع {formation}"]
+  formation.dissolve:
+    phrases: ["حل {formation}", "أنه {formation}", "أغلق {formation}"]
+  formation.rally:
+    phrases: ["اجمع {formation}", "أعد تجميع {formation}", "ركز {formation}"]
+  formation.intent:
+    phrases: ["غير هدف {formation}", "اجعل هدف {formation} {intent}", "ماذا تفعل {formation}"]
+  formation.guard:
+    phrases: ["احم {formation}", "فعل الحارس في {formation}", "غير الحارس في {formation}"]
+  formation.add_member:
+    phrases: ["أضف {connector} إلى {formation}", "ضع {connector} في {formation}"]
+  formation.remove_member:
+    phrases: ["أزل {connector} من {formation}", "احذف {connector} من {formation}"]
+  approvals.list:
+    phrases: ["اعرض الموافقات", "ما الذي ينتظر الموافقة", "قائمة الموافقات", "هل هناك شيء معلق"]
+  approvals.approve:
+    phrases: ["وافق على {id}", "اسمح بـ {id}"]
+  approvals.deny:
+    phrases: ["ارفض {id}", "لا توافق على {id}"]
+  memory.audit:
+    phrases: ["دقق الذاكرة", "ماذا تتذكر", "اعرض ما هو مخزن"]
+  memory.compact:
+    phrases: ["اضغط الذاكرة", "نظف الذاكرة", "انس الرسائل القديمة"]
+  safety.get:
+    phrases: ["اعرض إعدادات الأمان", "ما حالة الأمان", "ما هي إعدادات الأمان"]
+  safety.set:
+    phrases: ["اضبط {key} في الأمان على {value}", "غير إعداد الأمان {key}"]
+  ai.get:
+    phrases: ["ما النموذج الذي تستخدمه", "اعرض محول الذكاء الاصطناعي", "ما الذكاء الاصطناعي المضبوط"]
+  ai.set:
+    phrases: ["استخدم {adapter}", "غير النموذج إلى {adapter}", "اضبط محول الذكاء الاصطناعي على {adapter}"]

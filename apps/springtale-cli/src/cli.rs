@@ -31,6 +31,14 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
+    /// Print the command tree and the route each verb calls, as JSON.
+    ///
+    /// The machine-readable half of `--help`: `scripts/check-surface.sh`
+    /// reads it to check the command line against the daemon's OpenAPI
+    /// document. Hidden because it describes the tool rather than doing
+    /// anything to the user's data.
+    #[command(name = "dump-commands", hide = true)]
+    DumpCommands,
     /// Manage connectors.
     Connector {
         #[command(subcommand)]
@@ -619,6 +627,13 @@ pub enum TravelAction {
 pub enum VaultAction {
     /// Configure a duress passphrase (dual-region vault).
     DuressSetup,
+    /// Unlock a locked springtaled over the management API.
+    ///
+    /// A locked daemon answers three routes and nothing else, so this is
+    /// how a headless instance comes back after an auto-lock without a
+    /// restart. The passphrase is read from the terminal, never from a
+    /// flag or an environment variable.
+    Unlock,
 }
 
 #[derive(Subcommand, Debug)]

@@ -214,6 +214,12 @@ pub struct TickReport {
     pub intent_alignment: f32,
     /// Agents this action interfered with (Helldivers friendly fire).
     pub interference_with: Vec<AgentId>,
+    /// The L0 surface the member reacted to this beat, when one was
+    /// primed (plan 1.9). A surface reaction is not a task claim: it is
+    /// reported *alongside* `action_taken`, so a beat that both reacted
+    /// to a surface and claimed a task carries both descriptors instead
+    /// of one overwriting the other.
+    pub surface_reaction: Option<ActionDescriptor>,
     /// Lifecycle state the member's action reached this beat.
     ///
     /// The momentum step classifies on this, not on `intent_alignment`:
@@ -342,6 +348,7 @@ mod tests {
                 latency: Duration::from_millis(5),
                 intent_alignment: 0.95,
                 interference_with: vec![],
+                surface_reaction: None,
                 state: crate::action_state::ActionState::Success,
             })
             .await
@@ -370,6 +377,7 @@ mod tests {
                 latency: Duration::from_millis(0),
                 intent_alignment: 0.5,
                 interference_with: vec![],
+                surface_reaction: None,
                 state: crate::action_state::ActionState::Success,
             })
             .await

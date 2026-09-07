@@ -563,14 +563,35 @@ async fn test_propose_intent_and_cast_vote_routes() {
     assert_eq!(status, StatusCode::OK);
     assert_eq!(json["proposed"], fid);
 
-    // Missing intent body → 400.
+    // Missing intent → rejected, not defaulted. The body is a typed
+    // struct now (plan 2.4), so axum refuses it at deserialization with
+    // 422 rather than the handler hand-plucking a field and returning
+    // 400. What matters is that an absent field is a refusal: nothing
+    // downstream ever sees a formation whose intent was invented here.
     let req = Request::post(format!("/formations/{fid}/propose-intent"))
         .header("Authorization", format!("Bearer {token}"))
         .header("Content-Type", "application/json")
         .body(Body::from(b"{}".to_vec()))
         .unwrap();
     let (status, _) = send(router.clone(), req).await;
-    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+
+    // Same for the other typed bodies: no command_id, no member name.
+    let req = Request::post(format!("/formations/{fid}/run-command"))
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(br#"{"params":{"a":1}}"#.to_vec()))
+        .unwrap();
+    let (status, _) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+
+    let req = Request::post(format!("/formations/{fid}/members"))
+        .header("Authorization", format!("Bearer {token}"))
+        .header("Content-Type", "application/json")
+        .body(Body::from(b"{}".to_vec()))
+        .unwrap();
+    let (status, _) = send(router.clone(), req).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
 
     // Cast a ballot with well-formed ids → enqueued (200).
     let vote_id = uuid::Uuid::new_v4();

@@ -359,6 +359,83 @@ mod tests {
         }
     }
 
+    /// The `connector-hello-wasm` example from `sdk/examples`, built for
+    /// `wasm32-wasip2` against the SDK's WIT world
+    /// (`sdk/connector-sdk/wit/connector.wit`) and checked in under
+    /// `prebuilt/`. Checked in on purpose: the test then needs no wasm
+    /// target and no Python or JavaScript toolchain at test time.
+    /// `sdk/examples/connector-hello-wasm/prebuilt/README.md` says how to
+    /// regenerate it; CI rebuilds the source on every push.
+    const HELLO_COMPONENT: &[u8] = include_bytes!(concat!(
+        "../../../../../sdk/examples/connector-hello-wasm/",
+        "prebuilt/connector_hello_wasm.wasm"
+    ));
+
+    /// Host-side mirror of `action-result` in the WIT world. Lifting into
+    /// it is what proves the guest and the world agree on the record
+    /// shape — a renamed or reordered field fails the typed lookup.
+    #[derive(wasmtime::component::ComponentType, wasmtime::component::Lift)]
+    #[component(record)]
+    struct WitActionResult {
+        success: bool,
+        output: String,
+        message: String,
+    }
+
+    /// The positive test for ALIGNMENT-PLAN 2.7. A real component — the
+    /// kind a community author produces — links against the host's WASI
+    /// Preview 2 linker and its exported `execute` runs to completion
+    /// inside the sandbox. The hand-written WAT below only ever proved
+    /// the import shape; this proves execution.
+    #[test]
+    fn hello_component_from_sdk_world_links_and_executes() {
+        let engine = Arc::new(WasmEngine::new(SandboxLimits::default()).unwrap());
+        let cache = WasmTierCache::new(engine.clone()).unwrap();
+        let component = Component::new(engine.engine(), HELLO_COMPONENT).unwrap();
+        let pre = cache
+            .preinstantiate_component("connector-hello-wasm", &component)
+            .expect("SDK-world component must link against the WASI p2 linker");
+
+        let mut store = Store::new(
+            engine.engine(),
+            test_host_state("connector-hello-wasm", engine.as_ref()),
+        );
+        store.set_fuel(u64::MAX / 2).ok();
+        store.set_epoch_deadline(u64::MAX);
+        let instance = pre.instantiate(&mut store).expect("instantiate component");
+
+        let iface = instance
+            .get_export_index(&mut store, None, "springtale:connector/guest@0.1.0")
+            .expect("component must export the world's guest interface");
+        let execute_idx = instance
+            .get_export_index(&mut store, Some(&iface), "execute")
+            .expect("guest must export execute");
+        let execute = instance
+            .get_typed_func::<(String, String), (WitActionResult,)>(&mut store, &execute_idx)
+            .expect("execute must match the WIT signature");
+
+        let (result,) = execute
+            .call(
+                &mut store,
+                ("greet".to_owned(), r#"{"name":"kali"}"#.to_owned()),
+            )
+            .expect("greet must not trap");
+        assert!(result.success, "greet failed: {}", result.message);
+        assert!(
+            result.output.contains("Hello, kali!"),
+            "unexpected output: {}",
+            result.output
+        );
+
+        // An unknown action is reported through the record, not by
+        // trapping — the world says errors travel in `action-result`.
+        let (missing,) = execute
+            .call(&mut store, ("nope".to_owned(), "{}".to_owned()))
+            .expect("unknown action must not trap");
+        assert!(!missing.success);
+        assert!(missing.message.contains("unknown action"));
+    }
+
     /// A component shaped like `jco componentize` output: it imports the
     /// WASI Preview 2 interfaces a JS component always pulls in. Before
     /// the WASI context existed this could not instantiate at all

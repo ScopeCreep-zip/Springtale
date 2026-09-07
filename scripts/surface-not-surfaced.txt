@@ -12,6 +12,13 @@
 /ui                              cli provider   # static SPA assets the browser fetches; no surface calls them
 /ui/{}                           cli provider   # same, per-asset
 #
+# ── Not API: the contract, and a protocol other tools speak ────────
+/openapi.json                    cli provider   # the contract itself; build tooling and CI read it (`springtaled --dump-openapi`), no user surface does
+/mcp                             provider       # MCP Streamable HTTP endpoint; `springtale mcp serve` bridges stdio clients to it, the dashboard is not an MCP client
+#
+# ── Reachable only while the daemon is locked ──────────────────────
+/vault/unlock                    provider       # while locked the daemon serves /health, /ready and this route only, so the dashboard SPA cannot load to call it; `springtale vault unlock` and the desktop shell (Tauri `unlock_vault`) are the unlock surfaces
+#
 # ── Not API: spoken by third parties, never by a surface ───────────
 /webhook/{}/{}                   cli provider   # inbound connector callback; the platform posts here, no user surface does
 #
@@ -21,6 +28,29 @@
 #
 # ── Streams whose surface half is a different route ────────────────
 /chat/stream                     cli            # SSE half of /chat; the CLI follows the multiplexed /stream with `springtale trace`
+#
+# ── One registry, reachable before there is a daemon ───────────────
+# `springtale author` writes the trusted-author registry through
+# `springtale_runtime::operations::authors` — the same functions, the
+# same `trusted-author:` rows, the same validation the API uses — so the
+# daemon reads exactly what the terminal wrote. It stays offline because
+# `author add --self` registers this instance's connector-signing
+# identity on first run, before `springtale server start` has ever been
+# typed; putting that behind a running daemon would put the first-run
+# path behind the thing it precedes.
+/authors                         cli            # `springtale author list` reads the same rows through the shared operation
+/authors/{}                      cli            # `springtale author add|remove`, same operation, first-run capable
+#
+# ── Trusted-host actions the browser is not the place for ──────────
+/bot/pair-init                   provider       # `springtale bot pair-init` mints the code on the host that holds the vault; it is read off that terminal and handed over out of band
+#
+# `springtale bot panic-unpair` has no route and will not get one. It
+# revokes every pairing from whatever terminal the user has recovered,
+# at the moment the paired device or account is in the wrong hands —
+# which is exactly when springtaled may be dead, wedged, or itself the
+# thing that was taken. It deletes rows a running daemon then stops
+# finding, so there is nothing for it to have been told. Same reasoning
+# as `springtale panic` below.
 #
 # ── Must work when springtaled is down ─────────────────────────────
 # These CLI verbs exist and are the reason the routes exist, but they

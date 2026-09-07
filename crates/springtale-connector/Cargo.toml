@@ -14,6 +14,10 @@ wasm-sandbox = ["dep:wasmtime", "dep:wasmtime-wasi"]
 wasmtime = { workspace = true, optional = true }
 wasmtime-wasi = { workspace = true, optional = true }
 base64 = { workspace = true }
+# blake3 — hashes webhook delivery ids before they reach the `dedupe_seen`
+# table, which documents blake3 as its key-hash function (see
+# `springtale-store/src/schema/sql/dedupe.sql`). Already a workspace dep.
+blake3 = { workspace = true }
 secrecy = { workspace = true }
 serde = { workspace = true }
 specta = { workspace = true }

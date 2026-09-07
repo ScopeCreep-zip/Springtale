@@ -100,6 +100,13 @@ pub async fn reload_connector(state: &RuntimeState, name: &str) -> Result<(), Op
         }
     }
 
+    // The rebuilt host may declare a different action set than the one
+    // an MCP client cached at initialization. Published as soon as the
+    // swap lands, ahead of the fallible chat re-wiring below.
+    state
+        .tool_catalog
+        .notify(name, crate::tool_catalog::ToolCatalogChange::Reloaded);
+
     tracing::info!(connector = name, was_enabled, "connector hot-reloaded");
     // The rebuilt connector owns a fresh ChatSource — stop the old
     // loop and start the new one.

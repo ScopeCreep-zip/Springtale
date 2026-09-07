@@ -865,6 +865,22 @@ impl super::trait_::StorageBackend for SqliteBackend {
 
         Ok(())
     }
+
+    /// Truncating checkpoint: fold the write-ahead log into the database
+    /// file and empty it, so a file copy carries every committed row.
+    ///
+    /// Without this, `travel prepare` backed up only the `.db` and left
+    /// anything still in the `-wal` behind — a backup that looks complete
+    /// and silently predates the last writes.
+    fn checkpoint(&self) -> Result<(), StoreError> {
+        let conn = self
+            .conn
+            .lock()
+            .map_err(|_| StoreError::Database("lock poisoned".into()))?;
+        conn.pragma_update(None, "wal_checkpoint", "TRUNCATE")
+            .map_err(|e| StoreError::Database(format!("wal checkpoint failed: {e}")))?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

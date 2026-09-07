@@ -269,6 +269,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/bot/pair-init": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * POST /bot/pair-init — mint a single-use pairing code.
+         * @description The pairing registry lives in the daemon's store, so the daemon is
+         *     the one writer to it. `springtale bot pair-init` is a client of this
+         *     route rather than a second writer opening the same database behind
+         *     the running daemon's back (plan 2.2).
+         */
+        post: operations["bot_pair_init"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/bot/settings": {
         parameters: {
             query?: never;
@@ -1377,6 +1400,37 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/mcp": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Build the `/mcp` router.
+         * @description The handler is constructed per session and holds a clone of the shared
+         *     `RuntimeState`, so tool calls dispatch through the same sentinel,
+         *     approval gate and executions recorder as a rule action.
+         *     The endpoint is a nested service, not a handler, so the contract
+         *     annotation sits on the constructor that mounts it.
+         *
+         *     The document describes what `/mcp` *is* — a Streamable HTTP MCP
+         *     endpoint carrying JSON-RPC 2.0 in both directions — and deliberately
+         *     does not restate MCP's own schema. That schema is versioned by the
+         *     MCP specification, not by this daemon; a copy of it here would be a
+         *     second, staler source of truth. Clients discover tools the way the
+         *     protocol says to: `initialize`, then `tools/list`.
+         */
+        post: operations["mcp_endpoint"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/memory/audit": {
         parameters: {
             query?: never;
@@ -1442,6 +1496,28 @@ export interface paths {
          *     connector config entry in the encrypted config_store.
          */
         post: operations["onboarding_apply"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/openapi.json": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /openapi.json` — the contract itself.
+         * @description Unauthenticated on purpose: it is a schema, not data. Nothing in it
+         *     is a secret, and the CLI, the two front ends and CI all read it
+         *     before they hold a token.
+         */
+        get: operations["openapi_serve"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -2183,6 +2259,33 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/vault/unlock": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * POST /vault/unlock — public, rate-limited.
+         * @description Deliberately unauthenticated: while the vault is locked there is no
+         *     bearer that could be presented. Bearers are *issued*, never derived
+         *     from the passphrase (plan 6.6) — a session comes from
+         *     `POST /auth/login` and lives in the process state that locking drops,
+         *     and a long-lived token can only be looked up against that same
+         *     dropped state. So the passphrase itself is the credential here, and
+         *     `Vault::open` is the check — Argon2id over the wrong passphrase fails
+         *     at AEAD decryption, with no comparison this code could shortcut.
+         */
+        post: operations["lock_unlock"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/webhook/{connector}/{trigger}": {
         parameters: {
             query?: never;
@@ -2194,13 +2297,18 @@ export interface paths {
         put?: never;
         /**
          * POST /webhook/{connector}/{trigger} — receive an inbound webhook.
-         * @description The management API receives webhook POSTs from external services (GitHub, Kick, etc.)
-         *     and routes them to the appropriate connector for signature verification and dispatch.
+         * @description The management API receives webhook POSTs from external services and
+         *     routes them to the named connector for signature verification and dispatch.
+         *
+         *     The route owns the transport and nothing else: it knows no connector,
+         *     no provider payload shape, and no action name. Everything protocol-
+         *     specific is asked of the connector through the `Connector` trait.
          *
          *     Flow:
          *     1. Look up connector in registry
-         *     2. Connector-specific signature verification (GitHub: HMAC-SHA256, Kick: RSA)
-         *     3. Dispatch trigger event to the rule engine via the trigger channel
+         *     2. Connector-specific signature verification (each connector's own scheme)
+         *     3. Ask the connector what the verified payload means
+         *     4. Dispatch trigger event to the rule engine via the trigger channel
          */
         post: operations["webhooks_receive"];
         delete?: never;
@@ -2400,6 +2508,18 @@ export interface components {
              *     actions only; see `springtale_ai::ToolPolicy`).
              */
             tool_policy?: Record<string, never>;
+        };
+        /**
+         * @description Body of `POST /formations/{id}/votes/{vote_id}`.
+         *
+         *     Both fields are required. An absent `approve` used to read as a
+         *     rejection of the ballot; now it is a rejection of the request.
+         */
+        CastVoteBody: {
+            /** @description The ballot itself. */
+            approve: boolean;
+            /** @description The voting agent's id. */
+            voter: string;
         };
         /** @description One diagnostic finding. */
         Check: {
@@ -2809,6 +2929,11 @@ export interface components {
              */
             visibility: components["schemas"]["FieldVisibility"];
         };
+        /** @description Body of `PUT /formations/{id}/intent`. */
+        IntentBody: {
+            /** @description The intent to set — one of `GET /formations/intents`. */
+            intent: string;
+        };
         LatencyDrift: {
             /** Format: int64 */
             baseline_median_ms?: number | null;
@@ -2829,6 +2954,11 @@ export interface components {
         LoginRequest: {
             /** @description The vault passphrase. Verified, never stored, zeroized here. */
             passphrase: string;
+        };
+        /** @description Body of `POST`/`DELETE /formations/{id}/members`. */
+        MemberBody: {
+            /** @description The connector whose agent joins or leaves the formation. */
+            connector_name: string;
         };
         /**
          * @description Body for both onboarding routes. `config` is the not-yet-deployed
@@ -3129,6 +3259,20 @@ export interface components {
             /** @description TOML rule body — placeholders substituted before parse. */
             toml: string;
         };
+        /**
+         * @description Body of `POST /formations/{id}/run-command`.
+         *
+         *     `command_id` is required: a dispatcher with no command to dispatch is
+         *     a malformed request, not a default. `params` is genuinely optional —
+         *     most commands take none — and its absence means "no parameters",
+         *     which is what the command layer already expects.
+         */
+        RunCommandBody: {
+            /** @description The command to run, from `GET /formations/{id}/commands`. */
+            command_id: string;
+            /** @description Command-specific parameters, passed through untouched. */
+            params?: unknown;
+        };
         ScanBody: {
             connector_name: string;
             formation_id: string;
@@ -3247,6 +3391,18 @@ export interface components {
             /** @description Absolute path of the encrypted backup file. */
             backup_path: string;
             /** @description Vault passphrase — encrypts (prepare) or decrypts (restore) the backup. */
+            passphrase: string;
+        };
+        /** @description Body of `POST /vault/unlock`. */
+        UnlockRequest: {
+            /**
+             * Format: password
+             * @description The vault passphrase. Never logged, never echoed.
+             *
+             *     `SecretString` has no schema of its own on purpose — the contract
+             *     describes the wire shape (a string), and the type describes what
+             *     the daemon does with it (zeroize on drop, redact in `Debug`).
+             */
             passphrase: string;
         };
         UpsertManualBody: {
@@ -3649,6 +3805,26 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Session memory summary */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    bot_pair_init: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A single-use pairing code, valid for ten minutes */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -4940,7 +5116,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["IntentBody"];
             };
         };
         responses: {
@@ -4967,7 +5143,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["MemberBody"];
             };
         };
         responses: {
@@ -4994,7 +5170,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["MemberBody"];
             };
         };
         responses: {
@@ -5067,7 +5243,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["IntentBody"];
             };
         };
         responses: {
@@ -5140,7 +5316,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["RunCommandBody"];
             };
         };
         responses: {
@@ -5192,7 +5368,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": Record<string, never>;
+                "application/json": components["schemas"]["CastVoteBody"];
             };
         };
         responses: {
@@ -5218,6 +5394,56 @@ export interface operations {
         responses: {
             /** @description Liveness probe */
             200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+        };
+    };
+    mcp_endpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** @description One JSON-RPC 2.0 request, notification, or response, per the MCP Streamable HTTP transport */
+        requestBody: {
+            content: {
+                "application/json": Record<string, never>;
+            };
+        };
+        responses: {
+            /** @description A JSON-RPC response, or an SSE stream of them when the client accepts `text/event-stream` */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Notification or response accepted; no body */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Missing or invalid bearer token */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Origin header rejected (DNS-rebinding guard) */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -5314,6 +5540,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["OnboardingApplyReport"];
+                };
+            };
+        };
+    };
+    openapi_serve: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The OpenAPI 3.1 document this daemon is described by */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
                 };
             };
         };
@@ -6299,6 +6545,48 @@ export interface operations {
                 };
                 content: {
                     "text/plain": string;
+                };
+            };
+        };
+    };
+    lock_unlock: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UnlockRequest"];
+            };
+        };
+        responses: {
+            /** @description Vault unlocked; the live router is back */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Unlock refused — wrong passphrase or unreadable vault */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
+                };
+            };
+            /** @description Already unlocked */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>;
                 };
             };
         };

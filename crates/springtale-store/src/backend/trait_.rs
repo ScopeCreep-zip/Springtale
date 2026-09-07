@@ -862,4 +862,19 @@ pub trait StorageBackend: Send + Sync + 'static {
     fn panic_wipe(&self) -> Result<(), StoreError> {
         Ok(())
     }
+
+    /// Fold the write-ahead log back into the database file.
+    ///
+    /// A WAL-mode database keeps recent commits in a sidecar file, so a
+    /// backup that copies only the `.db` silently leaves out everything
+    /// written since the last automatic checkpoint. Anything that copies
+    /// the database as a file — travel mode, the operator backup — calls
+    /// this first.
+    ///
+    /// Not async, for the same reason as `panic_wipe`: it is called on
+    /// paths that are about to destroy or move the file. The default is a
+    /// no-op, correct for backends with no write-ahead log.
+    fn checkpoint(&self) -> Result<(), StoreError> {
+        Ok(())
+    }
 }

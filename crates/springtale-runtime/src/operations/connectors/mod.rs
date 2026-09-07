@@ -60,6 +60,14 @@ pub async fn enable_connector(state: &RuntimeState, name: &str) -> Result<(), Op
             .enable(name)
             .map_err(|e| OperationError::Connector(format!("failed to enable {name}: {e}")))?;
     }
+    // A disabled connector is absent from `tools/list`, so enabling it
+    // grows the catalog any connected MCP client cached. Published here
+    // rather than after `wire_chat` because the registry has already
+    // changed — a chat-wiring failure must not leave clients holding a
+    // list that no longer matches what `call_tool` will accept.
+    state
+        .tool_catalog
+        .notify(name, crate::tool_catalog::ToolCatalogChange::Enabled);
     // Enabling a chat connector starts its receive loop.
     chat::wire_chat(state, name).await
 }
@@ -69,10 +77,16 @@ pub async fn disable_connector(state: &RuntimeState, name: &str) -> Result<(), O
     // Stop the receive loop first: a disabled connector must not keep
     // pushing messages at the bot.
     chat::unwire_chat(state, name);
-    let mut registry = state.registry.write().await;
-    registry
-        .disable(name)
-        .map_err(|e| OperationError::Connector(format!("failed to disable {name}: {e}")))
+    {
+        let mut registry = state.registry.write().await;
+        registry
+            .disable(name)
+            .map_err(|e| OperationError::Connector(format!("failed to disable {name}: {e}")))?;
+    }
+    state
+        .tool_catalog
+        .notify(name, crate::tool_catalog::ToolCatalogChange::Disabled);
+    Ok(())
 }
 
 /// Remove a connector — from registry, store, and config.
@@ -103,6 +117,11 @@ pub async fn remove_connector(state: &RuntimeState, name: &str) -> Result<(), Op
     // Mark as explicitly removed so init_registry won't auto-load it
     let removed_key = format!("connector-removed:{name}");
     let _ = state.store.set_config(&removed_key, "true").await;
+    // Its actions are gone from `tools/list` — tell connected MCP
+    // clients before they call a tool that no longer exists.
+    state
+        .tool_catalog
+        .notify(name, crate::tool_catalog::ToolCatalogChange::Removed);
     Ok(())
 }
 
@@ -176,6 +195,10 @@ pub async fn remove_connector_cascade(
     // Mark as explicitly removed so init_registry won't auto-load it
     let removed_key = format!("connector-removed:{name}");
     let _ = state.store.set_config(&removed_key, "true").await;
+
+    state
+        .tool_catalog
+        .notify(name, crate::tool_catalog::ToolCatalogChange::Removed);
 
     tracing::info!(
         connector = name,

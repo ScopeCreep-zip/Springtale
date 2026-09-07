@@ -222,6 +222,14 @@ pub struct FormationConstraints {
     /// Maximum autonomy any member can reach, regardless of their individual
     /// setting. A ceiling of `Suggest` overrides a member set to `ActAutonomously`.
     pub autonomy_ceiling: AutonomyLevel,
+    /// Promotion table for this formation's momentum (plan 1.3,
+    /// `[cooperation.momentum]`). Per formation like every other
+    /// constraint: two formations deployed with different thresholds
+    /// each promote on their own numbers.
+    pub momentum: crate::momentum::MomentumConfig,
+    /// Director numbers for this formation's pacing loop (plan 1.5,
+    /// `[cooperation.pacing]`).
+    pub pacing: crate::pacing::PacingConfig,
 }
 
 impl Default for FormationConstraints {
@@ -233,6 +241,8 @@ impl Default for FormationConstraints {
             fuel_budget: FuelAmount(100_000),
             destructive_action_policy: ApprovalPolicy::AlwaysRequire,
             autonomy_ceiling: AutonomyLevel::ActAutonomously,
+            momentum: crate::momentum::MomentumConfig::default(),
+            pacing: crate::pacing::PacingConfig::default(),
         }
     }
 }

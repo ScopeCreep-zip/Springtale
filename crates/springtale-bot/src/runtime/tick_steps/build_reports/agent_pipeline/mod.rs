@@ -86,6 +86,17 @@ pub async fn run(
         }
     }
 
+    // The beat's L0 surface reactions, kept aside so the task path can
+    // not overwrite them (plan 1.9). Re-attached to each member's report
+    // in the gather phase.
+    let surfaces: std::collections::HashMap<
+        AgentId,
+        springtale_cooperation::cadence::ActionDescriptor,
+    > = decisions
+        .iter_mut()
+        .filter_map(|d| d.surface.take().map(|a| (d.agent, a)))
+        .collect();
+
     // 2. Claim on the blackboard now.
     let mut settled: Vec<(AgentId, ExecuteOutcome)> = Vec::new();
     let mut jobs = Vec::new();
@@ -151,12 +162,20 @@ pub async fn run(
     outcomes.sort_by_key(|(agent, _)| agent.0);
     let mut proposals = Vec::new();
     let mut reports = Vec::new();
+    let mut surfaces = surfaces;
     for (agent, mut outcome) in outcomes {
         formation.tick_stress.absorb(&outcome);
         if let Some(task) = outcome.consensus_task.take() {
             proposals.push(task);
         }
-        if let Some(report) = executor::post(formation, agent, outcome, tick, cooperation_tx) {
+        if let Some(report) = executor::post(
+            formation,
+            agent,
+            outcome,
+            tick,
+            cooperation_tx,
+            surfaces.remove(&agent),
+        ) {
             let _ = reports_sender.try_send(report.clone());
             reports.push(report);
         }

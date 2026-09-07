@@ -47,6 +47,11 @@ pub async fn install_connector(
     // reference them (§14.4 / Phase 21).
     crate::cooperation::register_manifest_roles(&state.role_registry, &manifest);
 
+    // No `tool_catalog` notification here on purpose: this path writes
+    // a manifest row to the store and does not touch the live registry,
+    // so `tools/list` is unchanged until the connector is actually
+    // loaded (`setup_connector`, or the next boot's `init_registry`) —
+    // and those paths notify.
     let name = manifest.name;
     tracing::info!(connector = %name, "connector manifest registered");
     Ok(name)
@@ -95,6 +100,16 @@ pub async fn install_wasm_connector(
             )
             .map_err(|e| OperationError::Connector(format!("WASM install failed: {e}")))?
     };
+
+    // A WASM install lands directly in the live registry, so its actions
+    // appear in `tools/list` immediately. Published here rather than at
+    // the end of the function because the registry has already changed —
+    // a later persistence failure must not leave connected MCP clients
+    // holding a stale list.
+    state.tool_catalog.notify(
+        &registered_name,
+        crate::tool_catalog::ToolCatalogChange::Installed,
+    );
 
     // Fold any community roles declared in the manifest into the shared
     // registry (Phase 21). For WASM connectors this is the main path —

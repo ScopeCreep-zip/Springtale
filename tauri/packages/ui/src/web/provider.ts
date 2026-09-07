@@ -618,10 +618,10 @@ export function createWebProvider(): DataProvider {
     async proposeFormationIntent(id, intent) {
       return post<Record<string, unknown>>(`/formations/${id}/propose-intent`, { intent });
     },
-    async castFormationVote(id, voteId, choice) {
+    async castFormationVote(id, voteId, voter, approve) {
       return post<Record<string, unknown>>(
         `/formations/${id}/votes/${encodeURIComponent(voteId)}`,
-        { choice },
+        { voter, approve },
       );
     },
 

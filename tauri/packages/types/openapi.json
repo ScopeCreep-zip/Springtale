@@ -493,6 +493,28 @@
         }
       }
     },
+    "/bot/pair-init": {
+      "post": {
+        "tags": [
+          "bot"
+        ],
+        "summary": "POST /bot/pair-init — mint a single-use pairing code.",
+        "description": "The pairing registry lives in the daemon's store, so the daemon is\nthe one writer to it. `springtale bot pair-init` is a client of this\nroute rather than a second writer opening the same database behind\nthe running daemon's back (plan 2.2).",
+        "operationId": "bot_pair_init",
+        "responses": {
+          "200": {
+            "description": "A single-use pairing code, valid for ten minutes",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/bot/settings": {
       "get": {
         "tags": [
@@ -2345,7 +2367,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "$ref": "#/components/schemas/IntentBody"
               }
             }
           },
@@ -2387,7 +2409,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "$ref": "#/components/schemas/MemberBody"
               }
             }
           },
@@ -2427,7 +2449,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "$ref": "#/components/schemas/MemberBody"
               }
             }
           },
@@ -2536,7 +2558,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "$ref": "#/components/schemas/IntentBody"
               }
             }
           },
@@ -2642,7 +2664,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "$ref": "#/components/schemas/RunCommandBody"
               }
             }
           },
@@ -2725,7 +2747,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "type": "object"
+                "$ref": "#/components/schemas/CastVoteBody"
               }
             }
           },
@@ -2768,6 +2790,62 @@
         "security": [
           {}
         ]
+      }
+    },
+    "/mcp": {
+      "post": {
+        "tags": [
+          "mcp"
+        ],
+        "summary": "Build the `/mcp` router.",
+        "description": "The handler is constructed per session and holds a clone of the shared\n`RuntimeState`, so tool calls dispatch through the same sentinel,\napproval gate and executions recorder as a rule action.\nThe endpoint is a nested service, not a handler, so the contract\nannotation sits on the constructor that mounts it.\n\nThe document describes what `/mcp` *is* — a Streamable HTTP MCP\nendpoint carrying JSON-RPC 2.0 in both directions — and deliberately\ndoes not restate MCP's own schema. That schema is versioned by the\nMCP specification, not by this daemon; a copy of it here would be a\nsecond, staler source of truth. Clients discover tools the way the\nprotocol says to: `initialize`, then `tools/list`.",
+        "operationId": "mcp_endpoint",
+        "requestBody": {
+          "description": "One JSON-RPC 2.0 request, notification, or response, per the MCP Streamable HTTP transport",
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "A JSON-RPC response, or an SSE stream of them when the client accepts `text/event-stream`",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "202": {
+            "description": "Notification or response accepted; no body"
+          },
+          "401": {
+            "description": "Missing or invalid bearer token",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Origin header rejected (DNS-rebinding guard)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        }
       }
     },
     "/memory/audit": {
@@ -2886,6 +2964,31 @@
             }
           }
         }
+      }
+    },
+    "/openapi.json": {
+      "get": {
+        "tags": [
+          "openapi"
+        ],
+        "summary": "`GET /openapi.json` — the contract itself.",
+        "description": "Unauthenticated on purpose: it is a schema, not data. Nothing in it\nis a secret, and the CLI, the two front ends and CI all read it\nbefore they hold a token.",
+        "operationId": "openapi_serve",
+        "responses": {
+          "200": {
+            "description": "The OpenAPI 3.1 document this daemon is described by",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
       }
     },
     "/ready": {
@@ -4290,13 +4393,68 @@
         }
       }
     },
+    "/vault/unlock": {
+      "post": {
+        "tags": [
+          "vault"
+        ],
+        "summary": "POST /vault/unlock — public, rate-limited.",
+        "description": "Deliberately unauthenticated: while the vault is locked there is no\nbearer that could be presented. Bearers are *issued*, never derived\nfrom the passphrase (plan 6.6) — a session comes from\n`POST /auth/login` and lives in the process state that locking drops,\nand a long-lived token can only be looked up against that same\ndropped state. So the passphrase itself is the credential here, and\n`Vault::open` is the check — Argon2id over the wrong passphrase fails\nat AEAD decryption, with no comparison this code could shortcut.",
+        "operationId": "lock_unlock",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UnlockRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Vault unlocked; the live router is back",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Unlock refused — wrong passphrase or unreadable vault",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Already unlocked",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
     "/webhook/{connector}/{trigger}": {
       "post": {
         "tags": [
           "webhooks"
         ],
         "summary": "POST /webhook/{connector}/{trigger} — receive an inbound webhook.",
-        "description": "The management API receives webhook POSTs from external services (GitHub, Kick, etc.)\nand routes them to the appropriate connector for signature verification and dispatch.\n\nFlow:\n1. Look up connector in registry\n2. Connector-specific signature verification (GitHub: HMAC-SHA256, Kick: RSA)\n3. Dispatch trigger event to the rule engine via the trigger channel",
+        "description": "The management API receives webhook POSTs from external services and\nroutes them to the named connector for signature verification and dispatch.\n\nThe route owns the transport and nothing else: it knows no connector,\nno provider payload shape, and no action name. Everything protocol-\nspecific is asked of the connector through the `Connector` trait.\n\nFlow:\n1. Look up connector in registry\n2. Connector-specific signature verification (each connector's own scheme)\n3. Ask the connector what the verified payload means\n4. Dispatch trigger event to the rule engine via the trigger channel",
         "operationId": "webhooks_receive",
         "parameters": [
           {
@@ -4744,6 +4902,24 @@
           "tool_policy": {
             "type": "object",
             "description": "Which connector actions the AI may call as tools. Default: empty\nallow-list — the same default-mode posture as before (read-only\nactions only; see `springtale_ai::ToolPolicy`)."
+          }
+        }
+      },
+      "CastVoteBody": {
+        "type": "object",
+        "description": "Body of `POST /formations/{id}/votes/{vote_id}`.\n\nBoth fields are required. An absent `approve` used to read as a\nrejection of the ballot; now it is a rejection of the request.",
+        "required": [
+          "voter",
+          "approve"
+        ],
+        "properties": {
+          "approve": {
+            "type": "boolean",
+            "description": "The ballot itself."
+          },
+          "voter": {
+            "type": "string",
+            "description": "The voting agent's id."
           }
         }
       },
@@ -5709,6 +5885,19 @@
           }
         }
       },
+      "IntentBody": {
+        "type": "object",
+        "description": "Body of `PUT /formations/{id}/intent`.",
+        "required": [
+          "intent"
+        ],
+        "properties": {
+          "intent": {
+            "type": "string",
+            "description": "The intent to set — one of `GET /formations/intents`."
+          }
+        }
+      },
       "LatencyDrift": {
         "type": "object",
         "required": [
@@ -5766,6 +5955,19 @@
           "passphrase": {
             "type": "string",
             "description": "The vault passphrase. Verified, never stored, zeroized here."
+          }
+        }
+      },
+      "MemberBody": {
+        "type": "object",
+        "description": "Body of `POST`/`DELETE /formations/{id}/members`.",
+        "required": [
+          "connector_name"
+        ],
+        "properties": {
+          "connector_name": {
+            "type": "string",
+            "description": "The connector whose agent joins or leaves the formation."
           }
         }
       },
@@ -6514,6 +6716,22 @@
           }
         }
       },
+      "RunCommandBody": {
+        "type": "object",
+        "description": "Body of `POST /formations/{id}/run-command`.\n\n`command_id` is required: a dispatcher with no command to dispatch is\na malformed request, not a default. `params` is genuinely optional —\nmost commands take none — and its absence means \"no parameters\",\nwhich is what the command layer already expects.",
+        "required": [
+          "command_id"
+        ],
+        "properties": {
+          "command_id": {
+            "type": "string",
+            "description": "The command to run, from `GET /formations/{id}/commands`."
+          },
+          "params": {
+            "description": "Command-specific parameters, passed through untouched."
+          }
+        }
+      },
       "ScanBody": {
         "type": "object",
         "required": [
@@ -6824,6 +7042,20 @@
           }
         }
       },
+      "UnlockRequest": {
+        "type": "object",
+        "description": "Body of `POST /vault/unlock`.",
+        "required": [
+          "passphrase"
+        ],
+        "properties": {
+          "passphrase": {
+            "type": "string",
+            "format": "password",
+            "description": "The vault passphrase. Never logged, never echoed.\n\n`SecretString` has no schema of its own on purpose — the contract\ndescribes the wire shape (a string), and the type describes what\nthe daemon does with it (zeroize on drop, redact in `Debug`)."
+          }
+        }
+      },
       "UpsertManualBody": {
         "type": "object",
         "required": [
@@ -6971,10 +7203,16 @@
       "name": "login"
     },
     {
+      "name": "mcp"
+    },
+    {
       "name": "memory"
     },
     {
       "name": "onboarding"
+    },
+    {
+      "name": "openapi"
     },
     {
       "name": "recipes"
@@ -6996,6 +7234,9 @@
     },
     {
       "name": "utterances"
+    },
+    {
+      "name": "vault"
     },
     {
       "name": "webhooks"

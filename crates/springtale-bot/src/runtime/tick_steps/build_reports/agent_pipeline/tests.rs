@@ -10,8 +10,9 @@ use tokio::sync::mpsc;
 
 use springtale_cooperation::action::SubTask;
 use springtale_cooperation::action_state::ActionState;
-use springtale_cooperation::cadence::{AgentId, IntentPattern, Tick, TickReport};
+use springtale_cooperation::cadence::{ActionDescriptor, AgentId, IntentPattern, Tick, TickReport};
 use springtale_cooperation::routing::direct::assignment;
+use springtale_cooperation::stigmergy::types::SurfaceType;
 use springtale_cooperation::types::{ApprovalPolicy, FormationConstraints};
 
 use crate::cooperation::blackboard::trait_::Blackboard;
@@ -184,5 +185,51 @@ async fn test_run_max_concurrent_actions_one_never_overlaps_dispatches() {
         b.rt.probe.max_in_flight(),
         1,
         "no two dispatches overlapped under cap 1"
+    );
+}
+
+/// Plan 1.9: the layers are ordered, not exclusive. A primed surface and
+/// an open task arriving in the same beat are two descriptors, and the
+/// member's single report carries both — the surface reaction no longer
+/// overwrites the task's action, and the task no longer hides the
+/// reaction.
+#[tokio::test]
+async fn test_run_primed_surface_and_open_task_report_both_in_one_beat() {
+    let mut b = beat(1, Duration::from_millis(10), 0);
+    let agent = b.formation.members[0].agent_id;
+    b.formation.surfaces.deposit(
+        agent,
+        SurfaceType::Primed {
+            trigger: ActionDescriptor {
+                kind: "rate_limit".into(),
+                target: None,
+                payload_hash: 0,
+            },
+        },
+        serde_json::json!({}),
+        None,
+        None,
+    );
+
+    let reports = run_beat(&mut b, &make_tick(1, Duration::from_secs(1))).await;
+
+    assert_eq!(reports.len(), 1);
+    let report = &reports[0];
+    assert_eq!(
+        report
+            .surface_reaction
+            .as_ref()
+            .map(|a| (a.kind.as_str(), a.target.as_deref())),
+        Some(("surface_reaction", Some("rate_limit"))),
+        "the primed surface reaction rode along on the report"
+    );
+    assert!(
+        report.action_taken.is_some(),
+        "the inbox task still produced this beat's action"
+    );
+    assert!(alignment_is(report, 1.0));
+    assert!(
+        b.formation.blackboard.read_result(b.tasks[0].id).is_some(),
+        "the claimed task ran in the same beat as the surface reaction"
     );
 }

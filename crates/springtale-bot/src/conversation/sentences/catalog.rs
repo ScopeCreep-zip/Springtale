@@ -7,8 +7,11 @@
 //! `{locale}.yaml` beside this file, one per language
 //! `packages/ui/src/i18n/locales` speaks.
 //!
-//! Only `en` is populated today; the other seven are stubs, and a
-//! locale with no phrases falls back to English.
+//! Six locales are populated — `en`, `es`, `fr`, `pt`, `tl`, `ar`. `ja`
+//! and `th` are deliberately still stubs: the tokenizer segments on
+//! spaces and those two scripts are written without them, so templates
+//! could not match (each file says so at the top). A locale with no
+//! phrases falls back to English.
 
 use std::collections::HashMap;
 use std::sync::OnceLock;
@@ -42,8 +45,8 @@ impl SentenceCatalog {
     }
 }
 
-/// Locales shipped with a sentence file. `en` is real; the rest are
-/// stubs awaiting translation.
+/// Locales shipped with a sentence file — the same eight the UI speaks
+/// (`packages/ui/src/i18n/locales`).
 pub const LOCALES: &[&str] = &["en", "ar", "es", "fr", "ja", "pt", "th", "tl"];
 
 const EN: &str = include_str!("en.yaml");
@@ -109,6 +112,10 @@ mod tests {
     use super::*;
     use springtale_runtime::operations::platform::platform_verbs;
 
+    /// Locales with real sentence templates. `ja` and `th` are stubs
+    /// pending a word segmenter — see their files.
+    const TRANSLATED: &[&str] = &["en", "es", "fr", "pt", "tl", "ar"];
+
     #[test]
     fn test_every_locale_file_parses() {
         for locale in LOCALES {
@@ -127,10 +134,55 @@ mod tests {
         }
     }
 
+    /// Every locale that ships phrases ships them for EVERY verb — a
+    /// half-translated file would silently answer some verbs in one
+    /// language and some in another.
+    #[test]
+    fn test_translated_locales_cover_every_platform_verb() {
+        for locale in TRANSLATED {
+            let cat = for_locale(locale);
+            for verb in platform_verbs() {
+                assert!(
+                    cat.verbs
+                        .get(verb.name)
+                        .is_some_and(|v| !v.phrases.is_empty()),
+                    "locale `{locale}` has no sentence template for `{}`",
+                    verb.name
+                );
+            }
+        }
+    }
+
+    /// A verb's slots must survive translation: a translated phrase may
+    /// reorder them, but it may not invent or drop one.
+    #[test]
+    fn test_translated_phrases_use_declared_slots() {
+        for locale in TRANSLATED {
+            for verb in platform_verbs() {
+                for phrase in for_locale(locale).phrases(verb.name) {
+                    for slot in phrase
+                        .split('{')
+                        .skip(1)
+                        .filter_map(|s| s.split('}').next())
+                    {
+                        assert!(
+                            verb.args.contains(&slot)
+                                || matches!(slot, "intent" | "key" | "value" | "adapter" | "id"),
+                            "locale `{locale}`: `{}` uses unknown slot `{{{slot}}}`",
+                            verb.name
+                        );
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn test_stub_locale_falls_back_to_english() {
+        // `ja` and `th` are stubs on purpose (no word segmentation).
+        assert!(for_locale("ja").verbs.is_empty());
         assert_eq!(
-            for_locale("fr").phrases("formation.pause"),
+            for_locale("ja").phrases("formation.pause"),
             english().phrases("formation.pause")
         );
     }

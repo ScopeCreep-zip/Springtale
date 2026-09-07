@@ -1,6 +1,7 @@
 mod autolock;
 mod commands;
 mod paths;
+pub mod policy;
 mod prefs;
 mod sidecar;
 mod state;
@@ -82,6 +83,7 @@ pub fn run() {
             commands::vault::VaultUnlocked,
             commands::vault::VaultLocked,
             commands::quick_hide::QuickHide,
+            sidecar::DaemonStopped,
         ])
         .commands(collect_commands![
             commands::vault::create_vault,

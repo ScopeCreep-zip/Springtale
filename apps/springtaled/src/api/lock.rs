@@ -500,10 +500,15 @@ async fn lock(State(guard): State<RuntimeGuard>, headers: HeaderMap) -> Response
 }
 
 /// Body of `POST /vault/unlock`.
-#[derive(Deserialize)]
+#[derive(Deserialize, utoipa::ToSchema)]
 pub struct UnlockRequest {
     /// The vault passphrase. Never logged, never echoed.
+    ///
+    /// `SecretString` has no schema of its own on purpose — the contract
+    /// describes the wire shape (a string), and the type describes what
+    /// the daemon does with it (zeroize on drop, redact in `Debug`).
     #[serde(deserialize_with = "deserialize_passphrase")]
+    #[schema(value_type = String, format = Password)]
     passphrase: SecretString,
 }
 
@@ -527,7 +532,22 @@ where
 /// dropped state. So the passphrase itself is the credential here, and
 /// `Vault::open` is the check — Argon2id over the wrong passphrase fails
 /// at AEAD decryption, with no comparison this code could shortcut.
-async fn unlock(State(guard): State<RuntimeGuard>, Json(body): Json<UnlockRequest>) -> Response {
+#[utoipa::path(
+    post, operation_id = "lock_unlock",
+    path = "/vault/unlock",
+    tag = "vault",
+    security(()),
+    request_body = UnlockRequest,
+    responses(
+        (status = 200, description = "Vault unlocked; the live router is back", body = Object),
+        (status = 401, description = "Unlock refused — wrong passphrase or unreadable vault", body = Object),
+        (status = 409, description = "Already unlocked", body = Object)
+    )
+)]
+pub async fn unlock(
+    State(guard): State<RuntimeGuard>,
+    Json(body): Json<UnlockRequest>,
+) -> Response {
     if !guard.is_locked() {
         return (
             StatusCode::CONFLICT,

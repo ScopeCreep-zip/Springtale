@@ -154,6 +154,7 @@ impl TestApp {
             chat_tx: bot_chat_tx,
             chat_rx: Arc::new(tokio::sync::Mutex::new(Some(bot_chat_rx))),
             chat_tasks: Default::default(),
+            tool_catalog: Default::default(),
             // In-memory store — no runtime lock.
             _lock: None,
         };

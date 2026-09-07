@@ -25,6 +25,8 @@ use tauri::{AppHandle, Manager};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_specta::Event;
 
+use crate::policy::shortcut::quick_hide_candidates;
+
 /// Emitted from the OS-wide quick-hide shortcut handler. Unit payload —
 /// the frontend reacts by collapsing surfaces and (via separate IPC)
 /// can lock the vault.
@@ -65,12 +67,7 @@ pub async fn apply_quick_hide_shortcut(app: AppHandle, shortcut: String) -> Resu
     // in-window listener still hides on focus, and the user can rebind in
     // Settings → Safety. Returns the combo that actually registered, or an
     // empty string if none did.
-    let mut candidates = vec![configured.clone()];
-    for fb in ["Alt+Shift+H", "Ctrl+Shift+J", "Ctrl+Alt+Shift+H"] {
-        if fb != configured {
-            candidates.push(fb.to_owned());
-        }
-    }
+    let candidates = quick_hide_candidates(&configured);
 
     // Drop whatever was bound before trying new combos (idempotent re-apply).
     let active = app.state::<ActiveQuickHide>();

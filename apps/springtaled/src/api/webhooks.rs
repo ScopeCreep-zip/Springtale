@@ -3,6 +3,7 @@ use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::IntoResponse;
 
+use springtale_connector::webhook::ReplayOutcome;
 use springtale_core::rule::engine::TriggerEvent;
 use springtale_store::schema::events::EventEntry;
 
@@ -14,13 +15,18 @@ const MAX_JSON_DEPTH: usize = 64;
 
 /// POST /webhook/{connector}/{trigger} — receive an inbound webhook.
 ///
-/// The management API receives webhook POSTs from external services (GitHub, Kick, etc.)
-/// and routes them to the appropriate connector for signature verification and dispatch.
+/// The management API receives webhook POSTs from external services and
+/// routes them to the named connector for signature verification and dispatch.
+///
+/// The route owns the transport and nothing else: it knows no connector,
+/// no provider payload shape, and no action name. Everything protocol-
+/// specific is asked of the connector through the `Connector` trait.
 ///
 /// Flow:
 /// 1. Look up connector in registry
-/// 2. Connector-specific signature verification (GitHub: HMAC-SHA256, Kick: RSA)
-/// 3. Dispatch trigger event to the rule engine via the trigger channel
+/// 2. Connector-specific signature verification (each connector's own scheme)
+/// 3. Ask the connector what the verified payload means
+/// 4. Dispatch trigger event to the rule engine via the trigger channel
 #[utoipa::path(
     post, operation_id = "webhooks_receive",
     path = "/webhook/{connector}/{trigger}",
@@ -64,7 +70,7 @@ pub async fn receive(
 
     // Verify webhook signature BEFORE dispatching.
     // Each connector implements verify_webhook() with its own scheme
-    // (GitHub: HMAC-SHA256, Kick: RSA, Telegram: secret token).
+    // (HMAC-SHA256, RSA, a shared secret header — the connector decides).
     // Connectors that don't support webhooks reject with an error.
     let header_map: std::collections::HashMap<String, String> = headers
         .iter()
@@ -84,6 +90,61 @@ pub async fn receive(
         return Err(StatusCode::UNAUTHORIZED);
     }
 
+    // Nothing below needs the registry — the host handle is cloned above
+    // and the replay check that follows awaits on the store.
+    drop(registry);
+
+    // Durable replay protection. A signed webhook stays valid for as long
+    // as the provider's own window allows, so a captured request can be
+    // replayed verbatim; the delivery id is what makes it single-use.
+    // Connectors used to remember those ids in process memory, which meant
+    // every daemon reload and vault re-unlock reopened the window. The
+    // record now lives in the store and outlives the process.
+    //
+    // Ordering matters: this runs AFTER verification, so an unsigned
+    // request cannot poison the record, and BEFORE the event log, so a
+    // replay is not written down as a fresh delivery.
+    if let Some(replay_key) = host.webhook_replay_key(&header_map) {
+        match springtale_connector::webhook::replay::check_and_record(
+            &state.runtime.store,
+            &connector_name,
+            &replay_key,
+        )
+        .await
+        {
+            Ok(ReplayOutcome::Fresh) => {}
+            Ok(ReplayOutcome::Replay) => {
+                tracing::warn!(
+                    connector = %connector_name,
+                    trigger = %trigger_name,
+                    "webhook replay rejected (delivery id already seen)"
+                );
+                // 200, not an error status: the delivery *was* handled
+                // the first time, and a provider that sees a failure
+                // will keep retrying the same replayed request.
+                return Ok((
+                    StatusCode::OK,
+                    Json(serde_json::json!({
+                        "status": "duplicate",
+                        "connector": connector_name,
+                        "trigger": trigger_name,
+                    })),
+                ));
+            }
+            Err(e) => {
+                // Fail closed. An unrecorded delivery is a delivery that
+                // may be a replay, and a locked or broken store must not
+                // silently degrade into no replay protection at all.
+                tracing::error!(
+                    connector = %connector_name,
+                    error = %e,
+                    "webhook replay check failed; refusing the delivery"
+                );
+                return Err(StatusCode::INTERNAL_SERVER_ERROR);
+            }
+        }
+    }
+
     // Store event in log (metadata only, NOT payload content per privacy model)
     let event = EventEntry {
         id: uuid::Uuid::new_v4(),
@@ -99,15 +160,12 @@ pub async fn receive(
     // Broadcast to SSE subscribers (dashboard live event stream)
     let _ = state.event_tx.send(event);
 
-    // Drop the registry lock before sending to the channel
-    drop(registry);
-
     // Ask the connector what this verified payload means. The daemon
     // owns the transport (route, signature, event log); the connector
     // owns the protocol. This used to be a `match` on one connector
     // name here, so webhook chat worked for exactly that connector and
-    // no other — Kick, whose chat only ever arrives by webhook, could
-    // not reach the bot at all.
+    // no other — a connector whose chat only ever arrives by webhook
+    // could not reach the bot at all.
     //
     // Polling-mode gateways reach the same bot channel through their own
     // ChatSource loop (see runtime operations/connectors/chat.rs).
@@ -147,24 +205,23 @@ pub async fn receive(
         }
     }
 
-    // Acknowledge callback_query via answerCallbackQuery so the user's
-    // inline-keyboard button stops spinning. Polling mode handles this
-    // in runtime/connectors/telegram.rs; webhook mode needs it here.
-    if trigger_name == "callback_query_received"
-        && let Some(callback_id) = payload.get("id").and_then(|v| v.as_str())
-    {
-        let ack_input = serde_json::json!({
-            "callback_query_id": callback_id,
-        });
+    // Acknowledgements the connector asked for: an action it wants run
+    // back on itself to complete this request, because its platform
+    // requires the inbound event be answered (an inline-button press
+    // that keeps spinning until it is, say) and only the connector knows
+    // that. This was a literal check on one connector's trigger name and
+    // one of its action names, so exactly one connector's webhooks could
+    // ever be acknowledged. The route now executes whatever the
+    // connector named, through the same capability-checked registry path
+    // any other action takes, and still knows neither.
+    for ack in ingest.acks {
         let reg = state.runtime.registry.read().await;
-        if let Err(e) = reg
-            .execute(&connector_name, "answer_callback_query", ack_input)
-            .await
-        {
+        if let Err(e) = reg.execute(&connector_name, &ack.action, ack.input).await {
             tracing::warn!(
                 error = %e,
                 connector = %connector_name,
-                "webhook: failed to answerCallbackQuery"
+                action = %ack.action,
+                "webhook: connector acknowledgement failed"
             );
         }
     }
@@ -238,4 +295,48 @@ fn json_depth(value: &serde_json::Value) -> usize {
     }
 
     max_depth
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    /// Connector names, split in two so this assertion cannot match its
+    /// own source when it scans the file.
+    const SPLIT_CONNECTOR_NAMES: [(&str, &str); 8] = [
+        ("tele", "gram"),
+        ("dis", "cord"),
+        ("sla", "ck"),
+        ("ki", "ck"),
+        ("git", "hub"),
+        ("nos", "tr"),
+        ("blue", "sky"),
+        ("sig", "nal"),
+    ];
+
+    /// The ingress owns the transport; connectors own their protocols.
+    /// A route that names one connector serves that connector only —
+    /// which is exactly how webhook chat came to work for one platform
+    /// and no other. Nothing here may name a connector or one of its
+    /// triggers or actions.
+    #[test]
+    fn test_route_source_names_no_connector() {
+        let src = include_str!("webhooks.rs").to_lowercase();
+        for (head, tail) in SPLIT_CONNECTOR_NAMES {
+            let needle = format!("{head}{tail}");
+            assert!(
+                !src.contains(&needle),
+                "webhook route names connector '{needle}' — ask the connector instead"
+            );
+        }
+        for (head, tail) in [
+            ("answer_", "callback_query"),
+            ("callback_query", "_received"),
+        ] {
+            let needle = format!("{head}{tail}");
+            assert!(
+                !src.contains(&needle),
+                "webhook route names connector protocol detail '{needle}'"
+            );
+        }
+    }
 }

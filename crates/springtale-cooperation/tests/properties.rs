@@ -182,6 +182,7 @@ fn make_report(agent: AgentId, kind: &str, target: Option<&str>, tick: u64) -> T
         latency: Duration::from_millis(5),
         intent_alignment: 0.9,
         interference_with: Vec::new(),
+        surface_reaction: None,
         state: springtale_cooperation::action_state::ActionState::Success,
     }
 }

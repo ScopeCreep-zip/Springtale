@@ -214,6 +214,96 @@ jobs:
   # rejects `if: hashFiles(...)` at the job level, so the cleanest path is
   # to add the job in the same PR that adds the crate.
 
+  # ── WASM connector SDK (plan 5.5) ─────────────────────────────────
+  #
+  # The SDK example was never built anywhere. It is the only component
+  # in the tree built against `sdk/connector-sdk/wit/connector.wit`, and
+  # the sandbox's positive test loads the checked-in artefact, so a
+  # source change that stops compiling has to be caught here.
+  wasm-sdk:
+    name: WASM SDK (wasm32-wasip2)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          targets: wasm32-wasip2
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      # The wasm32-wasip2 target emits a component directly — no
+      # `wasm-tools component new` step, and no Node or Python toolchain.
+      - name: Build the SDK example component
+        run: cargo build --release --target wasm32-wasip2 --manifest-path sdk/examples/connector-hello-wasm/Cargo.toml
+      - name: The checked-in artefact must still be a loadable component
+        run: |
+          set -euo pipefail
+          built=sdk/examples/connector-hello-wasm/target/wasm32-wasip2/release/connector_hello_wasm.wasm
+          test -s "$built"
+          # Both must be components (0x00 'asm' + layer 1), not core modules.
+          for f in "$built" sdk/examples/connector-hello-wasm/prebuilt/connector_hello_wasm.wasm; do
+            head -c 8 "$f" | od -An -tx1 | grep -q '00 61 73 6d 0d 00 01 00' || {
+              echo "::error::$f is not a WASM component (expected component preamble)"
+              exit 1
+            }
+          done
+      # The sandbox tests `include_bytes!` the prebuilt component and
+      # both link and execute it (`wasm::tier::cache`), so run them here
+      # against the same commit that just rebuilt the source.
+      - name: Sandbox tests that load the component
+        run: "cargo test -p springtale-connector --locked wasm::"
+
+  # ── Python bindings (plan 5.5) ────────────────────────────────────
+  #
+  # `springtale-py` is a pyo3 extension module wrapped by maturin. The
+  # workspace `cargo test` cannot exercise it (extension-module defers
+  # Python symbol resolution to the host interpreter), so nothing built
+  # the wheel until this job. Uses the runner's preinstalled Python
+  # rather than adding another third-party action to the trust set.
+  python-bindings:
+    name: Python bindings (maturin wheel)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: step-security/harden-runner@9af89fc71515a100421586dfdb3dc9c984fbf411 # v2
+        with:
+          egress-policy: audit
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+      - name: Build the wheel
+        run: |
+          set -euo pipefail
+          python3 -m venv /tmp/venv
+          /tmp/venv/bin/pip install --disable-pip-version-check maturin
+          /tmp/venv/bin/maturin build --release \
+            --manifest-path crates/springtale-py/Cargo.toml \
+            --out /tmp/wheels \
+            --interpreter /tmp/venv/bin/python
+      - name: Smoke import
+        run: |
+          set -euo pipefail
+          /tmp/venv/bin/pip install --disable-pip-version-check /tmp/wheels/*.whl
+          # Not just `import springtale` — assert the surface the module
+          # actually declares, so a binding dropped from the pymodule
+          # fails the job instead of passing silently.
+          /tmp/venv/bin/python - <<'PYCHECK'
+          import springtale
+
+          assert springtale.__version__, "wheel has no __version__"
+          for name in ("MomentumTier", "Intent", "FormationId", "Formation"):
+              assert hasattr(springtale, name), f"missing binding: {name}"
+          print("springtale", springtale.__version__, "imported")
+          PYCHECK
+
   # ── Hardening configuration check ─────────────────────────────────
   #
   # Static assertions about Tauri / capability / CSP config files.

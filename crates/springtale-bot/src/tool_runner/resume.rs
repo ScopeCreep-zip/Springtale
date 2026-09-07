@@ -36,6 +36,9 @@ pub struct ResumerDeps {
     pub adapter: Arc<dyn AiAdapter>,
     pub response_tx: tokio::sync::mpsc::Sender<OutgoingResponse>,
     pub policy: ToolPolicy,
+    /// Shared runtime state, so a thread resumed after a restart still
+    /// sees the platform verbs it was using before (plan 5.4).
+    pub runtime: Option<springtale_runtime::state::RuntimeState>,
 }
 
 /// How often a still-pending verdict is re-checked. The approval's own
@@ -136,6 +139,7 @@ async fn resume_one(deps: &ResumerDeps, cp: ToolLoopCheckpointRow) {
         registry: &deps.registry,
         bridge: &deps.bridge,
         sentinel: &deps.sentinel,
+        runtime: deps.runtime.as_ref(),
     };
     let call = ToolRunnerCall {
         options: AiOptions::default(),

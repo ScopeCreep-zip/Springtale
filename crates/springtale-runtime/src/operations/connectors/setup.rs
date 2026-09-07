@@ -46,6 +46,15 @@ pub async fn setup_connector(
             .map_err(|e| OperationError::Connector(format!("failed to install {name}: {e}")))?
     };
 
+    // The registry grew (or a re-configure changed the action set), so
+    // any MCP client's cached tool list is now stale. Published as soon
+    // as the registry changed, ahead of the fallible config persist and
+    // chat wiring below.
+    state.tool_catalog.notify(
+        &registered_name,
+        crate::tool_catalog::ToolCatalogChange::Installed,
+    );
+
     // Persist config for next boot — key uses the incoming name, matching
     // get_connector_config() and remove_connector() which also use {name}.
     let key = format!("connector:{name}");

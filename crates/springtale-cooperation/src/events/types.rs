@@ -184,6 +184,19 @@ pub enum CooperationEvent {
         interference_kind: InterferenceKind,
         agents: Vec<AgentId>,
     },
+    /// A handoff finished — the work product reached its substrate, or
+    /// did not (COOPERATION.pdf §20: the handoff point is where most
+    /// cooperative failures occur). Counted into the momentum window's
+    /// handoff rate (plan 1.3).
+    HandoffCompleted {
+        formation_id: FormationId,
+        /// `"direct"`, `"environment_mediated"`, `"flexible_chain"`,
+        /// `"sequential_dependency"` or `"information_transfer"`.
+        pattern: String,
+        from: AgentId,
+        to: Option<AgentId>,
+        success: bool,
+    },
     /// L4 Contract Net round opened (cascade-driven capability auction).
     CfpRoundStarted {
         formation_id: FormationId,

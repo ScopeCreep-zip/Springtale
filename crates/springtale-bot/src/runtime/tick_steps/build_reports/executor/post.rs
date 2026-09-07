@@ -33,12 +33,16 @@ pub struct PostEnv<'a> {
 
 /// Post one member's outcome and sample its attention load. `None` when
 /// the member left the formation while its dispatch was in flight.
+///
+/// `surface` is the L0 reaction the decide phase kept aside (plan 1.9);
+/// it rides on the report next to `action_taken`, never instead of it.
 pub fn post(
     formation: &mut Formation,
     agent: AgentId,
     outcome: ExecuteOutcome,
     tick: &Tick,
     cooperation_tx: Option<&broadcast::Sender<CooperationEventEnvelope>>,
+    surface: Option<springtale_cooperation::cadence::ActionDescriptor>,
 ) -> Option<TickReport> {
     let env = PostEnv {
         formation_id: formation.id.0,
@@ -52,7 +56,7 @@ pub fn post(
     let duration_ms = outcome.duration_ms;
     let said = utterance_for(&outcome.state, outcome.action_descriptor.is_some());
     let member = formation.members.iter_mut().find(|m| m.agent_id == agent)?;
-    let report = post_member(member, &env, outcome, tick);
+    let report = post_member(member, &env, outcome, tick, surface);
 
     // Attention is earned by acting (Army of Two aggro): a member with
     // work in hand — or still in flight — generates load this beat, and
@@ -91,6 +95,7 @@ pub fn post_member(
     env: &PostEnv<'_>,
     outcome: ExecuteOutcome,
     tick: &Tick,
+    surface: Option<springtale_cooperation::cadence::ActionDescriptor>,
 ) -> TickReport {
     if let Some(done) = outcome.dispatched {
         if let Some(active) = member.active_task.as_mut() {
@@ -191,6 +196,7 @@ pub fn post_member(
         latency: Duration::from_millis(outcome.duration_ms),
         intent_alignment: outcome.alignment,
         interference_with: vec![],
+        surface_reaction: surface,
         // 0.3 — the beat's momentum signal. `Requested` (a dispatch
         // carried past its beat) and `Init` (a claim, an observe/suggest
         // surface reaction, a yield) are not work done, whatever their

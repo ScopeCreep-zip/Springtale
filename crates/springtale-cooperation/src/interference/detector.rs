@@ -391,6 +391,7 @@ mod tests {
                 latency: Duration::from_millis(0),
                 intent_alignment: 1.0,
                 interference_with: vec![b],
+                surface_reaction: None,
                 state: crate::action_state::ActionState::Success,
             },
             TickReport {
@@ -400,6 +401,7 @@ mod tests {
                 latency: Duration::from_millis(0),
                 intent_alignment: 1.0,
                 interference_with: vec![a],
+                surface_reaction: None,
                 state: crate::action_state::ActionState::Success,
             },
         ];

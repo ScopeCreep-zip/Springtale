@@ -19,6 +19,31 @@ pub async fn status(State(state): State<AppState>) -> Result<impl IntoResponse, 
     Ok(Json(status))
 }
 
+/// POST /bot/pair-init — mint a single-use pairing code.
+///
+/// The pairing registry lives in the daemon's store, so the daemon is
+/// the one writer to it. `springtale bot pair-init` is a client of this
+/// route rather than a second writer opening the same database behind
+/// the running daemon's back (plan 2.2).
+#[utoipa::path(
+    post, operation_id = "bot_pair_init",
+    path = "/bot/pair-init",
+    tag = "bot",
+    responses((status = 200, description = "A single-use pairing code, valid for ten minutes", body = Object))
+)]
+pub async fn pair_init(State(state): State<AppState>) -> Result<impl IntoResponse, StatusCode> {
+    let code =
+        springtale_runtime::operations::pairing::generate_pairing_code(&*state.runtime.store)
+            .await
+            .map_err(|e| {
+                tracing::error!(error = %e, "failed to generate pairing code");
+                StatusCode::INTERNAL_SERVER_ERROR
+            })?;
+    Ok(Json(
+        serde_json::json!({ "pairing_code": code, "single_use": true }),
+    ))
+}
+
 /// GET /bot/formations — active formations with member info.
 #[utoipa::path(
     get, operation_id = "bot_formations",

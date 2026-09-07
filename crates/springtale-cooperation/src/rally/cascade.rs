@@ -220,6 +220,7 @@ mod tests {
             latency: Duration::from_millis(5),
             intent_alignment: alignment,
             interference_with: vec![],
+            surface_reaction: None,
             state,
         }
     }

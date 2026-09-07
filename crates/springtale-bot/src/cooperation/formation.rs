@@ -27,7 +27,7 @@ use springtale_cooperation::comms::{
 use springtale_cooperation::consensus::ConsensusEngine;
 use springtale_cooperation::context::FormationContext;
 use springtale_cooperation::handoff::{
-    FlexibleChainPool, HandoffResult, HandoffType, dispatch_handoff_durable,
+    FlexibleChainPool, HandoffLog, HandoffResult, HandoffType, dispatch_handoff_durable,
 };
 use springtale_cooperation::mental_model::SharedMentalModel;
 use springtale_cooperation::momentum::{MomentumState, MomentumTier};
@@ -192,6 +192,9 @@ pub struct Formation {
     /// When `true`, tick processing skips this formation entirely.
     pub paused: bool,
     pub constraints: FormationConstraints,
+    /// Handoffs that finished since the last tick drained the log
+    /// (plan 1.3 / 1.15). `Arc` because `dispatch_handoff` takes `&self`.
+    pub handoff_log: Arc<HandoffLog>,
     pub momentum: MomentumState,
     /// Hayes-Roth task-routing blackboard (§3 composer output). Distinct
     /// from [`shared_env`] which is the §10 atomic workspace. The two
@@ -498,17 +501,23 @@ impl Formation {
         let cfp_initiator = Arc::new(tokio::sync::Mutex::new(cfp_initiator_inner));
         let cfp_rx = cfp_channels.cfp_tx.subscribe();
 
+        // Plan 1.3 / 1.5: the promotion table and the Director numbers
+        // are per-formation constraints, so the momentum state and the
+        // pacing manager are built from this formation's own config.
+        let momentum = MomentumState::with_config(constraints.momentum.clone());
+        let pacing = PacingManager::with_config(constraints.pacing.clone());
         let formation = Self {
             id: FormationId::new(),
+            handoff_log: Arc::new(HandoffLog::default()),
             intent,
             paused: false,
             constraints,
-            momentum: MomentumState::default(),
+            momentum,
             blackboard,
             shared_env: Arc::new(SharedEnvironment::new()),
             fuel,
             orchestrator: None,
-            pacing: PacingManager::default(),
+            pacing,
             rally: FormationRally::new(rally_budget, 64),
             attention_broker: Arc::new(AttentionBroker::for_agents(&agent_ids)),
             supervisor: FormationSupervisor::default(),
@@ -936,14 +945,21 @@ impl Formation {
         handoff: &HandoffType,
     ) -> Result<HandoffResult, springtale_cooperation::error::CooperationError> {
         let ttl = Some(self.constraints.timeout);
-        dispatch_handoff_durable(
+        let result = dispatch_handoff_durable(
             handoff,
             &self.store,
             &self.flex_chain_pool,
             Some(&self.direct_inbox),
             ttl,
         )
-        .await
+        .await;
+        // Plan 1.3: a handoff is where cooperation most often breaks, so
+        // every completion — landed or failed — is recorded for the tick
+        // to count into the momentum window and re-emit.
+        if let Ok(outcome) = result.as_ref() {
+            self.handoff_log.record(handoff, outcome);
+        }
+        result
     }
 
     /// Subscribe to both the peer event bus and the shared context watch
@@ -1179,6 +1195,15 @@ mod tests {
             other => panic!("expected Delivered, got {other:?}"),
         }
         assert_eq!(formation.direct_inbox.len(receiver), 1);
+        // Plan 1.3 / 1.15: the dispatch recorded a completion, so the
+        // tick's momentum window can count the handoff.
+        let completions = formation.handoff_log.drain();
+        assert_eq!(completions.len(), 1);
+        assert_eq!(completions[0].pattern, "direct");
+        assert_eq!(completions[0].from, sender);
+        assert_eq!(completions[0].to, Some(receiver));
+        assert!(completions[0].success);
+        assert!(formation.handoff_log.drain().is_empty());
     }
 
     #[tokio::test]
@@ -1306,5 +1331,78 @@ mod tests {
             .signal_commit_ready(uuid::Uuid::new_v4(), AgentId::new())
             .unwrap_err();
         assert!(format!("{err}").contains("unknown barrier"));
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod momentum_config_tests {
+    use super::*;
+    use springtale_cooperation::momentum::{MomentumConfig, TickCounts, TierThreshold};
+
+    fn constraints(min_actions: u32) -> FormationConstraints {
+        FormationConstraints {
+            momentum: MomentumConfig {
+                promote: [
+                    TierThreshold {
+                        min_actions,
+                        min_success: 0.80,
+                        max_duplicate: 1.00,
+                    },
+                    TierThreshold {
+                        min_actions: 8,
+                        min_success: 0.90,
+                        max_duplicate: 0.30,
+                    },
+                    TierThreshold {
+                        min_actions: 15,
+                        min_success: 0.95,
+                        max_duplicate: 0.10,
+                    },
+                ],
+            },
+            ..FormationConstraints::default()
+        }
+    }
+
+    fn formation_with(min_actions: u32) -> Formation {
+        Formation::new_disconnected(
+            vec![FormationMember::from_strings(
+                AgentId::new(),
+                vec!["test".into()],
+            )],
+            IntentPattern::Execute { plan_id: None },
+            constraints(min_actions),
+        )
+    }
+
+    /// Plan 1.3: the promotion table is per formation. Two formations
+    /// deployed at the same moment, given the same two clean actions,
+    /// promote on their own numbers — not on a shared constant.
+    #[test]
+    fn momentum_config_is_per_formation() {
+        let mut eager = formation_with(2);
+        let mut patient = formation_with(9);
+        let counts = TickCounts {
+            actions: 1,
+            successes: 1,
+            ..TickCounts::default()
+        };
+        for _ in 0..2 {
+            eager.momentum.record_successful_tick(&counts);
+            patient.momentum.record_successful_tick(&counts);
+        }
+
+        assert_eq!(
+            eager.momentum.tier,
+            MomentumTier::Warming,
+            "two actions clear this formation's own Cold row"
+        );
+        assert_eq!(
+            patient.momentum.tier,
+            MomentumTier::Cold,
+            "the same two actions do not clear a nine-action row"
+        );
+        assert_eq!(eager.constraints.momentum.promote[0].min_actions, 2);
     }
 }

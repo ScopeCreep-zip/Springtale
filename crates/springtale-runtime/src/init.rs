@@ -438,6 +438,7 @@ pub async fn init(
         chat_tx,
         chat_rx: Arc::new(tokio::sync::Mutex::new(Some(chat_rx))),
         chat_tasks: Arc::new(dashmap::DashMap::new()),
+        tool_catalog: crate::tool_catalog::ToolCatalogNotifier::new(),
         _lock: lock,
     };
 

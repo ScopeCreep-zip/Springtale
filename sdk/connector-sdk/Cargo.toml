@@ -16,3 +16,6 @@ serde_json = "1"
 opt-level = "s"       # optimize for size (smaller .wasm)
 lto = true            # link-time optimization
 strip = true          # strip debug info
+
+# Standalone: excluded from the root workspace (different target).
+[workspace]

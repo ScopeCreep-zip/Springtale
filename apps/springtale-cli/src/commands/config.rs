@@ -139,3 +139,53 @@ fn redact(mut value: Value) -> Value {
     }
     value
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::output::{json_value, key_set};
+
+    #[test]
+    fn test_config_ai_get_json_shape_keeps_the_value_document() {
+        let body = json!({
+            "key": AI_COLONY_KEY,
+            "value": { "type": "ollama", "model": "llama3", "base_url": "http://localhost:11434" },
+        });
+        let out = json_value(&redact(body));
+        assert_eq!(key_set(&out), ["key", "value"]);
+        assert!(out["key"].is_string());
+        assert!(out["value"].is_object());
+        assert_eq!(out["value"]["type"], "ollama");
+        assert_eq!(out["value"]["model"], "llama3");
+    }
+
+    #[test]
+    fn test_config_ai_get_json_redacts_a_stored_api_key() {
+        let body = json!({
+            "key": "ai.colony",
+            "value": { "type": "anthropic", "api_key": "sk-secret-value" },
+        });
+        let out = json_value(&redact(body));
+        assert_eq!(out["value"]["api_key"], "<redacted>");
+        assert!(!render_json_text(&out).contains("sk-secret-value"));
+    }
+
+    #[test]
+    fn test_config_ai_get_json_leaves_a_missing_api_key_absent() {
+        let body = json!({ "key": "ai.colony", "value": { "type": "noop" } });
+        let out = json_value(&redact(body));
+        assert!(out["value"].get("api_key").is_none());
+    }
+
+    #[test]
+    fn test_config_ai_get_json_unset_level_keeps_a_null_value() {
+        let body = json!({ "key": "ai.formation.f-1", "value": Value::Null });
+        let out = json_value(&redact(body));
+        assert_eq!(key_set(&out), ["key", "value"]);
+        assert!(out["value"].is_null());
+    }
+
+    fn render_json_text(v: &Value) -> String {
+        crate::output::render_json(v).expect("render")
+    }
+}

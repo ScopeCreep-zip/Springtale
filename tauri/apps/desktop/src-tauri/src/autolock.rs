@@ -15,6 +15,7 @@ use tokio::sync::Mutex;
 use springtale_crypto::vault::store::Vault;
 
 use crate::commands::vault::VaultLocked;
+use crate::policy::autolock::AutoLockTimer;
 
 /// Handle to a running auto-lock timer. Reset on user activity.
 pub struct AutoLockHandle {
@@ -46,14 +47,13 @@ impl AutoLockHandle {
             let _ = tx.send(());
         }
 
-        if timeout_minutes == 0 {
-            return; // disabled
-        }
+        // `None` means auto-lock is disabled — arm nothing.
+        let Some(duration) = AutoLockTimer::new(timeout_minutes).countdown() else {
+            return;
+        };
 
         let (cancel_tx, cancel_rx) = tokio::sync::oneshot::channel();
         self.cancel_tx = Some(cancel_tx);
-
-        let duration = std::time::Duration::from_secs(u64::from(timeout_minutes) * 60);
 
         tokio::spawn(async move {
             tokio::select! {

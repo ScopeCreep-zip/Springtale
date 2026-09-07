@@ -50,6 +50,7 @@ pub mod operations;
 pub mod quota;
 pub mod state;
 pub mod tasks;
+pub mod tool_catalog;
 pub mod triggers;
 pub mod utterance_ring;
 
@@ -69,4 +70,5 @@ pub use notification::NotificationEvent;
 pub use quota::SqliteTokenQuota;
 pub use state::{LiveFormationReader, RuntimeState};
 pub use tasks::TaskHandles;
+pub use tool_catalog::{ToolCatalogChange, ToolCatalogEvent, ToolCatalogNotifier};
 pub use triggers::{TriggerRegistry, activate_rule, deactivate_rule, wire_connector_events};
