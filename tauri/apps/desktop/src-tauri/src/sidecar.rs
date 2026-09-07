@@ -86,26 +86,6 @@ fn parse_ready(line: &[u8]) -> Option<u16> {
         .ok()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::parse_ready;
-
-    #[test]
-    fn test_parse_ready_with_port_returns_port() {
-        assert_eq!(parse_ready(b"READY 51234\n"), Some(51234));
-    }
-
-    #[test]
-    fn test_parse_ready_bare_ready_returns_none() {
-        assert_eq!(parse_ready(b"READY\n"), None);
-    }
-
-    #[test]
-    fn test_parse_ready_unrelated_line_returns_none() {
-        assert_eq!(parse_ready(b"INFO springtaled starting"), None);
-    }
-}
-
 /// Log in to the freshly started daemon and return the bearer token it
 /// issues (plan 6.6, finding 109).
 ///
@@ -139,4 +119,24 @@ pub async fn login(port: u16, passphrase: &secrecy::SecretString) -> Result<Stri
         .and_then(|v| v.as_str())
         .map(str::to_owned)
         .ok_or_else(|| "login response carried no token".to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_ready;
+
+    #[test]
+    fn test_parse_ready_with_port_returns_port() {
+        assert_eq!(parse_ready(b"READY 51234\n"), Some(51234));
+    }
+
+    #[test]
+    fn test_parse_ready_bare_ready_returns_none() {
+        assert_eq!(parse_ready(b"READY\n"), None);
+    }
+
+    #[test]
+    fn test_parse_ready_unrelated_line_returns_none() {
+        assert_eq!(parse_ready(b"INFO springtaled starting"), None);
+    }
 }

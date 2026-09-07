@@ -9,6 +9,7 @@
 
 use tauri::State;
 
+use crate::policy::disguise::select_window_title;
 use crate::state::AppState;
 
 /// Set the window title — desktop-specific (Tauri API).
@@ -60,11 +61,7 @@ pub async fn apply_disguise_to_shell(
     disguise_app_name: String,
     window_title: String,
 ) -> Result<String, String> {
-    let title = if disguise_active {
-        disguise_app_name
-    } else {
-        window_title
-    };
+    let title = select_window_title(disguise_active, disguise_app_name, window_title);
     window.set_title(&title).map_err(|e| e.to_string())?;
     // Mirror the applied title into the pre-unlock prefs file so a cold
     // start shows the disguise on its first frame instead of the real name.

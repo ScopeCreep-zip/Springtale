@@ -27,6 +27,8 @@ use tauri::tray::TrayIcon;
 use tauri::{App, Manager, Runtime};
 use tokio::sync::Mutex;
 
+use crate::policy::disguise::{TrayDisguise, select_tray_disguise};
+
 /// Shared tray handle. `None` until `init` runs in `setup()`.
 pub type TrayHandle<R> = Arc<Mutex<Option<TrayIcon<R>>>>;
 
@@ -65,17 +67,8 @@ pub async fn apply_disguise_to_tray(
     disguise_app_name: String,
     disguise_icon_id: String,
 ) -> Result<String, String> {
-    let icon_id = if disguise_active {
-        disguise_icon_id
-    } else {
-        "springtale".to_owned()
-    };
-
-    let tooltip = if disguise_active {
-        disguise_app_name
-    } else {
-        "Springtale".to_owned()
-    };
+    let TrayDisguise { icon_id, tooltip } =
+        select_tray_disguise(disguise_active, disguise_app_name, disguise_icon_id);
 
     let tray_state = app.state::<TrayHandle<tauri::Wry>>();
     let tray_lock = tray_state.inner().lock().await;

@@ -1,6 +1,7 @@
 mod autolock;
 mod commands;
 mod paths;
+pub mod policy;
 mod prefs;
 mod sidecar;
 mod state;
