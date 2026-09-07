@@ -177,9 +177,13 @@ main.rs (apps/springtaled/src/main.rs)
 - Passphrase acquisition (`boot/crypto.rs:65-99`) has a 3-way fallback:
   `SPRINGTALE_PASSPHRASE_FILE` (Docker secrets), `SPRINGTALE_PASSPHRASE`
   (dev only), or interactive TTY prompt. Fatal if none available.
-- The API token is `HMAC-SHA256(passphrase, "springtale-api-token")`.
-  There is no separate API key; rotating the token means rotating the
-  vault passphrase.
+- API tokens are *issued*, not derived. `POST /auth/login` verifies the
+  passphrase against `HMAC-SHA256(passphrase, "springtale-api-token")`
+  computed once at boot, then mints a 32-byte OS-CSPRNG session token;
+  `POST /auth/tokens` mints named long-lived ones. Both are held only as
+  `sha256(token)`. That derived hash is the login *verifier* and is never
+  accepted as a bearer, so rotating the passphrase rotates no token — it
+  only changes what a future login must present.
 - AI adapter is hot-swappable at runtime via `ArcSwap<Arc<dyn AiAdapter>>`
   (`state.rs:27`). Config changes to `/config/ai` atomically replace the
   active adapter with zero locking on the read path.

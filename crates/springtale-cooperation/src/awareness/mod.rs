@@ -12,4 +12,6 @@ mod types;
 pub use bridge::{GossipEntry, InMemoryGossipStore};
 pub use store::{ChitchatGossipConfig, ChitchatGossipStore, GossipStore};
 pub use swim::{ProcId, SwimEvent, SwimNode, SwimNodeConfig, SwimSelfState};
-pub use types::{LocalAwareness, NeighborSnapshot, RoleSignature};
+pub use types::{
+    FAILURE_PENALTY, LocalAwareness, NeighborSnapshot, RoleSignature, SHATTERED_MORALE,
+};

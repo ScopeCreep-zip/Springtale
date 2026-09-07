@@ -33,6 +33,7 @@ fn synth_report(agent: AgentId, alignment: f32) -> TickReport {
         latency: Duration::from_millis(5),
         intent_alignment: alignment,
         interference_with: Vec::new(),
+        state: springtale_cooperation::action_state::ActionState::Success,
     }
 }
 

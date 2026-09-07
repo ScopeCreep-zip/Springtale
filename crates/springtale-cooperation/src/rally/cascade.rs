@@ -9,12 +9,12 @@
 //!   3. Reduce momentum tier to match reduced coherence
 //!   4. Consume rally token (limited, like Monster Hunter carts)
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
+use crate::action_state::ActionState;
 use crate::attention::AttentionBroker;
-use crate::awareness::LocalAwareness;
+use crate::awareness::{LocalAwareness, SHATTERED_MORALE};
 use crate::cadence::AgentId;
-use crate::momentum::MomentumState;
 use crate::tick_processor::FormationTickResult;
 
 use super::{FormationRally, RallyEvent, RallyFailure, RallyResult};
@@ -75,13 +75,70 @@ pub fn detect_cascade(
     }
 }
 
+/// Pick the member a rally token should be spent on.
+///
+/// Per Total War (spec §15.2): a general rallies the unit that can still
+/// answer him. A shattered unit is past rallying and a dead one cannot
+/// hear it, so a token spent on either is a token wasted. Of the members
+/// that failed this beat we take the one with the LOWEST morale that is
+/// still above [`SHATTERED_MORALE`] — the closest to breaking that can
+/// still be pulled back.
+///
+/// `candidates` holds only members the caller considers alive and
+/// operational (the bot's `check_cascade` builds it from
+/// `FormationMember::is_operational`, which excludes `Incapacitated` and
+/// `Dead`), so absence from the map is the "cannot respond" answer.
+/// `None` means no token should be spent at all.
+///
+/// `failing` is walked in order so ties resolve deterministically.
+pub fn select_rally_target(
+    candidates: &HashMap<AgentId, &LocalAwareness>,
+    failing: &[AgentId],
+) -> Option<AgentId> {
+    let mut best: Option<(AgentId, f32)> = None;
+    for agent in failing {
+        let Some(awareness) = candidates.get(agent) else {
+            continue; // incapacitated, dead, or gone: cannot respond
+        };
+        let morale = awareness.local_morale();
+        if morale <= SHATTERED_MORALE {
+            continue; // shattered: past rallying (Total War §15.2)
+        }
+        if best.is_none_or(|(_, lowest)| morale < lowest) {
+            best = Some((*agent, morale));
+        }
+    }
+    best.map(|(agent, _)| agent)
+}
+
+/// Did a member we spent a rally token on come back?
+///
+/// `RallyResult::Recovered` is the answer to a rally on a LATER beat:
+/// the token bought the member a chance and it finished work with it.
+/// `rallied` is the set of members with a token spent on them since the
+/// last recovery; `Some(Recovered)` means the caller should clear it.
+pub fn recovered(rallied: &HashSet<AgentId>, result: &FormationTickResult) -> Option<RallyResult> {
+    if rallied.is_empty() {
+        return None;
+    }
+    result
+        .reports
+        .iter()
+        .any(|r| {
+            rallied.contains(&r.agent_id)
+                && matches!(r.state, ActionState::Success)
+                && r.intent_alignment > 0.5
+        })
+        .then_some(RallyResult::Recovered)
+}
+
 /// Attempt formation self-rally before escalating to orchestrator.
 ///
 /// Per §15.2 (Monster Hunter cart system):
 /// 1. Redistribute attention away from failing agent
-/// 2. Reduce momentum to match reduced coherence
-/// 3. Consume a rally token
-/// 4. If no tokens left → escalate
+/// 2. Consume a rally token (the tick's own momentum step already
+///    recorded the failure — see the comment in the body)
+/// 3. If no tokens left → escalate
 ///
 /// Takes `&FormationRally` (not `&mut`): the token pool is backed by
 /// `Arc<Semaphore>` (interior-mutable), the event channel is a
@@ -89,7 +146,6 @@ pub fn detect_cascade(
 pub fn attempt_self_rally(
     rally: &FormationRally,
     attention: &AttentionBroker,
-    momentum: &mut MomentumState,
     failing_agent: AgentId,
 ) -> RallyResult {
     if !rally.tokens.can_rally() {
@@ -107,10 +163,14 @@ pub fn attempt_self_rally(
         from: failing_agent,
     });
 
-    // 2. Reduce momentum — the formation lost coherence
-    momentum.record_failure();
+    // The formation's lost coherence is NOT recorded here. The beat that
+    // produced this cascade already ran `update_momentum`, which recorded
+    // the same failed tick; recording it again demoted the formation twice
+    // for one bad beat (and `supervision`/`handle_command` rallies would
+    // have invented a failure that no tick reported). Momentum is the
+    // momentum step's to own — the rally's cost is the token.
 
-    // 3. Consume rally token. `consume()` fails only if something closed
+    // 2. Consume rally token. `consume()` fails only if something closed
     //    the semaphore between the `can_rally` check and here; treat as
     //    escalation.
     match rally.tokens.consume() {
@@ -141,9 +201,14 @@ pub fn attempt_self_rally(
 mod tests {
     use super::*;
     use crate::cadence::TickReport;
+    use crate::momentum::MomentumState;
     use std::time::Duration;
 
     fn make_report(agent: AgentId, alignment: f32) -> TickReport {
+        make_stated(agent, alignment, ActionState::Success)
+    }
+
+    fn make_stated(agent: AgentId, alignment: f32, state: ActionState) -> TickReport {
         TickReport {
             agent_id: agent,
             tick_sequence: crate::tick::TickId(1),
@@ -155,6 +220,7 @@ mod tests {
             latency: Duration::from_millis(5),
             intent_alignment: alignment,
             interference_with: vec![],
+            state,
         }
     }
 
@@ -254,7 +320,9 @@ mod tests {
             momentum.record_success();
         }
 
-        let result = attempt_self_rally(&rally, &attention, &mut momentum, a);
+        let before = momentum.tier;
+        let successes = momentum.consecutive_successes;
+        let result = attempt_self_rally(&rally, &attention, a);
         assert!(matches!(
             result,
             RallyResult::StabilizedWithCost {
@@ -262,6 +330,10 @@ mod tests {
             }
         ));
         assert_eq!(rally.tokens.remaining(), 2);
+        // Fix 2 — the rally does not double-count the failure. The beat's
+        // momentum step already recorded it; the rally's cost is the token.
+        assert_eq!(momentum.tier, before);
+        assert_eq!(momentum.consecutive_successes, successes);
     }
 
     #[test]
@@ -273,9 +345,94 @@ mod tests {
         rally.tokens.consume().unwrap();
         rally.tokens.consume().unwrap();
         let attention = AttentionBroker::for_agents(&[a]);
-        let mut momentum = MomentumState::default();
+        let momentum = MomentumState::default();
 
-        let result = attempt_self_rally(&rally, &attention, &mut momentum, a);
+        let result = attempt_self_rally(&rally, &attention, a);
         assert!(matches!(result, RallyResult::EscalateToOrchestrator { .. }));
+        assert_eq!(momentum.consecutive_successes, 0);
+    }
+
+    /// Fix 2 — the token goes to the member that can still respond: the
+    /// lowest morale ABOVE the shattered floor. A shattered member and a
+    /// member missing from the map (dead/incapacitated) are skipped even
+    /// though they failed first.
+    #[test]
+    fn test_select_rally_target_is_lowest_morale_above_shattered() {
+        let dead = AgentId::new();
+        let shattered = AgentId::new();
+        let wavering = AgentId::new();
+        let steady = AgentId::new();
+
+        let aw_shattered = LocalAwareness {
+            morale: SHATTERED_MORALE - 0.01,
+            ..Default::default()
+        };
+        let aw_wavering = LocalAwareness {
+            morale: 0.25,
+            ..Default::default()
+        };
+        let aw_steady = LocalAwareness {
+            morale: 0.8,
+            ..Default::default()
+        };
+
+        // `dead` is absent: `check_cascade` builds this map from
+        // operational members only.
+        let mut map: HashMap<AgentId, &LocalAwareness> = HashMap::new();
+        map.insert(shattered, &aw_shattered);
+        map.insert(wavering, &aw_wavering);
+        map.insert(steady, &aw_steady);
+
+        let failing = [dead, shattered, wavering, steady];
+        assert_eq!(select_rally_target(&map, &failing), Some(wavering));
+    }
+
+    /// No failing member can respond → no target, so no token is spent.
+    #[test]
+    fn test_select_rally_target_none_when_nobody_can_respond() {
+        let dead = AgentId::new();
+        let shattered = AgentId::new();
+        let aw = LocalAwareness {
+            morale: 0.0,
+            ..Default::default()
+        };
+        let mut map: HashMap<AgentId, &LocalAwareness> = HashMap::new();
+        map.insert(shattered, &aw);
+        assert_eq!(select_rally_target(&map, &[dead, shattered]), None);
+    }
+
+    /// Fix 3 — `Recovered` is emitted when a rallied member finishes work
+    /// on a later beat, and only then.
+    #[test]
+    fn test_recovered_only_when_a_rallied_member_completes_work() {
+        let rallied_agent = AgentId::new();
+        let other = AgentId::new();
+        let mut rallied = HashSet::new();
+        rallied.insert(rallied_agent);
+
+        let still_trying = FormationTickResult {
+            reports: vec![make_stated(rallied_agent, 0.8, ActionState::Requested)],
+            interferences: vec![],
+            all_succeeded: false,
+        };
+        assert!(recovered(&rallied, &still_trying).is_none());
+
+        let someone_else = FormationTickResult {
+            reports: vec![make_report(other, 1.0)],
+            interferences: vec![],
+            all_succeeded: true,
+        };
+        assert!(recovered(&rallied, &someone_else).is_none());
+
+        let came_back = FormationTickResult {
+            reports: vec![make_report(rallied_agent, 1.0)],
+            interferences: vec![],
+            all_succeeded: true,
+        };
+        assert!(matches!(
+            recovered(&rallied, &came_back),
+            Some(RallyResult::Recovered)
+        ));
+        assert!(recovered(&HashSet::new(), &came_back).is_none());
     }
 }

@@ -60,10 +60,19 @@ pub struct ExecuteCtx<'a> {
 }
 
 impl ExecuteCtx<'_> {
-    /// Manifest-declared hints for the task's action, looked up the same
-    /// way dispatch resolves the connector. `None` means the connector is
+    /// Declared hints for the task's action, looked up the same way
+    /// dispatch resolves the connector. `None` means the connector is
     /// not installed or does not declare the action — the caller treats
     /// an unknown action as destructive.
+    ///
+    /// AUTHORITATIVE SOURCE: `ConnectorHost::actions()`. It is what
+    /// `springtale_runtime::dispatch::step` reads when it builds the
+    /// `ActionHints` the sentinel classifies with, so the consensus vote
+    /// here and the sentinel verdict there must read the same list. This
+    /// used to read `manifest().actions` instead; a host whose two lists
+    /// disagree would have let a task be voted through as read-only and
+    /// then dispatched as a mutation (or the reverse). Any new hint
+    /// consumer reads `actions()` too.
     pub async fn action_hints_for(
         &self,
         task: &SubTask,
@@ -72,8 +81,7 @@ impl ExecuteCtx<'_> {
         let entry = registry.get(&task.target_connector.name)?;
         entry
             .host
-            .manifest()
-            .actions
+            .actions()
             .iter()
             .find(|decl| decl.name == task.action_name)
             .map(|decl| springtale_sentinel::ActionHints {

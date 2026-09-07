@@ -19,6 +19,8 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
+
+use crate::action_state::ActionState;
 use specta::Type;
 use tokio::sync::broadcast;
 
@@ -212,6 +214,16 @@ pub struct TickReport {
     pub intent_alignment: f32,
     /// Agents this action interfered with (Helldivers friendly fire).
     pub interference_with: Vec<AgentId>,
+    /// Lifecycle state the member's action reached this beat.
+    ///
+    /// The momentum step classifies on this, not on `intent_alignment`:
+    /// only a terminal state (`Success` / `Failure`) is work the beat
+    /// finished. A carried-over dispatch (`Requested`), a bare claim
+    /// (`Init`) and a cancelled action are idle for momentum however
+    /// well they align with the intent — otherwise a hung connector call
+    /// or an observe-autonomy member walks the formation to Fever with
+    /// nothing done.
+    pub state: ActionState,
 }
 
 /// The shared tick bus that all formation members synchronize to.
@@ -330,6 +342,7 @@ mod tests {
                 latency: Duration::from_millis(5),
                 intent_alignment: 0.95,
                 interference_with: vec![],
+                state: crate::action_state::ActionState::Success,
             })
             .await
             .expect("send report");
@@ -357,6 +370,7 @@ mod tests {
                 latency: Duration::from_millis(0),
                 intent_alignment: 0.5,
                 interference_with: vec![],
+                state: crate::action_state::ActionState::Success,
             })
             .await
             .expect("send");

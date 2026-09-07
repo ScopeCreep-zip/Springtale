@@ -140,6 +140,7 @@ mod tests {
             latency: Duration::from_millis(5),
             intent_alignment: 0.9,
             interference_with: vec![],
+            state: crate::action_state::ActionState::Success,
         }
     }
 

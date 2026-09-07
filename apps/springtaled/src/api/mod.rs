@@ -201,6 +201,11 @@ pub fn build_router(state: AppState) -> Router {
         )
         .route("/workspaces/scan", post(workspaces::scan))
         .route("/workspaces/onboard-url", post(workspaces::onboard_url))
+        // SSE response, but a bearer-authenticated POST like every
+        // other mutating route: it carries its connector config in a
+        // JSON body, so `EventSource` (GET-only, no headers) was never
+        // able to call it and it never needed a stream ticket.
+        .route("/workspaces/onboard", post(workspaces::onboard))
         .route("/sessions", get(sessions::list))
         .route(
             "/config/heartbeat",
@@ -378,11 +383,14 @@ pub fn build_router(state: AppState) -> Router {
     // in the query string instead of a bearer token. Read-only GETs, so
     // no CSRF layer. `/stream` multiplexes events/canvas/cooperation;
     // `/chat/stream` stays separate because it is per-session.
+    //
+    // Nothing that mutates state belongs here: a ticket is single-use,
+    // minted for a stream, and skips the CSRF/Origin layer. A streaming
+    // *response* is not a reason to move a route in — see
+    // `/workspaces/onboard`, which streams from the authenticated router.
     let streams = Router::new()
         .route("/stream", get(stream::stream))
         .route("/chat/stream", get(chat::stream))
-        // POST: the connector config rides in the body, never the URL.
-        .route("/workspaces/onboard", post(workspaces::onboard))
         .layer(middleware::from_fn_with_state(
             state.clone(),
             auth::require_stream_ticket,

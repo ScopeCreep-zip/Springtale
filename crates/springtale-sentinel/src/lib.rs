@@ -17,9 +17,11 @@ pub mod throttle_tier;
 pub mod toxic_pairs;
 pub mod verdict;
 
+// `approval::AutoAllowApprovalGate` is deliberately NOT re-exported: it
+// is `#[cfg(test)]`-only so no production caller of
+// `Sentinel::with_approval_gate` can disable the human approval gate.
 pub use approval::{
-    ApprovalGate, ApprovalRequest, AutoAllowApprovalGate, ChannelApprovalGate,
-    DefaultDenyApprovalGate, PendingApproval,
+    ApprovalGate, ApprovalRequest, ChannelApprovalGate, DefaultDenyApprovalGate, PendingApproval,
 };
 pub use config::SentinelConfig;
 pub use error::SentinelError;

@@ -38,15 +38,33 @@
 
 ## 2. Authentication
 
-Every route except `/health`, `/ready`, and `/ui` requires a bearer token. Webhook routes (`/webhook/{connector}/{trigger}`) also require the token — the connector then performs its own signature verification on the body (HMAC-SHA256 for GitHub, RSA for Kick, etc.) inside its `verify_webhook()` implementation.
+Every route except `/health`, `/ready`, `/openapi.json`, `POST /auth/login`, `POST /vault/unlock`, and `/ui` requires a bearer token. Webhook routes (`/webhook/{connector}/{trigger}`) also require the token — the connector then performs its own signature verification on the body (HMAC-SHA256 for GitHub, RSA for Kick, etc.) inside its `verify_webhook()` implementation.
 
-The token is derived from the vault passphrase:
+Bearer tokens are **issued, never derived**. `POST /auth/login` takes the
+vault passphrase, compares `HMAC-SHA256(passphrase, "springtale-api-token")`
+against the value the daemon computed at boot — in constant time
+(`subtle::ConstantTimeEq`) — and only on a match mints a token: 32 bytes
+(256 bits) straight from the OS CSPRNG, hex-encoded, with no structure at
+all. That passphrase-derived hash is the login **verifier** only; it is
+never accepted as a bearer.
 
-```
-token = hex(HMAC-SHA256(passphrase, "springtale-api-token"))
-```
+Two kinds of bearer exist, and `require_auth` accepts either:
 
-Verification uses constant-time comparison (`subtle::ConstantTimeEq`). There is no separate API key — rotating the token rotates the passphrase.
+| Kind | Minted by | Lifetime | Revoked by |
+|---|---|---|---|
+| **Session** | `POST /auth/login` | Idle + absolute timeouts from `bot:settings` (`session_idle_secs`, `session_absolute_secs`). Held in process memory only, so a daemon restart or a vault lock drops every one. | `POST /auth/logout` |
+| **Long-lived named** | `POST /auth/tokens` | Until revoked. Persisted in the `api_tokens` table. | `DELETE /auth/tokens/{id}` |
+
+Neither kind is ever stored in the clear: both live as `sha256(token)` —
+sessions in the in-memory map, long-lived tokens in `api_tokens`. The token
+string is returned exactly once, in the minting response, and nothing keeps
+it. A presented bearer is hex-decoded, hashed, and looked up (sessions
+first, then `api_tokens`) with a constant-time compare, so a hit and a miss
+cost the same work. A token that was never issued, one that expired, and
+one that was revoked are all the same answer: `401`.
+
+`POST /auth/login` is unauthenticated by definition, so it carries its own
+tight rate limit (5 req/s) on top of the global 100 req/s.
 
 Authenticated routes also go through a CSRF-protection middleware
 (`require_csrf_protection`) that rejects cross-origin requests with
@@ -54,7 +72,11 @@ unsafe methods. SSE readers are exempt because the browser `EventSource`
 cannot originate a state-changing request.
 
 ```bash
-# Typical client
+# Log in once, then use the minted token
+TOKEN=$(curl -sX POST http://127.0.0.1:8080/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{"passphrase":"..."}' | jq -r .token)
+
 curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/connectors
 ```
 
@@ -76,13 +98,16 @@ curl -H "Authorization: Bearer $TOKEN" http://127.0.0.1:8080/connectors
    Agents   Authors   Bot admin Sessions   Memory    Safety       Data
       ┌─────────┬──────────┬──────────┬──────────┬─────────────┐
       ▼         ▼          ▼          ▼          ▼             ▼
-   Send    Diagnostics  Fixes    Onboarding  Templates     Webhooks
-      ┌──────────────┬──────────────────┐
-      ▼              ▼                  ▼
-  Approvals     Chat (SSE)       Dashboard (SPA)
+   Send    Diagnostics  Fixes    Onboarding   Recipes      Webhooks
+      ┌──────────────┬──────────────────┬──────────────┬──────────┐
+      ▼              ▼                  ▼              ▼          ▼
+  Approvals     Chat (SSE)       Dashboard (SPA)     Auth       Vault
+                                       │
+                                       ▼
+                                      MCP
 ```
 
-*Fig. 3. Route groups at a glance. Public routes: health, ready, `/ui`, `/ui/*`. Everything else requires the bearer token.*
+*Fig. 3. Route groups at a glance. Public routes: `/health`, `/ready`, `/openapi.json`, `POST /auth/login`, `POST /vault/unlock`, `/ui`, `/ui/*`. Everything else requires the bearer token.*
 
 ### 3.1 Health
 
@@ -251,7 +276,7 @@ Author Ed25519 public keys used to verify signed manifests.
 |---|---|---|
 | POST | `/send` | Execute an `Action` directly against a connector. Capability-checked through the sentinel, same as rule-dispatched actions. No back door. |
 
-### 3.15 Diagnostics, Fixes, Onboarding, Templates, Recipes
+### 3.15 Diagnostics, Fixes, Onboarding, Recipes
 
 These routes back the **Doctor** and **Onboarding** flows in the desktop shell.
 
@@ -261,10 +286,8 @@ These routes back the **Doctor** and **Onboarding** flows in the desktop shell.
 | GET | `/fixes` | List available auto-repair suggestions bound to diagnostic ids |
 | GET | `/fixes/{id}` | Fetch a single fix with its proposed action |
 | POST | `/fixes/{id}/apply` | Apply a fix |
-| GET | `/onboarding/platforms` | List platforms that have onboarding templates (telegram, discord, github, etc.) |
-| POST | `/onboarding/{platform}` | Apply an onboarding template for the given platform |
-| GET | `/templates` | List rule / connector templates bundled with the daemon |
-| POST | `/templates/{name}` | Write a template into the current store |
+| GET | `/onboarding/platforms` | List the platform forms the first-run wizard knows. Collected at runtime from every registered connector factory that returns an `onboarding_form()` — currently **telegram, discord, slack, signal** |
+| POST | `/onboarding/{platform}` | Persist a completed answer set for that platform as a connector config |
 | GET | `/recipes` | List curated automation recipes (browseable cookbook surface) |
 | GET | `/recipes/categories` | Recipe categories |
 | GET | `/recipes/{id}` | One recipe by id |
@@ -333,6 +356,48 @@ surface through the §3.18 endpoints.
 |---|---|---|
 | POST | `/chat` | Inject a chat message. Body `{"text": "...", "session": "optional"}` (`session` defaults to `in-app`). Fire-and-forget — returns `202 Accepted` with `{"status":"queued","session":"..."}` once queued; `400` on empty text, `503` if the bot runtime is unavailable |
 | GET | `/chat/stream` | SSE stream of bot replies. Each event's data is `{"session": "...", "text": "..."}` |
+
+### 3.20 Authentication, sessions & tokens
+
+See §2 for the token model. `POST /auth/login` is public; everything else
+in this family requires an existing bearer.
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/auth/login` | — | Verify the vault passphrase and mint a session token. Body `{"passphrase": "..."}`; returns `{"token": "<hex>", "expires_in": <idle secs>}`. `401` on mismatch. Rate-limited to 5 req/s on top of the global limit |
+| POST | `/auth/logout` | ✓ | Drop the presented session. Returns `{"logged_out": true\|false}`. A long-lived token is not a session — revoke those with `DELETE /auth/tokens/{id}` |
+| POST | `/auth/tokens` | ✓ | Mint a long-lived named token. Body `{"name": "springtale-cli@laptop"}` (1–128 chars). Returns `{"id", "name", "token"}` — the token string appears here and nowhere else, ever |
+| GET | `/auth/tokens` | ✓ | List long-lived tokens: `id`, `name`, `created_at`, `last_used`. Metadata only — the hash never crosses the wire |
+| DELETE | `/auth/tokens/{id}` | ✓ | Revoke a long-lived token. Revocation is immediate: the next request carrying it fails its lookup |
+| POST | `/stream/ticket` | ✓ | One-time 30 s ticket for the SSE routes, bound to the presented bearer. Logging out or revoking that bearer invalidates every outstanding ticket |
+
+### 3.21 Vault lock & unlock
+
+While the vault is locked the daemon swaps in an outer router: `/health`,
+`/ready`, and the two vault routes always answer, and everything else is
+refused until the vault is opened.
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| POST | `/vault/unlock` | — | Open the vault. Body `{"passphrase": "..."}`. Deliberately unauthenticated: while locked there is no bearer that could be presented — sessions are dropped with the process state on lock, and a long-lived token can only be looked up against that same dropped state. `Vault::open` is the check: Argon2id over the wrong passphrase fails at AEAD decryption, with no comparison to shortcut. Rate-limited per minute so the KDF cannot be driven by a flood of guesses. `409` if already unlocked, `401` on failure |
+| POST | `/vault/lock` | ✓ | Lock the vault: signals the SSE streams, unwires the connector chat loops, pauses the scheduler, clears the session and stream-ticket maps, joins every background task, and zeroizes the vault key. Idempotent — locking an already-locked daemon is a `200`, so a panic-button UI never has to reason about current state. Served by the outer router, which has no `AppState`, so the bearer check is run by hand inside the handler rather than by `require_auth` |
+
+### 3.22 Model Context Protocol
+
+`springtaled` **is** the MCP server (Streamable HTTP transport). Tool calls
+dispatch through the same sentinel, approval gate, and executions recorder
+as a rule-dispatched action — there is no separate path.
+
+| Method | Path | Auth | Description |
+|---|---|---|---|
+| ANY | `/mcp` | ✓ | MCP Streamable HTTP endpoint |
+
+Two layers run in front of it, outside-in: an `Origin` check
+(`require_local_origin`) rejects any non-loopback origin per the MCP
+transports spec's DNS-rebinding requirement, then `require_auth` checks the
+bearer, and only then is any MCP framing parsed. A missing `Origin` header
+is accepted (non-browser clients do not send one); anything non-loopback is
+`403`. The `Mcp-Session-Id` header is never authentication.
 
 ---
 

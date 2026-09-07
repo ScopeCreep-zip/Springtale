@@ -41,13 +41,21 @@ members = [
   "connectors/connector-slack",
   "connectors/connector-signal",
   "connectors/connector-browser",
-  # connector-matrix: DEFERRED — upstream matrix-sdk-sqlite (v0.18.0 main)
-  # still declares rusqlite = "0.37.0" which carries CVE-2025-70873 (heap
-  # info disclosure). Our store crate is pinned to rusqlite 0.39 (patched);
+  # connector-matrix: NOT IN THE TREE. There is no
+  # `connectors/connector-matrix` directory — no crate, no src/, nothing to
+  # re-enable by uncommenting a line here.
+  #
+  # Why it was never landed: upstream matrix-sdk-sqlite (v0.18.0 main) still
+  # declares rusqlite = "0.37.0", which carries CVE-2025-70873 (heap info
+  # disclosure). Our store crate is pinned to rusqlite 0.39 (patched), and
   # downgrading would expose activist/survivor data to the heap leak.
   # Accountable tracking: `vex/connector-matrix-rusqlite-cve-2025-70873.json`
-  # (v2, last reviewed 2026-06-02, next_review 2026-09-01). The src/ tree
-  # is preserved so it compiles when upstream lands a rusqlite >= 0.39 bump.
+  # (v2, last reviewed 2026-06-02, next_review 2026-09-01).
+  #
+  # To bring Matrix support back, two things must happen, in order:
+  #   1. Upstream matrix-sdk-sqlite bumps to rusqlite >= 0.39.
+  #   2. Someone writes `connectors/connector-matrix` from scratch against
+  #      the current `Connector` trait, then adds it to `members` above.
   # Apps
   "apps/springtaled",
   "apps/springtale-cli",

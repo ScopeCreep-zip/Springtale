@@ -4449,7 +4449,8 @@
         "tags": [
           "workspaces"
         ],
-        "summary": "POST /workspaces/onboard?ticket=.. — SSE of `chat-discovered`\nframes (same payload as the desktop `ChatDiscovered` event) until\nthe first match, the 60 s window, or client disconnect.",
+        "summary": "POST /workspaces/onboard — SSE of `chat-discovered` frames (same\npayload as the desktop `ChatDiscovered` event) until the first\nmatch, the 60 s window, or client disconnect.",
+        "description": "This mutates (it deploys a probe through the connector), so it sits\nin the bearer + CSRF `authenticated` router, not in the stream-ticket\nrouter. The ticket exists for `EventSource`, which cannot send an\n`Authorization` header — but `EventSource` only issues GETs and this\nroute needs its connector config in a POST body, so its client was\nalways `fetch`, which can send the header. Streaming the response is\nunaffected: axum's `Sse` does not care how the request authenticated.",
         "operationId": "workspaces_onboard",
         "requestBody": {
           "content": {

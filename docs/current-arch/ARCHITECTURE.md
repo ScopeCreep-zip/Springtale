@@ -2285,7 +2285,7 @@ lifecycle, rule evaluation, scheduler, and the management HTTP API.
 
 | Concern | Control |
 |---|---|
-| API authentication bypass | All routes except `/health` and `/ready` require HMAC bearer token. Token derived from vault passphrase hash — no separate API key to manage. |
+| API authentication bypass | All routes except `/health`, `/ready`, `/openapi.json`, `POST /auth/login` and `POST /vault/unlock` require a bearer the daemon *issued* — a session from `POST /auth/login` or a named long-lived token from `POST /auth/tokens`. Both are stored only as `sha256(token)` and matched constant-time (`subtle`). The passphrase-derived hash is the login verifier and is never accepted as a bearer. |
 | Webhook injection (unauthenticated) | `/webhook/{connector}/{trigger}` verifies HMAC-SHA256 signature from header before processing. Rejects if connector doesn't declare webhook support in manifest. |
 | Startup race conditions | Strict ordered boot (1-10 above). Each step must succeed before the next starts. API is the LAST thing to start — no requests accepted during boot. |
 | Management API DoS | `tower-http::limit` rate limiting: 100 req/s default. Request body size limit: 1 MiB. Timeout: 30s per request. |
@@ -2432,7 +2432,7 @@ Shares the SolidJS component library with the Tauri frontend but runs
 standalone in any browser — for headless/remote server management.
 - Connector status, rule management, event log viewer
 - Heartbeat schedule configuration, session viewer
-- No sensitive operations without HMAC bearer auth
+- No sensitive operations without an issued bearer token (login session or named long-lived token)
 - Replaces OpenClaw's Gateway Control UI on :18789
 - Bind to `127.0.0.1` by default — never `0.0.0.0` (OpenClaw's default)
 
@@ -2469,8 +2469,8 @@ standalone in any browser — for headless/remote server management.
 
 | Concern | Control |
 |---|---|
-| Session fixation | Stateless: HMAC bearer token per request. No server-side sessions. No cookies. Token in `Authorization` header only. |
-| CSRF | No cookies = no CSRF risk. All mutation via POST/PUT/DELETE with bearer token. |
+| Session fixation | Sessions are server-side but never client-fixable: the token is minted by the daemon from the OS CSPRNG at `POST /auth/login`, regenerated on every login, never accepted from the client. Held only as `sha256(token)` in process memory, expired by idle + absolute timeouts, dropped on vault lock or restart. No cookies; token in the `Authorization` header only. |
+| CSRF | Not assumed away by the absence of cookies: a malicious page can POST to `127.0.0.1` regardless (Transmission CVE-2018-5702, Zoom 2019). `require_csrf_protection` rejects mutating requests carrying a non-loopback `Origin` or `Sec-Fetch-Site: cross-site`, and `Access-Control-Allow-Origin` is never sent, so a cross-origin preflight cannot succeed. |
 | XSS | SolidJS auto-escapes all rendered content. No `innerHTML`. CSP enforced by `springtaled` response headers. |
 | Clickjacking | `X-Frame-Options: DENY` and `frame-ancestors 'none'` in CSP. |
 | URL parameter PII | No PII in URL paths or query parameters. Rule IDs and connector names are non-sensitive identifiers. |

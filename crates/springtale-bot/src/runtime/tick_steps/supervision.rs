@@ -86,12 +86,8 @@ fn execute(
             );
         }
         SupervisionAction::RetryWithRally { agent } => {
-            let result = cascade::attempt_self_rally(
-                &formation.rally,
-                &formation.attention_broker,
-                &mut formation.momentum,
-                agent,
-            );
+            let result =
+                cascade::attempt_self_rally(&formation.rally, &formation.attention_broker, agent);
             tracing::info!(
                 formation = formation_id,
                 agent = %agent.0,

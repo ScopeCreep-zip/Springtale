@@ -41,15 +41,30 @@ fn apply(awareness: &mut LocalAwareness, msg: StateMessage) {
         // a thought bubble is private to the speaker and the observer.
         StateMessage::Utterance(u) if u.carrier.heard_by_peers() => {
             let Some(agent) = u.agent else { return };
-            if let Some(n) = awareness.neighbor_states.get_mut(&agent) {
-                match u.utterance {
-                    UtteranceKind::Failed => n.last_action_success = false,
-                    UtteranceKind::Working
-                    | UtteranceKind::Firing
-                    | UtteranceKind::Claimed { .. } => n.last_action_success = true,
-                    UtteranceKind::Down => n.liveness = Liveness::Down { since_tick: u.seq },
-                    _ => {}
+            let Some(n) = awareness.neighbor_states.get_mut(&agent) else {
+                return;
+            };
+            // What was heard is also remembered on `heard_failures`: the
+            // beat's gossip merge republishes every neighbor snapshot and
+            // would otherwise overwrite this fold before anything acted
+            // on it (see `LocalAwareness::merge_neighbor`).
+            let mut heard: Option<bool> = None;
+            match u.utterance {
+                UtteranceKind::Failed => {
+                    n.last_action_success = false;
+                    heard = Some(false);
                 }
+                UtteranceKind::Working | UtteranceKind::Firing | UtteranceKind::Claimed { .. } => {
+                    n.last_action_success = true;
+                    heard = Some(true);
+                }
+                UtteranceKind::Down => n.liveness = Liveness::Down { since_tick: u.seq },
+                _ => {}
+            }
+            match heard {
+                Some(false) => awareness.heard_failure(agent),
+                Some(true) => awareness.heard_progress(&agent),
+                None => {}
             }
         }
         _ => {}
@@ -164,6 +179,58 @@ mod tests {
             awareness.neighbor_states[&a].liveness,
             Liveness::Down { since_tick } if since_tick == crate::tick::TickId(7)
         ));
+    }
+
+    /// Fix 5 — a heard failure survives the tick.
+    ///
+    /// The fold used to be overwritten by the same beat's gossip merge,
+    /// which republishes every neighbor snapshot and reports
+    /// `last_action_success: true` for a peer that filed no tick report.
+    /// The heard failure now wins that merge, and it moves morale — a
+    /// real consumer, which cascade detection reads.
+    #[test]
+    fn test_heard_failure_survives_the_gossip_merge_and_moves_morale() {
+        let a = AgentId(uuid::Uuid::new_v4());
+        let mut awareness = awareness_with_neighbor(a);
+        let calm = awareness.morale_target();
+
+        let mut bus = VecBus {
+            msgs: vec![utterance(
+                a,
+                UtteranceKind::Failed,
+                crate::utterance::Carrier::Burst,
+            )]
+            .into(),
+        };
+        run(&mut bus, &mut awareness, MomentumTier::Warming);
+        assert!(!awareness.neighbor_states[&a].last_action_success);
+        assert!(awareness.heard_failures.contains(&a));
+
+        // The beat's gossip merge: `a` filed no report, so gossip says it
+        // succeeded. What this agent heard wins.
+        let mut fresh = awareness.neighbor_states[&a].clone();
+        fresh.last_action_success = true;
+        fresh.last_updated = Instant::now();
+        awareness.merge_neighbor(fresh.clone());
+        assert!(!awareness.neighbor_states[&a].last_action_success);
+        assert!(awareness.morale_target() < calm);
+
+        // Consumed: the next beat's gossip is authoritative again.
+        awareness.merge_neighbor(fresh);
+        assert!(awareness.neighbor_states[&a].last_action_success);
+
+        // And hearing the peer work clears the memory outright.
+        awareness.heard_failure(a);
+        let mut bus = VecBus {
+            msgs: vec![utterance(
+                a,
+                UtteranceKind::Firing,
+                crate::utterance::Carrier::Burst,
+            )]
+            .into(),
+        };
+        run(&mut bus, &mut awareness, MomentumTier::Warming);
+        assert!(awareness.heard_failures.is_empty());
     }
 
     #[test]

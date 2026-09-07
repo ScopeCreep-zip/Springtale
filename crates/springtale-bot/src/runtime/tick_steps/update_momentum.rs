@@ -3,9 +3,9 @@
 //! Each tick is classified into exactly one `MomentumEvent` (see
 //! [`classify`]):
 //!   * `TickInterference` — interference was detected (§13).
-//!   * `TickFailure` — a member acted and misaligned (alignment <= 0.5).
-//!   * `TickSuccess` — at least one member acted and nothing failed.
-//!   * `TickIdle` — nobody acted. Not a success, not a failure. Per the
+//!   * `TickFailure` — a member finished work that failed or misaligned.
+//!   * `TickSuccess` — at least one member finished work and nothing failed.
+//!   * `TickIdle` — nobody finished work. Not a success, not a failure. Per the
 //!     Microsoft AGT trust calibration, idle time cannot raise scores;
 //!     only the decay clock keeps running.
 //!
@@ -16,6 +16,8 @@
 //! (§14) executed in `transformation::run`.
 
 use crate::cooperation::formation::Formation;
+use springtale_cooperation::action_state::ActionState;
+use springtale_cooperation::cadence::TickReport;
 use springtale_cooperation::momentum::{MomentumEvent, TickCounts};
 use springtale_cooperation::tick_processor::FormationTickResult;
 use springtale_cooperation::utterance::{UtteranceKind, utter};
@@ -24,13 +26,32 @@ use springtale_cooperation::utterance::{UtteranceKind, utter};
 pub const LISTENING_AFTER_TICKS: u32 = 5;
 use std::collections::HashSet;
 
+/// Whether this report is work the beat actually finished.
+///
+/// The report's [`ActionState`] is the source, not `action_taken` and not
+/// `intent_alignment`. Several non-work paths surface a descriptor with a
+/// high alignment — a dispatch carried past its beat reports `Requested`
+/// at 0.8, a continued active task reports 1.0 while the task is merely
+/// claimed, a sacrifice yield reports 0.9, and the observe, suggest and
+/// no-task paths report the step's surface reaction at 1.0. None of those
+/// finished anything, so none of them may move momentum: a hung connector
+/// call or an observe-autonomy member must not walk a formation to Fever.
+fn completed_work(report: &TickReport) -> bool {
+    report.state.is_terminal()
+}
+
+/// Whether the finished work counted as a success: the action reached
+/// `Success` *and* aligned with the formation's intent.
+fn succeeded(report: &TickReport) -> bool {
+    matches!(report.state, ActionState::Success) && report.intent_alignment > 0.5
+}
+
 /// Classify a tick result into the single `MomentumEvent` it represents.
 ///
-/// A report with `action_taken: None` is idle regardless of its alignment
-/// (the executor reports alignment 1.0 for "nothing to do", which is not
-/// a success). Only reports that actually acted can succeed or fail.
-/// Success and failure carry the tick's [`TickCounts`] for the momentum
-/// window.
+/// A report that did not reach a terminal action state is idle regardless
+/// of its alignment — waiting and claimed-only are not success. Only
+/// reports that finished work can succeed or fail. Success and failure
+/// carry the tick's [`TickCounts`] for the momentum window.
 pub fn classify(result: &FormationTickResult) -> MomentumEvent {
     let counts = count(result);
     let failed = counts.successes < counts.actions;
@@ -60,13 +81,16 @@ fn count(result: &FormationTickResult) -> TickCounts {
     let mut seen: HashSet<(&str, Option<&str>, u64)> = HashSet::new();
     let mut counts = TickCounts::default();
     for report in &result.reports {
+        if !completed_work(report) {
+            continue;
+        }
+        counts.actions = counts.actions.saturating_add(1);
+        if succeeded(report) {
+            counts.successes = counts.successes.saturating_add(1);
+        }
         let Some(action) = report.action_taken.as_ref() else {
             continue;
         };
-        counts.actions = counts.actions.saturating_add(1);
-        if report.intent_alignment > 0.5 {
-            counts.successes = counts.successes.saturating_add(1);
-        }
         let key = (
             action.kind.as_str(),
             action.target.as_deref(),
@@ -91,8 +115,9 @@ pub fn run(
     formation.momentum.apply_event(&classify(result));
 
     // Step 4b — per-member consecutive failures for role transformation
-    // (§14). Idle and aligned reports reset the counter; a member that
-    // acted and misaligned increments it.
+    // (§14). Idle reports and finished-and-aligned work reset the counter;
+    // only a member whose work finished badly increments it. A member
+    // still waiting on a dispatch is neither.
     for report in &result.reports {
         let mut now_listening = false;
         if let Some(member) = formation.member_mut(&report.agent_id) {
@@ -102,7 +127,7 @@ pub fn run(
             } else {
                 member.consecutive_idle_ticks = 0;
             }
-            if report.action_taken.is_none() || report.intent_alignment > 0.5 {
+            if !completed_work(report) || succeeded(report) {
                 member.consecutive_failures = 0;
             } else {
                 member.consecutive_failures += 1;
@@ -121,11 +146,13 @@ pub fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::cooperation::dispatch_outcome::REQUESTED_ALIGNMENT;
     use springtale_cooperation::cadence::{ActionDescriptor, AgentId, TickReport};
+    use springtale_cooperation::momentum::{MomentumState, MomentumTier};
     use springtale_cooperation::tick::TickId;
     use std::time::Duration;
 
-    fn report(action: Option<&str>, alignment: f32) -> TickReport {
+    fn stated(action: Option<&str>, alignment: f32, state: ActionState) -> TickReport {
         TickReport {
             agent_id: AgentId::new(),
             tick_sequence: TickId(1),
@@ -137,7 +164,17 @@ mod tests {
             latency: Duration::from_millis(1),
             intent_alignment: alignment,
             interference_with: vec![],
+            state,
         }
+    }
+
+    /// A report for work that finished this beat (or for an idle member).
+    fn report(action: Option<&str>, alignment: f32) -> TickReport {
+        let state = match action {
+            Some(_) => ActionState::Success,
+            None => ActionState::Init,
+        };
+        stated(action, alignment, state)
     }
 
     fn tick(reports: Vec<TickReport>) -> FormationTickResult {
@@ -189,5 +226,39 @@ mod tests {
             classify(&result),
             MomentumEvent::TickFailure { counts } if counts.actions == 2 && counts.successes == 1
         ));
+    }
+
+    /// Fix 1 — a hung dispatch does not promote.
+    ///
+    /// A connector call carried past its beat reports `Requested` with a
+    /// descriptor and alignment 0.8. Under the old alignment-only rule
+    /// that was a success every beat, so a formation whose members were
+    /// all stuck walked itself to Fever. It is idle, and idle never
+    /// promotes.
+    #[test]
+    fn test_hung_dispatch_is_idle_and_never_promotes() {
+        let hung = || stated(Some("work"), REQUESTED_ALIGNMENT, ActionState::Requested);
+        let result = tick(vec![hung(), hung()]);
+        assert!(matches!(classify(&result), MomentumEvent::TickIdle));
+
+        let mut momentum = MomentumState::default();
+        for _ in 0..50 {
+            momentum.apply_event(&classify(&result));
+        }
+        assert_eq!(momentum.tier, MomentumTier::Cold);
+        assert_eq!(momentum.consecutive_successes, 0);
+    }
+
+    /// A claim, an observe-autonomy surface reaction and a sacrifice
+    /// yield all report a descriptor at high alignment without finishing
+    /// anything. None of them is a success.
+    #[test]
+    fn test_claimed_and_observed_reports_are_idle() {
+        let result = tick(vec![
+            stated(Some("claimed"), 1.0, ActionState::Init),
+            stated(Some("sacrifice_yield"), 0.9, ActionState::Init),
+            stated(Some("cancelled"), 1.0, ActionState::Cancelled),
+        ]);
+        assert!(matches!(classify(&result), MomentumEvent::TickIdle));
     }
 }

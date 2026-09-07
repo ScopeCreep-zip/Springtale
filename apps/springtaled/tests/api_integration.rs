@@ -630,6 +630,53 @@ async fn test_stream_bearer_in_query_returns_401() {
     assert_eq!(status, StatusCode::UNAUTHORIZED);
 }
 
+/// `POST /workspaces/onboard` streams SSE but mutates (it deploys a
+/// probe through the connector), so it must carry the same bearer as
+/// every other mutating route — not a single-use stream ticket.
+#[tokio::test]
+async fn test_workspaces_onboard_requires_bearer() {
+    let body = serde_json::json!({
+        "connector_name": "connector-telegram",
+        "config": {},
+    })
+    .to_string();
+
+    // No credential at all.
+    let (router, _token) = build_test_app(true);
+    let req = Request::post("/workspaces/onboard")
+        .header("content-type", "application/json")
+        .body(Body::from(body.clone()))
+        .unwrap();
+    let (status, _) = send(router, req).await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "onboard must reject an unauthenticated request"
+    );
+
+    // A stream ticket is not a credential for a mutating route: it is
+    // minted for a stream and skips the CSRF/Origin layer.
+    let (router, token) = build_test_app(true);
+    let ticket_req = Request::post("/stream/ticket")
+        .header("authorization", format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap();
+    let (ticket_status, ticket_json) = send(router.clone(), ticket_req).await;
+    assert_eq!(ticket_status, StatusCode::OK);
+    let ticket = ticket_json["ticket"].as_str().unwrap().to_owned();
+
+    let req = Request::post(format!("/workspaces/onboard?ticket={ticket}"))
+        .header("content-type", "application/json")
+        .body(Body::from(body))
+        .unwrap();
+    let (status, _) = send(router, req).await;
+    assert_eq!(
+        status,
+        StatusCode::UNAUTHORIZED,
+        "a stream ticket must not authenticate onboard"
+    );
+}
+
 #[tokio::test]
 async fn test_stream_ticket_requires_bearer() {
     let (router, _token) = build_test_app(true);

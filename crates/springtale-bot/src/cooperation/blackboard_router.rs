@@ -326,6 +326,7 @@ mod tests {
             latency: std::time::Duration::from_millis(0),
             intent_alignment: 0.95,
             interference_with: vec![],
+            state: springtale_cooperation::action_state::ActionState::Success,
         }]);
 
         let pick = router

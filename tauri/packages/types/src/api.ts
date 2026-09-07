@@ -2241,9 +2241,16 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * POST /workspaces/onboard?ticket=.. — SSE of `chat-discovered`
-         *     frames (same payload as the desktop `ChatDiscovered` event) until
-         *     the first match, the 60 s window, or client disconnect.
+         * POST /workspaces/onboard — SSE of `chat-discovered` frames (same
+         *     payload as the desktop `ChatDiscovered` event) until the first
+         *     match, the 60 s window, or client disconnect.
+         * @description This mutates (it deploys a probe through the connector), so it sits
+         *     in the bearer + CSRF `authenticated` router, not in the stream-ticket
+         *     router. The ticket exists for `EventSource`, which cannot send an
+         *     `Authorization` header — but `EventSource` only issues GETs and this
+         *     route needs its connector config in a POST body, so its client was
+         *     always `fetch`, which can send the header. Streaming the response is
+         *     unaffected: axum's `Sse` does not care how the request authenticated.
          */
         post: operations["workspaces_onboard"];
         delete?: never;
