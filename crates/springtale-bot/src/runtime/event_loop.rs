@@ -28,6 +28,7 @@ pub async fn run_event_loop(bot: &mut Bot) {
             adapter: bot.ai_adapter.clone(),
             response_tx: bot.response_tx.clone(),
             policy: bot.settings.load().tool_policy.clone(),
+            runtime: bot.runtime.clone(),
         };
         tokio::spawn(crate::tool_runner::resume_orphaned_loops(deps));
     }

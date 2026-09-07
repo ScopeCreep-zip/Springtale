@@ -166,6 +166,12 @@ pub fn find_verb(name: &str) -> Option<&'static PlatformVerb> {
     VERBS.iter().find(|v| v.name == name)
 }
 
+/// Look one verb up by the segment an AI tool name carries
+/// (`formation_pause` → `formation.pause`).
+pub fn find_verb_by_tool_segment(segment: &str) -> Option<&'static PlatformVerb> {
+    VERBS.iter().find(|v| v.tool_segment() == segment)
+}
+
 /// The distinct chat command names (`formation`, `approvals`, …).
 pub fn verb_commands() -> Vec<&'static str> {
     let mut out: Vec<&'static str> = Vec::new();

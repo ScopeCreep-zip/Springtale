@@ -478,6 +478,9 @@ async fn ai_fallback(
         registry: &bot.registry,
         bridge: &bot.capability_bridge,
         sentinel: &bot.sentinel,
+        // Plan 5.4: the platform verbs are tools too, when there is a
+        // runtime to run them against.
+        runtime: bot.runtime.as_ref(),
     };
     let tool_call = crate::tool_runner::ToolRunnerCall {
         options,
