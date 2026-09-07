@@ -10,11 +10,9 @@
 #
 # Columns: <route>  <cli|provider|cli provider>
 #
-# Needs a product decision, not plumbing: `springtale author` writes the
-# trusted-author registry through the local store so `author add --self`
-# can register a signing identity before a daemon exists (the first-run
-# connector-signing path). Routing it through `/authors` would make
-# first-run signing require a running daemon; leaving it is a second
-# writer against the registry the API owns. Decide which, then close it.
-/authors                         cli
-/authors/{}                      cli
+# The ledger is EMPTY. Every route the daemon serves has a
+# command-line verb and a web provider method, or an entry in
+# `surface-not-surfaced.txt` saying why it never will.
+#
+# Keep it that way: a new route with no surface is a gap, and a gap
+# recorded here is a promise to close it, not permission to leave it.

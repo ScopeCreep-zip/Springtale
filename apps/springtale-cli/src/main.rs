@@ -118,7 +118,7 @@ async fn main() -> Result<()> {
                 commands::bot::memory(cli.json).await?;
             }
             BotAction::PairInit => {
-                commands::bot::pair_init(&pass_opts, cli.json).await?;
+                commands::bot::pair_init(cli.json).await?;
             }
             BotAction::PanicUnpair => {
                 commands::bot::panic_unpair(&pass_opts, cli.json).await?;

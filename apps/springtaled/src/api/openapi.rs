@@ -33,6 +33,7 @@ use super::*;
         bot::formations,
         bot::get_settings,
         bot::memory,
+        bot::pair_init,
         bot::put_settings,
         bot::status,
         canvas::get_canvas,

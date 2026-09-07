@@ -1,22 +1,31 @@
 //! `springtale author` — the trusted-author registry that connector
 //! manifest signatures are verified against.
 //!
-//! Entries are stored as `trusted-author:{name}` → `{"pubkey":"<hex>"}`,
-//! byte for byte what `POST /authors/{name}` in springtaled writes, so
-//! the CLI and the API share one registry.
+//! Deliberately offline (plan 2.2's offline set, alongside `init` and
+//! `vault`): `author add --self` registers this instance's signing
+//! identity, and that has to be possible on first run, before there is a
+//! daemon to ask. Requiring `springtale server start` to register the
+//! key that signs your own connectors would put the first-run path
+//! behind the thing it precedes.
+//!
+//! That leaves one hazard — two writers against one registry — and it is
+//! closed by both surfaces going through the same code: every read,
+//! write and validation here is
+//! [`springtale_runtime::operations::authors`], byte for byte the
+//! functions `GET /authors` and `POST /authors/{name}` call, against the
+//! same `trusted-author:` rows in the same store. The daemon does not
+//! own a parallel copy; there is one registry and one implementation of
+//! it, reached from a socket or from a terminal.
 
 use anyhow::{Context, Result};
 use tabled::{Table, Tabled};
 
 use springtale_crypto::identity::keypair::Keypair;
-use springtale_store::StorageBackend;
+use springtale_runtime::operations::authors;
 use springtale_store::backend::sqlite::SqliteBackend;
 
 use crate::cli::AuthorAction;
 use crate::output;
-
-/// Config-store key prefix shared with `springtaled`'s `/authors` API.
-const TRUSTED_AUTHOR_PREFIX: &str = "trusted-author:";
 
 /// Row type for the author list table.
 #[derive(Tabled)]
@@ -47,20 +56,13 @@ pub async fn run(action: AuthorAction, store: &SqliteBackend, json: bool) -> Res
                 (name, pubkey)
             };
 
-            // Same validation as the API: hex-encoded 32-byte Ed25519 key.
-            let pubkey_bytes = hex::decode(&pubkey_hex).context("pubkey is not valid hex")?;
-            if pubkey_bytes.len() != 32 {
-                anyhow::bail!("pubkey must be a 32-byte Ed25519 public key");
-            }
-
-            let key = format!("{TRUSTED_AUTHOR_PREFIX}{name}");
-            let value = serde_json::json!({ "pubkey": pubkey_hex }).to_string();
-            store
-                .set_config(&key, &value)
+            // Hex and 32-byte checks live in the operation, so the
+            // terminal cannot store a key the API would have refused.
+            let author = authors::add(store, &name, &pubkey_hex)
                 .await
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-            let added = serde_json::json!({ "name": name, "pubkey": pubkey_hex });
+            let added = serde_json::json!({ "name": author.name, "pubkey": author.pubkey });
             output::emit(json, &added, |v| {
                 format!(
                     "Trusted author added: {}\n  pubkey: {}",
@@ -70,30 +72,17 @@ pub async fn run(action: AuthorAction, store: &SqliteBackend, json: bool) -> Res
             })?;
         }
         AuthorAction::List => {
-            let configs = store
-                .list_config()
+            let authors = authors::list(store)
                 .await
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
-            let rows: Vec<AuthorTableRow> = configs
-                .into_iter()
-                .filter_map(|(key, value)| {
-                    let name = key.strip_prefix(TRUSTED_AUTHOR_PREFIX)?;
-                    let data: serde_json::Value = serde_json::from_str(&value).ok()?;
-                    Some(AuthorTableRow {
-                        name: name.to_owned(),
-                        pubkey: data
-                            .get("pubkey")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_owned(),
-                    })
+            let rows: Vec<AuthorTableRow> = authors
+                .iter()
+                .map(|a| AuthorTableRow {
+                    name: a.name.clone(),
+                    pubkey: a.pubkey.clone(),
                 })
                 .collect();
 
-            let authors: Vec<serde_json::Value> = rows
-                .iter()
-                .map(|r| serde_json::json!({ "name": r.name, "pubkey": r.pubkey }))
-                .collect();
             output::emit(json, &authors, |_| {
                 if rows.is_empty() {
                     "No trusted authors.".to_owned()
@@ -103,9 +92,7 @@ pub async fn run(action: AuthorAction, store: &SqliteBackend, json: bool) -> Res
             })?;
         }
         AuthorAction::Remove { name } => {
-            let key = format!("{TRUSTED_AUTHOR_PREFIX}{name}");
-            store
-                .delete_config(&key)
+            authors::remove(store, &name)
                 .await
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
             let removed = serde_json::json!({ "name": name, "removed": true });
