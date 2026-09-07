@@ -519,11 +519,14 @@ where
 
 /// POST /vault/unlock — public, rate-limited.
 ///
-/// Deliberately unauthenticated: the API token is derived from the
-/// passphrase, so there is no credential to present while locked. The
-/// passphrase itself is the credential, and `Vault::open` is the check
-/// — Argon2id over the wrong passphrase fails at AEAD decryption, with
-/// no comparison this code could shortcut.
+/// Deliberately unauthenticated: while the vault is locked there is no
+/// bearer that could be presented. Bearers are *issued*, never derived
+/// from the passphrase (plan 6.6) — a session comes from
+/// `POST /auth/login` and lives in the process state that locking drops,
+/// and a long-lived token can only be looked up against that same
+/// dropped state. So the passphrase itself is the credential here, and
+/// `Vault::open` is the check — Argon2id over the wrong passphrase fails
+/// at AEAD decryption, with no comparison this code could shortcut.
 async fn unlock(State(guard): State<RuntimeGuard>, Json(body): Json<UnlockRequest>) -> Response {
     if !guard.is_locked() {
         return (

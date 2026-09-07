@@ -26,7 +26,6 @@ read first.
 ├── springtale.db-wal      ← WAL file (transient, will be empty after clean shutdown)
 ├── springtale.db-shm      ← shared-memory file (transient)
 ├── vault.bin              ← AEAD-encrypted vault (constant 131,152 bytes; two regions)
-├── api_token              ← HMAC bearer token for the management API
 ├── connectors/            ← installed connector binaries (WASM) + manifests
 │   └── manifest_*.toml
 └── audit.log              ← rotating audit log (also mirrored to audit_trail table)
