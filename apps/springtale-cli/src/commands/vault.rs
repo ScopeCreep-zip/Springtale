@@ -3,7 +3,28 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 
+use crate::client::Client;
 use crate::output;
+
+/// `springtale vault unlock` — hand a locked daemon its passphrase.
+///
+/// While locked, springtaled has dropped the whole live world and serves
+/// only `/health`, `/ready` and `POST /vault/unlock`; the dashboard SPA
+/// cannot even load, so the terminal is the surface that reaches it. The
+/// passphrase comes from the TTY: it is a credential, not an argument,
+/// and must not land in shell history or `ps`.
+pub async fn unlock(json_out: bool) -> Result<()> {
+    let passphrase = rpassword::read_password_from_tty(Some("Vault passphrase: "))
+        .context("failed to read passphrase")?;
+    let client = Client::from_config()?;
+    let body: serde_json::Value = client
+        .post(
+            "/vault/unlock",
+            &serde_json::json!({ "passphrase": passphrase }),
+        )
+        .await?;
+    output::emit(json_out, &body, |_| "Vault unlocked.".to_owned())
+}
 
 /// Set up a duress passphrase for an existing vault.
 ///

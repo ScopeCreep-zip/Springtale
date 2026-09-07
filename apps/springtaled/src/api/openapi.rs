@@ -99,14 +99,17 @@ use super::*;
         formations::update_intent,
         health::health,
         health::ready,
+        lock::unlock,
         login::create_token,
         login::delete_token,
         login::list_tokens,
         login::login,
         login::logout,
+        mcp::router,
         memory::audit_memory,
         memory::compact_memory,
         onboarding::apply,
+        openapi::serve,
         onboarding::list,
         recipes::apply,
         recipes::delete_user,
@@ -161,6 +164,7 @@ use super::*;
         config_api::ConfigureAiBody,
         data::PurgeBody,
         executions::VacuumResponse,
+        lock::UnlockRequest,
         login::CreateTokenRequest,
         login::LoginRequest,
         onboarding::ApplyRequest,
@@ -260,8 +264,10 @@ use super::*;
         (name = "formations"),
         (name = "health"),
         (name = "login"),
+        (name = "mcp"),
         (name = "memory"),
         (name = "onboarding"),
+        (name = "openapi"),
         (name = "recipes"),
         (name = "rules"),
         (name = "safety"),
@@ -269,6 +275,7 @@ use super::*;
         (name = "sessions"),
         (name = "stream"),
         (name = "utterances"),
+        (name = "vault"),
         (name = "webhooks"),
         (name = "workspaces")
 )
@@ -280,6 +287,13 @@ pub struct ApiDoc;
 /// Unauthenticated on purpose: it is a schema, not data. Nothing in it
 /// is a secret, and the CLI, the two front ends and CI all read it
 /// before they hold a token.
+#[utoipa::path(
+    get, operation_id = "openapi_serve",
+    path = "/openapi.json",
+    tag = "openapi",
+    security(()),
+    responses((status = 200, description = "The OpenAPI 3.1 document this daemon is described by", body = Object))
+)]
 pub async fn serve() -> Json<utoipa::openapi::OpenApi> {
     Json(ApiDoc::openapi())
 }

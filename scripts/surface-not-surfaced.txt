@@ -12,6 +12,13 @@
 /ui                              cli provider   # static SPA assets the browser fetches; no surface calls them
 /ui/{}                           cli provider   # same, per-asset
 #
+# ── Not API: the contract, and a protocol other tools speak ────────
+/openapi.json                    cli provider   # the contract itself; build tooling and CI read it (`springtaled --dump-openapi`), no user surface does
+/mcp                             provider       # MCP Streamable HTTP endpoint; `springtale mcp serve` bridges stdio clients to it, the dashboard is not an MCP client
+#
+# ── Reachable only while the daemon is locked ──────────────────────
+/vault/unlock                    provider       # while locked the daemon serves /health, /ready and this route only, so the dashboard SPA cannot load to call it; `springtale vault unlock` and the desktop shell (Tauri `unlock_vault`) are the unlock surfaces
+#
 # ── Not API: spoken by third parties, never by a surface ───────────
 /webhook/{}/{}                   cli provider   # inbound connector callback; the platform posts here, no user surface does
 #

@@ -98,6 +98,9 @@ async fn main() -> Result<()> {
                 let vault_path = springtale_store::paths::default_vault_path();
                 commands::vault::duress_setup(&vault_path, cli.json)?;
             }
+            VaultAction::Unlock => {
+                commands::vault::unlock(cli.json).await?;
+            }
         },
         Command::Crypto { action } => match action {
             CryptoAction::RotateVaultKey => {
