@@ -396,14 +396,39 @@ pub(super) async fn handle_incoming_message(
 /// Returns `Some(response)` if AI is available and responds successfully.
 /// Returns `None` if AI is unavailable, disabled, or errors — caller
 /// should fall back to the static "Unknown command" suggestion.
+/// The AI adapter chat should use right now.
+///
+/// `Bot::ai_adapter` is the adapter the bot was BUILT with. When a
+/// runtime is wired, `RuntimeState::ai_adapter` is the swappable handle
+/// every other dispatch path reads, and changing the model swaps it in
+/// place. Chat reads the same handle so a model change lands on the
+/// next message instead of the next unlock.
+fn live_ai_adapter(bot: &Bot) -> std::sync::Arc<dyn springtale_ai::AiAdapter> {
+    match &bot.runtime {
+        Some(rt) => {
+            let guard = rt.ai_adapter.load();
+            (**guard).clone()
+        }
+        None => bot.ai_adapter.clone(),
+    }
+}
+
 async fn ai_fallback(
     bot: &mut Bot,
     session_key: &crate::state::session::SessionKey,
     user_text: &str,
     source_connector: &str,
 ) -> Option<String> {
+    // The adapter is hot-swapped through `RuntimeState::ai_adapter`
+    // when the model changes (`operations::config`), so read the LIVE
+    // handle rather than the snapshot the bot was built with —
+    // otherwise a model change reaches rule dispatch (which goes
+    // through the bridge's handle) but not chat, until a lock and
+    // unlock rebuilds the bot.
+    let adapter = live_ai_adapter(bot);
+
     // Check if AI is available (NoopAdapter returns false → skip)
-    if !bot.ai_adapter.is_available().await {
+    if !adapter.is_available().await {
         return None;
     }
 
@@ -474,7 +499,7 @@ async fn ai_fallback(
     // Formation-scoped tool invocation from the tick processor will pass
     // `Some(momentum_to_wasm_tier(tier))`.
     let tool_deps = crate::tool_runner::ToolRunnerDeps {
-        adapter: bot.ai_adapter.as_ref(),
+        adapter: adapter.as_ref(),
         registry: &bot.registry,
         bridge: &bot.capability_bridge,
         sentinel: &bot.sentinel,
