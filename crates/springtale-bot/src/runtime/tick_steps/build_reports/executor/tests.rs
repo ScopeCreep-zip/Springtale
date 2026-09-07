@@ -102,7 +102,7 @@ async fn run_executor(
         direct_inbox: formation.direct_inbox.as_ref(),
         cooperation_tx: None,
     };
-    post_member(member, &env, outcome, &tick);
+    post_member(member, &env, outcome, &tick, None);
     proposal
 }
 
@@ -340,7 +340,7 @@ async fn test_post_failed_outcome_utters_failed_on_bus_and_observer() {
         denied: false,
     };
 
-    let report = super::post(&mut formation, agent, outcome, &tick, Some(&tx));
+    let report = super::post(&mut formation, agent, outcome, &tick, Some(&tx), None);
     assert!(report.is_some());
 
     let heard = peer_sub.state_rx.try_recv().expect("peer hears the burst");
@@ -377,7 +377,7 @@ async fn test_post_failed_outcome_utters_failed_on_bus_and_observer() {
         throttled: false,
         denied: false,
     };
-    super::post(&mut formation, agent, again, &tick, Some(&tx));
+    super::post(&mut formation, agent, again, &tick, Some(&tx), None);
     assert!(
         peer_sub.state_rx.try_recv().is_err(),
         "blocked repeat must not reach the bus"

@@ -547,6 +547,7 @@ mod tests {
             latency: std::time::Duration::from_millis(10),
             intent_alignment: 0.8,
             interference_with: vec![my_id],
+            surface_reaction: None,
             state: crate::action_state::ActionState::Success,
         };
 

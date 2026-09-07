@@ -62,8 +62,15 @@ impl Snapshots {
 }
 
 /// What one member decided this beat.
+///
+/// `surface` and `tick_action` are separate fields on purpose (plan 1.9):
+/// the beat can both react to a primed surface and claim a task, and
+/// neither descriptor may overwrite the other.
 pub struct Decision {
     pub agent: AgentId,
+    /// L0 surface reaction, if a primed surface was in scope. Never a
+    /// task claim; reported alongside whatever the task path produced.
+    pub surface: Option<ActionDescriptor>,
     pub tick_action: Option<ActionDescriptor>,
     pub chosen_task: Option<SubTask>,
     pub sacrifice: Option<SacrificeAction>,
@@ -78,12 +85,12 @@ pub async fn run(
 ) -> Decision {
     let mut decision = Decision {
         agent: member.agent_id,
+        surface: None,
         tick_action: None,
         chosen_task: None,
         sacrifice: None,
         bid: None,
     };
-    let mut needs_scan = true;
 
     // Borrow scoping: react needs `&mut member.awareness`, while sense,
     // inbox, scan and respond_cfp read it through `AgentContext`. The ctx
@@ -99,15 +106,15 @@ pub async fn run(
             capabilities: &member.capabilities,
             awareness: &member.awareness,
         };
+        // Sense and inbox both run: the layers are ordered, not
+        // exclusive (plan 1.9 / finding 40). A primed surface parks its
+        // descriptor in `surface` and never touches the task path.
         if let Some(r) = step::sense::run(s.surfaces.as_ref(), &member.awareness, &ctx) {
-            // A surface reaction is not a task claim: the scan still runs
-            // (plan 1.9 / finding 40). Only an inbox hit skips it.
+            decision.surface = r.action;
+        }
+        if let Some(r) = step::inbox::run(s.router.as_ref(), &ctx).await {
             decision.tick_action = r.action;
             decision.chosen_task = r.task_claimed;
-        } else if let Some(r) = step::inbox::run(s.router.as_ref(), &ctx).await {
-            decision.tick_action = r.action;
-            decision.chosen_task = r.task_claimed;
-            needs_scan = false;
         }
     }
 
@@ -126,7 +133,12 @@ pub async fn run(
         capabilities: &member.capabilities,
         awareness: &member.awareness,
     };
-    if needs_scan && let Some(r) = step::scan::run(s.router.as_ref(), &ctx).await {
+    // The scan only runs when the inbox found nothing to do: an inbox
+    // hit is already this beat's task. A surface reaction never starves
+    // it.
+    if decision.chosen_task.is_none()
+        && let Some(r) = step::scan::run(s.router.as_ref(), &ctx).await
+    {
         decision.tick_action = r.action;
         decision.chosen_task = r.task_claimed;
     }
@@ -137,11 +149,9 @@ pub async fn run(
     // B9 final consideration — at Hot+ tier the agent checks whether
     // yielding to a more-loaded peer is the higher-utility play; a yield
     // drops the chosen task and reports a yield-shaped descriptor.
-    if needs_scan {
-        decision.sacrifice = step::sacrifice::run(&ctx, s.rally_tokens, s.member_count, &[]);
-        if decision.sacrifice.is_some() {
-            decision.chosen_task = None;
-        }
+    decision.sacrifice = step::sacrifice::run(&ctx, s.rally_tokens, s.member_count, &[]);
+    if decision.sacrifice.is_some() {
+        decision.chosen_task = None;
     }
     decision
 }
