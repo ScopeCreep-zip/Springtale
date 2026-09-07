@@ -31,6 +31,14 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum Command {
+    /// Print the command tree and the route each verb calls, as JSON.
+    ///
+    /// The machine-readable half of `--help`: `scripts/check-surface.sh`
+    /// reads it to check the command line against the daemon's OpenAPI
+    /// document. Hidden because it describes the tool rather than doing
+    /// anything to the user's data.
+    #[command(name = "dump-commands", hide = true)]
+    DumpCommands,
     /// Manage connectors.
     Connector {
         #[command(subcommand)]

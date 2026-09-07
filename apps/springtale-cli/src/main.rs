@@ -3,6 +3,7 @@ mod client;
 mod commands;
 mod output;
 mod store;
+mod surface;
 
 use anyhow::Result;
 use clap::Parser;
@@ -29,6 +30,9 @@ async fn main() -> Result<()> {
     };
 
     match cli.command {
+        Command::DumpCommands => {
+            println!("{}", serde_json::to_string_pretty(&surface::dump())?);
+        }
         Command::Init => {
             commands::init::run().await?;
         }
