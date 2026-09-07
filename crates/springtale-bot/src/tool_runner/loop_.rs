@@ -12,7 +12,7 @@ use springtale_connector::tier::WasmTier;
 use springtale_runtime::CapabilityBridge;
 use tokio::sync::RwLock;
 
-use super::builder::{collect_tools, split_tool_name};
+use super::builder::{PLATFORM_TOOL_NAMESPACE, collect_tools, split_tool_name};
 
 /// Truncate tool output fed back into the model. 8 KiB keeps the
 /// conversation well under any vendor's context limit even after ~10
@@ -52,6 +52,12 @@ pub struct ToolRunnerDeps<'a> {
     pub registry: &'a Arc<RwLock<ConnectorRegistry>>,
     pub bridge: &'a CapabilityBridge,
     pub sentinel: &'a Arc<springtale_sentinel::Sentinel>,
+    /// Shared runtime state (plan 5.4). `Some` in the daemon / desktop,
+    /// where the platform verbs are published to the model as the
+    /// `platform` pseudo-connector and executed against this state;
+    /// `None` in headless / CLI / test bots, which publish no platform
+    /// tools at all.
+    pub runtime: Option<&'a springtale_runtime::state::RuntimeState>,
 }
 
 /// Per-invocation parameters — the AI request knobs plus the optional
@@ -88,7 +94,7 @@ pub async fn run_with_tools(
     // Tool list is still discovered via the registry (we need the
     // declared actions); execution goes through `dispatch_action*` so
     // sentinel evaluation (§6.10) runs before every network call.
-    let tools = collect_tools(deps.registry, call.policy).await;
+    let tools = collect_tools(deps.registry, call.policy, deps.runtime.is_some()).await;
     let max_iterations = call.policy.effective_max_iterations();
 
     for iteration in 0..max_iterations {
@@ -150,6 +156,7 @@ pub async fn run_with_tools(
             let result = execute_tool_call(
                 deps.bridge,
                 deps.sentinel,
+                deps.runtime,
                 tool_call,
                 call.formation_tier,
                 call.checkpoint
@@ -180,6 +187,7 @@ struct ExecutedResult {
 async fn execute_tool_call(
     bridge: &CapabilityBridge,
     sentinel: &Arc<springtale_sentinel::Sentinel>,
+    runtime: Option<&springtale_runtime::state::RuntimeState>,
     call: &ToolCall,
     formation_tier: Option<WasmTier>,
     origin: Option<springtale_core::policy::ChatOrigin>,
@@ -190,6 +198,12 @@ async fn execute_tool_call(
             is_error: true,
         };
     };
+
+    // The `platform` pseudo-connector is not in the registry: it routes
+    // to the runtime's verb registry instead (plan 5.4).
+    if connector == PLATFORM_TOOL_NAMESPACE {
+        return execute_platform_verb(bridge, runtime, action, &call.arguments, origin).await;
+    }
 
     // Build a RunConnector action and dispatch through
     // `dispatch_action[_with_tier]` so sentinel evaluation runs before
@@ -259,6 +273,74 @@ async fn execute_tool_call(
             ),
             is_error: true,
         },
+    }
+}
+
+/// Run one platform verb for the model.
+///
+/// Read-only verbs (list, get, status) run straight through. Everything
+/// else goes through the same blocking approval gate a connector write
+/// goes through — the gate deny-by-defaults when nothing is wired to
+/// answer it, so a model cannot pause a formation on an instance with
+/// no approver.
+async fn execute_platform_verb(
+    bridge: &CapabilityBridge,
+    runtime: Option<&springtale_runtime::state::RuntimeState>,
+    segment: &str,
+    args: &serde_json::Value,
+    origin: Option<springtale_core::policy::ChatOrigin>,
+) -> ExecutedResult {
+    let err = |body: String| ExecutedResult {
+        body,
+        is_error: true,
+    };
+    let Some(state) = runtime else {
+        return err("this bot runs without a platform runtime".to_owned());
+    };
+    let Some(verb) = springtale_runtime::operations::platform::find_verb_by_tool_segment(segment)
+    else {
+        return err(format!("'{segment}' is not a platform verb"));
+    };
+
+    if !verb.read_only {
+        let Some(gate) = bridge.approval_gate() else {
+            return err("no approval gate is wired — refusing to change anything".to_owned());
+        };
+        let request = springtale_runtime::approval::ApprovalRequest {
+            id: springtale_runtime::approval::ApprovalRequestId::new(),
+            connector_name: PLATFORM_TOOL_NAMESPACE.to_owned(),
+            capability: springtale_runtime::approval::GatedCapability::DestructiveAction {
+                action_type: verb.name.to_owned(),
+            },
+            agent_id: None,
+            summary: format!("{} — {}", verb.name, verb.description),
+            requested_at: chrono::Utc::now(),
+            origin,
+            expires_at: None,
+        };
+        match gate.request(request).await {
+            Ok(decision) if decision.is_approved() => {}
+            Ok(_) => return err(format!("{} was not approved", verb.name)),
+            Err(e) => return err(format!("approval gate error: {e}")),
+        }
+    }
+
+    match springtale_runtime::operations::platform::run_platform_verb(state, verb, args).await {
+        Ok(value) => {
+            let mut body = value.to_string();
+            if body.len() > MAX_TOOL_OUTPUT_BYTES {
+                body.truncate(MAX_TOOL_OUTPUT_BYTES);
+                body.push_str("...[truncated]");
+            }
+            ExecutedResult {
+                body,
+                is_error: false,
+            }
+        }
+        Err(e) => err(format!(
+            "{{\"error\": {}}}",
+            serde_json::Value::String(e.to_string())
+        )),
     }
 }
 

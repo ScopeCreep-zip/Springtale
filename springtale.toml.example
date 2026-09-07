@@ -45,3 +45,25 @@ rate_limit_per_sec = 100
 # label_key = "utter.firing"
 # ttl_ticks = 2
 # block_ticks = 3
+
+# Connector configuration, for a headless install with no UI.
+#
+# One table per connector, under `connectors`, named by the connector's
+# config key — the same key the panel and the onboarding wizard write.
+# The daemon reads a table for every connector that is compiled in, so a
+# connector added later needs no change to the daemon to be configurable
+# here. `springtale-cli connector available` prints the config key of
+# every connector in your build; the bare `[telegram]` form is still
+# read, for config files that already use it.
+#
+# Credentials in this file sit on disk in plaintext: prefer the vault
+# (configure through the app, or via the API) and keep this for values
+# you are content to leave readable, or protect the file at 0600.
+#
+# [connectors.telegram]
+# bot_token = "123456:ABC-DEF..."
+# update_mode = "polling"        # polling | webhook
+#
+# [connectors.github]
+# token = "ghp_..."
+# webhook_secret = "..."

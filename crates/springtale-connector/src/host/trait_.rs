@@ -57,6 +57,20 @@ pub trait ConnectorHost: Send + Sync + 'static {
         body: &[u8],
     ) -> Result<(), ConnectorError>;
 
+    /// The provider's idempotency key for this webhook delivery, if it
+    /// has one — see
+    /// [`crate::connector::trait_::Connector::webhook_replay_key`].
+    /// Exposed through the host so the daemon's ingress can apply
+    /// durable replay protection without knowing any connector's header
+    /// names. Native hosts delegate; WASM hosts return `None` (a
+    /// sandbox-side hook can follow, like `mention_extractor`).
+    fn webhook_replay_key(
+        &self,
+        _headers: &std::collections::HashMap<String, String>,
+    ) -> Option<String> {
+        None
+    }
+
     /// Read an already-verified webhook payload into the chat messages
     /// and rule events it means — see
     /// [`crate::connector::trait_::Connector::ingest_webhook`]. Exposed

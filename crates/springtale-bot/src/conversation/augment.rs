@@ -32,7 +32,7 @@ pub async fn ai_assisted_start(
         return Ok(None);
     }
 
-    let catalog = engine::build_catalog(bot).await?;
+    let catalog = engine::build_catalog(bot, Some(&key.user_id)).await?;
     if catalog.intents.is_empty() {
         return Ok(None);
     }

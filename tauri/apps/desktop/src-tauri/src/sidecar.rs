@@ -13,8 +13,28 @@
 //! it is the same web provider hitting the same loopback API.
 
 use secrecy::{ExposeSecret, SecretString};
+use serde::{Deserialize, Serialize};
+use specta::Type;
+use tauri::Manager;
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
+use tauri_specta::Event;
+
+use crate::state::AppState;
+
+/// Emitted when the `springtaled` sidecar stops without the shell
+/// having asked it to — a crash, an OOM kill, an operator `kill(1)`.
+///
+/// A deliberate stop (`lock_vault`, auto-lock, quick-hide) does NOT emit
+/// this: those take the [`crate::state::DaemonHandle`] out of state
+/// before killing the child, and the supervisor treats an already-taken
+/// handle as "expected". So receiving this event always means the window
+/// is now holding a port and a token that lead nowhere.
+#[derive(Debug, Clone, Serialize, Deserialize, Type, Event)]
+pub struct DaemonStopped {
+    /// Process exit code, when the platform reported one.
+    pub code: Option<i32>,
+}
 
 /// A running `springtaled` child process and the port it bound.
 pub struct Daemon {
@@ -22,6 +42,15 @@ pub struct Daemon {
     pub port: u16,
     /// Child handle — kept so locking the vault can terminate the daemon.
     pub child: CommandChild,
+    /// The sidecar's remaining event stream, handed to [`supervise`].
+    ///
+    /// Nothing used to read this after `READY`: the receiver was dropped
+    /// at the end of [`start`], so a daemon that died a second later did
+    /// so unobserved and the shell kept talking to a closed port. It is
+    /// carried out of `start` instead, and the caller starts supervision
+    /// once the handle is in state (so a stop can never be seen before
+    /// the thing it should clear exists).
+    pub events: tauri::async_runtime::Receiver<CommandEvent>,
 }
 
 /// Spawn `springtaled`, feed it the passphrase, and wait for `READY {port}`.
@@ -51,7 +80,11 @@ pub async fn start(app: &tauri::AppHandle, passphrase: &SecretString) -> Result<
             CommandEvent::Stdout(line) => {
                 if let Some(port) = parse_ready(&line) {
                     tracing::info!(port, "springtaled sidecar ready");
-                    return Ok(Daemon { port, child });
+                    return Ok(Daemon {
+                        port,
+                        child,
+                        events: rx,
+                    });
                 }
             }
             CommandEvent::Stderr(line) => {
@@ -75,6 +108,73 @@ pub async fn start(app: &tauri::AppHandle, passphrase: &SecretString) -> Result<
     Err("springtaled stream closed before READY".to_owned())
 }
 
+/// Watch a started sidecar for the rest of its life.
+///
+/// [`start`] only reads the stream up to `READY`. Without this the shell
+/// never learns that the daemon died: it keeps a stale `{ port, token }`,
+/// the frontend's fetches and SSE reconnects chase a closed port, and the
+/// window silently shows a colony that no longer exists.
+///
+/// On termination the stored [`crate::state::DaemonHandle`] is cleared —
+/// so the next unlock spawns a fresh daemon instead of handing back a
+/// dead port — and [`DaemonStopped`] is emitted so the UI can say so.
+/// This is deliberately not a restart supervisor: `springtaled` holds the
+/// unlocked vault, and re-deriving that needs the passphrase, which the
+/// shell does not keep. Telling the user is the honest response.
+pub fn supervise(app: tauri::AppHandle, mut events: tauri::async_runtime::Receiver<CommandEvent>) {
+    tauri::async_runtime::spawn(async move {
+        let mut code = None;
+        while let Some(event) = events.recv().await {
+            match event {
+                CommandEvent::Stderr(line) => {
+                    if let Ok(text) = std::str::from_utf8(&line) {
+                        tracing::debug!(target: "springtaled", "{}", text.trim_end());
+                    }
+                }
+                CommandEvent::Terminated(status) => {
+                    code = status.code;
+                    break;
+                }
+                CommandEvent::Error(e) => {
+                    tracing::error!(error = %e, "springtaled sidecar stream error");
+                    break;
+                }
+                // Stdout past READY carries nothing the shell acts on.
+                _ => {}
+            }
+        }
+
+        // Whether we saw `Terminated` or the stream simply ended, the
+        // child is unreachable from here on.
+        // Clone the Arc out first so the `State` borrow is not held
+        // across the lock's await point.
+        let slot = std::sync::Arc::clone(&app.state::<AppState>().daemon);
+        let daemon = slot.lock().await.take();
+
+        let Some(daemon) = daemon else {
+            // `lock_vault` (or auto-lock, or quick-hide) already took the
+            // handle and killed the child on purpose. Nothing to report.
+            tracing::info!("springtaled sidecar stopped as requested");
+            return;
+        };
+
+        tracing::error!(
+            port = daemon.port,
+            ?code,
+            "springtaled sidecar stopped unexpectedly"
+        );
+        // Drops the dead child handle and the session token the daemon
+        // issued — that token is worthless now, and holding it would only
+        // invite the frontend to keep using it.
+        drop(daemon);
+
+        let stopped = DaemonStopped { code };
+        if let Err(e) = stopped.emit(&app) {
+            tracing::error!(error = %e, "failed to tell the window the daemon stopped");
+        }
+    });
+}
+
 /// Parse a `READY {port}` line. Returns `None` for any other output.
 fn parse_ready(line: &[u8]) -> Option<u16> {
     std::str::from_utf8(line)
@@ -85,27 +185,6 @@ fn parse_ready(line: &[u8]) -> Option<u16> {
         .parse()
         .ok()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::parse_ready;
-
-    #[test]
-    fn test_parse_ready_with_port_returns_port() {
-        assert_eq!(parse_ready(b"READY 51234\n"), Some(51234));
-    }
-
-    #[test]
-    fn test_parse_ready_bare_ready_returns_none() {
-        assert_eq!(parse_ready(b"READY\n"), None);
-    }
-
-    #[test]
-    fn test_parse_ready_unrelated_line_returns_none() {
-        assert_eq!(parse_ready(b"INFO springtaled starting"), None);
-    }
-}
-
 /// Log in to the freshly started daemon and return the bearer token it
 /// issues (plan 6.6, finding 109).
 ///
@@ -139,4 +218,24 @@ pub async fn login(port: u16, passphrase: &secrecy::SecretString) -> Result<Stri
         .and_then(|v| v.as_str())
         .map(str::to_owned)
         .ok_or_else(|| "login response carried no token".to_owned())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_ready;
+
+    #[test]
+    fn test_parse_ready_with_port_returns_port() {
+        assert_eq!(parse_ready(b"READY 51234\n"), Some(51234));
+    }
+
+    #[test]
+    fn test_parse_ready_bare_ready_returns_none() {
+        assert_eq!(parse_ready(b"READY\n"), None);
+    }
+
+    #[test]
+    fn test_parse_ready_unrelated_line_returns_none() {
+        assert_eq!(parse_ready(b"INFO springtaled starting"), None);
+    }
 }

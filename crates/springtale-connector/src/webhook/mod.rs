@@ -12,5 +12,7 @@
 //! result — no connector names in the daemon.
 
 pub mod ingest;
+pub mod replay;
 
-pub use ingest::{WebhookEvent, WebhookIngest};
+pub use ingest::{WebhookAck, WebhookEvent, WebhookIngest};
+pub use replay::{REPLAY_BUCKET, REPLAY_HISTORY, ReplayOutcome, check_and_record};

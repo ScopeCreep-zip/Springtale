@@ -158,5 +158,9 @@
   "utter.yield": "تنازل لزميل",
   "utter.helping": "يساعد زميلًا",
   "utter.rally": "تجمّع",
-  "utter.cascade": "تحذير تسلسل"
+  "utter.cascade": "تحذير تسلسل",
+  "daemon.stopped.title": "توقفت الخدمة",
+  "daemon.stopped.body": "توقفت الخدمة التي تشغّل مستعمرتك في الخلفية، لذا لم يعد أي شيء على الشاشة محدّثًا. ارجع إلى شاشة القفل وافتح القفل مجددًا لتشغيلها.",
+  "daemon.stopped.code": "رمز الخروج: {{code}}",
+  "daemon.stopped.action": "العودة إلى شاشة القفل"
 }

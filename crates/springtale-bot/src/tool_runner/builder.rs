@@ -15,6 +15,14 @@ use tokio::sync::RwLock;
 /// round-tripping through the model and still reads unambiguously.
 pub const TOOL_NAME_SEPARATOR: &str = "__";
 
+/// Pseudo-connector name the platform verbs are published under.
+///
+/// `platform__formation_pause` is not a connector action: the runner
+/// routes it to `springtale_runtime::operations::platform`, not the
+/// connector registry, so chat can steer the platform itself with the
+/// same tool grammar it uses for a connector (plan 5.4).
+pub const PLATFORM_TOOL_NAMESPACE: &str = "platform";
+
 /// Decide whether one connector action is exposed to the model.
 ///
 /// - **Explicit mode** (`allow` non-empty): exactly the allow-list
@@ -46,8 +54,31 @@ pub fn tool_permitted(policy: &ToolPolicy, tool_name: &str, read_only: bool) -> 
 pub async fn collect_tools(
     registry: &Arc<RwLock<ConnectorRegistry>>,
     policy: &ToolPolicy,
+    with_platform: bool,
 ) -> Vec<ToolDefinition> {
     let mut tools = Vec::new();
+    // Platform verbs come first so the platform's own controls survive
+    // `MAX_TOOLS_HARD_CAP` truncation on an install with many
+    // connectors — a chat that cannot steer the platform is the whole
+    // point of plan 5.4 being unmet. `with_platform` is false for bots
+    // built without a `RuntimeState` (headless, CLI, tests), which
+    // could not run a verb if the model called one.
+    if with_platform {
+        for verb in springtale_runtime::operations::platform::platform_verbs() {
+            let tool_name = format!(
+                "{PLATFORM_TOOL_NAMESPACE}{TOOL_NAME_SEPARATOR}{}",
+                verb.tool_segment()
+            );
+            if !tool_permitted(policy, &tool_name, verb.read_only) {
+                continue;
+            }
+            tools.push(ToolDefinition {
+                name: tool_name,
+                description: verb.description.to_owned(),
+                input_schema: verb.input_schema(),
+            });
+        }
+    }
     let reg = registry.read().await;
     for (name, enabled) in reg.list() {
         if !enabled {
@@ -203,6 +234,48 @@ mod tests {
         };
         assert!(policy.is_allowed("connector-telegram__send_message"));
         assert!(!policy.is_allowed("connector-shell__execute"));
+    }
+
+    #[tokio::test]
+    async fn platform_verbs_are_published_as_tools() {
+        let registry = Arc::new(RwLock::new(ConnectorRegistry::new(
+            springtale_connector::capability::CapabilityPolicy::Interactive,
+        )));
+        let policy = ToolPolicy {
+            writes_with_approval: true,
+            ..Default::default()
+        };
+        let tools = collect_tools(&registry, &policy, true).await;
+        let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+        assert!(names.contains(&"platform__formation_pause"));
+        assert!(names.contains(&"platform__formation_list"));
+        // The drum rule: nothing that hands work to a named member is
+        // sayable — not in chat, and not to a model either.
+        assert!(
+            !names.iter().any(|n| n.contains("assign")),
+            "no tool may be an assign verb: {names:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn platform_writes_need_the_approval_flag() {
+        let registry = Arc::new(RwLock::new(ConnectorRegistry::new(
+            springtale_connector::capability::CapabilityPolicy::Interactive,
+        )));
+        // Default policy: read-only verbs only, exactly like a connector.
+        let tools = collect_tools(&registry, &ToolPolicy::default(), true).await;
+        let names: Vec<&str> = tools.iter().map(|t| t.name.as_str()).collect();
+        assert!(names.contains(&"platform__formation_list"));
+        assert!(!names.contains(&"platform__formation_pause"));
+    }
+
+    #[tokio::test]
+    async fn platform_tools_absent_without_runtime() {
+        let registry = Arc::new(RwLock::new(ConnectorRegistry::new(
+            springtale_connector::capability::CapabilityPolicy::Interactive,
+        )));
+        let tools = collect_tools(&registry, &ToolPolicy::default(), false).await;
+        assert!(tools.is_empty());
     }
 
     #[test]

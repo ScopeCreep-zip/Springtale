@@ -16,7 +16,7 @@ pub mod ingest;
 pub mod replay;
 
 pub use ingest::ingest_event;
-pub use replay::{ReplayCache, check_timestamp};
+pub use replay::check_timestamp;
 
 /// Header carrying the idempotent message id (`Kick-Event-Message-Id`).
 pub const HEADER_MESSAGE_ID: &str = "kick-event-message-id";

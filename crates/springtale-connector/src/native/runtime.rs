@@ -155,6 +155,13 @@ impl ConnectorHost for NativeConnectorHost {
         NativeConnectorHost::verify_webhook(self, headers, body).await
     }
 
+    fn webhook_replay_key(
+        &self,
+        headers: &std::collections::HashMap<String, String>,
+    ) -> Option<String> {
+        self.inner.webhook_replay_key(headers)
+    }
+
     async fn ingest_webhook(
         &self,
         trigger: &str,

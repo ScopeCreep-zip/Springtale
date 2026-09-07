@@ -121,6 +121,11 @@
   "vault.unlock": "Unlock",
   "vault.lock": "Lock Vault",
 
+  "daemon.stopped.title": "Background service stopped",
+  "daemon.stopped.body": "The background service that runs your colony has stopped, so nothing on screen is live any more. Return to the lock screen and unlock again to start it.",
+  "daemon.stopped.code": "Exit code: {{code}}",
+  "daemon.stopped.action": "Return to lock screen",
+
   "preview.label": "Generated Rule (TOML)",
   "preview.placeholder": "# Configure trigger, conditions, and actions above",
 

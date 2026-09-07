@@ -79,6 +79,15 @@ impl PlatformVerb {
         }
     }
 
+    /// The verb's name as it appears inside an AI tool name.
+    ///
+    /// OpenAI's tool-name regex (`^[a-zA-Z0-9_-]{1,64}$`) forbids `.`,
+    /// so `formation.pause` publishes as `formation_pause`. The mapping
+    /// is reversed by [`super::registry::find_verb_by_tool_segment`].
+    pub fn tool_segment(&self) -> String {
+        self.name.replace('.', "_")
+    }
+
     /// True when the verb's first argument is a formation name.
     pub fn takes_formation(&self) -> bool {
         self.args.first() == Some(&"formation")

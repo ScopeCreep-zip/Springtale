@@ -181,6 +181,15 @@ pub struct RuntimeState {
     /// the first `take_chat_rx()`.
     pub chat_rx:
         Arc<tokio::sync::Mutex<Option<mpsc::Receiver<springtale_connector::chat::ChatMessage>>>>,
+    /// Fan-out for "the connector tool list changed" (`crate::tool_catalog`).
+    /// Every operation that adds, removes, enables, disables or rebuilds a
+    /// live registry entry publishes here; `springtale-mcp` subscribes once
+    /// per connected MCP client and turns each event into a
+    /// `notifications/tools/list_changed` frame, which is the promise the
+    /// server's advertised `tools.listChanged` capability makes. Owned by
+    /// the runtime because the registry is, and because the MCP crate sits
+    /// above it in the dependency order.
+    pub tool_catalog: crate::tool_catalog::ToolCatalogNotifier,
     /// Running chat loops: connector name → shutdown signal. Flipping
     /// the sender stops that connector's `ChatSource::run`.
     pub chat_tasks: Arc<dashmap::DashMap<String, tokio::sync::watch::Sender<bool>>>,

@@ -124,19 +124,40 @@ async fn start_session(
         return Ok(session);
     }
 
-    let daemon = sidecar::start(app, &passphrase).await?;
+    let sidecar::Daemon {
+        port,
+        child,
+        events,
+    } = sidecar::start(app, &passphrase).await?;
 
     // Plan 6.6: the shell no longer derives its bearer. Once the sidecar
     // has reported READY it logs in with the passphrase it already holds
     // and the daemon issues a random session token.
-    let token = sidecar::login(daemon.port, &passphrase).await?;
+    let token = match sidecar::login(port, &passphrase).await {
+        Ok(token) => token,
+        Err(e) => {
+            // Nothing owns this child yet and dropping a `CommandChild`
+            // does not stop the process, so bailing here would orphan a
+            // daemon holding the unlocked vault with nothing left able to
+            // reach or stop it.
+            if let Err(kill) = child.kill() {
+                tracing::warn!(error = %kill, "failed to stop the sidecar after a failed login");
+            }
+            return Err(e);
+        }
+    };
     let session = VaultSession {
         status,
-        port: daemon.port,
+        port,
         token: token.clone(),
     };
-    *daemon_guard = Some(DaemonHandle::new(daemon, token));
+    *daemon_guard = Some(DaemonHandle::new(port, child, token));
     drop(daemon_guard);
+
+    // Watch the child for the rest of its life. Started only now, with
+    // the handle already in state, so a crash during login cannot race
+    // the supervisor into finding an empty slot and staying quiet.
+    sidecar::supervise(app.clone(), events);
 
     *state.vault.lock().await = Some(vault);
     let _ = VaultUnlocked.emit(app);

@@ -158,5 +158,9 @@
   "utter.yield": "nagbigay-daan sa kasamahan",
   "utter.helping": "tumutulong sa kasamahan",
   "utter.rally": "magtipon",
-  "utter.cascade": "babala ng cascade"
+  "utter.cascade": "babala ng cascade",
+  "daemon.stopped.title": "Huminto ang serbisyo",
+  "daemon.stopped.body": "Huminto ang background na serbisyong nagpapatakbo ng iyong colony, kaya wala nang live sa screen. Bumalik sa lock screen at mag-unlock ulit para simulan ito.",
+  "daemon.stopped.code": "Exit code: {{code}}",
+  "daemon.stopped.action": "Bumalik sa lock screen"
 }

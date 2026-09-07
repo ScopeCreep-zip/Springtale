@@ -158,5 +158,9 @@
   "utter.yield": "a cédé à un coéquipier",
   "utter.helping": "aide un coéquipier",
   "utter.rally": "ralliement",
-  "utter.cascade": "alerte de cascade"
+  "utter.cascade": "alerte de cascade",
+  "daemon.stopped.title": "Le service s'est arrêté",
+  "daemon.stopped.body": "Le service en arrière-plan qui fait tourner votre colonie s'est arrêté : plus rien à l'écran n'est à jour. Revenez à l'écran de verrouillage et déverrouillez à nouveau pour le relancer.",
+  "daemon.stopped.code": "Code de sortie : {{code}}",
+  "daemon.stopped.action": "Revenir à l'écran de verrouillage"
 }

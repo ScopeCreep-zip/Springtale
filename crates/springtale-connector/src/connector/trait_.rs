@@ -94,6 +94,30 @@ pub trait Connector: Send + Sync + 'static {
         ))
     }
 
+    /// The provider's own idempotency key for this webhook delivery —
+    /// Kick's `Kick-Event-Message-Id`, GitHub's `X-GitHub-Delivery`.
+    ///
+    /// Returning `Some` opts the connector into durable replay
+    /// protection: the daemon's webhook ingress records the key in the
+    /// store (see [`crate::webhook::replay`]) and drops any later
+    /// delivery carrying the same one. The check runs only after
+    /// [`Connector::verify_webhook`] has returned `Ok`, so an unsigned
+    /// request can never poison the record.
+    ///
+    /// This lives on the connector because only the connector knows
+    /// which header carries the id; the record lives in the store
+    /// because a connector's own memory dies with the process, and a
+    /// replay window that reopens on every daemon reload is not
+    /// protection.
+    ///
+    /// Default: `None` — no delivery id, so no replay record.
+    fn webhook_replay_key(
+        &self,
+        _headers: &std::collections::HashMap<String, String>,
+    ) -> Option<String> {
+        None
+    }
+
     /// Read an already-VERIFIED webhook payload: what chat messages and
     /// rule-engine events does it mean?
     ///
