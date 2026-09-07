@@ -498,10 +498,11 @@ impl Formation {
         let cfp_initiator = Arc::new(tokio::sync::Mutex::new(cfp_initiator_inner));
         let cfp_rx = cfp_channels.cfp_tx.subscribe();
 
-        // Plan 1.3: the promotion table is a per-formation constraint,
-        // so the momentum state is built from this formation's own
-        // configuration.
+        // Plan 1.3 / 1.5: the promotion table and the Director numbers
+        // are per-formation constraints, so the momentum state and the
+        // pacing manager are built from this formation's own config.
         let momentum = MomentumState::with_config(constraints.momentum.clone());
+        let pacing = PacingManager::with_config(constraints.pacing.clone());
         let formation = Self {
             id: FormationId::new(),
             intent,
@@ -512,7 +513,7 @@ impl Formation {
             shared_env: Arc::new(SharedEnvironment::new()),
             fuel,
             orchestrator: None,
-            pacing: PacingManager::default(),
+            pacing,
             rally: FormationRally::new(rally_budget, 64),
             attention_broker: Arc::new(AttentionBroker::for_agents(&agent_ids)),
             supervisor: FormationSupervisor::default(),

@@ -227,6 +227,9 @@ pub struct FormationConstraints {
     /// constraint: two formations deployed with different thresholds
     /// each promote on their own numbers.
     pub momentum: crate::momentum::MomentumConfig,
+    /// Director numbers for this formation's pacing loop (plan 1.5,
+    /// `[cooperation.pacing]`).
+    pub pacing: crate::pacing::PacingConfig,
 }
 
 impl Default for FormationConstraints {
@@ -239,6 +242,7 @@ impl Default for FormationConstraints {
             destructive_action_policy: ApprovalPolicy::AlwaysRequire,
             autonomy_ceiling: AutonomyLevel::ActAutonomously,
             momentum: crate::momentum::MomentumConfig::default(),
+            pacing: crate::pacing::PacingConfig::default(),
         }
     }
 }

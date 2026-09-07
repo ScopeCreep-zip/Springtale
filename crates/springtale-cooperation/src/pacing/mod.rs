@@ -13,12 +13,21 @@
 //! are no per-phase action quotas — per-connector rate limits stay in the
 //! sentinel.
 //!
+//! Every number in that loop is per-formation configuration, not a
+//! constant (plan 1.5) — see `config.rs`.
+//!
 //! File split:
 //! - `types.rs` — phase + transition enums
+//! - `config.rs` — `[cooperation.pacing]` numbers + their defaults
 //! - `manager.rs` — stress sample, intensity, transitions, divider, gate
 
+pub mod config;
 pub mod manager;
 pub mod types;
 
-pub use manager::{DECAY_PER_SEC, PEAK_THRESHOLD, PacingManager, RELAX, SUSTAIN, StressSample};
+pub use config::{
+    DECAY_PER_SEC, PEAK_THRESHOLD, PacingConfig, RELAX_SECS, SUSTAIN_SECS, W_DENIAL, W_FAILURE,
+    W_INTERFERENCE, W_THROTTLE,
+};
+pub use manager::{PacingManager, StressSample};
 pub use types::{PacingPhase, PacingTransition};
