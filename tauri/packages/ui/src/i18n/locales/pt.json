@@ -158,5 +158,9 @@
   "utter.yield": "cedeu a um colega",
   "utter.helping": "ajudando um colega",
   "utter.rally": "reunir",
-  "utter.cascade": "alerta de cascata"
+  "utter.cascade": "alerta de cascata",
+  "daemon.stopped.title": "O serviço parou",
+  "daemon.stopped.body": "O serviço em segundo plano que executa a sua colônia parou, então nada na tela está ativo. Volte para a tela de bloqueio e desbloqueie novamente para iniciá-lo.",
+  "daemon.stopped.code": "Código de saída: {{code}}",
+  "daemon.stopped.action": "Voltar à tela de bloqueio"
 }

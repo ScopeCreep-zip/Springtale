@@ -158,5 +158,9 @@
   "utter.yield": "仲間に譲った",
   "utter.helping": "仲間を手伝い中",
   "utter.rally": "集合",
-  "utter.cascade": "連鎖警告"
+  "utter.cascade": "連鎖警告",
+  "daemon.stopped.title": "サービスが停止しました",
+  "daemon.stopped.body": "コロニーを動かしているバックグラウンドサービスが停止したため、画面上の情報はすべて古いものです。ロック画面に戻り、もう一度ロックを解除して起動してください。",
+  "daemon.stopped.code": "終了コード: {{code}}",
+  "daemon.stopped.action": "ロック画面に戻る"
 }
