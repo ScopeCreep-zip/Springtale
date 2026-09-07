@@ -1,14 +1,16 @@
 /**
  * Track D one-click Onboard over HTTP (plan 2.5).
  *
- * `POST /workspaces/onboard` is an SSE stream behind the one-time
- * stream ticket (plan 0.7). The connector config rides in the POST
- * body — never the URL — so EventSource (GET-only) can't be used;
- * the frames are read from a fetch body instead.
+ * `POST /workspaces/onboard` answers with an SSE stream. The connector
+ * config rides in the POST body — never the URL — so EventSource
+ * (GET-only) can't be used and the frames are read from a fetch body
+ * instead. Because it is a fetch, it sends the normal `Authorization`
+ * bearer: the route is bearer + CSRF authenticated like every other
+ * mutating route, not stream-ticketed.
  */
 
 import type { ChatDiscoveredEvent } from "../../dashboard/types";
-import { getBaseUrl, post } from "./client";
+import { getBaseUrl, getToken } from "./client";
 
 const EVENT_NAME = "chat-discovered";
 
@@ -75,11 +77,13 @@ export async function startOnboardStream(
   const controller = new AbortController();
   sessions.set(sessionId, controller);
 
-  const { ticket } = await post<{ ticket: string }>("/stream/ticket", {});
-  const url = `${getBaseUrl()}/workspaces/onboard?ticket=${encodeURIComponent(ticket)}`;
-  const res = await fetch(url, {
+  const res = await fetch(`${getBaseUrl()}/workspaces/onboard`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
+    headers: {
+      "Content-Type": "application/json",
+      Accept: "text/event-stream",
+      Authorization: `Bearer ${getToken()}`,
+    },
     body: JSON.stringify({
       session_id: sessionId,
       connector_name: connectorName,

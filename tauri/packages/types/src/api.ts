@@ -2241,9 +2241,9 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * POST /workspaces/onboard?ticket=.. — SSE of `chat-discovered`
-         *     frames (same payload as the desktop `ChatDiscovered` event) until
-         *     the first match, the 60 s window, or client disconnect.
+         * POST /workspaces/onboard — SSE of `chat-discovered` frames (same
+         *     payload as the desktop `ChatDiscovered` event) until the first
+         *     match, the 60 s window, or client disconnect.
          */
         post: operations["workspaces_onboard"];
         delete?: never;

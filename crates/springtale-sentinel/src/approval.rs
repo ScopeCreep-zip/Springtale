@@ -18,8 +18,9 @@
 //!   exactly this — the desktop app constructs one, hands it to
 //!   the sentinel, and listens on the receiver to dispatch each
 //!   request to a Tauri event.
-//! - **Tests** — [`AutoAllowApprovalGate`] removes the gate from
-//!   the path, useful for asserting other sentinel checks.
+//! - **Tests** — `AutoAllowApprovalGate` removes the gate from the
+//!   path, useful for asserting other sentinel checks. It is
+//!   `#[cfg(test)]`-only: a production build cannot construct it.
 //!
 //! The trait is async because real implementations must await
 //! either a network round-trip or a UI confirmation. Default impls
@@ -78,10 +79,19 @@ impl ApprovalGate for DefaultDenyApprovalGate {
     }
 }
 
-/// Test-only convenience: every destructive action proceeds. Never
-/// wire this in production paths.
+/// Test-only: every destructive action proceeds.
+///
+/// `#[cfg(test)]` is deliberate and is the security boundary. This type
+/// disables the human approval gate wholesale, so a production build of
+/// this crate must not be able to name it — otherwise any caller of
+/// `Sentinel::with_approval_gate` could hand it in and silently turn the
+/// gate off. Out-of-crate tests that want an auto-allow gate implement
+/// the two-line [`ApprovalGate`] themselves rather than re-exporting
+/// this one; see `apps/springtaled/tests/event_recipe_e2e.rs`.
+#[cfg(test)]
 pub struct AutoAllowApprovalGate;
 
+#[cfg(test)]
 #[async_trait]
 impl ApprovalGate for AutoAllowApprovalGate {
     async fn request_approval(&self, _request: ApprovalRequest) -> bool {

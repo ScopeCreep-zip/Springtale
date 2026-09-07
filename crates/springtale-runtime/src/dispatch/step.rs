@@ -65,6 +65,11 @@ async fn run_step_inner(
     } = action
     {
         let reg = bridge.registry().read().await;
+        // AUTHORITATIVE SOURCE for advisory action hints:
+        // `ConnectorHost::actions()`, not `manifest().actions`. The
+        // consensus vote in `springtale-bot`'s executor reads the same
+        // method so a task cannot be voted on under one hint and
+        // classified by the sentinel under another.
         reg.get(connector)
             .and_then(|e| e.host.actions().iter().find(|d| d.name == *name).cloned())
             .map(|d| ActionHints {
