@@ -2297,13 +2297,18 @@ export interface paths {
         put?: never;
         /**
          * POST /webhook/{connector}/{trigger} — receive an inbound webhook.
-         * @description The management API receives webhook POSTs from external services (GitHub, Kick, etc.)
-         *     and routes them to the appropriate connector for signature verification and dispatch.
+         * @description The management API receives webhook POSTs from external services and
+         *     routes them to the named connector for signature verification and dispatch.
+         *
+         *     The route owns the transport and nothing else: it knows no connector,
+         *     no provider payload shape, and no action name. Everything protocol-
+         *     specific is asked of the connector through the `Connector` trait.
          *
          *     Flow:
          *     1. Look up connector in registry
-         *     2. Connector-specific signature verification (GitHub: HMAC-SHA256, Kick: RSA)
-         *     3. Dispatch trigger event to the rule engine via the trigger channel
+         *     2. Connector-specific signature verification (each connector's own scheme)
+         *     3. Ask the connector what the verified payload means
+         *     4. Dispatch trigger event to the rule engine via the trigger channel
          */
         post: operations["webhooks_receive"];
         delete?: never;
