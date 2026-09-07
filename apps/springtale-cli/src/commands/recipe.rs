@@ -17,22 +17,7 @@ pub async fn run(action: RecipeAction, json_out: bool) -> Result<()> {
                 None => "/recipes".to_owned(),
             };
             let body: Value = client.get(&path).await?;
-            output::emit(json_out, &body, |v| {
-                let empty = Vec::new();
-                let rows = v
-                    .as_array()
-                    .unwrap_or(&empty)
-                    .iter()
-                    .map(|r| {
-                        vec![
-                            output::cell(r, "id"),
-                            output::cell(r, "name"),
-                            output::cell(r, "category"),
-                        ]
-                    })
-                    .collect();
-                output::rows_table(&["ID", "NAME", "CATEGORY"], rows)
-            })?;
+            output::emit(json_out, &body, recipes_table)?;
         }
         RecipeAction::Categories => {
             let body: Value = client.get("/recipes/categories").await?;
@@ -209,4 +194,81 @@ fn load_inputs(path: Option<std::path::PathBuf>) -> Result<Value> {
     let text = std::fs::read_to_string(&path)
         .map_err(|e| anyhow::anyhow!("failed to read {}: {e}", path.display()))?;
     serde_json::from_str(&text).map_err(|e| anyhow::anyhow!("inputs must be JSON: {e}"))
+}
+
+/// The `recipe list` table — the route answers a bare array.
+fn recipes_table(v: &Value) -> String {
+    let empty = Vec::new();
+    let rows = v
+        .as_array()
+        .unwrap_or(&empty)
+        .iter()
+        .map(|r| {
+            vec![
+                output::cell(r, "id"),
+                output::cell(r, "name"),
+                output::cell(r, "category"),
+            ]
+        })
+        .collect();
+    output::rows_table(&["ID", "NAME", "CATEGORY"], rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::output::{json_value, key_set};
+
+    fn recipes() -> Value {
+        json!([{
+            "id": "daily-digest",
+            "name": "Daily digest",
+            "category": "reporting",
+        }])
+    }
+
+    #[test]
+    fn test_recipe_list_json_shape_is_a_bare_array_of_recipes() {
+        let out = json_value(&recipes());
+        assert!(
+            out.is_array(),
+            "the recipe list is not wrapped in an envelope"
+        );
+        let recipe = &out[0];
+        assert!(recipe["id"].is_string());
+        assert!(recipe["name"].is_string());
+        assert!(recipe["category"].is_string());
+    }
+
+    #[test]
+    fn test_recipes_table_reads_every_field_the_json_shape_promises() {
+        let table = recipes_table(&recipes());
+        for want in ["ID", "daily-digest", "Daily digest", "reporting"] {
+            assert!(table.contains(want), "table lost {want}:\n{table}");
+        }
+    }
+
+    #[test]
+    fn test_recipes_table_is_empty_when_nothing_matches() {
+        assert_eq!(recipes_table(&json!([])), "");
+    }
+
+    #[test]
+    fn test_recipe_ack_json_shapes_carry_the_ids_the_notices_print() {
+        // `favorite`, `fork` / `save` / `import` — the keys the status
+        // notices read out of the daemon ack.
+        let favorite = json_value(&json!({ "favorite": true }));
+        assert_eq!(key_set(&favorite), ["favorite"]);
+        assert!(favorite["favorite"].is_boolean());
+
+        let forked = json_value(&json!({ "id": "daily-digest-copy" }));
+        assert_eq!(key_set(&forked), ["id"]);
+        assert!(forked["id"].is_string());
+    }
+
+    #[test]
+    fn test_load_inputs_defaults_to_an_empty_values_object() {
+        let inputs = load_inputs(None).expect("default inputs");
+        assert_eq!(inputs, json!({ "values": {} }));
+    }
 }

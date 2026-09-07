@@ -109,11 +109,7 @@ pub async fn login(json_out: bool) -> Result<()> {
         .await;
 
     // The token itself is never echoed — only where it landed.
-    let body = serde_json::json!({
-        "logged_in_as": name,
-        "token_id": id,
-        "token_path": path.display().to_string(),
-    });
+    let body = logged_in_body(&name, id, &path);
     output::emit(json_out, &body, |v| {
         format!(
             "Logged in as {}\nToken saved to {} (mode 0600)",
@@ -126,7 +122,7 @@ pub async fn login(json_out: bool) -> Result<()> {
 /// `springtale logout` — revoke the saved token, then delete it.
 pub async fn logout(json_out: bool) -> Result<()> {
     let Some(saved) = client_config::read_token_file()? else {
-        let body = serde_json::json!({ "logged_out": false, "reason": "not logged in" });
+        let body = not_logged_in_body();
         return output::emit(json_out, &body, |_| "Not logged in.".to_owned());
     };
     let base = base_url()?;
@@ -153,7 +149,7 @@ pub async fn logout(json_out: bool) -> Result<()> {
     };
 
     client_config::delete_token_file()?;
-    let body = serde_json::json!({ "logged_out": true, "revoked": revoked });
+    let body = logged_out_body(revoked);
     output::emit(json_out, &body, |_| {
         format!(
             "Logged out{}",
@@ -164,4 +160,70 @@ pub async fn logout(json_out: bool) -> Result<()> {
             }
         )
     })
+}
+
+/// The `login` body. The token itself is never echoed — only who the
+/// CLI is now, which token id to revoke, and where the file landed.
+fn logged_in_body(name: &str, id: &str, path: &Path) -> serde_json::Value {
+    serde_json::json!({
+        "logged_in_as": name,
+        "token_id": id,
+        "token_path": path.display().to_string(),
+    })
+}
+
+/// The `logout` body when a saved token was found.
+fn logged_out_body(revoked: bool) -> serde_json::Value {
+    serde_json::json!({ "logged_out": true, "revoked": revoked })
+}
+
+/// The `logout` body when there was nothing to log out of.
+fn not_logged_in_body() -> serde_json::Value {
+    serde_json::json!({ "logged_out": false, "reason": "not logged in" })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::output::{json_value, key_set};
+
+    #[test]
+    fn test_login_json_shape_names_identity_token_id_and_path() {
+        let out = json_value(&logged_in_body(
+            "springtale-cli@laptop",
+            "tok-1",
+            Path::new("/home/u/.config/springtale/token"),
+        ));
+        assert_eq!(key_set(&out), ["logged_in_as", "token_id", "token_path"]);
+        assert!(out["logged_in_as"].is_string());
+        assert!(out["token_id"].is_string());
+        assert!(out["token_path"].is_string());
+        assert_eq!(out["token_path"], "/home/u/.config/springtale/token");
+    }
+
+    #[test]
+    fn test_login_json_never_carries_the_token_material() {
+        let out = json_value(&logged_in_body("cli@host", "tok-1", Path::new("/t")));
+        for leaky in ["token", "passphrase", "secret"] {
+            assert!(out.get(leaky).is_none(), "{leaky} must not be emitted");
+        }
+    }
+
+    #[test]
+    fn test_logout_json_shape_names_logged_out_and_revoked() {
+        let out = json_value(&logged_out_body(true));
+        assert_eq!(key_set(&out), ["logged_out", "revoked"]);
+        assert_eq!(out["logged_out"], true);
+        assert!(out["revoked"].is_boolean());
+        assert_eq!(json_value(&logged_out_body(false))["revoked"], false);
+    }
+
+    #[test]
+    fn test_logout_when_not_logged_in_json_shape_explains_itself() {
+        let out = json_value(&not_logged_in_body());
+        assert_eq!(key_set(&out), ["logged_out", "reason"]);
+        assert_eq!(out["logged_out"], false);
+        assert!(out["reason"].is_string());
+        assert_eq!(out["reason"], "not logged in");
+    }
 }

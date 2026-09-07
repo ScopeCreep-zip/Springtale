@@ -149,3 +149,49 @@ fn workspace_table(v: &Value) -> String {
         .collect();
     output::rows_table(&["KEY", "NAME", "CONNECTOR", "KIND"], rows)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::output::json_value;
+
+    fn workspaces() -> Value {
+        json!([{
+            "workspace_key": "guild-42",
+            "display_name": "Mutual Aid",
+            "connector_name": "discord",
+            "kind": "server",
+        }])
+    }
+
+    #[test]
+    fn test_workspace_list_json_shape_is_a_bare_array_of_workspaces() {
+        let out = json_value(&workspaces());
+        assert!(out.is_array(), "workspaces are not wrapped in an envelope");
+        let workspace = &out[0];
+        assert!(workspace["workspace_key"].is_string());
+        assert!(workspace["display_name"].is_string());
+        assert!(workspace["connector_name"].is_string());
+        assert!(workspace["kind"].is_string());
+    }
+
+    #[test]
+    fn test_workspace_table_reads_every_field_the_json_shape_promises() {
+        let table = workspace_table(&workspaces());
+        for want in ["KEY", "guild-42", "Mutual Aid", "discord", "server"] {
+            assert!(table.contains(want), "table lost {want}:\n{table}");
+        }
+    }
+
+    #[test]
+    fn test_workspace_table_is_empty_when_nothing_is_reachable() {
+        assert_eq!(workspace_table(&json!([])), "");
+    }
+
+    #[test]
+    fn test_workspace_onboard_url_json_shape_carries_the_url() {
+        let out = json_value(&json!({ "url": "https://example.test/oauth" }));
+        assert!(out["url"].is_string());
+        assert_eq!(output::cell(&out, "url"), "https://example.test/oauth");
+    }
+}

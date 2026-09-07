@@ -63,3 +63,75 @@ fn render_check(check: &Check) -> String {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::output::{json_value, key_set};
+
+    fn report() -> Report {
+        Report {
+            checks: vec![
+                Check {
+                    id: "config.exists",
+                    label: "Config file present".to_owned(),
+                    severity: Severity::Ok,
+                    detail: None,
+                    fix_hint: None,
+                },
+                Check {
+                    id: "vault.exists",
+                    label: "Vault present".to_owned(),
+                    severity: Severity::Fail,
+                    detail: Some("no vault at ~/.springtale/vault.age".to_owned()),
+                    fix_hint: Some("run `springtale init`".to_owned()),
+                },
+            ],
+        }
+    }
+
+    #[test]
+    fn test_doctor_json_shape_is_a_checks_envelope() {
+        let out = json_value(&report());
+        assert_eq!(key_set(&out), ["checks"]);
+        assert!(out["checks"].is_array());
+        assert_eq!(crate::output::array(&out, "checks").len(), 2);
+    }
+
+    #[test]
+    fn test_doctor_check_json_shape_carries_all_five_fields() {
+        let out = json_value(&report());
+        let failing = &out["checks"][1];
+        assert_eq!(
+            key_set(failing),
+            ["detail", "fix_hint", "id", "label", "severity"]
+        );
+        assert!(failing["id"].is_string());
+        assert!(failing["label"].is_string());
+        assert!(failing["severity"].is_string());
+        assert!(failing["detail"].is_string());
+        assert!(failing["fix_hint"].is_string());
+    }
+
+    #[test]
+    fn test_doctor_severity_serializes_lowercase_and_nulls_stay_present() {
+        let out = json_value(&report());
+        assert_eq!(out["checks"][0]["severity"], "ok");
+        assert_eq!(out["checks"][1]["severity"], "fail");
+        // An unset detail is null, not a missing key: a consumer can
+        // index it without guessing.
+        assert!(out["checks"][0]["detail"].is_null());
+        assert!(out["checks"][0]["fix_hint"].is_null());
+        assert_eq!(key_set(&out["checks"][0]).len(), 5);
+    }
+
+    #[test]
+    fn test_doctor_human_render_reports_the_same_issue_count() {
+        let report = report();
+        assert_eq!(report.issue_count(), 1);
+        let text = render(&report);
+        assert!(text.contains("[OK]"));
+        assert!(text.contains("[FAIL] Vault present"));
+        assert!(text.contains("1 issue found"));
+    }
+}

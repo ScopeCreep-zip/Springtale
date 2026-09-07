@@ -95,7 +95,7 @@ pub async fn run(action: AuthorAction, store: &SqliteBackend, json: bool) -> Res
             authors::remove(store, &name)
                 .await
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
-            let removed = serde_json::json!({ "name": name, "removed": true });
+            let removed = removed_body(&name);
             output::emit(json, &removed, |v| {
                 format!("Removed trusted author: {}", output::cell(v, "name"))
             })?;
@@ -130,4 +130,77 @@ pub fn load_local_identity() -> Result<Keypair> {
         .context("identity in vault is not 32 bytes")?;
 
     Keypair::from_secret_bytes(bytes).context("identity in vault is not a valid Ed25519 key")
+}
+
+/// The `author list` body — a bare array, one object per author. The
+/// command emits the operation's own rows; this is the same shape,
+/// asserted by the output tests.
+#[cfg(test)]
+fn authors_json(rows: &[AuthorTableRow]) -> Vec<serde_json::Value> {
+    rows.iter()
+        .map(|r| serde_json::json!({ "name": r.name, "pubkey": r.pubkey }))
+        .collect()
+}
+
+/// The `author add` body, as the command emits it.
+#[cfg(test)]
+fn author_body(name: &str, pubkey_hex: &str) -> serde_json::Value {
+    serde_json::json!({ "name": name, "pubkey": pubkey_hex })
+}
+
+/// The `author remove` body.
+fn removed_body(name: &str) -> serde_json::Value {
+    serde_json::json!({ "name": name, "removed": true })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::output::{json_value, key_set};
+
+    /// Rows as `operations::authors::list` returns them. Parsing the
+    /// `trusted-author:` config entries is the operation's job, so this
+    /// starts from its output rather than re-implementing the parse.
+    fn rows() -> Vec<AuthorTableRow> {
+        vec![AuthorTableRow {
+            name: "kali".to_owned(),
+            pubkey: "aa11".to_owned(),
+        }]
+    }
+
+    #[test]
+    fn test_author_list_json_shape_is_a_bare_array_of_name_and_pubkey() {
+        let out = json_value(&authors_json(&rows()));
+        assert!(out.is_array(), "authors are not wrapped in an envelope");
+        assert_eq!(out.as_array().expect("array").len(), 1);
+        let author = &out[0];
+        assert_eq!(key_set(author), ["name", "pubkey"]);
+        assert!(author["name"].is_string());
+        assert!(author["pubkey"].is_string());
+        assert_eq!(author["name"], "kali");
+        assert_eq!(author["pubkey"], "aa11");
+    }
+
+    #[test]
+    fn test_author_list_json_is_empty_when_no_author_is_trusted() {
+        let out = json_value(&authors_json(&[]));
+        assert_eq!(out, serde_json::json!([]));
+    }
+
+    #[test]
+    fn test_author_add_json_shape_names_the_author_and_its_key() {
+        let out = json_value(&author_body("kali", "aa11"));
+        assert_eq!(key_set(&out), ["name", "pubkey"]);
+        assert!(out["name"].is_string());
+        assert!(out["pubkey"].is_string());
+    }
+
+    #[test]
+    fn test_author_remove_json_shape_names_the_author_and_the_flag() {
+        let out = json_value(&removed_body("kali"));
+        assert_eq!(key_set(&out), ["name", "removed"]);
+        assert_eq!(out["name"], "kali");
+        assert!(out["removed"].is_boolean());
+        assert_eq!(out["removed"], true);
+    }
 }

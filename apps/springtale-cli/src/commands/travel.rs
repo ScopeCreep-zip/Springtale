@@ -47,10 +47,7 @@ pub fn prepare(
     )
     .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    let body = serde_json::json!({
-        "backup": backup_path.display().to_string(),
-        "wiped": true,
-    });
+    let body = prepared_body(backup_path);
     output::emit_status(json_out, &body, |v| {
         format!(
             "Backup saved to: {}\nLocal data wiped. Safe travels.",
@@ -86,9 +83,48 @@ pub fn restore(
     )
     .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    let body = serde_json::json!({
+    let body = restored_body(backup_path);
+    output::emit_status(json_out, &body, |_| "Data restored from backup.".to_owned())
+}
+
+/// The `travel prepare` body — where the backup landed, and that the
+/// local copy is gone.
+fn prepared_body(backup_path: &Path) -> serde_json::Value {
+    serde_json::json!({
+        "backup": backup_path.display().to_string(),
+        "wiped": true,
+    })
+}
+
+/// The `travel restore` body.
+fn restored_body(backup_path: &Path) -> serde_json::Value {
+    serde_json::json!({
         "restored": true,
         "backup": backup_path.display().to_string(),
-    });
-    output::emit_status(json_out, &body, |_| "Data restored from backup.".to_owned())
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::output::{json_value, key_set};
+
+    #[test]
+    fn test_travel_prepare_json_shape_names_backup_and_wiped() {
+        let out = json_value(&prepared_body(Path::new("/media/usb/springtale.bak")));
+        assert_eq!(key_set(&out), ["backup", "wiped"]);
+        assert!(out["backup"].is_string());
+        assert_eq!(out["backup"], "/media/usb/springtale.bak");
+        assert!(out["wiped"].is_boolean());
+        assert_eq!(out["wiped"], true);
+    }
+
+    #[test]
+    fn test_travel_restore_json_shape_names_restored_and_backup() {
+        let out = json_value(&restored_body(Path::new("/media/usb/springtale.bak")));
+        assert_eq!(key_set(&out), ["backup", "restored"]);
+        assert!(out["restored"].is_boolean());
+        assert_eq!(out["restored"], true);
+        assert_eq!(out["backup"], "/media/usb/springtale.bak");
+    }
 }

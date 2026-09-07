@@ -1,45 +1,89 @@
-//! Hello World WASM connector for Springtale.
+//! Hello World WASM connector for Springtale — a WASI Preview 2
+//! component built against the SDK's WIT world.
 //!
-//! Demonstrates the minimum viable WASM connector:
-//! - One action ("greet") that returns a greeting
-//! - Proper ABI contract with the Springtale host
+//! Demonstrates the minimum viable community connector:
+//! - two actions ("greet", "echo"), both read-only
+//! - the `springtale:connector/guest` export the host calls
+//! - no host imports, because `manifest.toml` declares no capabilities
 //!
-//! Build: cargo build --target wasm32-unknown-unknown --release
-//! Install: copy target/.../connector_hello_wasm.wasm + manifest.toml
-//!          to Springtale and call install_wasm_connector()
+//! World: `sdk/connector-sdk/wit/connector.wit`.
+//!
+//! Build:  `cargo build --release --target wasm32-wasip2`
+//! Output: `target/wasm32-wasip2/release/connector_hello_wasm.wasm`
+//!         (already a component — the wasip2 target emits one directly,
+//!         no `wasm-tools component new` step)
+//! Install: copy the `.wasm` plus `manifest.toml` into Springtale and
+//!         call `install_wasm_connector()`.
 
-use springtale_connector_sdk::{dispatch, ActionResult};
+wit_bindgen::generate!({
+    path: "../../connector-sdk/wit",
+    world: "connector",
+});
+
+use exports::springtale::connector::guest::{ActionDecl, ActionResult, Guest};
+
+/// Convenience constructors mirroring the SDK's `ActionResult` helpers.
+fn ok(output: serde_json::Value, message: &str) -> ActionResult {
+    ActionResult {
+        success: true,
+        output: output.to_string(),
+        message: message.to_owned(),
+    }
+}
+
+fn err(message: String) -> ActionResult {
+    ActionResult {
+        success: false,
+        output: "null".to_owned(),
+        message,
+    }
+}
 
 /// The "greet" action — takes a name, returns a greeting.
-fn greet(input: serde_json::Value) -> ActionResult {
+fn greet(input: &serde_json::Value) -> ActionResult {
     let name = input["name"].as_str().unwrap_or("world");
-    ActionResult::ok(serde_json::json!({
-        "greeting": format!("Hello, {}!", name),
-    }))
+    ok(
+        serde_json::json!({ "greeting": format!("Hello, {name}!") }),
+        "",
+    )
 }
 
 /// The "echo" action — returns the input unchanged.
-fn echo(input: serde_json::Value) -> ActionResult {
-    ActionResult::ok_with_message(input.clone(), "echoed input")
+fn echo(input: &serde_json::Value) -> ActionResult {
+    ok(input.clone(), "echoed input")
 }
 
-/// WASM entry point — dispatches action calls from the Springtale host.
-///
-/// The host writes action name at memory offset 1024 and input JSON
-/// at 1024 + action_len. This function reads them, dispatches to the
-/// correct handler, and returns a pointer to the JSON result.
-#[unsafe(no_mangle)]
-pub unsafe extern "C" fn execute(
-    action_ptr: i32,
-    action_len: i32,
-    input_ptr: i32,
-    input_len: i32,
-) -> i32 {
-    dispatch(action_ptr, action_len, input_ptr, input_len, |action, input| {
-        match action {
-            "greet" => greet(input),
-            "echo" => echo(input),
-            _ => ActionResult::error(format!("unknown action: {action}")),
+struct HelloConnector;
+
+impl Guest for HelloConnector {
+    /// Must agree with `[[actions]]` in `manifest.toml`. Both actions
+    /// only compute from their input, so both are read-only.
+    fn actions() -> Vec<ActionDecl> {
+        vec![
+            ActionDecl {
+                name: "greet".to_owned(),
+                description: "Returns a greeting for the given name".to_owned(),
+                read_only: true,
+            },
+            ActionDecl {
+                name: "echo".to_owned(),
+                description: "Returns the input unchanged".to_owned(),
+                read_only: true,
+            },
+        ]
+    }
+
+    fn execute(action: String, input: String) -> ActionResult {
+        let parsed: serde_json::Value = match serde_json::from_str(&input) {
+            Ok(value) => value,
+            Err(e) => return err(format!("invalid input JSON: {e}")),
+        };
+        match action.as_str() {
+            "greet" => greet(&parsed),
+            "echo" => echo(&parsed),
+            other => err(format!("unknown action: {other}")),
         }
-    })
+    }
 }
+
+export!(HelloConnector);

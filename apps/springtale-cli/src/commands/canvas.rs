@@ -15,19 +15,7 @@ pub async fn run(stream: bool, connections: bool, json_out: bool) -> Result<()> 
     let client = Client::from_config()?;
     if connections {
         let body: Value = client.get("/canvas/connections").await?;
-        return output::emit(json_out, &body, |v| {
-            let rows = output::array(v, "connections")
-                .iter()
-                .map(|c| {
-                    vec![
-                        output::cell(c, "a"),
-                        output::cell(c, "b"),
-                        output::array(c, "pipes").len().to_string(),
-                    ]
-                })
-                .collect();
-            output::rows_table(&["FROM", "TO", "PIPES"], rows)
-        });
+        return output::emit(json_out, &body, connections_table);
     }
     if !stream {
         let body: Value = client.get("/canvas").await?;
@@ -77,4 +65,59 @@ async fn follow(response: reqwest::Response, json_out: bool) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// The `canvas --connections` table — one row per pipe pair.
+fn connections_table(v: &Value) -> String {
+    let rows = output::array(v, "connections")
+        .iter()
+        .map(|c| {
+            vec![
+                output::cell(c, "a"),
+                output::cell(c, "b"),
+                output::array(c, "pipes").len().to_string(),
+            ]
+        })
+        .collect();
+    output::rows_table(&["FROM", "TO", "PIPES"], rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::output::{json_value, key_set};
+
+    fn connections() -> Value {
+        json!({
+            "connections": [{
+                "a": "telegram",
+                "b": "github",
+                "pipes": [{ "rule_id": "r-1" }, { "rule_id": "r-2" }],
+            }]
+        })
+    }
+
+    #[test]
+    fn test_canvas_connections_json_shape_is_a_connections_envelope() {
+        let out = json_value(&connections());
+        assert_eq!(key_set(&out), ["connections"]);
+        assert!(out["connections"].is_array());
+        let edge = &out["connections"][0];
+        assert!(edge["a"].is_string());
+        assert!(edge["b"].is_string());
+        assert!(edge["pipes"].is_array());
+    }
+
+    #[test]
+    fn test_connections_table_reads_every_field_the_json_shape_promises() {
+        let table = connections_table(&connections());
+        for want in ["FROM", "telegram", "github", "2"] {
+            assert!(table.contains(want), "table lost {want}:\n{table}");
+        }
+    }
+
+    #[test]
+    fn test_connections_table_is_empty_for_a_colony_with_no_pipes() {
+        assert_eq!(connections_table(&json!({ "connections": [] })), "");
+    }
 }

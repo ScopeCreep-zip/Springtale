@@ -238,6 +238,10 @@ rustls-pki-types = "1"
 # builder site in `springtale-transport` and connector clients.
 rustls-post-quantum = "0.2"
 ring             = "0.17"
+# Test-only X.509 generation (in-test CAs / leaf certs for the mTLS
+# transport tests). `default-features = false` + explicit `ring` keeps it
+# on the workspace's existing ring backend: no aws-lc-rs, no OpenSSL.
+rcgen            = { version = "0.13", default-features = false, features = ["crypto", "pem", "ring"] }
 
 # ── Config ─────────────────────────────────────────────────────────────────────
 figment          = { version = "0.10", features = ["toml", "env"] }

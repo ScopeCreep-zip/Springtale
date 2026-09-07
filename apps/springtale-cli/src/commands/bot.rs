@@ -41,7 +41,7 @@ pub async fn panic_unpair(opts: &PassphraseOpts, json_out: bool) -> Result<()> {
         .await
         .context("failed to revoke paired users")?;
 
-    let body = serde_json::json!({ "removed": removed });
+    let body = unpair_body(removed);
     output::emit(json_out, &body, |_| {
         let tail = if removed > 0 {
             "All users must re-pair to regain access."
@@ -123,4 +123,48 @@ pub async fn settings(action: BotSettingsAction, json_out: bool) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// The `bot pair-init` body as the daemon returns it — the code the
+/// operator reads out, plus the single-use contract it comes with. The
+/// route builds this now; the shape is kept here so the rendering test
+/// asserts against the real one.
+#[cfg(test)]
+fn pair_init_body(code: &str) -> serde_json::Value {
+    serde_json::json!({ "pairing_code": code, "single_use": true })
+}
+
+/// The `bot panic-unpair` body — how many pairing rows were revoked.
+fn unpair_body(removed: u32) -> serde_json::Value {
+    serde_json::json!({ "removed": removed })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::output::{json_value, key_set};
+
+    #[test]
+    fn test_bot_pair_init_json_shape_names_the_code_and_single_use() {
+        let out = json_value(&pair_init_body("TRUE-BADGER-9142"));
+        assert_eq!(key_set(&out), ["pairing_code", "single_use"]);
+        assert!(out["pairing_code"].is_string());
+        assert_eq!(out["pairing_code"], "TRUE-BADGER-9142");
+        assert!(out["single_use"].is_boolean());
+        assert_eq!(out["single_use"], true);
+    }
+
+    #[test]
+    fn test_bot_panic_unpair_json_shape_is_a_removed_count() {
+        let out = json_value(&unpair_body(3));
+        assert_eq!(key_set(&out), ["removed"]);
+        assert!(out["removed"].is_number());
+        assert_eq!(out["removed"], 3);
+    }
+
+    #[test]
+    fn test_bot_panic_unpair_json_reports_zero_rather_than_omitting_it() {
+        let out = json_value(&unpair_body(0));
+        assert_eq!(out["removed"], 0);
+    }
 }

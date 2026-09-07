@@ -40,6 +40,35 @@ pub async fn run(base_url: &str, ready: bool, json_out: bool) -> Result<()> {
     }
     // A healthy probe stays silent for the container runtime; `--json`
     // gives a scriptable body without changing the exit-code contract.
-    let body = serde_json::json!({ "healthy": true, "url": url, "probe": probe });
+    let body = probe_body(&url, probe);
     output::emit_status(json_out, &body, |_| String::new())
+}
+
+/// The `--json` body a successful probe emits. Silent for humans, so
+/// this object is the only machine-readable trace of the probe.
+fn probe_body(url: &str, probe: &str) -> serde_json::Value {
+    serde_json::json!({ "healthy": true, "url": url, "probe": probe })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::output::{json_value, key_set};
+
+    #[test]
+    fn test_healthcheck_json_shape_names_health_url_and_probe() {
+        let out = json_value(&probe_body("http://127.0.0.1:8080/health", HEALTH));
+        assert_eq!(key_set(&out), ["healthy", "probe", "url"]);
+        assert_eq!(out["healthy"], true);
+        assert!(out["healthy"].is_boolean());
+        assert!(out["url"].is_string());
+        assert_eq!(out["url"], "http://127.0.0.1:8080/health");
+        assert_eq!(out["probe"], "/health");
+    }
+
+    #[test]
+    fn test_healthcheck_ready_probe_reports_the_ready_route() {
+        let out = json_value(&probe_body("http://127.0.0.1:8080/ready", READY));
+        assert_eq!(out["probe"], "/ready");
+    }
 }

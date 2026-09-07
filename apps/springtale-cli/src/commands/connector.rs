@@ -23,19 +23,7 @@ pub async fn run(action: ConnectorAction, json_out: bool) -> Result<()> {
     match action {
         ConnectorAction::List => {
             let body: Value = client.get("/connectors").await?;
-            output::emit(json_out, &body, |v| {
-                let rows = output::array(v, "connectors")
-                    .iter()
-                    .map(|c| {
-                        vec![
-                            output::cell(c, "name"),
-                            output::cell(c, "version"),
-                            output::cell(c, "enabled"),
-                        ]
-                    })
-                    .collect();
-                output::rows_table(&["NAME", "VERSION", "ENABLED"], rows)
-            })?;
+            output::emit(json_out, &body, connectors_table)?;
         }
         ConnectorAction::Enable { name } => {
             let body: Value = client
@@ -66,19 +54,7 @@ pub async fn run(action: ConnectorAction, json_out: bool) -> Result<()> {
         }
         ConnectorAction::Available => {
             let body: Value = client.get("/connectors/available").await?;
-            output::emit(json_out, &body, |v| {
-                let rows = output::array(v, "available")
-                    .iter()
-                    .map(|c| {
-                        vec![
-                            output::cell(c, "name"),
-                            output::cell(c, "label"),
-                            output::cell(c, "installed"),
-                        ]
-                    })
-                    .collect();
-                output::rows_table(&["NAME", "LABEL", "INSTALLED"], rows)
-            })?;
+            output::emit(json_out, &body, available_table)?;
         }
         ConnectorAction::Schemas => {
             let body: Value = client.get("/connectors/schemas").await?;
@@ -137,19 +113,7 @@ pub async fn run(action: ConnectorAction, json_out: bool) -> Result<()> {
             let body: Value = client
                 .get(&format!("/connectors/{name}/outputs?limit={limit}"))
                 .await?;
-            output::emit(json_out, &body, |v| {
-                let rows = output::array(v, "outputs")
-                    .iter()
-                    .map(|o| {
-                        vec![
-                            output::cell(o, "created_at"),
-                            output::cell(o, "action"),
-                            output::cell(o, "summary"),
-                        ]
-                    })
-                    .collect();
-                output::rows_table(&["WHEN", "ACTION", "SUMMARY"], rows)
-            })?;
+            output::emit(json_out, &body, outputs_table)?;
         }
         ConnectorAction::Reload { name } => {
             let body: Value = client
@@ -265,12 +229,7 @@ fn sign(path: &std::path::Path, json_out: bool) -> Result<()> {
         .map_err(|e| anyhow::anyhow!("failed to write manifest at {}: {e}", path.display()))?;
 
     let pubkey_hex = hex::encode(keypair.verifying_key().to_bytes());
-    let body = json!({
-        "path": path.display().to_string(),
-        "author": manifest.author,
-        "pubkey": pubkey_hex,
-        "signature": signature,
-    });
+    let body = signed_body(path, &manifest.author, &pubkey_hex, &signature);
     output::emit(json_out, &body, |v| {
         let author = output::cell(v, "author");
         format!(
@@ -280,4 +239,177 @@ fn sign(path: &std::path::Path, json_out: bool) -> Result<()> {
             output::cell(v, "signature"),
         )
     })
+}
+
+/// The `connector list` table — one row per installed connector.
+fn connectors_table(v: &Value) -> String {
+    let rows = output::array(v, "connectors")
+        .iter()
+        .map(|c| {
+            vec![
+                output::cell(c, "name"),
+                output::cell(c, "version"),
+                output::cell(c, "enabled"),
+            ]
+        })
+        .collect();
+    output::rows_table(&["NAME", "VERSION", "ENABLED"], rows)
+}
+
+/// The `connector available` table — one row per offered connector.
+fn available_table(v: &Value) -> String {
+    let rows = output::array(v, "available")
+        .iter()
+        .map(|c| {
+            vec![
+                output::cell(c, "name"),
+                output::cell(c, "label"),
+                output::cell(c, "installed"),
+            ]
+        })
+        .collect();
+    output::rows_table(&["NAME", "LABEL", "INSTALLED"], rows)
+}
+
+/// The `connector outputs` table — one row per recorded action output.
+fn outputs_table(v: &Value) -> String {
+    let rows = output::array(v, "outputs")
+        .iter()
+        .map(|o| {
+            vec![
+                output::cell(o, "created_at"),
+                output::cell(o, "action"),
+                output::cell(o, "summary"),
+            ]
+        })
+        .collect();
+    output::rows_table(&["WHEN", "ACTION", "SUMMARY"], rows)
+}
+
+/// The `connector sign` body — what was signed, by whom, with what.
+fn signed_body(path: &std::path::Path, author: &str, pubkey_hex: &str, signature: &str) -> Value {
+    json!({
+        "path": path.display().to_string(),
+        "author": author,
+        "pubkey": pubkey_hex,
+        "signature": signature,
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::output::{json_value, key_set};
+
+    fn installed() -> Value {
+        json!({
+            "connectors": [{ "name": "telegram", "version": "0.1.0", "enabled": true }]
+        })
+    }
+
+    fn available() -> Value {
+        json!({
+            "available": [{ "name": "github", "label": "GitHub", "installed": false }]
+        })
+    }
+
+    fn outputs() -> Value {
+        json!({
+            "outputs": [{
+                "created_at": "2026-09-04T10:00:00Z",
+                "action": "send_message",
+                "summary": "sent 1 message",
+            }]
+        })
+    }
+
+    #[test]
+    fn test_connector_list_json_shape_is_a_connectors_envelope() {
+        let out = json_value(&installed());
+        assert_eq!(key_set(&out), ["connectors"]);
+        assert!(out["connectors"].is_array());
+        let connector = &out["connectors"][0];
+        assert!(connector["name"].is_string());
+        assert!(connector["version"].is_string());
+        assert!(connector["enabled"].is_boolean());
+    }
+
+    #[test]
+    fn test_connector_available_json_shape_is_an_available_envelope() {
+        let out = json_value(&available());
+        assert_eq!(key_set(&out), ["available"]);
+        let item = &out["available"][0];
+        assert!(item["name"].is_string());
+        assert!(item["label"].is_string());
+        assert!(item["installed"].is_boolean());
+    }
+
+    #[test]
+    fn test_connector_outputs_json_shape_is_an_outputs_envelope() {
+        let out = json_value(&outputs());
+        assert_eq!(key_set(&out), ["outputs"]);
+        let item = &out["outputs"][0];
+        assert!(item["created_at"].is_string());
+        assert!(item["action"].is_string());
+        assert!(item["summary"].is_string());
+    }
+
+    #[test]
+    fn test_connector_tables_read_every_field_the_json_shapes_promise() {
+        let list = connectors_table(&installed());
+        for want in ["NAME", "telegram", "0.1.0", "true"] {
+            assert!(list.contains(want), "list table lost {want}:\n{list}");
+        }
+        let avail = available_table(&available());
+        for want in ["LABEL", "github", "GitHub", "false"] {
+            assert!(
+                avail.contains(want),
+                "available table lost {want}:\n{avail}"
+            );
+        }
+        let outs = outputs_table(&outputs());
+        for want in ["SUMMARY", "send_message", "sent 1 message"] {
+            assert!(outs.contains(want), "outputs table lost {want}:\n{outs}");
+        }
+    }
+
+    #[test]
+    fn test_connector_tables_are_empty_for_empty_envelopes() {
+        assert_eq!(connectors_table(&json!({ "connectors": [] })), "");
+        assert_eq!(available_table(&json!({ "available": [] })), "");
+        assert_eq!(outputs_table(&json!({ "outputs": [] })), "");
+    }
+
+    #[test]
+    fn test_connector_sign_json_shape_names_path_author_pubkey_signature() {
+        let body = signed_body(
+            std::path::Path::new("/tmp/connector-telegram.toml"),
+            "kali",
+            "ab".repeat(32).as_str(),
+            "c0ffee",
+        );
+        let out = json_value(&body);
+        assert_eq!(key_set(&out), ["author", "path", "pubkey", "signature"]);
+        assert_eq!(out["path"], "/tmp/connector-telegram.toml");
+        assert_eq!(out["author"], "kali");
+        assert!(out["pubkey"].is_string());
+        assert_eq!(out["signature"], "c0ffee");
+    }
+
+    #[test]
+    fn test_connector_ack_json_shapes_carry_the_keys_the_notices_read() {
+        let installed = json_value(&json!({ "installed": "telegram" }));
+        assert_eq!(key_set(&installed), ["installed"]);
+        assert!(installed["installed"].is_string());
+
+        let setup = json_value(&json!({ "name": "telegram" }));
+        assert_eq!(key_set(&setup), ["name"]);
+
+        let upsert = json_value(&json!({ "is_new": true }));
+        assert!(upsert["is_new"].is_boolean());
+
+        let cascade = json_value(&json!({ "rules_deleted": ["r-1", "r-2"] }));
+        assert!(cascade["rules_deleted"].is_array());
+        assert_eq!(output::array(&cascade, "rules_deleted").len(), 2);
+    }
 }

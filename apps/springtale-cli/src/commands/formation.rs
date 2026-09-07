@@ -19,20 +19,7 @@ pub async fn run(action: FormationAction, json_out: bool) -> Result<()> {
     match action {
         FormationAction::List => {
             let body: Value = client.get("/formations").await?;
-            output::emit(json_out, &body, |v| {
-                let rows = output::array(v, "formations")
-                    .iter()
-                    .map(|f| {
-                        vec![
-                            output::cell(f, "id"),
-                            output::cell(f, "name"),
-                            output::cell(f, "intent"),
-                            output::cell(f, "momentum"),
-                        ]
-                    })
-                    .collect();
-                output::rows_table(&["ID", "NAME", "INTENT", "MOMENTUM"], rows)
-            })?;
+            output::emit(json_out, &body, formations_table)?;
         }
         FormationAction::Get { id } => {
             let body: Value = client.get(&format!("/formations/{id}")).await?;
@@ -42,41 +29,17 @@ pub async fn run(action: FormationAction, json_out: bool) -> Result<()> {
         }
         FormationAction::Commands { id } => {
             let body: Value = client.get(&format!("/formations/{id}/commands")).await?;
-            output::emit(json_out, &body, |v| {
-                let rows = output::array(v, "commands")
-                    .iter()
-                    .map(|c| {
-                        vec![
-                            output::cell(c, "id"),
-                            output::cell(c, "label"),
-                            output::cell(c, "enabled"),
-                        ]
-                    })
-                    .collect();
-                output::rows_table(&["ID", "LABEL", "ENABLED"], rows)
-            })?;
+            output::emit(json_out, &body, commands_table)?;
         }
         FormationAction::Intents => {
             let body: Value = client.get("/formations/intents").await?;
-            output::emit(json_out, &body, |v| {
-                let rows = output::array(v, "intents")
-                    .iter()
-                    .map(|i| vec![output::cell(i, "value"), output::cell(i, "label")])
-                    .collect();
-                output::rows_table(&["VALUE", "LABEL"], rows)
-            })?;
+            output::emit(json_out, &body, intents_table)?;
         }
         FormationAction::Eligible { id } => {
             let body: Value = client
                 .get(&format!("/formations/{id}/members/eligible"))
                 .await?;
-            output::emit(json_out, &body, |v| {
-                let rows = output::array(v, "members")
-                    .iter()
-                    .map(|m| vec![output::cell(m, "name"), output::cell(m, "kind")])
-                    .collect();
-                output::rows_table(&["NAME", "KIND"], rows)
-            })?;
+            output::emit(json_out, &body, eligible_table)?;
         }
         FormationAction::ProposeIntent { id, intent } => {
             let body: Value = client
@@ -197,4 +160,141 @@ pub async fn run(action: FormationAction, json_out: bool) -> Result<()> {
 async fn simple(client: &Client, json_out: bool, path: &str) -> Result<()> {
     let body: Value = client.post(path, &json!({})).await?;
     output::emit(json_out, &body, |v| v.to_string())
+}
+
+/// The `formation list` table — one row per formation.
+fn formations_table(v: &Value) -> String {
+    let rows = output::array(v, "formations")
+        .iter()
+        .map(|f| {
+            vec![
+                output::cell(f, "id"),
+                output::cell(f, "name"),
+                output::cell(f, "intent"),
+                output::cell(f, "momentum"),
+            ]
+        })
+        .collect();
+    output::rows_table(&["ID", "NAME", "INTENT", "MOMENTUM"], rows)
+}
+
+/// The `formation commands` table — the command grid the UI renders.
+fn commands_table(v: &Value) -> String {
+    let rows = output::array(v, "commands")
+        .iter()
+        .map(|c| {
+            vec![
+                output::cell(c, "id"),
+                output::cell(c, "label"),
+                output::cell(c, "enabled"),
+            ]
+        })
+        .collect();
+    output::rows_table(&["ID", "LABEL", "ENABLED"], rows)
+}
+
+/// The `formation intents` table — the intents a formation can take.
+fn intents_table(v: &Value) -> String {
+    let rows = output::array(v, "intents")
+        .iter()
+        .map(|i| vec![output::cell(i, "value"), output::cell(i, "label")])
+        .collect();
+    output::rows_table(&["VALUE", "LABEL"], rows)
+}
+
+/// The `formation eligible` table — members that could join.
+fn eligible_table(v: &Value) -> String {
+    let rows = output::array(v, "members")
+        .iter()
+        .map(|m| vec![output::cell(m, "name"), output::cell(m, "kind")])
+        .collect();
+    output::rows_table(&["NAME", "KIND"], rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::output::{json_value, key_set};
+
+    fn formations() -> Value {
+        json!({
+            "formations": [{
+                "id": "f-1",
+                "name": "morning watch",
+                "intent": "reconnoiter",
+                "momentum": "warm",
+            }]
+        })
+    }
+
+    #[test]
+    fn test_formation_list_json_shape_is_a_formations_envelope() {
+        let out = json_value(&formations());
+        assert_eq!(key_set(&out), ["formations"]);
+        assert!(out["formations"].is_array());
+        let formation = &out["formations"][0];
+        assert!(formation["id"].is_string());
+        assert!(formation["name"].is_string());
+        assert!(formation["intent"].is_string());
+        assert!(formation["momentum"].is_string());
+    }
+
+    #[test]
+    fn test_formation_commands_json_shape_is_a_commands_envelope() {
+        let body = json!({
+            "commands": [{ "id": "rally", "label": "Rally", "enabled": true }]
+        });
+        let out = json_value(&body);
+        assert_eq!(key_set(&out), ["commands"]);
+        let command = &out["commands"][0];
+        assert!(command["id"].is_string());
+        assert!(command["label"].is_string());
+        assert!(command["enabled"].is_boolean());
+        let table = commands_table(&body);
+        for want in ["LABEL", "rally", "Rally", "true"] {
+            assert!(table.contains(want), "table lost {want}:\n{table}");
+        }
+    }
+
+    #[test]
+    fn test_formation_intents_json_shape_is_a_value_label_envelope() {
+        let body = json!({ "intents": [{ "value": "surge", "label": "Surge" }] });
+        let out = json_value(&body);
+        assert_eq!(key_set(&out), ["intents"]);
+        assert!(out["intents"][0]["value"].is_string());
+        assert!(out["intents"][0]["label"].is_string());
+        let table = intents_table(&body);
+        for want in ["VALUE", "surge", "Surge"] {
+            assert!(table.contains(want), "table lost {want}:\n{table}");
+        }
+    }
+
+    #[test]
+    fn test_formation_eligible_json_shape_is_a_members_envelope() {
+        let body = json!({ "members": [{ "name": "telegram", "kind": "connector" }] });
+        let out = json_value(&body);
+        assert_eq!(key_set(&out), ["members"]);
+        assert!(out["members"][0]["name"].is_string());
+        assert!(out["members"][0]["kind"].is_string());
+        let table = eligible_table(&body);
+        for want in ["KIND", "telegram", "connector"] {
+            assert!(table.contains(want), "table lost {want}:\n{table}");
+        }
+    }
+
+    #[test]
+    fn test_formations_table_reads_every_field_the_json_shape_promises() {
+        let table = formations_table(&formations());
+        for want in ["ID", "f-1", "morning watch", "reconnoiter", "warm"] {
+            assert!(table.contains(want), "table lost {want}:\n{table}");
+        }
+    }
+
+    #[test]
+    fn test_formation_tables_are_empty_for_empty_envelopes() {
+        assert_eq!(formations_table(&json!({ "formations": [] })), "");
+        assert_eq!(commands_table(&json!({ "commands": [] })), "");
+        assert_eq!(intents_table(&json!({ "intents": [] })), "");
+        assert_eq!(eligible_table(&json!({ "members": [] })), "");
+    }
 }

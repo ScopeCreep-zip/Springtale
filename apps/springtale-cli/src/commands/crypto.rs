@@ -60,8 +60,38 @@ pub fn rotate_vault_key(json_out: bool) -> Result<()> {
 
     new_vault.save().context("failed to save new vault")?;
 
-    let body = serde_json::json!({ "rotated": true, "entries": keys.len() });
+    let body = rotated_body(keys.len());
     output::emit_status(json_out, &body, |_| {
         "Vault key rotated successfully.".to_owned()
     })
+}
+
+/// The `crypto rotate-vault-key` body — how many entries were carried
+/// into the re-encrypted vault. Never the keys themselves.
+fn rotated_body(entries: usize) -> serde_json::Value {
+    serde_json::json!({ "rotated": true, "entries": entries })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::output::{json_value, key_set};
+
+    #[test]
+    fn test_crypto_rotate_json_shape_names_rotated_and_entry_count() {
+        let out = json_value(&rotated_body(7));
+        assert_eq!(key_set(&out), ["entries", "rotated"]);
+        assert!(out["rotated"].is_boolean());
+        assert_eq!(out["rotated"], true);
+        assert!(out["entries"].is_number());
+        assert_eq!(out["entries"], 7);
+    }
+
+    #[test]
+    fn test_crypto_rotate_json_carries_no_key_material() {
+        let out = json_value(&rotated_body(0));
+        for leaky in ["passphrase", "key", "keys", "vault_key"] {
+            assert!(out.get(leaky).is_none(), "{leaky} must not be emitted");
+        }
+    }
 }

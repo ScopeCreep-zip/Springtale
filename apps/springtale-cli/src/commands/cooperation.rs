@@ -56,11 +56,8 @@ pub fn glyphs(check: Option<&Path>, json_out: bool) -> Result<()> {
     // The plain listing is `pyftsubset --unicodes-file` input, so the
     // human form stays one bare `U+XXXX` per line; `--json` wraps the
     // same list in an envelope for anything that wants to parse it.
-    let listed: Vec<String> = cps
-        .iter()
-        .map(|c| format!("U+{:04X}", u32::from(*c)))
-        .collect();
-    let body = serde_json::json!({ "codepoints": &listed });
+    let listed = codepoint_labels(&cps);
+    let body = glyphs_body(&listed);
     output::emit(json_out, &body, |_| listed.join("\n"))
 }
 
@@ -122,5 +119,59 @@ fn check_against(path: &Path, cps: &BTreeSet<char>) -> Result<()> {
         Ok(())
     } else {
         Err(anyhow!("glyph check failed:\n  {}", problems.join("\n  ")))
+    }
+}
+
+/// `U+XXXX` labels for every codepoint, in codepoint order.
+fn codepoint_labels(cps: &BTreeSet<char>) -> Vec<String> {
+    cps.iter()
+        .map(|c| format!("U+{:04X}", u32::from(*c)))
+        .collect()
+}
+
+/// The `cooperation glyphs` body — the same list the human form prints
+/// one per line, wrapped so it can be parsed.
+fn glyphs_body(listed: &[String]) -> serde_json::Value {
+    serde_json::json!({ "codepoints": listed })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::output::{json_value, key_set};
+
+    #[test]
+    fn test_glyphs_json_shape_is_a_codepoints_array_of_strings() {
+        let listed = codepoint_labels(&all_codepoints());
+        let out = json_value(&glyphs_body(&listed));
+        assert_eq!(key_set(&out), ["codepoints"]);
+        assert!(out["codepoints"].is_array());
+        let items = crate::output::array(&out, "codepoints");
+        assert!(!items.is_empty(), "the def table renders no glyphs");
+        for item in items {
+            let label = item.as_str().expect("codepoints are strings");
+            assert!(label.starts_with("U+"), "not a codepoint label: {label}");
+            assert!(
+                u32::from_str_radix(&label[2..], 16).is_ok(),
+                "not hex: {label}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_glyphs_json_lists_the_same_codepoints_the_human_form_prints() {
+        let cps = all_codepoints();
+        let listed = codepoint_labels(&cps);
+        assert_eq!(listed.len(), cps.len());
+        let out = json_value(&glyphs_body(&listed));
+        assert_eq!(crate::output::array(&out, "codepoints").len(), cps.len());
+    }
+
+    #[test]
+    fn test_codepoint_labels_are_four_digit_uppercase_hex() {
+        let mut cps = BTreeSet::new();
+        cps.insert('\u{e0b0}');
+        cps.insert('A');
+        assert_eq!(codepoint_labels(&cps), ["U+0041", "U+E0B0"]);
     }
 }
