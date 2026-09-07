@@ -968,8 +968,8 @@ action = "reply"
 [actions.params]
 parent_uri = "${trigger.uri}"
 parent_cid = "${trigger.cid}"
-root_uri = "${trigger.uri}"
-root_cid = "${trigger.cid}"
+root_uri = "${trigger.root_uri}"
+root_cid = "${trigger.root_cid}"
 text = "${last_ai_output}"
 "#
                 .into(),

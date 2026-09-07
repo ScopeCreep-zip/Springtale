@@ -17,8 +17,8 @@ pub fn declaration() -> ActionDecl {
                 "text": { "type": "string", "description": "Reply text." },
                 "parent_uri": { "type": "string", "description": "AT URI of the parent post." },
                 "parent_cid": { "type": "string", "description": "CID of the parent post." },
-                "root_uri": { "type": "string", "description": "AT URI of the root post in the thread." },
-                "root_cid": { "type": "string", "description": "CID of the root post." }
+                "root_uri": { "type": "string", "description": "AT URI of the root post in the thread — pass the `mention` trigger's `root_uri`, not the mentioned post's `uri`." },
+                "root_cid": { "type": "string", "description": "CID of the root post — pass the `mention` trigger's `root_cid`." }
             },
             "required": ["text", "parent_uri", "parent_cid", "root_uri", "root_cid"]
         })),
@@ -87,7 +87,103 @@ pub async fn execute(
 mod tests {
     use super::*;
 
-    use crate::client::test_helpers::MockBlueskyClient;
+    use crate::client::test_helpers::{MockBlueskyClient, RecordingBlueskyClient};
+    use crate::gateway::route_jetstream_event;
+
+    const OWN: &str = "did:plc:me";
+
+    /// A real Jetstream `app.bsky.feed.post` create commit that mentions
+    /// us. `reply` is the record's own reply ref (`None` for a top-level
+    /// post), which is what decides the thread root.
+    fn mention_commit(reply: Option<serde_json::Value>) -> serde_json::Value {
+        let mut record = serde_json::json!({
+            "$type": "app.bsky.feed.post",
+            "text": "hey @me",
+            "facets": [{
+                "features": [{ "$type": "app.bsky.richtext.facet#mention", "did": OWN }],
+                "index": { "byteStart": 4, "byteEnd": 7 }
+            }]
+        });
+        if let Some(r) = reply {
+            record["reply"] = r;
+        }
+        serde_json::json!({
+            "did": "did:plc:someone",
+            "time_us": 1_700_000_000_000_000u64,
+            "kind": "commit",
+            "commit": {
+                "operation": "create",
+                "collection": "app.bsky.feed.post",
+                "rkey": "3kxyz",
+                "cid": "bafymention",
+                "record": record
+            }
+        })
+    }
+
+    /// The wiring the `bluesky-mention-auto-ack` builtin recipe performs:
+    /// parent from the mentioned post, root from the trigger's root.
+    fn reply_input_from_mention(payload: &serde_json::Value) -> serde_json::Value {
+        serde_json::json!({
+            "text": "ack",
+            "parent_uri": payload["uri"],
+            "parent_cid": payload["cid"],
+            "root_uri": payload["root_uri"],
+            "root_cid": payload["root_cid"],
+        })
+    }
+
+    #[tokio::test]
+    async fn test_reply_to_top_level_mention_roots_at_that_post() {
+        let payload = route_jetstream_event(&mention_commit(None), OWN)
+            .unwrap_or_else(|| panic!("mention routes"));
+        let client = RecordingBlueskyClient::default();
+
+        execute(&client, &reply_input_from_mention(&payload))
+            .await
+            .unwrap_or_else(|e| panic!("reply failed: {e}"));
+
+        let sent = client
+            .captured()
+            .unwrap_or_else(|| panic!("reply never reached the client"));
+        assert_eq!(
+            sent.parent_uri,
+            "at://did:plc:someone/app.bsky.feed.post/3kxyz"
+        );
+        assert_eq!(sent.parent_cid, "bafymention");
+        // A top-level mention is the root of its own thread.
+        assert_eq!(sent.root_uri, sent.parent_uri);
+        assert_eq!(sent.root_cid, sent.parent_cid);
+    }
+
+    #[tokio::test]
+    async fn test_reply_to_nested_mention_roots_at_thread_root() {
+        let commit = mention_commit(Some(serde_json::json!({
+            "root": { "uri": "at://did:plc:opener/app.bsky.feed.post/root", "cid": "bafyroot" },
+            "parent": { "uri": "at://did:plc:other/app.bsky.feed.post/mid", "cid": "bafymid" }
+        })));
+        let payload =
+            route_jetstream_event(&commit, OWN).unwrap_or_else(|| panic!("mention routes"));
+        let client = RecordingBlueskyClient::default();
+
+        execute(&client, &reply_input_from_mention(&payload))
+            .await
+            .unwrap_or_else(|e| panic!("reply failed: {e}"));
+
+        let sent = client
+            .captured()
+            .unwrap_or_else(|| panic!("reply never reached the client"));
+        // Parent is still the post that mentioned us...
+        assert_eq!(
+            sent.parent_uri,
+            "at://did:plc:someone/app.bsky.feed.post/3kxyz"
+        );
+        // ...but the thread roots where the conversation started, not at
+        // the mention — otherwise clients file the reply as its own thread.
+        assert_eq!(sent.root_uri, "at://did:plc:opener/app.bsky.feed.post/root");
+        assert_eq!(sent.root_cid, "bafyroot");
+        assert_ne!(sent.root_uri, sent.parent_uri);
+    }
 
     #[test]
     fn test_declaration_name() {

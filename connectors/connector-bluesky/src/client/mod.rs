@@ -402,6 +402,86 @@ pub mod test_helpers {
         pub response: serde_json::Value,
     }
 
+    /// The arguments one `reply` call carried to the API.
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    pub struct CapturedReply {
+        pub text: String,
+        pub parent_uri: String,
+        pub parent_cid: String,
+        pub root_uri: String,
+        pub root_cid: String,
+    }
+
+    /// Mock that records what `reply` was asked to send.
+    ///
+    /// [`MockBlueskyClient`] discards its arguments, so it cannot answer
+    /// "what did we put in the reply record?" — the question thread
+    /// rooting turns on. This one keeps the last call.
+    #[derive(Default)]
+    pub struct RecordingBlueskyClient {
+        pub last_reply: std::sync::Mutex<Option<CapturedReply>>,
+    }
+
+    impl RecordingBlueskyClient {
+        /// The recorded `reply` call, or `None` if `reply` never ran.
+        pub fn captured(&self) -> Option<CapturedReply> {
+            self.last_reply.lock().ok().and_then(|g| g.clone())
+        }
+    }
+
+    #[async_trait]
+    impl BlueskyApi for RecordingBlueskyClient {
+        async fn current_account(&self) -> Result<(String, String), BlueskyError> {
+            Ok((
+                "did:plc:mocktestaccount".to_owned(),
+                "mock.bsky.social".to_owned(),
+            ))
+        }
+
+        async fn create_post(&self, _text: &str) -> Result<serde_json::Value, BlueskyError> {
+            Ok(serde_json::json!({}))
+        }
+
+        async fn reply(
+            &self,
+            text: &str,
+            parent_uri: &str,
+            parent_cid: &str,
+            root_uri: &str,
+            root_cid: &str,
+        ) -> Result<serde_json::Value, BlueskyError> {
+            if let Ok(mut slot) = self.last_reply.lock() {
+                *slot = Some(CapturedReply {
+                    text: text.to_owned(),
+                    parent_uri: parent_uri.to_owned(),
+                    parent_cid: parent_cid.to_owned(),
+                    root_uri: root_uri.to_owned(),
+                    root_cid: root_cid.to_owned(),
+                });
+            }
+            Ok(serde_json::json!({
+                "uri": "at://did:plc:mocktestaccount/app.bsky.feed.post/sent",
+                "cid": "bafysent"
+            }))
+        }
+
+        async fn like(
+            &self,
+            _subject_uri: &str,
+            _subject_cid: &str,
+        ) -> Result<serde_json::Value, BlueskyError> {
+            Ok(serde_json::json!({}))
+        }
+
+        async fn repost(
+            &self,
+            _subject_uri: &str,
+            _subject_cid: &str,
+        ) -> Result<serde_json::Value, BlueskyError> {
+            Ok(serde_json::json!({}))
+        }
+    }
+
     #[async_trait]
     impl BlueskyApi for MockBlueskyClient {
         async fn current_account(&self) -> Result<(String, String), BlueskyError> {

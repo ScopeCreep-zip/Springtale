@@ -47,10 +47,16 @@ App passwords are recommended over account passwords — they can be revoked ind
 
 | Name | Source | Payload fields |
 |------|--------|---------------|
-| `mention` | Jetstream (filtered `app.bsky.feed.post`) | `did`, `uri`, `cid`, `text`, `facets`, `createdAt` |
+| `mention` | Jetstream (filtered `app.bsky.feed.post`) | `did`, `uri`, `cid`, `root_uri`, `root_cid`, `text`, `facets`, `createdAt` |
 | `follow` | Jetstream (`app.bsky.graph.follow`) | `did`, `uri`, `subject`, `createdAt` |
 | `like` | Jetstream (`app.bsky.feed.like`) | `did`, `subject` (`uri`, `cid`), `createdAt` |
 | `repost` | Jetstream (`app.bsky.feed.repost`) | `did`, `subject` (`uri`, `cid`), `createdAt` |
+
+`root_uri`/`root_cid` are the **thread root** of the mentioned post: the
+post's own `uri`/`cid` when it is top-level, and the conversation's real
+root when the mention is itself a reply. Pass them straight to the
+`reply` action — using `${trigger.uri}` as the root instead splits the
+reply into a thread of its own, because clients group threads by root.
 
 All triggers are delivered via the Jetstream WebSocket firehose — a real-time stream of ATProto events.
 
