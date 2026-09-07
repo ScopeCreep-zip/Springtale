@@ -18,6 +18,7 @@
 use crate::cooperation::formation::Formation;
 use springtale_cooperation::action_state::ActionState;
 use springtale_cooperation::cadence::TickReport;
+use springtale_cooperation::handoff::HandoffCompletion;
 use springtale_cooperation::momentum::{MomentumEvent, TickCounts};
 use springtale_cooperation::tick_processor::FormationTickResult;
 use springtale_cooperation::utterance::{UtteranceKind, utter};
@@ -52,8 +53,8 @@ fn succeeded(report: &TickReport) -> bool {
 /// of its alignment — waiting and claimed-only are not success. Only
 /// reports that finished work can succeed or fail. Success and failure
 /// carry the tick's [`TickCounts`] for the momentum window.
-pub fn classify(result: &FormationTickResult) -> MomentumEvent {
-    let counts = count(result);
+pub fn classify(result: &FormationTickResult, handoffs: &[HandoffCompletion]) -> MomentumEvent {
+    let counts = count(result, handoffs);
     let failed = counts.successes < counts.actions;
 
     if !result.interferences.is_empty() {
@@ -73,11 +74,11 @@ pub fn classify(result: &FormationTickResult) -> MomentumEvent {
 ///
 /// `duplicates` counts acted reports whose descriptor
 /// `(kind, target, payload_hash)` repeats an earlier report's in this tick.
-/// `handoffs` and `handoffs_ok` are 0: `FormationTickResult` carries only
-/// reports and interferences, and the `handoff::` module emits no
-/// completion event the tick could read, so the handoff rate is not yet
-/// measured here.
-fn count(result: &FormationTickResult) -> TickCounts {
+/// `handoffs` and `handoffs_ok` are the completions the formation's
+/// `HandoffLog` collected since the last tick — a handoff that reached
+/// its substrate counts as ok, a `Failed` one does not, so the window's
+/// `handoff_rate` measures the place §20 says cooperation breaks.
+fn count(result: &FormationTickResult, handoffs: &[HandoffCompletion]) -> TickCounts {
     let mut seen: HashSet<(&str, Option<&str>, u64)> = HashSet::new();
     let mut counts = TickCounts::default();
     for report in &result.reports {
@@ -100,6 +101,9 @@ fn count(result: &FormationTickResult) -> TickCounts {
             counts.duplicates = counts.duplicates.saturating_add(1);
         }
     }
+    counts.handoffs = u32::try_from(handoffs.len()).unwrap_or(u32::MAX);
+    counts.handoffs_ok =
+        u32::try_from(handoffs.iter().filter(|h| h.success).count()).unwrap_or(u32::MAX);
     counts
 }
 
@@ -112,7 +116,22 @@ pub fn run(
 ) {
     // Step 4 — momentum update from actual results. A `TickSuccess` with a
     // real action also refreshes the activity clock inside `apply_event`.
-    formation.momentum.apply_event(&classify(result));
+    // The handoffs that finished since the last tick are counted into the
+    // same window and surfaced on the event stream (plan 1.3 / 1.15).
+    let handoffs = formation.handoff_log.drain();
+    for completion in &handoffs {
+        springtale_cooperation::events::emit(
+            cooperation_tx,
+            springtale_cooperation::events::CooperationEvent::HandoffCompleted {
+                formation_id: formation.id,
+                pattern: completion.pattern.to_owned(),
+                from: completion.from,
+                to: completion.to,
+                success: completion.success,
+            },
+        );
+    }
+    formation.momentum.apply_event(&classify(result, &handoffs));
 
     // Step 4b — per-member consecutive failures for role transformation
     // (§14). Idle reports and finished-and-aligned work reset the counter;
@@ -193,25 +212,28 @@ mod tests {
             report(None, 1.0),
             report(None, 1.0),
         ]);
-        assert!(matches!(classify(&result), MomentumEvent::TickIdle));
+        assert!(matches!(classify(&result, &[]), MomentumEvent::TickIdle));
     }
 
     #[test]
     fn test_classify_empty_tick_is_idle() {
-        assert!(matches!(classify(&tick(vec![])), MomentumEvent::TickIdle));
+        assert!(matches!(
+            classify(&tick(vec![]), &[]),
+            MomentumEvent::TickIdle
+        ));
     }
 
     #[test]
     fn test_classify_action_aligned_is_success_and_counts_duplicates() {
         // Same kind, target and payload hash: the second report is
-        // duplicate work. No handoff events reach the tick, so 0.
+        // duplicate work. No handoffs finished in this tick, so 0.
         let result = tick(vec![
             report(Some("work"), 1.0),
             report(Some("work"), 1.0),
             report(Some("other"), 1.0),
         ]);
         assert!(matches!(
-            classify(&result),
+            classify(&result, &[]),
             MomentumEvent::TickSuccess { counts }
                 if counts.actions == 3
                     && counts.successes == 3
@@ -224,7 +246,7 @@ mod tests {
     fn test_classify_action_misaligned_is_failure() {
         let result = tick(vec![report(Some("work"), 1.0), report(Some("work"), 0.2)]);
         assert!(matches!(
-            classify(&result),
+            classify(&result, &[]),
             MomentumEvent::TickFailure { counts } if counts.actions == 2 && counts.successes == 1
         ));
     }
@@ -240,11 +262,11 @@ mod tests {
     fn test_hung_dispatch_is_idle_and_never_promotes() {
         let hung = || stated(Some("work"), REQUESTED_ALIGNMENT, ActionState::Requested);
         let result = tick(vec![hung(), hung()]);
-        assert!(matches!(classify(&result), MomentumEvent::TickIdle));
+        assert!(matches!(classify(&result, &[]), MomentumEvent::TickIdle));
 
         let mut momentum = MomentumState::default();
         for _ in 0..50 {
-            momentum.apply_event(&classify(&result));
+            momentum.apply_event(&classify(&result, &[]));
         }
         assert_eq!(momentum.tier, MomentumTier::Cold);
         assert_eq!(momentum.consecutive_successes, 0);
@@ -260,6 +282,35 @@ mod tests {
             stated(Some("sacrifice_yield"), 0.9, ActionState::Init),
             stated(Some("cancelled"), 1.0, ActionState::Cancelled),
         ]);
-        assert!(matches!(classify(&result), MomentumEvent::TickIdle));
+        assert!(matches!(classify(&result, &[]), MomentumEvent::TickIdle));
+    }
+
+    fn completion(success: bool) -> HandoffCompletion {
+        HandoffCompletion {
+            pattern: "direct",
+            from: AgentId::new(),
+            to: Some(AgentId::new()),
+            success,
+        }
+    }
+
+    /// Plan 1.3 / 1.15: the window's handoff counters used to be dead —
+    /// nothing emitted a completion, so `handoff_rate()` was always 0.
+    /// The tick now counts what the formation's `HandoffLog` collected.
+    #[test]
+    fn test_count_handoff_completions_reach_the_momentum_window() {
+        let result = tick(vec![report(Some("send"), 1.0)]);
+        let counts = count(
+            &result,
+            &[completion(true), completion(false), completion(true)],
+        );
+        assert_eq!(counts.handoffs, 3);
+        assert_eq!(counts.handoffs_ok, 2);
+
+        let mut momentum = MomentumState::default();
+        momentum.record_successful_tick(&counts);
+        assert_eq!(momentum.window.handoffs, 3);
+        assert_eq!(momentum.window.handoffs_ok, 2);
+        assert!((momentum.window.handoff_rate() - 2.0 / 3.0).abs() < 1e-6);
     }
 }

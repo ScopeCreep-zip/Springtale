@@ -10,9 +10,7 @@ use tokio::sync::mpsc;
 
 use springtale_cooperation::action::SubTask;
 use springtale_cooperation::action_state::ActionState;
-use springtale_cooperation::cadence::{
-    ActionDescriptor, AgentId, IntentPattern, Tick, TickReport,
-};
+use springtale_cooperation::cadence::{ActionDescriptor, AgentId, IntentPattern, Tick, TickReport};
 use springtale_cooperation::routing::direct::assignment;
 use springtale_cooperation::stigmergy::types::SurfaceType;
 use springtale_cooperation::types::{ApprovalPolicy, FormationConstraints};

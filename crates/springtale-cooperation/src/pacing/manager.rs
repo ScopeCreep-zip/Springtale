@@ -86,9 +86,7 @@ impl PacingManager {
             PacingPhase::BuildUp { .. } if self.intensity >= peak => {
                 Some(PacingPhase::SustainPeak { peaked_at: now })
             }
-            PacingPhase::SustainPeak { peaked_at }
-                if now.duration_since(*peaked_at) >= sustain =>
-            {
+            PacingPhase::SustainPeak { peaked_at } if now.duration_since(*peaked_at) >= sustain => {
                 Some(PacingPhase::PeakFade { since: now })
             }
             // Booth: "Peak Fade won't allow the Relax period to start

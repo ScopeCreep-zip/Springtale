@@ -27,7 +27,7 @@ use springtale_cooperation::comms::{
 use springtale_cooperation::consensus::ConsensusEngine;
 use springtale_cooperation::context::FormationContext;
 use springtale_cooperation::handoff::{
-    FlexibleChainPool, HandoffResult, HandoffType, dispatch_handoff_durable,
+    FlexibleChainPool, HandoffLog, HandoffResult, HandoffType, dispatch_handoff_durable,
 };
 use springtale_cooperation::mental_model::SharedMentalModel;
 use springtale_cooperation::momentum::{MomentumState, MomentumTier};
@@ -192,6 +192,9 @@ pub struct Formation {
     /// When `true`, tick processing skips this formation entirely.
     pub paused: bool,
     pub constraints: FormationConstraints,
+    /// Handoffs that finished since the last tick drained the log
+    /// (plan 1.3 / 1.15). `Arc` because `dispatch_handoff` takes `&self`.
+    pub handoff_log: Arc<HandoffLog>,
     pub momentum: MomentumState,
     /// Hayes-Roth task-routing blackboard (§3 composer output). Distinct
     /// from [`shared_env`] which is the §10 atomic workspace. The two
@@ -505,6 +508,7 @@ impl Formation {
         let pacing = PacingManager::with_config(constraints.pacing.clone());
         let formation = Self {
             id: FormationId::new(),
+            handoff_log: Arc::new(HandoffLog::default()),
             intent,
             paused: false,
             constraints,
@@ -941,14 +945,21 @@ impl Formation {
         handoff: &HandoffType,
     ) -> Result<HandoffResult, springtale_cooperation::error::CooperationError> {
         let ttl = Some(self.constraints.timeout);
-        dispatch_handoff_durable(
+        let result = dispatch_handoff_durable(
             handoff,
             &self.store,
             &self.flex_chain_pool,
             Some(&self.direct_inbox),
             ttl,
         )
-        .await
+        .await;
+        // Plan 1.3: a handoff is where cooperation most often breaks, so
+        // every completion — landed or failed — is recorded for the tick
+        // to count into the momentum window and re-emit.
+        if let Ok(outcome) = result.as_ref() {
+            self.handoff_log.record(handoff, outcome);
+        }
+        result
     }
 
     /// Subscribe to both the peer event bus and the shared context watch
@@ -1184,6 +1195,15 @@ mod tests {
             other => panic!("expected Delivered, got {other:?}"),
         }
         assert_eq!(formation.direct_inbox.len(receiver), 1);
+        // Plan 1.3 / 1.15: the dispatch recorded a completion, so the
+        // tick's momentum window can count the handoff.
+        let completions = formation.handoff_log.drain();
+        assert_eq!(completions.len(), 1);
+        assert_eq!(completions[0].pattern, "direct");
+        assert_eq!(completions[0].from, sender);
+        assert_eq!(completions[0].to, Some(receiver));
+        assert!(completions[0].success);
+        assert!(formation.handoff_log.drain().is_empty());
     }
 
     #[tokio::test]

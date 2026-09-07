@@ -89,11 +89,13 @@ pub async fn run(
     // The beat's L0 surface reactions, kept aside so the task path can
     // not overwrite them (plan 1.9). Re-attached to each member's report
     // in the gather phase.
-    let surfaces: std::collections::HashMap<AgentId, springtale_cooperation::cadence::ActionDescriptor> =
-        decisions
-            .iter_mut()
-            .filter_map(|d| d.surface.take().map(|a| (d.agent, a)))
-            .collect();
+    let surfaces: std::collections::HashMap<
+        AgentId,
+        springtale_cooperation::cadence::ActionDescriptor,
+    > = decisions
+        .iter_mut()
+        .filter_map(|d| d.surface.take().map(|a| (d.agent, a)))
+        .collect();
 
     // 2. Claim on the blackboard now.
     let mut settled: Vec<(AgentId, ExecuteOutcome)> = Vec::new();
