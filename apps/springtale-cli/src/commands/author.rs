@@ -60,7 +60,7 @@ pub async fn run(action: AuthorAction, store: &SqliteBackend, json: bool) -> Res
                 .await
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-            let added = serde_json::json!({ "name": name, "pubkey": pubkey_hex });
+            let added = author_body(&name, &pubkey_hex);
             output::emit(json, &added, |v| {
                 format!(
                     "Trusted author added: {}\n  pubkey: {}",
@@ -74,26 +74,8 @@ pub async fn run(action: AuthorAction, store: &SqliteBackend, json: bool) -> Res
                 .list_config()
                 .await
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
-            let rows: Vec<AuthorTableRow> = configs
-                .into_iter()
-                .filter_map(|(key, value)| {
-                    let name = key.strip_prefix(TRUSTED_AUTHOR_PREFIX)?;
-                    let data: serde_json::Value = serde_json::from_str(&value).ok()?;
-                    Some(AuthorTableRow {
-                        name: name.to_owned(),
-                        pubkey: data
-                            .get("pubkey")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or("")
-                            .to_owned(),
-                    })
-                })
-                .collect();
-
-            let authors: Vec<serde_json::Value> = rows
-                .iter()
-                .map(|r| serde_json::json!({ "name": r.name, "pubkey": r.pubkey }))
-                .collect();
+            let rows = author_rows(configs);
+            let authors = authors_json(&rows);
             output::emit(json, &authors, |_| {
                 if rows.is_empty() {
                     "No trusted authors.".to_owned()
@@ -108,7 +90,7 @@ pub async fn run(action: AuthorAction, store: &SqliteBackend, json: bool) -> Res
                 .delete_config(&key)
                 .await
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
-            let removed = serde_json::json!({ "name": name, "removed": true });
+            let removed = removed_body(&name);
             output::emit(json, &removed, |v| {
                 format!("Removed trusted author: {}", output::cell(v, "name"))
             })?;
@@ -143,4 +125,94 @@ pub fn load_local_identity() -> Result<Keypair> {
         .context("identity in vault is not 32 bytes")?;
 
     Keypair::from_secret_bytes(bytes).context("identity in vault is not a valid Ed25519 key")
+}
+
+/// Turn the config rows into author rows, dropping everything that is
+/// not a `trusted-author:` entry.
+fn author_rows(configs: Vec<(String, String)>) -> Vec<AuthorTableRow> {
+    configs
+        .into_iter()
+        .filter_map(|(key, value)| {
+            let name = key.strip_prefix(TRUSTED_AUTHOR_PREFIX)?;
+            let data: serde_json::Value = serde_json::from_str(&value).ok()?;
+            Some(AuthorTableRow {
+                name: name.to_owned(),
+                pubkey: data
+                    .get("pubkey")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_owned(),
+            })
+        })
+        .collect()
+}
+
+/// The `author list` body — a bare array, one object per author.
+fn authors_json(rows: &[AuthorTableRow]) -> Vec<serde_json::Value> {
+    rows.iter()
+        .map(|r| serde_json::json!({ "name": r.name, "pubkey": r.pubkey }))
+        .collect()
+}
+
+/// The `author add` body.
+fn author_body(name: &str, pubkey_hex: &str) -> serde_json::Value {
+    serde_json::json!({ "name": name, "pubkey": pubkey_hex })
+}
+
+/// The `author remove` body.
+fn removed_body(name: &str) -> serde_json::Value {
+    serde_json::json!({ "name": name, "removed": true })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::output::{json_value, key_set};
+
+    fn configs() -> Vec<(String, String)> {
+        vec![
+            (
+                "trusted-author:kali".to_owned(),
+                r#"{"pubkey":"aa11"}"#.to_owned(),
+            ),
+            // Not an author entry — must not reach the output.
+            ("heartbeat".to_owned(), r#"{"interval":30}"#.to_owned()),
+        ]
+    }
+
+    #[test]
+    fn test_author_list_json_shape_is_a_bare_array_of_name_and_pubkey() {
+        let out = json_value(&authors_json(&author_rows(configs())));
+        assert!(out.is_array(), "authors are not wrapped in an envelope");
+        assert_eq!(out.as_array().expect("array").len(), 1);
+        let author = &out[0];
+        assert_eq!(key_set(author), ["name", "pubkey"]);
+        assert!(author["name"].is_string());
+        assert!(author["pubkey"].is_string());
+        assert_eq!(author["name"], "kali");
+        assert_eq!(author["pubkey"], "aa11");
+    }
+
+    #[test]
+    fn test_author_list_json_is_empty_when_no_author_is_trusted() {
+        let out = json_value(&authors_json(&author_rows(Vec::new())));
+        assert_eq!(out, serde_json::json!([]));
+    }
+
+    #[test]
+    fn test_author_add_json_shape_names_the_author_and_its_key() {
+        let out = json_value(&author_body("kali", "aa11"));
+        assert_eq!(key_set(&out), ["name", "pubkey"]);
+        assert!(out["name"].is_string());
+        assert!(out["pubkey"].is_string());
+    }
+
+    #[test]
+    fn test_author_remove_json_shape_names_the_author_and_the_flag() {
+        let out = json_value(&removed_body("kali"));
+        assert_eq!(key_set(&out), ["name", "removed"]);
+        assert_eq!(out["name"], "kali");
+        assert!(out["removed"].is_boolean());
+        assert_eq!(out["removed"], true);
+    }
 }

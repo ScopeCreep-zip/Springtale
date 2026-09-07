@@ -70,11 +70,41 @@ pub fn duress_setup(vault_path: &Path, json_out: bool) -> Result<()> {
     )
     .context("failed to create dual vault")?;
 
-    let body = serde_json::json!({
-        "duress_configured": true,
-        "vault": vault_path.display().to_string(),
-    });
+    let body = duress_body(vault_path);
     output::emit_status(json_out, &body, |_| {
         "Duress passphrase configured.\nReal passphrase → full access.\nDuress passphrase → decoy profile.\nFile size is constant — observer cannot tell which was used.".to_owned()
     })
+}
+
+/// The `vault duress-setup` body. It reports *that* a duress region
+/// exists, never which passphrase opens which region.
+fn duress_body(vault_path: &Path) -> serde_json::Value {
+    serde_json::json!({
+        "duress_configured": true,
+        "vault": vault_path.display().to_string(),
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::output::{json_value, key_set};
+
+    #[test]
+    fn test_vault_duress_setup_json_shape_names_the_flag_and_the_path() {
+        let out = json_value(&duress_body(Path::new("/home/u/.springtale/vault.age")));
+        assert_eq!(key_set(&out), ["duress_configured", "vault"]);
+        assert!(out["duress_configured"].is_boolean());
+        assert_eq!(out["duress_configured"], true);
+        assert!(out["vault"].is_string());
+        assert_eq!(out["vault"], "/home/u/.springtale/vault.age");
+    }
+
+    #[test]
+    fn test_vault_duress_setup_json_never_carries_a_passphrase() {
+        let out = json_value(&duress_body(Path::new("/tmp/vault.age")));
+        for leaky in ["passphrase", "duress_passphrase", "decoy", "entries"] {
+            assert!(out.get(leaky).is_none(), "{leaky} must not be emitted");
+        }
+    }
 }

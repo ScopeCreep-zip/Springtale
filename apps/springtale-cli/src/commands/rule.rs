@@ -19,20 +19,7 @@ pub async fn run(action: RuleAction, json_out: bool) -> Result<()> {
     match action {
         RuleAction::List => {
             let body: Value = client.get("/rules").await?;
-            output::emit(json_out, &body, |v| {
-                let rows = output::array(v, "rules")
-                    .iter()
-                    .map(|r| {
-                        vec![
-                            output::cell(r, "id"),
-                            output::cell(r, "name"),
-                            output::cell(r, "status"),
-                            output::cell(r, "trigger"),
-                        ]
-                    })
-                    .collect();
-                output::rows_table(&["ID", "NAME", "STATUS", "TRIGGER"], rows)
-            })?;
+            output::emit(json_out, &body, rules_table)?;
         }
         RuleAction::Add { file } => {
             let rule = load_rule(&file)?;
@@ -81,19 +68,7 @@ pub async fn run(action: RuleAction, json_out: bool) -> Result<()> {
         }
         RuleAction::ForConnector { name } => {
             let body: Value = client.get(&format!("/rules/connector/{name}")).await?;
-            output::emit(json_out, &body, |v| {
-                let rows = output::array(v, "rules")
-                    .iter()
-                    .map(|r| {
-                        vec![
-                            output::cell(r, "id"),
-                            output::cell(r, "name"),
-                            output::cell(r, "status"),
-                        ]
-                    })
-                    .collect();
-                output::rows_table(&["ID", "NAME", "STATUS"], rows)
-            })?;
+            output::emit(json_out, &body, connector_rules_table)?;
         }
         RuleAction::Move { id, connector } => {
             let body: Value = client
@@ -147,5 +122,108 @@ fn load_rule(file: &std::path::Path) -> Result<Rule> {
                 anyhow::anyhow!("failed to parse rule file (tried TOML and JSON): {e}")
             })
         }),
+    }
+}
+
+/// The `rule list` table — one row per rule.
+fn rules_table(v: &Value) -> String {
+    let rows = output::array(v, "rules")
+        .iter()
+        .map(|r| {
+            vec![
+                output::cell(r, "id"),
+                output::cell(r, "name"),
+                output::cell(r, "status"),
+                output::cell(r, "trigger"),
+            ]
+        })
+        .collect();
+    output::rows_table(&["ID", "NAME", "STATUS", "TRIGGER"], rows)
+}
+
+/// The `rule for-connector` table — same envelope, no trigger column.
+fn connector_rules_table(v: &Value) -> String {
+    let rows = output::array(v, "rules")
+        .iter()
+        .map(|r| {
+            vec![
+                output::cell(r, "id"),
+                output::cell(r, "name"),
+                output::cell(r, "status"),
+            ]
+        })
+        .collect();
+    output::rows_table(&["ID", "NAME", "STATUS"], rows)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::output::{json_value, key_set};
+    use serde_json::json;
+
+    fn listing() -> Value {
+        json!({
+            "rules": [{
+                "id": "r-1",
+                "name": "nightly-digest",
+                "status": "Enabled",
+                "trigger": "cron",
+            }]
+        })
+    }
+
+    #[test]
+    fn test_rule_list_json_shape_is_a_rules_envelope() {
+        let out = json_value(&listing());
+        assert_eq!(key_set(&out), ["rules"]);
+        assert!(out["rules"].is_array());
+        let rule = &out["rules"][0];
+        assert!(rule["id"].is_string());
+        assert!(rule["name"].is_string());
+        assert!(rule["status"].is_string());
+        assert!(rule["trigger"].is_string());
+    }
+
+    #[test]
+    fn test_rules_table_reads_every_field_the_json_shape_promises() {
+        let table = rules_table(&listing());
+        for want in ["ID", "r-1", "nightly-digest", "Enabled", "cron"] {
+            assert!(table.contains(want), "table lost {want}:\n{table}");
+        }
+    }
+
+    #[test]
+    fn test_connector_rules_table_reads_the_three_columns_it_shows() {
+        let table = connector_rules_table(&listing());
+        for want in ["r-1", "nightly-digest", "Enabled"] {
+            assert!(table.contains(want), "table lost {want}:\n{table}");
+        }
+        assert!(!table.contains("TRIGGER"));
+    }
+
+    #[test]
+    fn test_rules_tables_are_empty_for_an_empty_envelope() {
+        assert_eq!(rules_table(&json!({ "rules": [] })), "");
+        assert_eq!(connector_rules_table(&json!({ "rules": [] })), "");
+    }
+
+    #[test]
+    fn test_rule_write_json_shape_carries_the_id_the_notice_prints() {
+        // `rule add` / `add-for-connector` read `id` out of the ack.
+        let out = json_value(&json!({ "id": "r-2" }));
+        assert_eq!(key_set(&out), ["id"]);
+        assert!(out["id"].is_string());
+    }
+
+    #[test]
+    fn test_rule_toggle_reads_status_to_decide_the_next_state() {
+        // The toggle path finds the rule by id and flips off `status`.
+        let listing = listing();
+        let current = output::array(&listing, "rules")
+            .iter()
+            .find(|r| output::cell(r, "id") == "r-1")
+            .expect("rule in listing");
+        assert!(output::cell(current, "status") == "Enabled");
     }
 }

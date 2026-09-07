@@ -28,7 +28,7 @@ pub async fn run(action: DataAction, json_out: bool) -> Result<()> {
                     .open(&path)?;
                 let mut writer = std::io::BufWriter::new(file);
                 writer.write_all(serde_json::to_string_pretty(&data)?.as_bytes())?;
-                let done = json!({ "exported_to": path.display().to_string() });
+                let done = exported_body(&path);
                 output::emit_status(json_out, &done, |v| {
                     format!("Exported to: {}", output::cell(v, "exported_to"))
                 })?;
@@ -46,12 +46,7 @@ pub async fn run(action: DataAction, json_out: bool) -> Result<()> {
             let export: Value = serde_json::from_str(&text)
                 .map_err(|e| anyhow::anyhow!("invalid export file: {e}"))?;
             let stats: Value = client.post("/data/import", &export).await?;
-            output::emit_status(json_out, &stats, |v| {
-                format!(
-                    "Imported: {} rules, {} connectors, {} events",
-                    v["rules_inserted"], v["connectors_inserted"], v["events_inserted"]
-                )
-            })?;
+            output::emit_status(json_out, &stats, import_line)?;
         }
         DataAction::Purge { yes } => {
             // Irreversible. The flag is required here and the route
@@ -71,4 +66,64 @@ pub async fn run(action: DataAction, json_out: bool) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// The `data export --output` body — the export itself went to the
+/// file, so `--json` reports where it landed.
+fn exported_body(path: &std::path::Path) -> Value {
+    json!({ "exported_to": path.display().to_string() })
+}
+
+/// The `data import` notice, read off the daemon's insert counts.
+fn import_line(v: &Value) -> String {
+    format!(
+        "Imported: {} rules, {} connectors, {} events",
+        v["rules_inserted"], v["connectors_inserted"], v["events_inserted"]
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::output::{json_value, key_set};
+
+    #[test]
+    fn test_data_export_to_file_json_shape_names_the_destination() {
+        let out = json_value(&exported_body(std::path::Path::new("/tmp/export.json")));
+        assert_eq!(key_set(&out), ["exported_to"]);
+        assert!(out["exported_to"].is_string());
+        assert_eq!(out["exported_to"], "/tmp/export.json");
+    }
+
+    #[test]
+    fn test_data_export_to_stdout_json_is_the_export_document_itself() {
+        // No envelope: the export *is* the payload.
+        let export = json!({
+            "rules": [{ "id": "r-1" }],
+            "connectors": [{ "name": "telegram" }],
+            "events": [],
+        });
+        assert_eq!(json_value(&export), export);
+    }
+
+    #[test]
+    fn test_data_import_json_shape_reports_three_insert_counts() {
+        let stats = json!({
+            "rules_inserted": 2,
+            "connectors_inserted": 1,
+            "events_inserted": 40,
+        });
+        let out = json_value(&stats);
+        assert_eq!(
+            key_set(&out),
+            ["connectors_inserted", "events_inserted", "rules_inserted"]
+        );
+        assert!(out["rules_inserted"].is_number());
+        assert!(out["connectors_inserted"].is_number());
+        assert!(out["events_inserted"].is_number());
+        assert_eq!(
+            import_line(&stats),
+            "Imported: 2 rules, 1 connectors, 40 events"
+        );
+    }
 }

@@ -19,6 +19,26 @@ pub async fn run(store: &dyn StorageBackend, json_out: bool) -> Result<()> {
         .await
         .map_err(|e| anyhow::anyhow!("{e}"))?;
 
-    let body = serde_json::json!({ "wiped": true });
+    let body = wiped_body();
     output::emit_status(json_out, &body, |_| "All data destroyed.".to_owned())
+}
+
+/// The `--json` body the panic wipe emits. One field, so a script can
+/// tell a completed wipe from a failed one without parsing prose.
+fn wiped_body() -> serde_json::Value {
+    serde_json::json!({ "wiped": true })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::output::{json_value, key_set};
+
+    #[test]
+    fn test_panic_json_shape_is_a_single_wiped_flag() {
+        let out = json_value(&wiped_body());
+        assert_eq!(key_set(&out), ["wiped"]);
+        assert!(out["wiped"].is_boolean());
+        assert_eq!(out["wiped"], true);
+    }
 }
