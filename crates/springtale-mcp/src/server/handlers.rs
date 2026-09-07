@@ -7,9 +7,10 @@ use rmcp::model::{
     CallToolRequestParams, CallToolResult, Implementation, ListToolsResult, PaginatedRequestParams,
     ServerCapabilities, ServerInfo,
 };
-use rmcp::service::RequestContext;
+use rmcp::service::{NotificationContext, RequestContext};
 use rmcp::{ErrorData as RmcpError, RoleServer, ServerHandler};
 
+use super::notify::spawn_tool_list_forwarder;
 use super::registry::SpringtaleMcp;
 
 impl ServerHandler for SpringtaleMcp {
@@ -44,6 +45,23 @@ impl ServerHandler for SpringtaleMcp {
             next_cursor: None,
             meta: None,
         })
+    }
+
+    /// Start this client's `notifications/tools/list_changed` pump.
+    ///
+    /// `get_info` advertises `tools.listChanged`; this is where that
+    /// promise is kept. One forwarder per initialized client, holding
+    /// that client's peer and a fresh subscription to the runtime's
+    /// tool-catalog fan-out. No replay: the client is about to call
+    /// `tools/list` for the current state, so only changes *after*
+    /// initialization matter. The task prunes itself when the client
+    /// disconnects.
+    async fn on_initialized(&self, context: NotificationContext<RoleServer>) {
+        spawn_tool_list_forwarder(
+            self.subscribe_tool_catalog(),
+            context.peer,
+            self.scope().map(str::to_owned),
+        );
     }
 
     async fn call_tool(

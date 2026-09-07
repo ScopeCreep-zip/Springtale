@@ -65,6 +65,18 @@ impl SpringtaleMcp {
         self.scope.as_deref()
     }
 
+    /// Subscribe to the runtime's tool-catalog change fan-out.
+    ///
+    /// One subscription per connected client, taken in
+    /// `on_initialized`. The events are protocol-free — the runtime
+    /// cannot depend on `rmcp` — so `server::notify` is what turns them
+    /// into `notifications/tools/list_changed` frames.
+    pub fn subscribe_tool_catalog(
+        &self,
+    ) -> tokio::sync::broadcast::Receiver<springtale_runtime::tool_catalog::ToolCatalogEvent> {
+        self.runtime.tool_catalog.subscribe()
+    }
+
     /// Whether `connector` is inside this server's scope.
     fn in_scope(&self, connector: &str) -> bool {
         self.scope.as_deref().is_none_or(|s| s == connector)
