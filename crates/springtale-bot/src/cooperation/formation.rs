@@ -498,12 +498,16 @@ impl Formation {
         let cfp_initiator = Arc::new(tokio::sync::Mutex::new(cfp_initiator_inner));
         let cfp_rx = cfp_channels.cfp_tx.subscribe();
 
+        // Plan 1.3: the promotion table is a per-formation constraint,
+        // so the momentum state is built from this formation's own
+        // configuration.
+        let momentum = MomentumState::with_config(constraints.momentum.clone());
         let formation = Self {
             id: FormationId::new(),
             intent,
             paused: false,
             constraints,
-            momentum: MomentumState::default(),
+            momentum,
             blackboard,
             shared_env: Arc::new(SharedEnvironment::new()),
             fuel,
@@ -1306,5 +1310,78 @@ mod tests {
             .signal_commit_ready(uuid::Uuid::new_v4(), AgentId::new())
             .unwrap_err();
         assert!(format!("{err}").contains("unknown barrier"));
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod momentum_config_tests {
+    use super::*;
+    use springtale_cooperation::momentum::{MomentumConfig, TickCounts, TierThreshold};
+
+    fn constraints(min_actions: u32) -> FormationConstraints {
+        FormationConstraints {
+            momentum: MomentumConfig {
+                promote: [
+                    TierThreshold {
+                        min_actions,
+                        min_success: 0.80,
+                        max_duplicate: 1.00,
+                    },
+                    TierThreshold {
+                        min_actions: 8,
+                        min_success: 0.90,
+                        max_duplicate: 0.30,
+                    },
+                    TierThreshold {
+                        min_actions: 15,
+                        min_success: 0.95,
+                        max_duplicate: 0.10,
+                    },
+                ],
+            },
+            ..FormationConstraints::default()
+        }
+    }
+
+    fn formation_with(min_actions: u32) -> Formation {
+        Formation::new_disconnected(
+            vec![FormationMember::from_strings(
+                AgentId::new(),
+                vec!["test".into()],
+            )],
+            IntentPattern::Execute { plan_id: None },
+            constraints(min_actions),
+        )
+    }
+
+    /// Plan 1.3: the promotion table is per formation. Two formations
+    /// deployed at the same moment, given the same two clean actions,
+    /// promote on their own numbers — not on a shared constant.
+    #[test]
+    fn momentum_config_is_per_formation() {
+        let mut eager = formation_with(2);
+        let mut patient = formation_with(9);
+        let counts = TickCounts {
+            actions: 1,
+            successes: 1,
+            ..TickCounts::default()
+        };
+        for _ in 0..2 {
+            eager.momentum.record_successful_tick(&counts);
+            patient.momentum.record_successful_tick(&counts);
+        }
+
+        assert_eq!(
+            eager.momentum.tier,
+            MomentumTier::Warming,
+            "two actions clear this formation's own Cold row"
+        );
+        assert_eq!(
+            patient.momentum.tier,
+            MomentumTier::Cold,
+            "the same two actions do not clear a nine-action row"
+        );
+        assert_eq!(eager.constraints.momentum.promote[0].min_actions, 2);
     }
 }

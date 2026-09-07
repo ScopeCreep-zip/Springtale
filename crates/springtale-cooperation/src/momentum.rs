@@ -228,20 +228,21 @@ impl RunWindow {
 /// [`RunWindow`]. No `max_interference`: an interference restarts the
 /// window, so its rate is always zero at promotion time; interference is
 /// enforced by the Patapon rule (breaks the run, demotes Fever) instead.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 pub struct TierThreshold {
     pub min_actions: u32,
     pub min_success: f32,
     pub max_duplicate: f32,
 }
 
-/// `[cooperation.momentum]` in springtale.toml. Defaults are Springtale's
+/// `[cooperation.momentum]` in springtale.toml, carried per formation by
+/// [`crate::types::FormationConstraints`]. Defaults are Springtale's
 /// own starting numbers, not from any game. They are configuration, not
 /// constants, for the same reason Left 4 Dead ships every Director number
 /// as a cvar or `DirectorOptions` field (COOPERATION.md A.1.1) and Total War
 /// keeps its morale and fatigue numbers in database tables (A.4.1): tuning
 /// happens after play, not before.
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 pub struct MomentumConfig {
     /// Rows for `Cold → Warming`, `Warming → Hot`, `Hot → Fever`.
     pub promote: [TierThreshold; 3],
