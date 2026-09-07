@@ -35,9 +35,10 @@ pub struct SpringtaleConfig {
     #[garde(skip)]
     pub heartbeat_interval_secs: u64,
     // Chat connectors are NOT typed fields here (plan 6.4): every
-    // `[telegram]` / `[discord]` / … table is picked up verbatim by
-    // `extract_connector_configs` and installed through the same
-    // `setup_connector` path a runtime install takes, so the daemon
+    // `[connectors.telegram]` (or bare `[telegram]`) table is picked up
+    // verbatim by `extract_connector_configs`, for whatever connectors
+    // are actually installed, and installed through the same
+    // `setup_connector` path a runtime install takes — so the daemon
     // holds no per-connector knowledge. The bot's own persona / context
     // window / tool policy are runtime settings (plan 6.3), not config.
     /// Sentinel behavioral monitor configuration. If absent, uses defaults.
@@ -214,10 +215,54 @@ pub struct LoadedConfig {
 /// Each connector factory declares a `config_key()` (e.g., "telegram").
 /// We extract that key from the Figment source as `serde_json::Value`,
 /// preserving raw strings for Secret fields.
+///
+/// Which keys to look for comes from the compile-time factory registry
+/// (`springtale_connector::factory::config_keys`), not from a list
+/// written here. The list used to be written here, so a connector added
+/// after it was written could not be configured from the file at all —
+/// its table was read by nobody, silently. A connector that is installed
+/// is now configurable, by construction.
+///
+/// Two table shapes are accepted per connector, the namespaced one
+/// winning when both are present:
+///
+/// ```toml
+/// [connectors.telegram]   # namespaced — cannot collide with daemon config
+/// bot_token = "..."
+///
+/// [telegram]              # bare — the historical shape, still read
+/// bot_token = "..."
+/// ```
 fn extract_connector_configs(
     figment: &Figment,
 ) -> std::collections::HashMap<String, serde_json::Value> {
-    let keys = [
+    let mut configs = std::collections::HashMap::new();
+    for key in springtale_connector::factory::config_keys() {
+        // Namespaced first: an explicit `[connectors.x]` is unambiguous,
+        // so it wins over a bare `[x]` table of the same name.
+        if let Ok(val) = figment.extract_inner::<serde_json::Value>(&format!("connectors.{key}")) {
+            configs.insert(key.to_owned(), val);
+            continue;
+        }
+        if let Ok(val) = figment.extract_inner::<serde_json::Value>(key) {
+            configs.insert(key.to_owned(), val);
+        }
+    }
+    configs
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+mod tests {
+    use super::*;
+    use figment::providers::Format;
+
+    /// The connector config keys the daemon hard-coded before the list
+    /// came from the registry. Every one has to keep resolving: a config
+    /// file that worked must not go quietly unread. If a connector ever
+    /// renames its `config_key`, this fails — map the old name to the new
+    /// one here rather than dropping it.
+    const HISTORICAL_KEYS: [&str; 14] = [
         "telegram",
         "nostr",
         "irc",
@@ -233,11 +278,88 @@ fn extract_connector_configs(
         "shell",
         "browser",
     ];
-    let mut configs = std::collections::HashMap::new();
-    for key in keys {
-        if let Ok(val) = figment.extract_inner::<serde_json::Value>(key) {
-            configs.insert(key.to_string(), val);
+
+    fn figment_from(toml: &str) -> Figment {
+        Figment::new().merge(Toml::string(toml))
+    }
+
+    #[test]
+    fn test_registry_keys_cover_every_historical_key() {
+        let keys = springtale_connector::factory::config_keys();
+        for key in HISTORICAL_KEYS {
+            assert!(
+                keys.contains(&key),
+                "config key '{key}' no longer resolves to an installed connector — \
+                 add an alias so existing config files keep working"
+            );
         }
     }
-    configs
+
+    #[test]
+    fn test_extract_connector_configs_reads_every_historical_key() {
+        let toml: String = HISTORICAL_KEYS
+            .iter()
+            .map(|k| format!("[{k}]\nprobe = \"set\"\n"))
+            .collect();
+        let configs = extract_connector_configs(&figment_from(&toml));
+        for key in HISTORICAL_KEYS {
+            assert_eq!(
+                configs.get(key).and_then(|v| v.get("probe")),
+                Some(&serde_json::Value::String("set".to_owned())),
+                "historical key '{key}' stopped being extracted"
+            );
+        }
+    }
+
+    /// The point of the change: a connector outside the fourteen the
+    /// daemon used to know is configurable from the file.
+    #[test]
+    fn test_extract_connector_configs_reads_keys_beyond_the_historical_list() {
+        let beyond: Vec<&'static str> = springtale_connector::factory::config_keys()
+            .into_iter()
+            .filter(|k| !HISTORICAL_KEYS.contains(k))
+            .collect();
+        assert!(
+            !beyond.is_empty(),
+            "no compiled-in connector outside the fourteen hard-coded keys — \
+             this test needs one to mean anything"
+        );
+        for key in beyond {
+            let configs =
+                extract_connector_configs(&figment_from(&format!("[{key}]\nprobe = \"set\"\n")));
+            assert!(
+                configs.contains_key(key),
+                "connector '{key}' is installed but its config table was ignored"
+            );
+        }
+    }
+
+    #[test]
+    fn test_extract_connector_configs_reads_namespaced_table() {
+        let configs = extract_connector_configs(&figment_from(
+            "[connectors.telegram]\nbot_token = \"namespaced\"\n",
+        ));
+        assert_eq!(
+            configs["telegram"]["bot_token"],
+            serde_json::Value::String("namespaced".to_owned())
+        );
+    }
+
+    #[test]
+    fn test_extract_connector_configs_namespaced_table_wins() {
+        let configs = extract_connector_configs(&figment_from(
+            "[telegram]\nbot_token = \"bare\"\n\n[connectors.telegram]\nbot_token = \"namespaced\"\n",
+        ));
+        assert_eq!(
+            configs["telegram"]["bot_token"],
+            serde_json::Value::String("namespaced".to_owned())
+        );
+    }
+
+    #[test]
+    fn test_extract_connector_configs_ignores_unknown_table() {
+        let configs =
+            extract_connector_configs(&figment_from("[not_a_connector]\nprobe = \"set\"\n"));
+        assert!(!configs.contains_key("not_a_connector"));
+    }
 }
