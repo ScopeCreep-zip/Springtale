@@ -99,10 +99,76 @@ pub fn post_mentions_did(record: &serde_json::Value, target_did: &str) -> bool {
     false
 }
 
+/// Resolve the thread root of a post record.
+///
+/// An AT Protocol reply record carries BOTH refs:
+///
+/// ```json
+/// "reply": { "root": { "uri": ..., "cid": ... },
+///            "parent": { "uri": ..., "cid": ... } }
+/// ```
+///
+/// Clients group a thread by its ROOT, so a reply that names its parent
+/// as the root splits off into a thread of its own. When the post is
+/// itself a reply, the conversation's real root is `record.reply.root`.
+/// A top-level post has no `reply` field and is the root of its own
+/// thread, so it falls back to `(uri, cid)` — the post itself.
+///
+/// A partial/malformed `reply.root` (only one of uri/cid) also falls
+/// back: a half-formed root ref is worse than rooting at the post.
+pub fn thread_root(record: &serde_json::Value, uri: &str, cid: &str) -> (String, String) {
+    let root = record.get("reply").and_then(|r| r.get("root"));
+    let root_uri = root
+        .and_then(|r| r.get("uri"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty());
+    let root_cid = root
+        .and_then(|r| r.get("cid"))
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty());
+
+    match (root_uri, root_cid) {
+        (Some(u), Some(c)) => (u.to_owned(), c.to_owned()),
+        _ => (uri.to_owned(), cid.to_owned()),
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_thread_root_top_level_post_is_its_own_root() {
+        let record = serde_json::json!({ "text": "top level" });
+        let (uri, cid) = thread_root(&record, "at://did:plc:a/app.bsky.feed.post/1", "bafyone");
+        assert_eq!(uri, "at://did:plc:a/app.bsky.feed.post/1");
+        assert_eq!(cid, "bafyone");
+    }
+
+    #[test]
+    fn test_thread_root_reply_uses_record_root_not_parent() {
+        let record = serde_json::json!({
+            "text": "nested reply",
+            "reply": {
+                "root": { "uri": "at://did:plc:r/app.bsky.feed.post/root", "cid": "bafyroot" },
+                "parent": { "uri": "at://did:plc:p/app.bsky.feed.post/mid", "cid": "bafymid" }
+            }
+        });
+        let (uri, cid) = thread_root(&record, "at://did:plc:a/app.bsky.feed.post/1", "bafyone");
+        assert_eq!(uri, "at://did:plc:r/app.bsky.feed.post/root");
+        assert_eq!(cid, "bafyroot");
+    }
+
+    #[test]
+    fn test_thread_root_partial_ref_falls_back_to_post() {
+        let record = serde_json::json!({
+            "reply": { "root": { "uri": "at://did:plc:r/app.bsky.feed.post/root" } }
+        });
+        let (uri, cid) = thread_root(&record, "at://did:plc:a/app.bsky.feed.post/1", "bafyone");
+        assert_eq!(uri, "at://did:plc:a/app.bsky.feed.post/1");
+        assert_eq!(cid, "bafyone");
+    }
 
     #[test]
     fn test_build_jetstream_url_basic() {

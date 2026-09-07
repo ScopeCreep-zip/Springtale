@@ -21,6 +21,14 @@ fn mention() -> TriggerDecl {
                 "did": { "type": "string", "description": "DID of the post author." },
                 "uri": { "type": "string", "description": "AT URI of the post." },
                 "cid": { "type": "string", "description": "CID of the post." },
+                "root_uri": {
+                    "type": "string",
+                    "description": "AT URI of the thread root. Equals `uri` when the mention is a top-level post; when the mention is itself a reply this is the conversation's real root, so a reply rule threads correctly."
+                },
+                "root_cid": {
+                    "type": "string",
+                    "description": "CID of the thread root. Equals `cid` for a top-level mention."
+                },
                 "text": { "type": "string", "description": "Post text." },
                 "facets": {
                     "type": "array",
@@ -35,7 +43,7 @@ fn mention() -> TriggerDecl {
                 },
                 "createdAt": { "type": "string", "description": "ISO 8601 timestamp." }
             },
-            "required": ["did", "uri", "text"]
+            "required": ["did", "uri", "cid", "root_uri", "root_cid", "text"]
         })),
     }
 }

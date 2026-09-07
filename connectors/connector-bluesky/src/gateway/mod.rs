@@ -137,12 +137,26 @@ pub fn route_jetstream_event(
         .and_then(|r| r.as_str())
         .unwrap_or_default();
 
+    let uri = format!("at://{did}/app.bsky.feed.post/{rkey}");
+    let cid = commit
+        .get("cid")
+        .and_then(|c| c.as_str())
+        .unwrap_or_default();
+
+    // The mentioned post may itself be a reply. Its own record names the
+    // thread's real root, so carry it through: a reply rule then roots
+    // correctly (`root_uri`/`root_cid` are required by the `reply`
+    // action) without a second network call.
+    let (root_uri, root_cid) = firehose::thread_root(record, &uri, cid);
+
     Some(serde_json::json!({
         "trigger": trigger,
         "did": did,
         "text": record.get("text").and_then(|t| t.as_str()).unwrap_or_default(),
-        "uri": format!("at://{did}/app.bsky.feed.post/{rkey}"),
-        "cid": commit.get("cid").and_then(|c| c.as_str()).unwrap_or_default(),
+        "uri": uri,
+        "cid": cid,
+        "root_uri": root_uri,
+        "root_cid": root_cid,
         "created_at": event.get("time_us").cloned().unwrap_or(serde_json::Value::Null),
     }))
 }
@@ -196,6 +210,44 @@ mod tests {
         assert_eq!(p["trigger"], "mention");
         assert_eq!(p["text"], "hey @me");
         assert_eq!(p["uri"], "at://did:plc:someone/app.bsky.feed.post/3kxyz");
+    }
+
+    #[test]
+    fn top_level_mention_roots_at_itself() {
+        let record = json!({
+            "$type": "app.bsky.feed.post",
+            "text": "hey @me",
+            "facets": [{
+                "features": [{ "$type": "app.bsky.richtext.facet#mention", "did": OWN }],
+                "index": { "byteStart": 4, "byteEnd": 7 }
+            }]
+        });
+        let event = post_commit("did:plc:someone", record);
+        let p = route_jetstream_event(&event, OWN).expect("mention routes");
+        assert_eq!(p["root_uri"], p["uri"]);
+        assert_eq!(p["root_cid"], p["cid"]);
+    }
+
+    #[test]
+    fn nested_mention_carries_the_thread_root() {
+        let record = json!({
+            "$type": "app.bsky.feed.post",
+            "text": "hey @me",
+            "facets": [{
+                "features": [{ "$type": "app.bsky.richtext.facet#mention", "did": OWN }],
+                "index": { "byteStart": 4, "byteEnd": 7 }
+            }],
+            "reply": {
+                "root": { "uri": "at://did:plc:opener/app.bsky.feed.post/root", "cid": "bafyroot" },
+                "parent": { "uri": "at://did:plc:other/app.bsky.feed.post/mid", "cid": "bafymid" }
+            }
+        });
+        let event = post_commit("did:plc:someone", record);
+        let p = route_jetstream_event(&event, OWN).expect("mention routes");
+        assert_eq!(p["uri"], "at://did:plc:someone/app.bsky.feed.post/3kxyz");
+        assert_eq!(p["root_uri"], "at://did:plc:opener/app.bsky.feed.post/root");
+        assert_eq!(p["root_cid"], "bafyroot");
+        assert_ne!(p["root_uri"], p["uri"]);
     }
 
     #[test]
