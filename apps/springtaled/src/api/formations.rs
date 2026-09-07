@@ -2,11 +2,53 @@ use axum::Json;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
+use serde::Deserialize;
 
 use springtale_runtime::operations;
 
 use super::extractors::ValidatedPath;
 use super::state::AppState;
+
+/// Body of `POST /formations/{id}/run-command`.
+///
+/// `command_id` is required: a dispatcher with no command to dispatch is
+/// a malformed request, not a default. `params` is genuinely optional —
+/// most commands take none — and its absence means "no parameters",
+/// which is what the command layer already expects.
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct RunCommandBody {
+    /// The command to run, from `GET /formations/{id}/commands`.
+    pub command_id: String,
+    /// Command-specific parameters, passed through untouched.
+    #[serde(default)]
+    pub params: Option<serde_json::Value>,
+}
+
+/// Body of `PUT /formations/{id}/intent`.
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct IntentBody {
+    /// The intent to set — one of `GET /formations/intents`.
+    pub intent: String,
+}
+
+/// Body of `POST /formations/{id}/votes/{vote_id}`.
+///
+/// Both fields are required. An absent `approve` used to read as a
+/// rejection of the ballot; now it is a rejection of the request.
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct CastVoteBody {
+    /// The voting agent's id.
+    pub voter: String,
+    /// The ballot itself.
+    pub approve: bool,
+}
+
+/// Body of `POST`/`DELETE /formations/{id}/members`.
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
+pub struct MemberBody {
+    /// The connector whose agent joins or leaves the formation.
+    pub connector_name: String,
+}
 
 /// GET /formations — list all formations.
 #[utoipa::path(
@@ -77,18 +119,16 @@ pub async fn commands(
     path = "/formations/{id}/run-command",
     tag = "formations",
     params(("id" = String, Path, description = "Formation id")),
-    request_body = Object,
+    request_body = RunCommandBody,
     responses((status = 200, description = "Command outcome", body = Object))
 )]
 pub async fn run_command(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
-    Json(body): Json<serde_json::Value>,
+    Json(body): Json<RunCommandBody>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let Some(command_id) = body.get("command_id").and_then(|v| v.as_str()) else {
-        return Err(StatusCode::BAD_REQUEST);
-    };
-    let params = body.get("params");
+    let command_id = body.command_id.as_str();
+    let params = body.params.as_ref();
     match operations::commands::run_formation_command(&state.runtime, &id, command_id, params).await
     {
         Ok(()) => Ok((
@@ -212,16 +252,15 @@ pub async fn resume(
     path = "/formations/{id}/intent",
     tag = "formations",
     params(("id" = String, Path, description = "Formation id")),
-    request_body = Object,
+    request_body = IntentBody,
     responses((status = 200, description = "Intent updated", body = Object))
 )]
 pub async fn update_intent(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
-    Json(body): Json<serde_json::Value>,
+    Json(body): Json<IntentBody>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let intent = body["intent"].as_str().ok_or(StatusCode::BAD_REQUEST)?;
-    operations::formations::update_intent(&state.runtime, &id, intent)
+    operations::formations::update_intent(&state.runtime, &id, &body.intent)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
     Ok((StatusCode::OK, Json(serde_json::json!({ "updated": id }))))
@@ -234,16 +273,15 @@ pub async fn update_intent(
     path = "/formations/{id}/propose-intent",
     tag = "formations",
     params(("id" = String, Path, description = "Formation id")),
-    request_body = Object,
+    request_body = IntentBody,
     responses((status = 200, description = "Intent proposal opened", body = Object))
 )]
 pub async fn propose_intent(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
-    Json(body): Json<serde_json::Value>,
+    Json(body): Json<IntentBody>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let intent = body["intent"].as_str().ok_or(StatusCode::BAD_REQUEST)?;
-    operations::formations::propose_intent_change(&state.runtime, &id, intent)
+    operations::formations::propose_intent_change(&state.runtime, &id, &body.intent)
         .await
         .map_err(|_| StatusCode::NOT_FOUND)?;
     Ok((StatusCode::OK, Json(serde_json::json!({ "proposed": id }))))
@@ -256,17 +294,15 @@ pub async fn propose_intent(
     path = "/formations/{id}/votes/{vote_id}",
     tag = "formations",
     params(("id" = String, Path, description = "Formation id"), ("vote_id" = String, Path, description = "Vote id")),
-    request_body = Object,
+    request_body = CastVoteBody,
     responses((status = 200, description = "Vote recorded", body = Object))
 )]
 pub async fn cast_vote(
     State(state): State<AppState>,
     axum::extract::Path((id, vote_id)): axum::extract::Path<(String, String)>,
-    Json(body): Json<serde_json::Value>,
+    Json(body): Json<CastVoteBody>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let voter = body["voter"].as_str().ok_or(StatusCode::BAD_REQUEST)?;
-    let approve = body["approve"].as_bool().ok_or(StatusCode::BAD_REQUEST)?;
-    operations::formations::cast_vote(&state.runtime, &id, &vote_id, voter, approve)
+    operations::formations::cast_vote(&state.runtime, &id, &vote_id, &body.voter, body.approve)
         .await
         .map_err(|_| StatusCode::BAD_REQUEST)?;
     Ok((
@@ -281,17 +317,15 @@ pub async fn cast_vote(
     path = "/formations/{id}/members",
     tag = "formations",
     params(("id" = String, Path, description = "Formation id")),
-    request_body = Object,
+    request_body = MemberBody,
     responses((status = 200, description = "Member added", body = Object))
 )]
 pub async fn add_member(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
-    Json(body): Json<serde_json::Value>,
+    Json(body): Json<MemberBody>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let connector_name = body["connector_name"]
-        .as_str()
-        .ok_or(StatusCode::BAD_REQUEST)?;
+    let connector_name = body.connector_name.as_str();
     operations::formations::add_member(&state.runtime, &id, connector_name)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
@@ -307,17 +341,15 @@ pub async fn add_member(
     path = "/formations/{id}/members",
     tag = "formations",
     params(("id" = String, Path, description = "Formation id")),
-    request_body = Object,
+    request_body = MemberBody,
     responses((status = 200, description = "Member removed", body = Object))
 )]
 pub async fn remove_member(
     State(state): State<AppState>,
     ValidatedPath(id): ValidatedPath,
-    Json(body): Json<serde_json::Value>,
+    Json(body): Json<MemberBody>,
 ) -> Result<impl IntoResponse, StatusCode> {
-    let connector_name = body["connector_name"]
-        .as_str()
-        .ok_or(StatusCode::BAD_REQUEST)?;
+    let connector_name = body.connector_name.as_str();
     operations::formations::remove_member(&state.runtime, &id, connector_name)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;

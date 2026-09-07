@@ -334,6 +334,7 @@ pub fn build_router(state: AppState) -> Router {
             "/bot/settings",
             get(bot::get_settings).put(bot::put_settings),
         )
+        .route("/bot/pair-init", post(bot::pair_init))
         .route("/bot/formations", get(bot::formations))
         .route("/cooperation/utterances", get(utterances::utterance_defs))
         .route("/cooperation/utterances/recent", get(utterances::recent))

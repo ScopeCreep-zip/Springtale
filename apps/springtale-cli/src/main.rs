@@ -3,6 +3,7 @@ mod client;
 mod commands;
 mod output;
 mod store;
+mod surface;
 
 use anyhow::Result;
 use clap::Parser;
@@ -29,6 +30,9 @@ async fn main() -> Result<()> {
     };
 
     match cli.command {
+        Command::DumpCommands => {
+            println!("{}", serde_json::to_string_pretty(&surface::dump())?);
+        }
         Command::Init => {
             commands::init::run().await?;
         }
@@ -98,6 +102,9 @@ async fn main() -> Result<()> {
                 let vault_path = springtale_store::paths::default_vault_path();
                 commands::vault::duress_setup(&vault_path, cli.json)?;
             }
+            VaultAction::Unlock => {
+                commands::vault::unlock(cli.json).await?;
+            }
         },
         Command::Crypto { action } => match action {
             CryptoAction::RotateVaultKey => {
@@ -115,7 +122,7 @@ async fn main() -> Result<()> {
                 commands::bot::memory(cli.json).await?;
             }
             BotAction::PairInit => {
-                commands::bot::pair_init(&pass_opts, cli.json).await?;
+                commands::bot::pair_init(cli.json).await?;
             }
             BotAction::PanicUnpair => {
                 commands::bot::panic_unpair(&pass_opts, cli.json).await?;

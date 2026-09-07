@@ -1,28 +1,53 @@
 #!/usr/bin/env sh
 # Print, one per line, every daemon route the command line calls.
 #
-# `springtale --help` cannot answer this: clap emits no machine-readable
-# help, and a verb name ("rally") does not carry the route it hits. The
-# CLI's path literals do, and they are the same contract the plan asks
-# for — a route with no CLI path literal has no command-line verb.
+# The command line answers this itself. `springtale dump-commands` walks
+# its own clap tree at runtime and prints every verb with the routes that
+# verb calls, declared beside it in `apps/springtale-cli/src/surface.rs`
+# and held to the tree by a unit test — a new subcommand cannot be added
+# without saying what it talks to.
 #
-# A literal is a route with two kinds of noise stripped, the same two
-# the OpenAPI templates do not carry:
+# This used to grep path literals out of the CLI sources, which answered
+# a weaker question: a path in a comment counted as a verb, and a verb
+# that built its path from a constant or a `match` did not count at all.
 #
-#   "/events?limit={limit}"        -> /events
-#   "/formations/{id}/deploy"      -> /formations/{}/deploy
+# Holes are flattened to the shape the OpenAPI templates carry:
 #
-# A `{hole}` is a path segment only when a `/` introduces it; a hole
-# anywhere else is an interpolated query string or base URL, not a
-# segment, and is dropped rather than turned into `{}`.
+#   /formations/{id}/deploy   ->  /formations/{}/deploy
+#
+# An empty result is a FAILURE, not a clean surface, and so is a verb
+# whose routes are undeclared: both mean the dump is broken.
 set -eu
+
 root="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-grep -rhoE '"/[A-Za-z0-9_{}/.:?=&-]*"' "$root/apps/springtale-cli/src" \
-  | tr -d '"' \
-  | sed -e 's/?.*$//' \
-        -e "s#/{[^}]*}#/%HOLE%#g" \
-        -e "s/{[^}]*}//g" \
-        -e "s/%HOLE%/{}/g" \
-        -e 's#/\{1,\}$##' \
-  | grep -vE '^/?$' \
+
+# Ask cargo rather than trusting whatever is already in target/: a
+# stale binary would answer for a command line that no longer exists.
+# `cargo build` is a no-op when it is up to date. `SPRINGTALE_CLI`
+# overrides for a packaged binary (CI, a release image).
+bin="${SPRINGTALE_CLI:-}"
+if [ -z "$bin" ]; then
+  cargo build -q --manifest-path "$root/Cargo.toml" -p springtale-cli >&2
+  bin="$root/target/debug/springtale-cli"
+fi
+
+dump="$("$bin" dump-commands)"
+
+if ! printf '%s' "$dump" | jq -e '(.commands | length) > 0' > /dev/null; then
+  printf 'cli-routes: the command tree came back EMPTY. That is a dump\n' >&2
+  printf 'bug, not a command line with no verbs. Refusing to print.\n' >&2
+  exit 1
+fi
+
+if ! printf '%s' "$dump" | jq -e 'all(.commands[]; .routes != null)' > /dev/null; then
+  printf 'cli-routes: these verbs declare no routes at all:\n' >&2
+  printf '%s' "$dump" | jq -r '.commands[] | select(.routes == null) | .verb' >&2
+  printf 'Declare them in apps/springtale-cli/src/surface.rs (an offline\n' >&2
+  printf 'verb declares an empty list).\n' >&2
+  exit 1
+fi
+
+printf '%s' "$dump" \
+  | jq -r '.commands[].routes[]' \
+  | sed -e 's#/{[^}]*}#/{}#g' -e 's#/\{1,\}$##' \
   | sort -u

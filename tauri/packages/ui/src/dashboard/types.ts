@@ -755,8 +755,20 @@ export interface DataProvider {
   // ── Formation votes ───────────────────────────────────────────────
   /** Propose an intent change for the formation to vote on. */
   proposeFormationIntent(id: string, intent: string): Promise<Record<string, unknown>>;
-  /** Cast a vote on an open proposal. */
-  castFormationVote(id: string, voteId: string, choice: string): Promise<Record<string, unknown>>;
+  /**
+   * Cast a vote on an open proposal.
+   *
+   * `voter` is the agent id casting the ballot and `approve` is the
+   * ballot — the two fields `POST /formations/{id}/votes/{vote_id}`
+   * requires. It used to send a single `choice` string, which the
+   * daemon has never read.
+   */
+  castFormationVote(
+    id: string,
+    voteId: string,
+    voter: string,
+    approve: boolean,
+  ): Promise<Record<string, unknown>>;
 
   // ── Chat sessions ─────────────────────────────────────────────────
   /** The chat sessions the daemon is holding. */

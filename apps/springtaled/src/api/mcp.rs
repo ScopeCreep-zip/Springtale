@@ -36,6 +36,31 @@ use super::state::AppState;
 /// The handler is constructed per session and holds a clone of the shared
 /// `RuntimeState`, so tool calls dispatch through the same sentinel,
 /// approval gate and executions recorder as a rule action.
+/// The endpoint is a nested service, not a handler, so the contract
+/// annotation sits on the constructor that mounts it.
+///
+/// The document describes what `/mcp` *is* — a Streamable HTTP MCP
+/// endpoint carrying JSON-RPC 2.0 in both directions — and deliberately
+/// does not restate MCP's own schema. That schema is versioned by the
+/// MCP specification, not by this daemon; a copy of it here would be a
+/// second, staler source of truth. Clients discover tools the way the
+/// protocol says to: `initialize`, then `tools/list`.
+#[utoipa::path(
+    post, operation_id = "mcp_endpoint",
+    path = "/mcp",
+    tag = "mcp",
+    request_body(
+        content = Object,
+        description = "One JSON-RPC 2.0 request, notification, or response, per the MCP Streamable HTTP transport",
+        content_type = "application/json"
+    ),
+    responses(
+        (status = 200, description = "A JSON-RPC response, or an SSE stream of them when the client accepts `text/event-stream`", body = Object),
+        (status = 202, description = "Notification or response accepted; no body"),
+        (status = 401, description = "Missing or invalid bearer token", body = Object),
+        (status = 403, description = "Origin header rejected (DNS-rebinding guard)", body = Object)
+    )
+)]
 pub fn router(state: AppState) -> Router<AppState> {
     let service = springtale_mcp::streamable_http(state.runtime.clone());
 
