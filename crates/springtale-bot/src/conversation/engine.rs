@@ -24,6 +24,8 @@ use super::nlu::intent::{self, IntentDecision};
 
 use springtale_runtime::operations::recipes::types::RecipeFilter;
 
+use crate::conversation::sentences;
+
 /// Run a dialogue turn if a setup frame is active. `Ok(None)` means
 /// "no active frame — not my turn", so the caller proceeds to routing.
 pub async fn continue_active(
@@ -38,7 +40,7 @@ pub async fn continue_active(
     };
     frame.bump_seq();
 
-    let catalog = build_catalog(bot).await?;
+    let catalog = build_catalog(bot, Some(&key.user_id)).await?;
     let reply = drive(bot, &mut session, &mut frame, &catalog, text).await?;
     save_session(&bot.store, &session).await?;
     Ok(Some(reply))
@@ -51,7 +53,7 @@ pub async fn try_start(
     key: &SessionKey,
     text: &str,
 ) -> Result<Option<String>, ConversationError> {
-    let catalog = build_catalog(bot).await?;
+    let catalog = build_catalog(bot, Some(&key.user_id)).await?;
     let decision = intent::decide(intent::rank(text, &catalog));
     let now = chrono::Utc::now();
 
@@ -100,7 +102,7 @@ pub async fn start_recipe(
     recipe_id: &str,
     utterance: &str,
 ) -> Result<Option<String>, ConversationError> {
-    let catalog = build_catalog(bot).await?;
+    let catalog = build_catalog(bot, Some(&key.user_id)).await?;
     let Some(doc) = catalog.find(recipe_id).cloned() else {
         return Ok(None);
     };
@@ -114,7 +116,9 @@ pub async fn start_recipe(
 /// fallback (replacing the old static suggestion) when no command, no
 /// frame, and no AI handle the message.
 pub async fn capability_reply(bot: &Bot) -> Result<String, ConversationError> {
-    let catalog = build_catalog(bot).await?;
+    // No session key on this path: the capability reply lists what the
+    // bot can do, not what one speaker said, so it reads English.
+    let catalog = build_catalog(bot, None).await?;
     let examples: Vec<String> = catalog
         .intents
         .iter()
@@ -127,7 +131,10 @@ pub async fn capability_reply(bot: &Bot) -> Result<String, ConversationError> {
 
 // ── internals ────────────────────────────────────────────────────────
 
-pub(super) async fn build_catalog(bot: &Bot) -> Result<CatalogSnapshot, ConversationError> {
+pub(super) async fn build_catalog(
+    bot: &Bot,
+    user_id: Option<&str>,
+) -> Result<CatalogSnapshot, ConversationError> {
     let recipes =
         springtale_runtime::operations::recipes::list_recipes(&*bot.store, RecipeFilter::default())
             .await?;
@@ -135,17 +142,48 @@ pub(super) async fn build_catalog(bot: &Bot) -> Result<CatalogSnapshot, Conversa
     // `{formation}` slot list is the live roster read here, at match
     // time, not a hard-coded list.
     let formation_names = live_formation_names(bot).await;
+    let locale = speaker_locale(bot, user_id).await;
     Ok(CatalogSnapshot::build_with_platform(
         recipes,
-        CHAT_LOCALE,
+        &locale,
         &formation_names,
     ))
 }
 
-/// The locale the chat sentence templates are read in. Only `en` is
-/// translated today; the other seven files are stubs that fall back to
-/// it (`conversation::sentences`).
-const CHAT_LOCALE: &str = "en";
+/// The locale this speaker's sentence templates are read in.
+///
+/// Plan 5.4: the chat understands the languages the interface speaks,
+/// so the templates are chosen by the person talking — their `language`
+/// preference — not by a constant. A preference the sentence files do
+/// not cover (or a region tag like `pt-BR`) narrows to its base
+/// language and then falls back to English, which is also what a
+/// locale with an empty file does.
+async fn speaker_locale(bot: &Bot, user_id: Option<&str>) -> String {
+    let Some(user_id) = user_id else {
+        return DEFAULT_LOCALE.to_owned();
+    };
+    let language = match crate::state::prefs::load_or_default(&bot.store, user_id).await {
+        Ok(prefs) => prefs.language,
+        Err(e) => {
+            tracing::debug!(error = %e, "prefs unreadable — chat falls back to English");
+            return DEFAULT_LOCALE.to_owned();
+        }
+    };
+    let base = language
+        .split(['-', '_'])
+        .next()
+        .unwrap_or(DEFAULT_LOCALE)
+        .to_lowercase();
+    if sentences::LOCALES.contains(&base.as_str()) {
+        base
+    } else {
+        DEFAULT_LOCALE.to_owned()
+    }
+}
+
+/// Fallback when the speaker is unknown or their language is not one
+/// the sentence files cover.
+const DEFAULT_LOCALE: &str = "en";
 
 /// Formation names from the store, or none when this bot has no runtime
 /// (headless / CLI / tests) — then the platform documents simply carry
