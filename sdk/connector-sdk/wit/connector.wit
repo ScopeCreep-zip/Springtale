@@ -1,0 +1,112 @@
+// Springtale Connector WIT World — ALIGNMENT-PLAN 2.7 / finding 83.
+//
+// The interface description for community connectors. Until this file
+// existed the sandbox work rested on hand-written WebAssembly text: the
+// host linked a set of interfaces and the SDK documented an ABI, but
+// nothing stated the contract in a form a component toolchain could
+// consume. This is that statement.
+//
+// Two worlds, because host imports are gated by the manifest, not by
+// the language:
+//
+//   world connector             — a connector that declares no
+//                                 capabilities. Exports `guest` and
+//                                 imports nothing from the host.
+//   world networked-connector   — a connector whose manifest declares
+//                                 `NetworkOutbound { host }`. Adds the
+//                                 `host` interface.
+//
+// A connector must not import `host` unless its manifest declares the
+// matching capability: `crates/springtale-connector/src/wasm/wasi.rs`
+// builds the component linker as a closed allow-list, so an undeclared
+// import fails at instantiation rather than at call time.
+//
+// WASI Preview 2 imports are NOT declared here. The host links the
+// `wasi:http/proxy` import set (`wasi:io`, `wasi:clocks`,
+// `wasi:random/random`, `wasi:cli/std{in,out,err}`) plus
+// `wasi:cli/{exit,environment,terminal-*}` and
+// `wasi:filesystem/{preopens,types}`. Every one of them resolves against
+// a `WasiCtx` that grants nothing — no stdio, no env, no args, no
+// preopens. `wasi:sockets` is deliberately not linked at all, so a
+// component that reaches for a socket cannot instantiate. Declaring the
+// WASI world here would require vendoring the `wasi:*` packages and
+// would imply a grant the host does not make.
+//
+// References:
+// - `crates/springtale-connector/src/wasm/host_functions.rs` — the one
+//   host function the runtime actually provides.
+// - `crates/springtale-connector/src/wasm/wasi.rs` — the linked WASI set.
+// - `.claude/rules/backend/connector-guidelines.md` — `read-only`
+//   semantics (MCP `readOnlyHint`).
+
+package springtale:connector@0.1.0;
+
+/// What a connector exports. The host calls `actions` to learn what the
+/// component can do and `execute` to run one.
+interface guest {
+    /// One declared action, mirroring `ActionDecl` in the manifest.
+    record action-decl {
+        /// Action name, as written in `[[actions]] name` in the manifest.
+        name: string,
+        /// Human-readable description.
+        description: string,
+        /// MCP `readOnlyHint` semantics: true only when the action purely
+        /// retrieves data and never creates, updates, deletes or sends.
+        /// Advisory — the formation intent decomposer reads it. The
+        /// security boundary is `springtale-sentinel`, not this bit.
+        read-only: bool,
+    }
+
+    /// The outcome of one `execute` call. Mirrors
+    /// `springtale_connector::connector::trait_::ActionResult`; `output`
+    /// carries a JSON document as a string because the Component Model
+    /// has no JSON type and the host already treats action payloads as
+    /// opaque JSON.
+    record action-result {
+        success: bool,
+        output: string,
+        message: string,
+    }
+
+    /// The actions this connector declares. Must agree with the
+    /// manifest: the host verifies the manifest, not this list.
+    actions: func() -> list<action-decl>;
+
+    /// Run one action. `input` is a JSON document. Errors are reported
+    /// through `action-result.success = false`, not by trapping.
+    execute: func(action: string, input: string) -> action-result;
+}
+
+/// What the host offers a connector. Exactly one function today,
+/// matching `register_http_request` in `host_functions.rs`.
+///
+/// Importing this interface is only legal when the manifest declares
+/// `NetworkOutbound`. Host matching is exact — no wildcards, no
+/// subdomains (`.claude/rules/backend/security.md`).
+interface host {
+    /// Why a request was refused.
+    enum access-error {
+        /// The URL or method could not be parsed, or a pointer was out
+        /// of bounds. Maps to the core-ABI return value -1.
+        invalid-request,
+        /// The URL's host is not in the connector's declared
+        /// `NetworkOutbound` allow-list. Maps to -2.
+        denied,
+    }
+
+    /// Ask whether an HTTP request to `url` with `method` is permitted.
+    /// The host parses the URL, extracts its host, and checks it against
+    /// the connector's declared capabilities.
+    check-http-access: func(url: string, method: string) -> result<_, access-error>;
+}
+
+/// A connector that declares no capabilities in its manifest.
+world connector {
+    export guest;
+}
+
+/// A connector whose manifest declares `NetworkOutbound { host }`.
+world networked-connector {
+    import host;
+    export guest;
+}
